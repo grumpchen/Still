@@ -13,6 +13,14 @@ Still is a Windows desktop workspace app with movable widgets, saved shortcuts, 
 - Record durable decisions, task assignments, and handoffs in repository files. Agent conversations are not shared memory.
 - Do not overwrite another agent's report or unrelated work. If scope overlaps, coordinate before editing.
 
+## Naming conventions
+
+- Name task branches `agent/<agent-name>/<short-task>` using lowercase kebab-case (example: `agent/codex/fix-app-picker`).
+- Name sibling worktree folders `../still-<agent-name>-<short-task>` (example: `../still-codex-fix-app-picker`).
+- Use one short task per branch/worktree; avoid spaces and dates in branch names.
+- Write commits as `type(scope): short description`, with types such as `feat`, `fix`, `docs`, `test`, or `chore` (example: `fix(app-picker): preserve selected window`).
+- Keep `main` for reviewed integration; do not merge without user approval.
+
 ## Safety and change discipline
 
 - Treat the original `outputs` folder as read-only; make changes only in this repository or an explicitly assigned worktree.
