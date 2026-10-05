@@ -41,7 +41,7 @@
 .liquid-glass .tray-items button{background:#ffffff1c;border-color:var(--border);border-radius:12px}.liquid-glass .tray-items button:hover{background:#ffffff40}.liquid-glass .canvas-status{color:#eaf4e5cf}.liquid-glass .canvas-empty{color:#eaf4e5}.liquid-glass .workspace-canvas{background-image:radial-gradient(#ffffff28 .7px,transparent .7px)}.liquid-glass .widget-tray.tray-remove{background:#f6dfdae8;color:#762a26;border-color:#e39188}.liquid-glass .canvas-card{border-radius:18px}.liquid-glass .canvas-card .widget-resize{background:var(--surface)}
 @media(max-width:1050px){.canvas-app .content{padding:8px 12px}.tray-items button{padding:4px 8px}.canvas-status span:last-child{display:none}}
 @media(max-width:740px){.canvas-app{grid-template-columns:66px minmax(0,1fr)}.canvas-app .footer{flex-direction:row}.canvas-app .footer>span:last-child{display:none}.canvas-app .brand{padding:0 10px}}
-@media(max-width:900px){.canvas-app .search .search-label,.canvas-app .search kbd{display:none}.canvas-app .search{padding:6px 8px}.canvas-app .topbar-actions .topbar-action-label{display:none}.canvas-app .topbar-actions button{padding:6px 8px}}
+@media(max-width:900px){.canvas-app .search .search-label,.canvas-app .search kbd{display:none}.canvas-app .search{padding:6px 8px}.canvas-app .topbar-customize .topbar-action-label{display:none}.canvas-app .topbar-actions button{padding:6px 8px}}
 .canvas-app.sidebar-expanded{grid-template-columns:160px minmax(0,1fr)}
 .canvas-app.sidebar-collapsed{grid-template-columns:52px minmax(0,1fr)}
 .canvas-app.sidebar-collapsed .sidebar{padding:14px 4px 12px;margin-left:4px;margin-right:4px;border-radius:17px}
@@ -52,6 +52,7 @@
 .sidebar-expanded .sidebar .brand-text,.sidebar-expanded .sidebar .personal,.sidebar-expanded .sidebar .side-label,.sidebar-expanded .sidebar .nav-name{display:block}
 .sidebar-expanded .sidebar .nav kbd{display:inline-block}.sidebar-expanded .sidebar .profile{display:flex}
 .canvas-app .nav button.active{box-shadow:inset 3px 0 0 var(--accent)}
+.liquid-glass .canvas-app .nav button.active{box-shadow:inset 3px 0 0 var(--accent),inset 0 1px 0 rgb(255 255 255 / .22),0 3px 12px rgb(10 30 15 / .08)}
 .canvas-app .nav-badge{display:none}
 .canvas-app.sidebar-collapsed .nav-badge{display:inline-grid;place-items:center;min-width:24px;height:18px;padding:0 4px;border-radius:6px;background:var(--tint);color:var(--muted);font-family:"Cascadia Code",Consolas,monospace;font-size:9px;letter-spacing:.4px}
 .canvas-app.sidebar-collapsed .nav button.active .nav-badge{color:var(--accent)}
@@ -128,14 +129,14 @@
 .tray-group-shelf{padding:2px 0 0;flex:1 1 auto;min-width:0}
 .tray-group-heading{display:flex;align-items:center;gap:5px;margin-bottom:4px;font-size:10px}
 .tray-group-heading strong{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-right:5px}
-.tray-group-heading button{padding:2px 6px;font-size:9px;border-radius:6px;background:transparent;box-shadow:none}
+.tray-group-heading button{min-height:22px;padding:2px 8px;font-size:10px;border-radius:6px;background:transparent;box-shadow:none}
 .tray-group-heading .tray-group-close{margin-left:auto}
 .tray-group-entries{display:flex;align-items:center;flex-wrap:nowrap;gap:5px;min-width:0;overflow-x:auto;overflow-y:hidden;padding-bottom:2px;scrollbar-width:thin}
-.tray-group-entries button{display:flex;align-items:center;gap:5px;font-size:10px;padding:4px 8px;border-radius:8px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:var(--tint);flex-shrink:0}
+.tray-group-entries button{display:flex;align-items:center;gap:5px;font-size:10px;padding:4px 8px;min-height:24px;border-radius:8px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:var(--tint);flex-shrink:0}
 .tray-group-entries button[draggable=true]{cursor:grab}
 .tray-entry-icon{font-size:10px;display:grid;place-items:center;min-width:22px;height:22px;border-radius:6px;background:var(--surface);color:var(--accent)}
 .tray-group-entries .tray-group-add{border-style:dashed;background:transparent;box-shadow:none;font-size:10px}
-.tray-group-remove{font-size:9px;border:0;background:transparent;box-shadow:none;padding:3px 0;color:var(--muted);margin-top:3px}
+.tray-group-remove{font-size:9px;border:0;background:transparent;box-shadow:none;padding:3px 0;color:var(--muted);margin-top:3px;min-height:24px;display:flex;align-items:center}
 .group-widget .group-items{flex:1;min-height:0;overflow:auto;padding:4px 14px 7px;scrollbar-width:thin}
 .group-add-actions{display:flex;gap:7px;flex-shrink:0;padding:7px 14px 14px}
 .canvas-card .group-add-actions .group-add,.group-add-actions .group-add{margin:0;flex:1;padding:8px;font-size:11px;border-style:dashed;box-shadow:none}
