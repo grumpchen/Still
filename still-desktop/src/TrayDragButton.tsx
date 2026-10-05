@@ -7,6 +7,8 @@ export type TrayDragPayload =
  | {kind:'group';id:string}
  | {kind:'group-entry';groupId:string;id:string;entryKind:'link'|'widget'};
 export interface TrayDragPosition {payload:TrayDragPayload;clientX:number;clientY:number}
+/** Keyboard focus scrolls horizontally/vertically scrolled tray buttons back into view. */
+export function trayFocusIntoView(event:{currentTarget:HTMLElement}){event.currentTarget.scrollIntoView({block:'nearest',inline:'nearest'})}
 interface DragContext {
  enabled:()=>boolean;
  change:(drag:TrayDragPosition|null)=>void;
