@@ -14,9 +14,9 @@ function command<T>(id:string,name:string,args:Record<string,unknown>={}):Promis
 }
 export const appPanel={
  available:isTauri(),
- open:(id:string,sourceId:string,bounds:PanelBounds,clip:PanelBounds,reuseExisting=false)=>command<AppPanelInfo>(id,'app_panel_open',{sourceId,bounds,clip,reuseExisting}),
- present:(id:string,bounds:PanelBounds,clip:PanelBounds,visible:boolean)=>command<void>(id,'app_panel_present',{bounds,clip,visible}),
- attach:(id:string,window:AppAttachment,bounds:PanelBounds,clip:PanelBounds)=>command<AppPanelInfo>(id,'app_panel_attach',{hwnd:window.hwnd,pid:window.pid,bounds,clip}),
+ open:(id:string,sourceId:string,bounds:PanelBounds,clip:PanelBounds,grip:PanelBounds|null,reuseExisting=false)=>command<AppPanelInfo>(id,'app_panel_open',{sourceId,bounds,clip,grip,reuseExisting}),
+ present:(id:string,bounds:PanelBounds,clip:PanelBounds,grip:PanelBounds|null,visible:boolean)=>command<void>(id,'app_panel_present',{bounds,clip,grip,visible}),
+ attach:(id:string,window:AppAttachment,bounds:PanelBounds,clip:PanelBounds,grip:PanelBounds|null)=>command<AppPanelInfo>(id,'app_panel_attach',{hwnd:window.hwnd,pid:window.pid,bounds,clip,grip}),
  windows:()=>invoke<AppWindow[]>('app_panel_windows'),
  choices:(sourceId?:string)=>invoke<AppWindowChoice[]>('app_picker_windows',{sourceId:sourceId??null}),
  prepare:(window:AppAttachment)=>invoke<DroppedResource>('app_picker_prepare',{hwnd:window.hwnd,pid:window.pid}),

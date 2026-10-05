@@ -33,9 +33,9 @@ fn owner()->Result<HWND,String>{let h=OWNER.load(std::sync::atomic::Ordering::Re
 fn marker()->Vec<u16>{wide("StillManagedAppPanel")}
 type Physical=(i32,i32,i32,i32);
 struct Entry {
- hwnd:usize,pid:u32,source_id:String,bounds:Bounds,clip:Bounds,visible:bool,shown:bool,
+ hwnd:usize,pid:u32,source_id:String,bounds:Bounds,clip:Bounds,grip:Option<Bounds>,visible:bool,shown:bool,
  original_owner:usize,original_placement:WINDOWPLACEMENT,original_region:usize,original_visible:bool,
- last:Option<(Physical,Physical,Physical)>,error:String,
+ last:Option<(Physical,Physical,Physical,Option<Physical>)>,error:String,
 }
 impl Drop for Entry{fn drop(&mut self){if self.original_region!=0{unsafe{let _=DeleteObject(HGDIOBJ(self.original_region as *mut _));}}}}
 #[derive(Default)]struct Panels {items:HashMap<String,Entry>,pending:HashMap<String,Launch>,running:HashSet<String>,generation:HashMap<String,u64>,closed:bool}
@@ -117,14 +117,14 @@ fn foreground_in(items:&HashMap<String,Entry>,front:HWND)->bool{
 pub fn is_managed_foreground(app:&AppHandle,hwnd:HWND)->bool{app.state::<AppPanelState>().0.try_lock().map(|s|foreground_in(&s.items,hwnd)).unwrap_or(false)}
 fn parent_context(items:&HashMap<String,Entry>,main:HWND,app:&AppHandle)->bool{let front=unsafe{GetForegroundWindow()};front.0.is_null()||pid(front)==std::process::id()||foreground_in(items,front)||crate::chrome_overlay::is_managed_foreground(app,front)||front==main}
 
-fn attach(window:&WindowInfo,source_id:String,bounds:Bounds,clip:Bounds,main:HWND)->Result<Entry,String>{unsafe{
+fn attach(window:&WindowInfo,source_id:String,bounds:Bounds,clip:Bounds,grip:Option<Bounds>,main:HWND)->Result<Entry,String>{unsafe{
  let hwnd=handle(window.hwnd);
  if !IsWindow(Some(hwnd)).as_bool()||pid(hwnd)!=window.pid||window.pid==std::process::id()||!GetPropW(hwnd,PCWSTR(marker().as_ptr())).0.is_null(){return Err("This window is no longer available for attachment.".into())}
  let original_owner=GetWindowLongPtrW(hwnd,GWLP_HWNDPARENT) as usize;
  let mut original_placement=WINDOWPLACEMENT{length:std::mem::size_of::<WINDOWPLACEMENT>() as u32,..Default::default()};
  GetWindowPlacement(hwnd,&mut original_placement).map_err(|e|e.to_string())?;
  let region=CreateRectRgn(0,0,0,0);let original_region=if GetWindowRgn(hwnd,region)!=RGN_ERROR{region.0 as usize}else{let _=DeleteObject(HGDIOBJ(region.0));0};
- let mut entry=Entry{hwnd:window.hwnd,pid:window.pid,source_id,bounds,clip,visible:false,shown:false,original_owner,original_placement,original_region,original_visible:IsWindowVisible(hwnd).as_bool(),last:None,error:String::new()};
+ let mut entry=Entry{hwnd:window.hwnd,pid:window.pid,source_id,bounds,clip,grip,visible:false,shown:false,original_owner,original_placement,original_region,original_visible:IsWindowVisible(hwnd).as_bool(),last:None,error:String::new()};
  // Top-level ownership, never SetParent/WS_CHILD. Restore it before Still closes.
  SetWindowLongPtrW(hwnd,GWLP_HWNDPARENT,main.0 as isize);
  if GetWindow(hwnd,GW_OWNER).ok()!=Some(main){SetWindowLongPtrW(hwnd,GWLP_HWNDPARENT,original_owner as isize);return Err("The app could not be attached. Still and the app must run at the same Windows permission level.".into())}
@@ -141,9 +141,9 @@ fn restore(entry:&mut Entry){unsafe{
  let _=SetWindowPlacement(hwnd,&placement);let _=ShowWindow(hwnd,if entry.original_visible{SW_SHOWNA}else{SW_HIDE});
 }}
 fn position(entry:&mut Entry,main:HWND,origin:POINT,scale:f64)->Result<(),String>{unsafe{
- let hwnd=handle(entry.hwnd);let wanted=entry.bounds.screen(origin,scale);let clip=entry.clip.screen(origin,scale);
+ let hwnd=handle(entry.hwnd);let wanted=entry.bounds.screen(origin,scale);let clip=entry.clip.screen(origin,scale);let grip=entry.grip.as_ref().map(|bounds|bounds.screen(origin,scale));
  let actual=rect(hwnd)?;
- if entry.shown&&entry.last==Some((wanted,clip,actual)){return Ok(())}
+ if entry.shown&&entry.last==Some((wanted,clip,actual,grip)){return Ok(())}
  if IsZoomed(hwnd).as_bool()||IsIconic(hwnd).as_bool(){let _=ShowWindow(hwnd,SW_SHOWNOACTIVATE);}
  SetWindowPos(hwnd,Some(HWND_TOP),wanted.0,wanted.1,wanted.2,wanted.3,SWP_NOACTIVATE|SWP_NOOWNERZORDER).map_err(|e|e.to_string())?;
  let actual=rect(hwnd)?;
@@ -153,8 +153,20 @@ fn position(entry:&mut Entry,main:HWND,origin:POINT,scale:f64)->Result<(),String
  let right=(clip.0+clip.2-actual.0).min(actual.2).max(left);let bottom=(clip.1+clip.3-actual.1).min(actual.3).max(top);
  let region=CreateRectRgn(left,top,right,bottom);
  if region.0.is_null(){return Err("Unable to clip the app to its panel.".into())}
+ // Native app HWNDs sit above Still's WebView. Cut the resize grip out of
+ // the native region so the underlying Still control stays visible/clickable.
+ if let Some((x,y,width,height))=grip{
+  let grip_left=(x-actual.0).max(left);let grip_top=(y-actual.1).max(top);
+  let grip_right=(x+width-actual.0).min(right);let grip_bottom=(y+height-actual.1).min(bottom);
+  if grip_left<grip_right&&grip_top<grip_bottom{
+   let cutout=CreateRectRgn(grip_left,grip_top,grip_right,grip_bottom);
+   if cutout.0.is_null(){let _=DeleteObject(HGDIOBJ(region.0));return Err("Unable to reserve Still's resize grip.".into())}
+   if CombineRgn(Some(region),Some(region),Some(cutout),RGN_DIFF)==RGN_ERROR{let _=DeleteObject(HGDIOBJ(cutout.0));let _=DeleteObject(HGDIOBJ(region.0));return Err("Unable to reserve Still's resize grip.".into())}
+   let _=DeleteObject(HGDIOBJ(cutout.0));
+  }
+ }
  if SetWindowRgn(hwnd,Some(region),true)==0{let _=DeleteObject(HGDIOBJ(region.0));return Err("The app cannot fit this panel at its current Windows permission level.".into())}
- entry.last=Some((wanted,clip,actual));let _=main;Ok(())
+ entry.last=Some((wanted,clip,actual,grip));let _=main;Ok(())
 }}
 fn remove_closed(app:&AppHandle,panels:&mut Panels,window:Option<usize>){
  let gone=panels.items.iter().filter(|(_,e)|window.is_none_or(|h|h==e.hwnd)&&!valid_window(e)).map(|(id,_)|id.clone()).collect::<Vec<_>>();
@@ -190,8 +202,8 @@ fn release(app:&AppHandle,id:&str){if let Ok(mut s)=app.state::<AppPanelState>()
 pub fn shutdown(app:&AppHandle){let state=app.state::<AppPanelState>();if let Ok(mut s)=state.0.lock(){s.closed=true;s.pending.clear();for (_,mut entry) in s.items.drain(){restore(&mut entry);}};}
 
 #[tauri::command]
-pub async fn app_panel_open(app:AppHandle,webview:Webview,id:String,source_id:String,bounds:Bounds,clip:Bounds,reuse_existing:Option<bool>)->Result<Info,String>{
- crate::browser::authorize(&webview)?;instance(&id)?;bounds.validate()?;clip.validate()?;
+pub async fn app_panel_open(app:AppHandle,webview:Webview,id:String,source_id:String,bounds:Bounds,clip:Bounds,grip:Option<Bounds>,reuse_existing:Option<bool>)->Result<Info,String>{
+ crate::browser::authorize(&webview)?;instance(&id)?;bounds.validate()?;clip.validate()?;if let Some(grip)=&grip{grip.validate()?}
  let path=app.state::<crate::dropped_files::AppGrants>().target(&source_id)?;
  tauri::async_runtime::spawn_blocking(move||{
   let main=owner()?;let state=app.state::<AppPanelState>();
@@ -212,7 +224,7 @@ pub async fn app_panel_open(app:AppHandle,webview:Webview,id:String,source_id:St
    loop{
     let claimed={let s=state.0.lock().map_err(|_|"App panels are unavailable")?;if s.closed||s.generation.get(&id)!=Some(&epoch){return Err("App attachment was cancelled.".into())}s.items.values().map(|e|e.hwnd).collect::<Vec<_>>()};
     let choices=windows();if let Some(candidate)=select_window(&launch,&choices,&claimed){
-     let mut entry=attach(candidate,source_id.clone(),bounds.clone(),clip.clone(),main)?;
+      let mut entry=attach(candidate,source_id.clone(),bounds.clone(),clip.clone(),grip.clone(),main)?;
      let mut origin=POINT::default();if !unsafe{ClientToScreen(main,&mut origin).as_bool()}{restore(&mut entry);return Err("Still window is unavailable".into())}
      let scale=unsafe{windows::Win32::UI::HiDpi::GetDpiForWindow(main)}.max(96) as f64/96.;
      if let Err(error)=position(&mut entry,main,origin,scale){restore(&mut entry);return Err(error)}
@@ -230,11 +242,11 @@ pub async fn app_panel_open(app:AppHandle,webview:Webview,id:String,source_id:St
 #[tauri::command]
 pub async fn app_panel_windows(app:AppHandle,webview:Webview)->Result<Vec<WindowInfo>,String>{crate::browser::authorize(&webview)?;let _=app;tauri::async_runtime::spawn_blocking(windows).await.map_err(|e|e.to_string())}
 #[tauri::command]
-pub async fn app_panel_attach(app:AppHandle,webview:Webview,id:String,hwnd:usize,pid:u32,bounds:Bounds,clip:Bounds)->Result<Info,String>{
- crate::browser::authorize(&webview)?;instance(&id)?;bounds.validate()?;clip.validate()?;
+pub async fn app_panel_attach(app:AppHandle,webview:Webview,id:String,hwnd:usize,pid:u32,bounds:Bounds,clip:Bounds,grip:Option<Bounds>)->Result<Info,String>{
+ crate::browser::authorize(&webview)?;instance(&id)?;bounds.validate()?;clip.validate()?;if let Some(grip)=&grip{grip.validate()?}
  tauri::async_runtime::spawn_blocking(move||{
   let main=owner()?;let choices=windows();let candidate=choices.iter().find(|w|w.hwnd==hwnd&&w.pid==pid).ok_or("This window is no longer available. Refresh the app list.")?;
-  let mut entry=attach(candidate,String::new(),bounds,clip,main)?;let mut origin=POINT::default();if !unsafe{ClientToScreen(main,&mut origin).as_bool()}{restore(&mut entry);return Err("Still window is unavailable".into())}
+  let mut entry=attach(candidate,String::new(),bounds,clip,grip,main)?;let mut origin=POINT::default();if !unsafe{ClientToScreen(main,&mut origin).as_bool()}{restore(&mut entry);return Err("Still window is unavailable".into())}
   let scale=unsafe{windows::Win32::UI::HiDpi::GetDpiForWindow(main)}.max(96) as f64/96.;if let Err(e)=position(&mut entry,main,origin,scale){restore(&mut entry);return Err(e)}
   let information=info(&entry,main);let state=app.state::<AppPanelState>();let mut s=state.0.lock().map_err(|_|"App panels unavailable")?;
   if s.closed{restore(&mut entry);return Err("Still is closing".into())}*s.generation.entry(id.clone()).or_default()+=1;s.pending.remove(&id);
@@ -246,13 +258,13 @@ pub async fn app_panel_attach(app:AppHandle,webview:Webview,id:String,hwnd:usize
  }).await.map_err(|e|e.to_string())?
 }
 #[tauri::command]
-pub async fn app_panel_present(app:AppHandle,webview:Webview,id:String,bounds:Bounds,clip:Bounds,visible:bool)->Result<(),String>{
- crate::browser::authorize(&webview)?;instance(&id)?;bounds.validate()?;clip.validate()?;
+pub async fn app_panel_present(app:AppHandle,webview:Webview,id:String,bounds:Bounds,clip:Bounds,grip:Option<Bounds>,visible:bool)->Result<(),String>{
+ crate::browser::authorize(&webview)?;instance(&id)?;bounds.validate()?;clip.validate()?;if let Some(grip)=&grip{grip.validate()?}
  let state=app.state::<AppPanelState>();let mut s=state.0.lock().map_err(|_|"App panels unavailable")?;
  let entry=s.items.get_mut(&id).ok_or("The app was closed. Reopen it below.")?;
  if !valid_window(entry){s.items.remove(&id);return Err("The app was closed. Reopen it below.".into())}
  if !visible&&belongs(unsafe{GetForegroundWindow()},entry.hwnd,entry.pid){if let Ok(main)=owner(){unsafe{let _=SetForegroundWindow(main);}}}
- entry.bounds=bounds;entry.clip=clip;entry.visible=visible;place(&app,&mut s);Ok(())
+ entry.bounds=bounds;entry.clip=clip;entry.grip=grip;entry.visible=visible;place(&app,&mut s);Ok(())
 }
 #[tauri::command]
 pub async fn app_panel_release(app:AppHandle,webview:Webview,id:String)->Result<(),String>{crate::browser::authorize(&webview)?;instance(&id)?;release(&app,&id);Ok(())}
@@ -261,7 +273,7 @@ pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
  let state=app.state::<AppPanelState>();let panels=state.0.lock().map_err(|_|"App panels unavailable")?;
  let entry=panels.items.get(id).ok_or("Reopen the app before capturing")?;let main=owner()?;
  if !entry.shown||!entry.visible||!valid_window(entry)||!parent_context(&panels.items,main,app){return Err("Bring Still and this app panel to the front before capturing".into())}
- let (_, (x,y,w,h), _)=entry.last.ok_or("The app is not positioned yet")?;
+ let (_, (x,y,w,h), _, _)=entry.last.ok_or("The app is not positioned yet")?;
  if w<1||h<1||w as i64*h as i64>16000000{return Err("App capture is too large".into())}
  unsafe{
   SetWindowPos(handle(entry.hwnd),Some(HWND_TOP),0,0,0,0,SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE|SWP_NOOWNERZORDER).map_err(|e|e.to_string())?;
@@ -310,11 +322,12 @@ pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
  #[test]fn real_window_fixture_tracks_bounds_clips_native_content_and_releases_without_closing(){unsafe{
   let main=Fixture::new("Still fixture owner");let target=Fixture::new("Still fixture app");let original=rect(target.0).unwrap();
   let mut original_placement=WINDOWPLACEMENT{length:std::mem::size_of::<WINDOWPLACEMENT>() as u32,..Default::default()};GetWindowPlacement(target.0,&mut original_placement).unwrap();
-  let bounds=Bounds{x:100.,y:140.,width:800.,height:500.};let clip=Bounds{x:130.,y:160.,width:700.,height:450.};
-  let mut entry=Entry{hwnd:target.0.0 as usize,pid:std::process::id(),source_id:"test-app".into(),bounds:bounds.clone(),clip:clip.clone(),visible:true,shown:false,original_owner:0,original_placement,original_region:0,original_visible:false,last:None,error:String::new()};
+  let bounds=Bounds{x:100.,y:140.,width:800.,height:500.};let clip=Bounds{x:130.,y:160.,width:700.,height:450.};let grip=Bounds{x:798.,y:578.,width:32.,height:32.};
+  let mut entry=Entry{hwnd:target.0.0 as usize,pid:std::process::id(),source_id:"test-app".into(),bounds:bounds.clone(),clip:clip.clone(),grip:Some(grip),visible:true,shown:false,original_owner:0,original_placement,original_region:0,original_visible:false,last:None,error:String::new()};
   SetWindowLongPtrW(target.0,GWLP_HWNDPARENT,main.0.0 as isize);SetPropW(target.0,PCWSTR(marker().as_ptr()),Some(HANDLE(main.0.0))).unwrap();
   position(&mut entry,main.0,POINT{x:30,y:20},1.5).unwrap();assert_eq!(rect(target.0).unwrap(),(180,230,1200,750));
-  let region=CreateRectRgn(0,0,0,0);assert_ne!(GetWindowRgn(target.0,region),RGN_ERROR);let mut box_rect=RECT::default();GetRgnBox(region,&mut box_rect);assert_eq!((box_rect.left,box_rect.top,box_rect.right,box_rect.bottom),(45,30,1095,705));let _=DeleteObject(HGDIOBJ(region.0));
+  let region=CreateRectRgn(0,0,0,0);assert_ne!(GetWindowRgn(target.0,region),RGN_ERROR);let mut box_rect=RECT::default();GetRgnBox(region,&mut box_rect);assert_eq!((box_rect.left,box_rect.top,box_rect.right,box_rect.bottom),(45,30,1095,705));
+  assert!(!PtInRegion(region,1070,680).as_bool(),"The native window must leave Still's resize grip uncovered");assert!(PtInRegion(region,1020,680).as_bool(),"App content outside the resize grip must remain visible");let _=DeleteObject(HGDIOBJ(region.0));
   entry.bounds.x=220.;position(&mut entry,main.0,POINT{x:30,y:20},1.5).unwrap();assert_eq!(rect(target.0).unwrap().0,360);
   restore(&mut entry);assert!(IsWindow(Some(target.0)).as_bool());assert_eq!(GetWindowLongPtrW(target.0,GWLP_HWNDPARENT),0);assert_eq!(rect(target.0).unwrap(),original);assert!(!IsWindowVisible(target.0).as_bool());
   assert!(GetPropW(target.0,PCWSTR(marker().as_ptr())).0.is_null());

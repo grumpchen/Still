@@ -13,6 +13,11 @@ test('app panels keep their full coordinates and clip only the visible area inst
  assert.equal(appPanelGeometry(rect(140,200,800,500),rect(170,180,1000,620),true,true).visible,false);
  assert.equal(appPanelGeometry(rect(-900,200,800,500),rect(170,180,1000,620),true,false).visible,false);
 });
+test('app panel geometry preserves the resize grip bounds for native-region exclusion',()=>{
+ const result=appPanelGeometry(rect(140,200,800,500),rect(170,180,1000,620),true,false,rect(900,640,32,32));
+ assert.deepEqual(result.grip,{x:900,y:640,width:32,height:32});
+ assert.equal(appPanelGeometry(rect(140,200,800,500),rect(170,180,1000,620),true,false,null).grip,null);
+});
 test('Apps remember an open panel across reopening while older launchers and fresh presets remain closed',()=>{
  const state=createInitialState(),app=createWidget('apps');assert.equal(app.appPanelOpen,false);
  app.appKey='app-word';app.appName='Word';app.appPanelOpen=true;state.workspaces[0].widgets.push(app);

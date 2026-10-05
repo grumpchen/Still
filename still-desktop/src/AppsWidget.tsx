@@ -15,13 +15,13 @@ export default function AppsWidget({widget,update,notify,obscured,workspaceActiv
   setReady(false);setOpening(false);if(!appPanel.available)return;
   let disposed=false,frame=0,opened=false,launching=false,presenting=false,dirty=false,last='',stop:(()=>void)|undefined;
   const node=host.current!,viewport=node.closest('.canvas-viewport') as HTMLElement,canvas=node.closest('.workspace-canvas')!;
-  function geometry(){const content=node.closest('.widget-content')!.getBoundingClientRect(),v=viewport.getBoundingClientRect();const clipped={left:Math.max(v.left,content.left),top:Math.max(v.top,content.top),right:Math.min(v.right,content.right),bottom:Math.min(v.bottom,content.bottom),width:0,height:0};return appPanelGeometry(node.getBoundingClientRect(),clipped,current.current.workspaceActive,current.current.obscured)}
+  function geometry(){const content=node.closest('.widget-content')!.getBoundingClientRect(),v=viewport.getBoundingClientRect(),grip=node.closest('.canvas-card')?.querySelector<HTMLElement>('.widget-resize')?.getBoundingClientRect()??null;const clipped={left:Math.max(v.left,content.left),top:Math.max(v.top,content.top),right:Math.min(v.right,content.right),bottom:Math.min(v.bottom,content.bottom),width:0,height:0};return appPanelGeometry(node.getBoundingClientRect(),clipped,current.current.workspaceActive,current.current.obscured,grip)}
   function fit(info:AppPanelInfo){const c=current.current,p=c.widget.placement,card=node.closest('.canvas-card')!.getBoundingClientRect(),r=node.getBoundingClientRect();
    const width=Math.max(p.width,Math.ceil(info.minWidth+card.width-r.width)),height=Math.max(p.height,Math.ceil(info.minHeight+card.height-r.height));
    if(width>p.width||height>p.height)c.update({placement:placement('apps',{...p,width,height})});
   }
   async function sync(){frame=0;if(disposed||!opened)return;if(presenting){dirty=true;return}presenting=true;
-   try{const g=geometry(),next=JSON.stringify(g);if(next!==last){await appPanel.present(widget.id,g.bounds,g.clip,g.visible);last=next;node.dataset.nativeVisible=String(g.visible)}}
+   try{const g=geometry(),next=JSON.stringify(g);if(next!==last){await appPanel.present(widget.id,g.bounds,g.clip,g.grip,g.visible);last=next;node.dataset.nativeVisible=String(g.visible)}}
    catch(reason){if(!disposed&&opened){setError(String(reason));node.dataset.nativeVisible='false';if(String(reason).includes('closed')){opened=false;setReady(false);current.current.update({appPanelOpen:false})}}}
    finally{presenting=false;if(dirty){dirty=false;schedule.current()}}
   }
@@ -29,12 +29,12 @@ export default function AppsWidget({widget,update,notify,obscured,workspaceActiv
   launch.current=async()=>{
    const c=current.current;if(disposed||opened||launching||c.appAttachment||!c.widget.appKey||!c.workspaceActive||c.obscured)return;
    launching=true;setOpening(true);setError('');
-   try{const g=geometry(),info=await appPanel.open(widget.id,c.widget.appKey,g.bounds,g.clip,c.widget.appReuseExisting);if(disposed)return;opened=true;last='';setReady(true);fit(info);schedule.current()}
+   try{const g=geometry(),info=await appPanel.open(widget.id,c.widget.appKey,g.bounds,g.clip,g.grip,c.widget.appReuseExisting);if(disposed)return;opened=true;last='';setReady(true);fit(info);schedule.current()}
    catch(reason){if(!disposed)setError(String(reason))}finally{launching=false;if(!disposed)setOpening(false)}
   };
   attach.current=async(window:AppAttachment)=>{
    const c=current.current;if(disposed||launching||opened||!c.workspaceActive||c.obscured)return;launching=true;setOpening(true);setError('');
-   try{const g=geometry(),info=await appPanel.attach(widget.id,window,g.bounds,g.clip);if(disposed)return;opened=true;last='';setReady(true);current.current.update({appPanelOpen:true});fit(info);schedule.current()}
+   try{const g=geometry(),info=await appPanel.attach(widget.id,window,g.bounds,g.clip,g.grip);if(disposed)return;opened=true;last='';setReady(true);current.current.update({appPanelOpen:true});fit(info);schedule.current()}
    catch(reason){if(!disposed){setError(String(reason));current.current.update({appPanelOpen:false})}}finally{launching=false;c.appAttachmentHandled?.();if(!disposed)setOpening(false)}
   };
   detach.current=async()=>{if(!opened&&!launching)return;opened=false;last='';node.dataset.nativeVisible='false';try{await appPanel.release(widget.id);if(!disposed){setReady(false);setError('')}}catch(reason){if(!disposed)setError(String(reason))}};
