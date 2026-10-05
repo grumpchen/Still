@@ -40,6 +40,28 @@ export function createWidget(type: WidgetType): WidgetInstance {
 export function workspaceName(value: string): string {
   const name = value.trim(); if (!name || name.length > 60) throw new Error('Use a workspace name from 1 to 60 characters'); return name;
 }
+/** One shared state transition for the sidebar toggle button and the command-palette action. */
+export function toggleSidebarCollapsed(collapsed: boolean): boolean {
+  return !collapsed;
+}
+/** Accessible name and tooltip for the toggle, matching the visible next action. */
+export function sidebarToggleLabel(collapsed: boolean): string {
+  return collapsed ? 'Expand sidebar' : 'Collapse sidebar';
+}
+/** Short name-derived badge for collapsed workspace buttons (for example CH, ST). */
+export function workspaceInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return 'WS';
+  const letters = parts.length > 1 ? parts.map(part => part[0]).join('') : parts[0].slice(0, 2);
+  return letters.toUpperCase().slice(0, 2);
+}
+/** Badges for every workspace; matching initials gain the 1-based sidebar order number (C1, C2). */
+export function sidebarBadges(names: string[]): string[] {
+  const letters = names.map(workspaceInitials);
+  const counts = new Map<string, number>();
+  for (const letter of letters) counts.set(letter, (counts.get(letter) ?? 0) + 1);
+  return letters.map((letter, index) => counts.get(letter)! > 1 ? letter + (index + 1) : letter);
+}
 export function createWorkspace(name: string, types: WidgetType[]): Workspace {
   const widgets:WidgetInstance[]=[];
   for(const type of types){const widget=createWidget(type);widget.instanceNumber=nextInstanceNumber(type,widgets);widget.placement=nextPlacement(type,widgets);widgets.push(widget)}

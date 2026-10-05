@@ -1,13 +1,11 @@
 .canvas-app{grid-template-columns:160px minmax(0,1fr);height:100dvh;min-height:0;overflow:hidden}
 .canvas-app .main{display:flex;flex-direction:column;height:100dvh;min-height:0}
-.canvas-app .content,.compact .canvas-app .content{padding:12px 16px 8px;max-width:none;min-height:0;flex:1;display:flex;flex-direction:column;width:100%}
-.canvas-app .topbar{height:48px;flex-shrink:0;padding:0 18px}.canvas-app .search{padding:6px 10px}
+.canvas-app .content,.compact .canvas-app .content{padding:8px 12px;max-width:none;min-height:0;flex:1;display:flex;flex-direction:column;width:100%}
+.canvas-app .topbar{height:44px;flex-shrink:0;padding:0 12px;gap:10px}.canvas-app .search{padding:5px 10px;width:auto;max-width:245px;min-width:0}
 .canvas-app .sidebar{padding:24px 10px 16px}.canvas-app .personal{font-size:10px;margin:8px 5px 26px}.canvas-app .brand{padding:0 5px}
 .canvas-app .nav button{padding:10px 8px;gap:7px;font-size:12px}.canvas-app .nav kbd{font-size:9px}
-.canvas-app .intro{margin:0 0 12px;align-items:center;gap:8px;flex-shrink:0}.canvas-app .intro h1{font-size:24px;letter-spacing:-.6px;margin:0}.canvas-app .intro .eyebrow{display:none}.canvas-app .intro p{font-size:11px;margin-top:4px}
-.canvas-app .actions{flex-direction:row;flex-wrap:wrap}.canvas-app .actions button{padding:7px 10px}
-.canvas-app .workspace-tools{margin-bottom:10px;flex-shrink:0}.canvas-app .footer{margin-top:6px;flex-shrink:0;font-size:9px}
-.canvas-system{min-height:0;flex:1;display:flex;flex-direction:column;gap:10px}
+.canvas-app .workspace-tools{margin-bottom:8px;flex-shrink:0;display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11px}.canvas-app .workspace-tools button{padding:4px 8px;font-size:11px}.canvas-app .footer{margin-top:6px;flex-shrink:0;font-size:9px}
+.canvas-system{min-height:0;flex:1;display:flex;flex-direction:column;gap:8px}
 .workspace-surface{display:flex;flex:1;min-height:0;flex-direction:column}.workspace-surface[hidden]{display:none}
 .chrome-panel .browser-tools{flex-wrap:wrap}.chrome-panel .browser-placeholder h2{font-size:22px}.chrome-panel .browser-toolbar form button{white-space:nowrap}
 .widget-tray{display:flex;align-items:center;gap:16px;padding:10px 13px;flex-shrink:0;border:1px solid var(--border);border-radius:16px;background:var(--surface);box-shadow:0 3px 15px #14233206;transition:background .15s,border-color .15s}
@@ -37,8 +35,9 @@
 .canvas-card .files-widget{min-height:0}.canvas-card .file-list{max-height:none;min-height:50px}.canvas-card .files-message{padding:13px}.canvas-card .timer{font-size:42px;margin:10px 0 4px}.canvas-card .timer-label{margin-bottom:16px}.canvas-card .focus-actions{flex-wrap:wrap}
 .liquid-glass .widget-tray{background:linear-gradient(145deg,#ffffff24,#ffffff09),var(--surface);border-color:var(--glass-rim);backdrop-filter:blur(24px);box-shadow:0 5px 22px var(--glass-shadow),inset 0 1px 0 #ffffff55}
 .liquid-glass .tray-items button{background:#ffffff1c;border-color:var(--border);border-radius:12px}.liquid-glass .tray-items button:hover{background:#ffffff40}.liquid-glass .canvas-status{color:#eaf4e5cf}.liquid-glass .canvas-empty{color:#eaf4e5}.liquid-glass .workspace-canvas{background-image:radial-gradient(#ffffff28 .7px,transparent .7px)}.liquid-glass .widget-tray.tray-remove{background:#f6dfdae8;color:#762a26;border-color:#e39188}.liquid-glass .canvas-card{border-radius:18px}.liquid-glass .canvas-card .widget-resize{background:var(--surface)}
-@media(max-width:1050px){.canvas-app .content{padding:10px 12px}.canvas-app .actions{flex-direction:row}.tray-label{min-width:100px}.tray-label small{max-width:100px}.widget-tray{gap:8px}.tray-items button{padding:9px}.canvas-status span:last-child{display:none}}
-@media(max-width:740px){.canvas-app{grid-template-columns:66px minmax(0,1fr)}.canvas-app .intro{flex-direction:row;gap:8px}.canvas-app .intro h1{font-size:19px}.canvas-app .intro p{display:none}.canvas-app .search{width:auto}.canvas-app .footer{flex-direction:row}.canvas-app .footer>span:last-child{display:none}.canvas-app .brand{padding:0 10px}.tray-label{display:none}}
+@media(max-width:1050px){.canvas-app .content{padding:8px 12px}.widget-tray{gap:8px}.tray-items button{padding:4px 8px}.canvas-status span:last-child{display:none}}
+@media(max-width:740px){.canvas-app{grid-template-columns:66px minmax(0,1fr)}.canvas-app .footer{flex-direction:row}.canvas-app .footer>span:last-child{display:none}.canvas-app .brand{padding:0 10px}}
+@media(max-width:900px){.canvas-app .search .search-label,.canvas-app .search kbd{display:none}.canvas-app .search{padding:6px 8px}.canvas-app .topbar-actions .topbar-action-label{display:none}.canvas-app .topbar-actions button{padding:6px 8px}}
 .canvas-app.sidebar-expanded{grid-template-columns:160px minmax(0,1fr)}
 .canvas-app.sidebar-collapsed{grid-template-columns:52px minmax(0,1fr)}
 .canvas-app.sidebar-collapsed .sidebar{padding:14px 4px 12px;margin-left:4px;margin-right:4px;border-radius:17px}
@@ -48,10 +47,21 @@
 .canvas-app.sidebar-collapsed .new-workspace{margin-top:10px;margin-bottom:12px}
 .sidebar-expanded .sidebar .brand-text,.sidebar-expanded .sidebar .personal,.sidebar-expanded .sidebar .side-label,.sidebar-expanded .sidebar .nav-name{display:block}
 .sidebar-expanded .sidebar .nav kbd{display:inline-block}.sidebar-expanded .sidebar .profile{display:flex}
-.workspace-heading{display:flex;align-items:center;gap:8px;min-width:0}
+.canvas-app .nav button.active{box-shadow:inset 3px 0 0 var(--accent)}
+.canvas-app .nav-badge{display:none}
+.canvas-app.sidebar-collapsed .nav-badge{display:inline-grid;place-items:center;min-width:24px;height:18px;padding:0 4px;border-radius:6px;background:var(--tint);color:var(--muted);font-family:"Cascadia Code",Consolas,monospace;font-size:9px;letter-spacing:.4px}
+.canvas-app.sidebar-collapsed .nav button.active .nav-badge{color:var(--accent)}
+.canvas-app.sidebar-collapsed .nav button,.canvas-app.sidebar-collapsed .new-workspace,.canvas-app.sidebar-collapsed .sidebar-bottom button{min-height:36px;min-width:36px}
+.workspace-heading{display:flex;align-items:center;gap:8px;min-width:0;flex:1}
+.canvas-app .topbar-workspace-name{font-size:15px;font-weight:500;letter-spacing:-.3px;margin:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.canvas-app .topbar-actions{display:flex;align-items:center;gap:8px;flex-shrink:0;min-width:0}
+.canvas-app .topbar-actions button{display:flex;align-items:center;gap:6px;white-space:nowrap;font-size:12px;padding:6px 10px}
 .sidebar-toggle{display:grid;place-items:center;flex-shrink:0;width:28px;height:28px;padding:5px;border:0;border-radius:8px;background:transparent;color:var(--text)}
 .sidebar-toggle:hover{background:var(--tint)}.sidebar-toggle svg{width:18px;height:18px}.liquid-glass .sidebar-toggle{color:#f4f9f3}
-.workspace-heading .breadcrumb{min-width:0}.workspace-heading .breadcrumb strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.liquid-glass .topbar-workspace-name{color:#f4f9f3}
+.liquid-glass .topbar-actions button{border-radius:999px;backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);background:rgb(248 255 248 / .64);border-color:rgb(255 255 255 / .65);text-shadow:none}
+.liquid-glass.dark .topbar-actions button{background:rgb(35 51 42 / .78);border-color:rgb(230 255 236 / .22)}
+.liquid-glass .topbar-actions button:hover{background:rgb(255 255 255 / .35)}
 .embedded-browser{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}
 .canvas-card.widget-browser .widget-content{overflow:hidden}
 .canvas-card .browser-toolbar{gap:4px;padding:7px 9px;flex-shrink:0}
