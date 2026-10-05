@@ -23,6 +23,7 @@
 .canvas-card.widget-notes .card-body{display:flex;flex-direction:column;min-height:0}.canvas-card .note{min-height:60px;flex:1;resize:none;font-size:13px;padding:0}.canvas-card .note-status{padding:5px 16px 12px;flex-shrink:0;font-size:9px}.canvas-card .note-title{font-size:14px;margin-bottom:9px}
 .canvas-card .widget-resize{position:absolute;bottom:0;right:0;width:25px;height:25px;border:0;border-radius:8px 0 0 0!important;background:var(--surface);padding:0;display:grid;place-items:center;cursor:nwse-resize;touch-action:none;box-shadow:none;z-index:2;color:var(--muted);font-size:13px;opacity:.8}
 .canvas-card .widget-resize:hover{opacity:1;color:var(--accent)}.gesture-card{box-shadow:0 15px 45px #00190e40!important;outline:2px solid var(--accent)}.widget-gesture iframe{pointer-events:none}.widget-gesture{user-select:none}
+.canvas-card .widget-controls .widget-resize-control{font-size:16px;cursor:nwse-resize}
 .canvas-status{display:flex;justify-content:space-between;gap:10px;font-size:9px;color:var(--muted);flex-shrink:0;padding:0 3px}
 .canvas-empty{position:absolute;top:80px;left:0;width:100%;text-align:center;color:var(--muted);padding:30px}.canvas-empty svg{height:30px;width:30px;margin-bottom:15px}.canvas-empty h2{font-size:22px;font-weight:400}.canvas-empty p{margin-top:12px;font-size:12px}
 .canvas-drop{outline-color:var(--accent);background:var(--tint)}.widget-tray.tray-remove{outline:2px solid #c96461;background:#fae4e1;color:#762a26}.tray-remove .tray-label small{color:#762a26}
