@@ -4,6 +4,21 @@ import {appPanelFit,appPanelGeometry} from '../src/domain/appPanel.ts';
 import {createInitialState,createWidget,parseState,createWidgetFromPreset} from '../src/domain/workspaces.ts';
 
 const rect=(left,top,width,height)=>({left,top,width,height,right:left+width,bottom:top+height});
+test('switching away from a workspace sends valid hide geometry even when its DOM resize handle has no size',()=>{
+ const result=appPanelGeometry(rect(0,0,0,0),rect(0,0,0,0),false,false,rect(0,0,0,0));
+ assert.equal(result.visible,false);
+ assert.equal(result.grip,null,'A display:none resize handle must not reject the native hide request');
+ for(const bounds of [result.bounds,result.clip]){
+  assert.ok(bounds.width>=1&&bounds.height>=1,'Native bounds validation must accept hiding');
+ }
+ const restored=appPanelGeometry(rect(140,200,800,500),rect(140,180,1000,620),true,false,rect(900,640,32,32));
+ assert.equal(restored.visible,true);assert.equal(restored.grip.width,32);
+});
+test('collapsed or unavailable resize handles are omitted from app presentation',()=>{
+ for(const grip of [rect(900,640,0,32),rect(900,640,32,0)]){
+  assert.equal(appPanelGeometry(rect(140,200,800,500),rect(140,180,1000,620),true,false,grip).grip,null);
+ }
+});
 test('a delayed native size reply preserves a newer drag and only grows a card to the required app minimum',()=>{
  const widget=createWidget('apps');widget.placement={x:20,y:40,width:720,height:540};
  const info={minWidth:1000,minHeight:800,requiredWidth:600,requiredHeight:400};

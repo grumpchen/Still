@@ -1,4 +1,12 @@
-# Still — ver0.19 resize test
+# Still — ver0.20 workspace visibility fix
+
+ver0.20 retains the ver0.19 minimum-size work and fixes attached Apps windows remaining over another workspace. Hidden DOM resize handles now produce no native grip rectangle, so the native hide request passes validation. The sidebar/header plan is paused; this build changes no layout controls.
+
+Close ver0.19 and open `ver0.20.exe` from the shared project root. Attach Codex or another app in one workspace, switch to a different workspace repeatedly using the sidebar and workspace hotkeys, then return. The app should hide away from its workspace and return in its card with its minimum-size limit intact. Live desktop acceptance remains pending.
+
+Source branch: `agent/codex/workspace-app-visibility`. Debug cause, checks, and OC integration steps are in `docs/agent-reports/2026-10-06-workspace-app-visibility-debug.md` at the repository root.
+
+## ver0.19 minimum-size changes
 
 This test build completes Luna's attached-app minimum-size work. Apps widgets read the native window's minimum tracking size on attachment/show and DPI changes, include Still's header/toolbar/footer in their limit, and apply it to pointer and keyboard resizing. A native clamp provides a second safeguard; unsupported minimum queries retain the observed-size fallback. Delayed position replies no longer restore an earlier, larger widget size. The existing header resize button and native corner cutout are retained.
 

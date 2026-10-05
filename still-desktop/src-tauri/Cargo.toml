@@ -1,6 +1,6 @@
 [package]
 name = "still-desktop"
-version = "0.19.0"
+version = "0.20.0"
 description = "Personal workspace with compact movable widgets and real Chrome"
 edition = "2021"
 
