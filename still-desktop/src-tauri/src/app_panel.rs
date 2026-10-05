@@ -35,17 +35,29 @@ type Physical=(i32,i32,i32,i32);
 struct Entry {
  hwnd:usize,pid:u32,source_id:String,bounds:Bounds,clip:Bounds,grip:Option<Bounds>,visible:bool,shown:bool,
  original_owner:usize,original_placement:WINDOWPLACEMENT,original_region:usize,original_visible:bool,
+ required_width:Option<f64>,required_height:Option<f64>,minimum_scale:Option<f64>,
  last:Option<(Physical,Physical,Physical,Option<Physical>)>,error:String,
 }
 impl Drop for Entry{fn drop(&mut self){if self.original_region!=0{unsafe{let _=DeleteObject(HGDIOBJ(self.original_region as *mut _));}}}}
 #[derive(Default)]struct Panels {items:HashMap<String,Entry>,pending:HashMap<String,Launch>,running:HashSet<String>,generation:HashMap<String,u64>,closed:bool}
 #[derive(Default)]pub struct AppPanelState(Mutex<Panels>);
-#[derive(Serialize)]#[serde(rename_all="camelCase")]pub struct Info{hwnd:usize,pid:u32,min_width:f64,min_height:f64}
+#[derive(Serialize)]#[serde(rename_all="camelCase")]pub struct Info{hwnd:usize,pid:u32,min_width:f64,min_height:f64,required_width:Option<f64>,required_height:Option<f64>}
 fn info(entry:&Entry,main:HWND)->Info{
  let scale=unsafe{windows::Win32::UI::HiDpi::GetDpiForWindow(main)}.max(96) as f64/96.;
  let size=rect(handle(entry.hwnd)).unwrap_or((0,0,640,400));
- Info{hwnd:entry.hwnd,pid:entry.pid,min_width:size.2 as f64/scale,min_height:size.3 as f64/scale}
+ Info{hwnd:entry.hwnd,pid:entry.pid,min_width:size.2 as f64/scale,min_height:size.3 as f64/scale,required_width:entry.required_width,required_height:entry.required_height}
 }
+fn required_size(wanted:Physical,actual:Physical,scale:f64)->(Option<f64>,Option<f64>){
+ ((actual.2>wanted.2+1).then_some(actual.2 as f64/scale),(actual.3>wanted.3+1).then_some(actual.3 as f64/scale))
+}
+fn tracking_minimum(hwnd:HWND,scale:f64)->(Option<f64>,Option<f64>){unsafe{
+ let dpi=windows::Win32::UI::HiDpi::GetDpiForWindow(hwnd).max(96);
+ let mut minimum=MINMAXINFO::default();minimum.ptMinTrackSize=POINT{x:windows::Win32::UI::HiDpi::GetSystemMetricsForDpi(SM_CXMINTRACK,dpi),y:windows::Win32::UI::HiDpi::GetSystemMetricsForDpi(SM_CYMINTRACK,dpi)};
+ let delivered=SendMessageTimeoutW(hwnd,WM_GETMINMAXINFO,windows::Win32::Foundation::WPARAM(0),LPARAM(&mut minimum as *mut MINMAXINFO as isize),SMTO_ABORTIFHUNG|SMTO_BLOCK|SMTO_ERRORONEXIT,100,None);
+ if delivered.0==0{return (None,None)}
+ let dimension=|value:i32|(value>0&&value<=20000).then_some(value as f64/scale);
+ (dimension(minimum.ptMinTrackSize.x),dimension(minimum.ptMinTrackSize.y))
+}}
 pub(crate) fn executable(process:u32)->Option<String>{unsafe{
  let handle=OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION,false,process).ok()?;
  let mut path=vec![0u16;32768];let mut length=path.len() as u32;
@@ -124,7 +136,7 @@ fn attach(window:&WindowInfo,source_id:String,bounds:Bounds,clip:Bounds,grip:Opt
  let mut original_placement=WINDOWPLACEMENT{length:std::mem::size_of::<WINDOWPLACEMENT>() as u32,..Default::default()};
  GetWindowPlacement(hwnd,&mut original_placement).map_err(|e|e.to_string())?;
  let region=CreateRectRgn(0,0,0,0);let original_region=if GetWindowRgn(hwnd,region)!=RGN_ERROR{region.0 as usize}else{let _=DeleteObject(HGDIOBJ(region.0));0};
- let mut entry=Entry{hwnd:window.hwnd,pid:window.pid,source_id,bounds,clip,grip,visible:false,shown:false,original_owner,original_placement,original_region,original_visible:IsWindowVisible(hwnd).as_bool(),last:None,error:String::new()};
+ let mut entry=Entry{hwnd:window.hwnd,pid:window.pid,source_id,bounds,clip,grip,visible:false,shown:false,original_owner,original_placement,original_region,original_visible:IsWindowVisible(hwnd).as_bool(),required_width:None,required_height:None,minimum_scale:None,last:None,error:String::new()};
  // Top-level ownership, never SetParent/WS_CHILD. Restore it before Still closes.
  SetWindowLongPtrW(hwnd,GWLP_HWNDPARENT,main.0 as isize);
  if GetWindow(hwnd,GW_OWNER).ok()!=Some(main){SetWindowLongPtrW(hwnd,GWLP_HWNDPARENT,original_owner as isize);return Err("The app could not be attached. Still and the app must run at the same Windows permission level.".into())}
@@ -143,10 +155,17 @@ fn restore(entry:&mut Entry){unsafe{
 fn position(entry:&mut Entry,main:HWND,origin:POINT,scale:f64)->Result<(),String>{unsafe{
  let hwnd=handle(entry.hwnd);let wanted=entry.bounds.screen(origin,scale);let clip=entry.clip.screen(origin,scale);let grip=entry.grip.as_ref().map(|bounds|bounds.screen(origin,scale));
  let actual=rect(hwnd)?;
- if entry.shown&&entry.last==Some((wanted,clip,actual,grip)){return Ok(())}
+ if entry.shown&&entry.minimum_scale==Some(scale)&&entry.last==Some((wanted,clip,actual,grip)){return Ok(())}
  if IsZoomed(hwnd).as_bool()||IsIconic(hwnd).as_bool(){let _=ShowWindow(hwnd,SW_SHOWNOACTIVATE);}
- SetWindowPos(hwnd,Some(HWND_TOP),wanted.0,wanted.1,wanted.2,wanted.3,SWP_NOACTIVATE|SWP_NOOWNERZORDER).map_err(|e|e.to_string())?;
+ if !entry.shown||entry.minimum_scale!=Some(scale){
+  let (width,height)=tracking_minimum(hwnd,scale);if width.is_some(){entry.required_width=width}if height.is_some(){entry.required_height=height}entry.minimum_scale=Some(scale);
+ }
+ let width=wanted.2.max(entry.required_width.map_or(0,|value|(value*scale).ceil() as i32));let height=wanted.3.max(entry.required_height.map_or(0,|value|(value*scale).ceil() as i32));
+ SetWindowPos(hwnd,Some(HWND_TOP),wanted.0,wanted.1,width,height,SWP_NOACTIVATE|SWP_NOOWNERZORDER).map_err(|e|e.to_string())?;
  let actual=rect(hwnd)?;
+ let (required_width,required_height)=required_size(wanted,actual,scale);
+ if let Some(width)=required_width{entry.required_width=Some(entry.required_width.map_or(width,|current|current.max(width)))}
+ if let Some(height)=required_height{entry.required_height=Some(entry.required_height.map_or(height,|current|current.max(height)))}
  // Apps can enforce their own minimum size. A region keeps excess native UI
  // from covering Still controls, while the frontend grows the card on opening.
  let left=(clip.0-actual.0).max(0);let top=(clip.1-actual.1).max(0);
@@ -258,13 +277,14 @@ pub async fn app_panel_attach(app:AppHandle,webview:Webview,id:String,hwnd:usize
  }).await.map_err(|e|e.to_string())?
 }
 #[tauri::command]
-pub async fn app_panel_present(app:AppHandle,webview:Webview,id:String,bounds:Bounds,clip:Bounds,grip:Option<Bounds>,visible:bool)->Result<(),String>{
+pub async fn app_panel_present(app:AppHandle,webview:Webview,id:String,bounds:Bounds,clip:Bounds,grip:Option<Bounds>,visible:bool)->Result<Info,String>{
  crate::browser::authorize(&webview)?;instance(&id)?;bounds.validate()?;clip.validate()?;if let Some(grip)=&grip{grip.validate()?}
  let state=app.state::<AppPanelState>();let mut s=state.0.lock().map_err(|_|"App panels unavailable")?;
  let entry=s.items.get_mut(&id).ok_or("The app was closed. Reopen it below.")?;
  if !valid_window(entry){s.items.remove(&id);return Err("The app was closed. Reopen it below.".into())}
  if !visible&&belongs(unsafe{GetForegroundWindow()},entry.hwnd,entry.pid){if let Ok(main)=owner(){unsafe{let _=SetForegroundWindow(main);}}}
- entry.bounds=bounds;entry.clip=clip;entry.grip=grip;entry.visible=visible;place(&app,&mut s);Ok(())
+ entry.bounds=bounds;entry.clip=clip;entry.grip=grip;entry.visible=visible;place(&app,&mut s);
+ let main=owner()?;let entry=s.items.get(&id).ok_or("The app was closed. Reopen it below.")?;Ok(info(entry,main))
 }
 #[tauri::command]
 pub async fn app_panel_release(app:AppHandle,webview:Webview,id:String)->Result<(),String>{crate::browser::authorize(&webview)?;instance(&id)?;release(&app,&id);Ok(())}
@@ -292,12 +312,17 @@ pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
 
 #[cfg(test)]mod tests{
  use super::*;
- #[test]fn app_geometry_accepts_scrolled_panel_coordinates_and_applies_dpi_without_losing_monitor_origin(){
-  let b=Bounds{x:-20.,y:210.,width:800.,height:500.};assert!(b.validate().is_ok());
-  assert_eq!(b.screen(POINT{x:-1920,y:45},1.5),(-1950,360,1200,750));
-  assert!(Bounds{width:f64::NAN,..b.clone()}.validate().is_err());
-  assert!(Bounds{width:0.,..b}.validate().is_err());
- }
+  #[test]fn app_geometry_accepts_scrolled_panel_coordinates_and_applies_dpi_without_losing_monitor_origin(){
+   let b=Bounds{x:-20.,y:210.,width:800.,height:500.};assert!(b.validate().is_ok());
+   assert_eq!(b.screen(POINT{x:-1920,y:45},1.5),(-1950,360,1200,750));
+   assert!(Bounds{width:f64::NAN,..b.clone()}.validate().is_err());
+   assert!(Bounds{width:0.,..b}.validate().is_err());
+  }
+  #[test]fn app_window_minimum_is_recorded_only_when_it_refuses_a_requested_dimension(){
+   assert_eq!(required_size((0,0,540,420),(0,0,900,420),1.5),(Some(600.),None));
+   assert_eq!(required_size((0,0,540,420),(0,0,540,720),1.5),(None,Some(480.)));
+   assert_eq!(required_size((0,0,540,420),(0,0,540,420),1.5),(None,None));
+  }
  #[test]fn discovery_never_claims_an_old_document_unrelated_app_or_already_managed_window(){
   let launch=Launch{pid:22,executable:Some("C:\\Office\\WINWORD.EXE".into()),before:vec![101]};
   let window=|hwnd,pid,path:&str|WindowInfo{hwnd,pid,title:"Document".into(),executable:Some(path.into())};
@@ -319,11 +344,28 @@ pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
   assert!(reuse_candidate(&ambiguous,Some("C:\\Office\\WINWORD.EXE")).is_err_and(|error|error.contains("Several windows")));
  }
  struct Fixture(HWND);impl Fixture{fn new(title:&str)->Self{unsafe{let class=wide("STATIC");let title=wide(title);Self(CreateWindowExW(WINDOW_EX_STYLE(0),PCWSTR(class.as_ptr()),PCWSTR(title.as_ptr()),WS_OVERLAPPEDWINDOW,50,60,840,520,None,None,None,None).unwrap())}}}impl Drop for Fixture{fn drop(&mut self){unsafe{let _=DestroyWindow(self.0);}}}
+ unsafe extern "system" fn minimum_fixture_proc(hwnd:HWND,message:u32,wparam:windows::Win32::Foundation::WPARAM,lparam:LPARAM)->windows::Win32::Foundation::LRESULT{
+  if message==WM_GETMINMAXINFO{let minimum=&mut *(lparam.0 as *mut MINMAXINFO);minimum.ptMinTrackSize=POINT{x:900,y:600};return windows::Win32::Foundation::LRESULT(0)}
+  DefWindowProcW(hwnd,message,wparam,lparam)
+ }
+ #[test]fn app_minimum_is_known_before_shrinking_and_native_bounds_never_go_below_it(){unsafe{
+  let class=wide("StillMinimumSizeFixture");let instance=windows::Win32::Foundation::HINSTANCE(windows::Win32::System::LibraryLoader::GetModuleHandleW(None).unwrap().0);
+  let definition=WNDCLASSW{lpfnWndProc:Some(minimum_fixture_proc),hInstance:instance,lpszClassName:PCWSTR(class.as_ptr()),..Default::default()};assert_ne!(RegisterClassW(&definition),0);
+  let hwnd=CreateWindowExW(WINDOW_EX_STYLE(0),PCWSTR(class.as_ptr()),PCWSTR(class.as_ptr()),WS_OVERLAPPEDWINDOW,0,0,1600,1000,None,None,Some(instance),None).unwrap();let target=Fixture(hwnd);let main=Fixture::new("Still minimum owner");
+  let original_placement=WINDOWPLACEMENT{length:std::mem::size_of::<WINDOWPLACEMENT>() as u32,..Default::default()};
+  let bounds=Bounds{x:10.,y:20.,width:1000.,height:700.};
+  let mut entry=Entry{hwnd:hwnd.0 as usize,pid:std::process::id(),source_id:"minimum-test".into(),bounds:bounds.clone(),clip:bounds,grip:None,visible:true,shown:false,original_owner:0,original_placement,original_region:0,original_visible:false,required_width:None,required_height:None,minimum_scale:None,last:None,error:String::new()};
+  position(&mut entry,main.0,POINT{x:0,y:0},1.5).unwrap();
+  assert_eq!((entry.required_width,entry.required_height),(Some(600.),Some(400.)),"Learn the app's tracking minimum even while its window is larger");
+  entry.bounds.width=200.;entry.bounds.height=100.;position(&mut entry,main.0,POINT{x:0,y:0},1.5).unwrap();
+  let size=rect(hwnd).unwrap();assert_eq!((size.2,size.3),(900,600));
+  drop(target);assert!(UnregisterClassW(PCWSTR(class.as_ptr()),Some(instance)).is_ok());
+ }}
  #[test]fn real_window_fixture_tracks_bounds_clips_native_content_and_releases_without_closing(){unsafe{
   let main=Fixture::new("Still fixture owner");let target=Fixture::new("Still fixture app");let original=rect(target.0).unwrap();
   let mut original_placement=WINDOWPLACEMENT{length:std::mem::size_of::<WINDOWPLACEMENT>() as u32,..Default::default()};GetWindowPlacement(target.0,&mut original_placement).unwrap();
   let bounds=Bounds{x:100.,y:140.,width:800.,height:500.};let clip=Bounds{x:130.,y:160.,width:700.,height:450.};let grip=Bounds{x:798.,y:578.,width:32.,height:32.};
-  let mut entry=Entry{hwnd:target.0.0 as usize,pid:std::process::id(),source_id:"test-app".into(),bounds:bounds.clone(),clip:clip.clone(),grip:Some(grip),visible:true,shown:false,original_owner:0,original_placement,original_region:0,original_visible:false,last:None,error:String::new()};
+  let mut entry=Entry{hwnd:target.0.0 as usize,pid:std::process::id(),source_id:"test-app".into(),bounds:bounds.clone(),clip:clip.clone(),grip:Some(grip),visible:true,shown:false,original_owner:0,original_placement,original_region:0,original_visible:false,required_width:None,required_height:None,minimum_scale:None,last:None,error:String::new()};
   SetWindowLongPtrW(target.0,GWLP_HWNDPARENT,main.0.0 as isize);SetPropW(target.0,PCWSTR(marker().as_ptr()),Some(HANDLE(main.0.0))).unwrap();
   position(&mut entry,main.0,POINT{x:30,y:20},1.5).unwrap();assert_eq!(rect(target.0).unwrap(),(180,230,1200,750));
   let region=CreateRectRgn(0,0,0,0);assert_ne!(GetWindowRgn(target.0,region),RGN_ERROR);let mut box_rect=RECT::default();GetRgnBox(region,&mut box_rect);assert_eq!((box_rect.left,box_rect.top,box_rect.right,box_rect.bottom),(45,30,1095,705));

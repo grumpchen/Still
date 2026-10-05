@@ -58,7 +58,8 @@ export default function WorkspaceCanvas({presets,openPreset,editPreset,removePre
   }
   function move(e:PointerEvent<HTMLElement>){const g=gesture.current;if(!g)return;
     const scroll=viewport.current!, dx=e.clientX-g.startX+scroll.scrollLeft-g.scrollX,dy=e.clientY-g.startY+scroll.scrollTop-g.scrollY;
-    update(g.id,{placement:g.mode==='move'?translate(g.type,g.p,dx,dy):resize(g.type,g.p,dx,dy)});
+     const widget=widgets.find(w=>w.id===g.id),minimum=widget?.type==='apps'&&widget.appPanelOpen?{width:widget.appMinWidth,height:widget.appMinHeight}:undefined;
+     update(g.id,{placement:g.mode==='move'?translate(g.type,g.p,dx,dy):resize(g.type,g.p,dx,dy,minimum)});
     const r=tray.current!.getBoundingClientRect();if(g.mode==='move')widgetFeedback(e.clientX,e.clientY,g.type);
     const v=scroll.getBoundingClientRect();if(e.clientY>v.bottom-32)scroll.scrollTop+=10;if(e.clientY<v.top+32&&e.clientY>r.bottom)scroll.scrollTop-=10;
     if(e.clientX>v.right-32)scroll.scrollLeft+=10;if(e.clientX<v.left+32)scroll.scrollLeft-=10;
@@ -75,7 +76,8 @@ export default function WorkspaceCanvas({presets,openPreset,editPreset,removePre
   function key(e:KeyboardEvent<HTMLElement>,w:WidgetInstance,mode:'move'|'resize'){
     const delta:Record<string,[number,number]>={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]};
     if(e.target!==e.currentTarget||!delta[e.key])return;e.preventDefault();begin();const [x,y]=delta[e.key],step=e.shiftKey?1:10;
-    update(w.id,{placement:mode==='move'?translate(w.type,w.placement,x*step,y*step):resize(w.type,w.placement,x*step,y*step)});
+     const minimum=w.type==='apps'&&w.appPanelOpen?{width:w.appMinWidth,height:w.appMinHeight}:undefined;
+     update(w.id,{placement:mode==='move'?translate(w.type,w.placement,x*step,y*step):resize(w.type,w.placement,x*step,y*step,minimum)});
   }
   async function snapshot(id:string,download=false){if(busy)return;setBusy(id);
     try{

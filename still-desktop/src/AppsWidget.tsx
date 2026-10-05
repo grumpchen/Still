@@ -2,26 +2,25 @@ import {useEffect,useRef,useState} from 'react';
 import {Icon,type WidgetProps} from './widgets.tsx';
 import {localApps,previewFileDrop,type DroppedResource} from './platform/resourceDrop.ts';
 import {appPanel,type AppAttachment,type AppPanelInfo} from './platform/appPanel.ts';
-import {appPanelGeometry} from './domain/appPanel.ts';
-import {placement} from './domain/layout.ts';
+import {appPanelFit,appPanelGeometry} from './domain/appPanel.ts';
 
 export default function AppsWidget({widget,update,notify,obscured,workspaceActive=true,pickApp,saveApp,appAttachment,appAttachmentHandled}:WidgetProps){
  const host=useRef<HTMLDivElement>(null),picker=useRef<HTMLInputElement>(null),current=useRef({widget,update,obscured,workspaceActive,appAttachment,appAttachmentHandled});current.current={widget,update,obscured,workspaceActive,appAttachment,appAttachmentHandled};
  const [busy,setBusy]=useState(false),[ready,setReady]=useState(false),[opening,setOpening]=useState(false),[error,setError]=useState('');
  const schedule=useRef<()=>void>(()=>{}),launch=useRef<()=>Promise<void>>(async()=>{}),detach=useRef<()=>Promise<void>>(async()=>{}),attach=useRef<(window:AppAttachment)=>Promise<void>>(async()=>{});
- function selected(app:DroppedResource){if(app.kind!=='app'||!app.sourceId)throw new Error('Choose an app shortcut or application.');update({appKey:app.sourceId,appName:app.name,title:widget.title.trim()||app.name.slice(0,60),appPanelOpen:false,appReuseExisting:false});setError('')}
+  function selected(app:DroppedResource){if(app.kind!=='app'||!app.sourceId)throw new Error('Choose an app shortcut or application.');update({appKey:app.sourceId,appName:app.name,title:widget.title.trim()||app.name.slice(0,60),appPanelOpen:false,appReuseExisting:false,appMinWidth:undefined,appMinHeight:undefined});setError('')}
  async function choose(){setError('');if(!localApps.native){picker.current?.click();return}setBusy(true);try{const app=await localApps.choose();if(app)selected(app)}catch(e){setError(String(e))}finally{setBusy(false)}}
  useEffect(()=>{
   setReady(false);setOpening(false);if(!appPanel.available)return;
   let disposed=false,frame=0,opened=false,launching=false,presenting=false,dirty=false,last='',stop:(()=>void)|undefined;
   const node=host.current!,viewport=node.closest('.canvas-viewport') as HTMLElement,canvas=node.closest('.workspace-canvas')!;
   function geometry(){const content=node.closest('.widget-content')!.getBoundingClientRect(),v=viewport.getBoundingClientRect(),grip=node.closest('.canvas-card')?.querySelector<HTMLElement>('.widget-resize')?.getBoundingClientRect()??null;const clipped={left:Math.max(v.left,content.left),top:Math.max(v.top,content.top),right:Math.min(v.right,content.right),bottom:Math.min(v.bottom,content.bottom),width:0,height:0};return appPanelGeometry(node.getBoundingClientRect(),clipped,current.current.workspaceActive,current.current.obscured,grip)}
-  function fit(info:AppPanelInfo){const c=current.current,p=c.widget.placement,card=node.closest('.canvas-card')!.getBoundingClientRect(),r=node.getBoundingClientRect();
-   const width=Math.max(p.width,Math.ceil(info.minWidth+card.width-r.width)),height=Math.max(p.height,Math.ceil(info.minHeight+card.height-r.height));
-   if(width>p.width||height>p.height)c.update({placement:placement('apps',{...p,width,height})});
+  function fit(info:AppPanelInfo){const c=current.current,card=node.closest('.canvas-card')!.getBoundingClientRect(),r=node.getBoundingClientRect(),frameWidth=Math.max(0,card.width-r.width),frameHeight=Math.max(0,card.height-r.height);
+   const patch=appPanelFit(c.widget,info,frameWidth,frameHeight);
+   if(Object.keys(patch).length)c.update(patch);
   }
   async function sync(){frame=0;if(disposed||!opened)return;if(presenting){dirty=true;return}presenting=true;
-   try{const g=geometry(),next=JSON.stringify(g);if(next!==last){await appPanel.present(widget.id,g.bounds,g.clip,g.grip,g.visible);last=next;node.dataset.nativeVisible=String(g.visible)}}
+    try{const g=geometry(),next=JSON.stringify(g);if(next!==last){const info=await appPanel.present(widget.id,g.bounds,g.clip,g.grip,g.visible);last=next;node.dataset.nativeVisible=String(g.visible);if(g.visible&&(info.requiredWidth!==null||info.requiredHeight!==null))fit(info)}}
    catch(reason){if(!disposed&&opened){setError(String(reason));node.dataset.nativeVisible='false';if(String(reason).includes('closed')){opened=false;setReady(false);current.current.update({appPanelOpen:false})}}}
    finally{presenting=false;if(dirty){dirty=false;schedule.current()}}
   }

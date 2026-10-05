@@ -1,4 +1,12 @@
-# Still — ver0.18
+# Still — ver0.19 resize test
+
+This test build completes Luna's attached-app minimum-size work. Apps widgets read the native window's minimum tracking size on attachment/show and DPI changes, include Still's header/toolbar/footer in their limit, and apply it to pointer and keyboard resizing. A native clamp provides a second safeguard; unsupported minimum queries retain the observed-size fallback. Delayed position replies no longer restore an earlier, larger widget size. The existing header resize button and native corner cutout are retained.
+
+Close the older Still window, open `ver0.19.exe` from the shared project root, attach a separate Codex window, and shrink its Apps card using the header or corner resize control. It should stop at the usable app minimum, still expand, and retain its limit after reopening. Detach should release the app without applying its resize limit to an empty card. The build uses Still's usual app identifier and saved profile; it was not launched automatically.
+
+Source changes are on `agent/codex/app-minimum-resize`, without merging into `main`. Live Codex acceptance is pending; automated checks are recorded in the agent handoff report.
+
+## Existing ver0.18 features
 
 Close all older Still windows, then open ver0.18.exe. Existing layouts, Groups, notes, appearance, Chrome profile and saved shortcuts are retained.
 

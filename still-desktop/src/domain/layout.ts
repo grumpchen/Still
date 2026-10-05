@@ -1,5 +1,6 @@
 import {widgetCatalog, type WidgetType} from './widgetCatalog.ts';
 export interface Placement {x:number; y:number; width:number; height:number}
+export type PlacementMinimum = Partial<Pick<Placement,'width'|'height'>>;
 const finite = (v:unknown, fallback:number) => typeof v==='number' && Number.isFinite(v) ? v : fallback;
 export function placement(type:WidgetType, value:unknown, fallback?:Placement):Placement {
   const meta=widgetCatalog[type], p=(value && typeof value==='object' ? value : {}) as Partial<Placement>;
@@ -16,4 +17,4 @@ export function nextPlacement(type:WidgetType, widgets:Array<{placement:Placemen
   return {...d,y:Math.min(20000,Math.max(0,...widgets.map(w=>w.placement.y+w.placement.height+gap)))};
 }
 export function translate(type:WidgetType,p:Placement,dx:number,dy:number):Placement {return placement(type,{...p,x:p.x+dx,y:p.y+dy})}
-export function resize(type:WidgetType,p:Placement,dx:number,dy:number):Placement {return placement(type,{...p,width:p.width+dx,height:p.height+dy})}
+export function resize(type:WidgetType,p:Placement,dx:number,dy:number,minimum?:PlacementMinimum):Placement {return placement(type,{...p,width:Math.max(minimum?.width??0,p.width+dx),height:Math.max(minimum?.height??0,p.height+dy)})}

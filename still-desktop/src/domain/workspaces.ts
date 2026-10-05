@@ -16,7 +16,7 @@ export interface WidgetInstance {
   id: string; type: WidgetType; span: 1 | 2 | 3; instanceNumber:number; title:string;
   text: string;
   remaining: number; end: number | null; url: string; bookmarks: Bookmark[];
-  homeVersion?: number; folderName?: string;folderKey:string|null;fileKey:string|null;fileName?:string;fileKind?:FileKind;appKey:string|null;appName?:string;appPanelOpen:boolean;appReuseExisting:boolean;
+   homeVersion?: number; folderName?: string;folderKey:string|null;fileKey:string|null;fileName?:string;fileKind?:FileKind;appKey:string|null;appName?:string;appPanelOpen:boolean;appReuseExisting:boolean;appMinWidth?:number;appMinHeight?:number;
   browserVersion:1; browserToolsExpanded:boolean; bookmarksExpanded:boolean; pageTitle:string; lectureRestore:Placement|null;
   placement:Placement; shortcuts:WebShortcut[]; schedule:ScheduleEntry[]; groupId:string|null;
 }
@@ -113,6 +113,11 @@ function checkedWidget(value: unknown): WidgetInstance {
   const defaults = createWidget(item.type as WidgetType);
   const checkedFileKey=item.type==='files'&&typeof item.fileKey==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(item.fileKey)?item.fileKey:null;
   const checkedAppKey=item.type==='apps'&&typeof item.appKey==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(item.appKey)?item.appKey:null;
+  const checkedAppPanelOpen=!!checkedAppKey&&item.appPanelOpen===true;
+  const checkedAppMinSize=(size:unknown,minimum:number):number|undefined=>item.type==='apps'&&checkedAppKey&&typeof size==='number'&&Number.isFinite(size)&&size>=minimum&&size<=3000?Math.ceil(size):undefined;
+  const appMinWidth=checkedAppMinSize(item.appMinWidth,widgetCatalog.apps.minWidth),appMinHeight=checkedAppMinSize(item.appMinHeight,widgetCatalog.apps.minHeight);
+  const checkedPlacement=placement(item.type as WidgetType,item.placement);
+  if(checkedAppPanelOpen){if(appMinWidth!==undefined)checkedPlacement.width=Math.max(checkedPlacement.width,appMinWidth);if(appMinHeight!==undefined)checkedPlacement.height=Math.max(checkedPlacement.height,appMinHeight)}
   if (item.text !== undefined && typeof item.text !== 'string') throw new Error('Invalid note');
   return {...defaults,...item,type:item.type as WidgetType,span:item.span===2?2:item.span===3?3:1,
     title:typeof item.title==='string'?item.title.trim().slice(0,60):'',
@@ -123,10 +128,10 @@ function checkedWidget(value: unknown): WidgetInstance {
     fileKey:checkedFileKey,fileName:checkedFileKey&&fileName(item.fileName)?item.fileName:undefined,fileKind:checkedFileKey&&fileKind(item.fileKind)?item.fileKind:undefined,
     appKey:checkedAppKey,
     appName:item.type==='apps'&&fileName(item.appName)?item.appName:undefined,
-    appPanelOpen:!!checkedAppKey&&item.appPanelOpen===true,
+     appPanelOpen:checkedAppPanelOpen,appMinWidth,appMinHeight,
     appReuseExisting:!!checkedAppKey&&item.appReuseExisting===true,
     instanceNumber:typeof item.instanceNumber==='number'&&Number.isSafeInteger(item.instanceNumber)&&item.instanceNumber>0&&item.instanceNumber<1000000?item.instanceNumber:1,
-    placement:placement(item.type as WidgetType,item.placement),
+     placement:checkedPlacement,
     browserVersion:1,browserToolsExpanded:item.browserToolsExpanded===true,bookmarksExpanded:item.bookmarksExpanded===true,pageTitle:typeof item.pageTitle==='string'?item.pageTitle.slice(0,200):'',
     lectureRestore:item.type==='browser'&&item.lectureRestore&&typeof item.lectureRestore==='object'?placement('browser',item.lectureRestore):null,
     shortcuts:parseWebShortcuts(item.shortcuts,item.type==='browser'?parseWebShortcuts(item.bookmarks,defaults.shortcuts):[]),

@@ -81,7 +81,7 @@ export default function App(){
     const existing=target.widgetId?owner.widgets.find(w=>w.id===target.widgetId&&w.type==='apps'):undefined;
     if(target.widgetId&&!existing)throw new Error('This widget was removed. Open the Apps picker again.');
     const created=managedAppWidget(source,name,owner.widgets,target.at,target.width,true);
-    const widget=existing?{...existing,title:created.title,appName:created.appName,appKey:created.appKey,appPanelOpen:true,appReuseExisting:true}:created;
+     const widget=existing?{...existing,title:created.title,appName:created.appName,appKey:created.appKey,appPanelOpen:true,appReuseExisting:true,appMinWidth:undefined,appMinHeight:undefined}:created;
     const preset=save?presetFromWidget(widget):null;undo.current=state;
     if(window)setAppAttachments(current=>({...current,[widget.id]:{hwnd:window.hwnd,pid:window.pid}}));
     setState(s=>({...s,presets:preset?[...s.presets,preset]:s.presets,workspaces:s.workspaces.map(w=>w.id!==owner.id?w:{...w,widgets:existing?w.widgets.map(i=>i.id===widget.id?widget:i):[...w.widgets,widget]})}));
