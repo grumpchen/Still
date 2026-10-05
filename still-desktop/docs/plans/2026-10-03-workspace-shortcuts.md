@@ -1,0 +1,7 @@
+# Workspace shortcuts
+
+Implement the user's Alt+W (above) and Alt+S (below) bindings in sidebar order. Navigation wraps at both ends and supports custom workspaces. Use a compact shortcut editor inside Appearance and the command palette, with key capture, validation, explicit Save and Restore defaults. Keep bindings in existing versioned workspace storage; older/invalid bindings fall back to defaults without discarding notes or layout. Ignore held-key repeats, IME composition and AltGr; pause navigation while dialogs are open.
+
+The React document handles local-interface keys. Windows embedded websites have their own focus, so install a WebView2 AcceleratorKeyPressed callback on each native browser child. The callback matches validated bindings held in native state and emits a fixed direction to the trusted local UI. Handle the key immediately and dispatch asynchronously to avoid blocking WebView2. Remote websites receive no extra IPC permissions. OS-wide shortcuts and visible native menus are unnecessary.
+
+Verify navigation boundaries, deleted/custom workspaces, migration and binding persistence; modifier matching, duplicate/reserved bindings and composition protection; UI key capture/save/reset and dialog suppression; Windows virtual-key routing and native release compilation. Preserve the existing Google/Files implementation. Deliver a newly named executable to avoid replacing an older running app.

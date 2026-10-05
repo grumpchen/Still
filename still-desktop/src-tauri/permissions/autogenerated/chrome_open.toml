@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-chrome-open"
+description = "Enables the chrome_open command without any pre-configured scope."
+commands.allow = ["chrome_open"]
+
+[[permission]]
+identifier = "deny-chrome-open"
+description = "Denies the chrome_open command without any pre-configured scope."
+commands.deny = ["chrome_open"]

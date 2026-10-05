@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-widget-export"
+description = "Enables the widget_export command without any pre-configured scope."
+commands.allow = ["widget_export"]
+
+[[permission]]
+identifier = "deny-widget-export"
+description = "Denies the widget_export command without any pre-configured scope."
+commands.deny = ["widget_export"]

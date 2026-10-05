@@ -1,0 +1,124 @@
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { createBrowserFromGroup,createWidgetFromPreset,createWidgetFromGroupEntry,openSavedGroup,updateSavedGroup, createInitialState, nextInstanceNumber, createWidget, createWorkspace, duplicateWorkspace, migratePreview, parseState, workspaceName, widgetTypes, type WorkspaceState, type WidgetType, type WidgetInstance,type SavedGroup,type GroupWidgetEntry } from './domain/workspaces.ts';
+import { Icon, widgetRegistry } from './widgets.tsx';
+import {chromeLauncher} from './platform/chrome.ts';
+import WorkspaceCanvas from './WorkspaceCanvas.tsx';
+import {nextPlacement,placement} from './domain/layout.ts';
+import { nativeShortcuts } from './platform/shortcuts.ts';
+import { adjacentWorkspaceId, shortcutDirection, type WorkspaceDirection, type WorkspaceShortcuts } from './domain/shortcuts.ts';
+import ShortcutSettings from './ShortcutSettings.tsx';
+import AppearanceSettings from './AppearanceSettings.tsx';
+import type {WebShortcut} from './domain/webShortcuts.ts';
+import GroupEditor,{type GroupEditMode} from './GroupEditor.tsx';
+import PresetEditor from './PresetEditor.tsx';
+import {presetFromWidget,widgetPreset,type WidgetPreset,type PresetType} from './domain/presets.ts';
+import AppWindowPicker from './AppWindowPicker.tsx';
+import {managedAppWidget,type AppWindowChoice} from './domain/appPicker.ts';
+import type {DroppedResource} from './platform/resourceDrop.ts';
+import {appPanel,type AppAttachment} from './platform/appPanel.ts';
+const KEY='still-workspace-v2';
+const primary=/Mac|iPhone|iPad/.test(navigator.platform)?'⌘':'Ctrl';
+function load():{state:WorkspaceState;warning:string}{
+  try{
+    const saved=localStorage.getItem(KEY);if(saved){const restored=parseState(saved);if(JSON.parse(saved).version!==4)try{localStorage.setItem(KEY+'-before-browser',saved)}catch{}return{state:restored,warning:''};}
+    const old=localStorage.getItem('still-design-study-v1');if(old)return{state:migratePreview(JSON.parse(old)),warning:''};
+  }catch{try{const original=localStorage.getItem(KEY);if(original)localStorage.setItem(KEY+'-recovery',original)}catch{}return{state:createInitialState(),warning:'Saved data could not be read. A recovery copy was retained where storage permits.'}}
+  return{state:createInitialState(),warning:''};
+}
+function Modal({title,close,children}:{title:string;close:()=>void;children:ReactNode}){
+  const ref=useRef<HTMLDialogElement>(null);
+  useEffect(()=>{ref.current?.showModal();return()=>ref.current?.close()},[]);
+  return <dialog ref={ref} onCancel={close}><div className="dialog-head"><h2>{title}</h2><button onClick={close} aria-label="Close dialog">×</button></div>{children}</dialog>;
+}
+type ModalType='gallery'|'appearance'|'shortcuts'|'create'|'rename'|'commands'|'group'|'preset'|'apps'|null;
+export default function App(){
+  const [initial]=useState(load);const [state,setState]=useState(initial.state);const [storage,setStorage]=useState(initial.warning||'Saved on this device');const [modal,setModal]=useState<ModalType>(null);const [arrange,setArrange]=useState(false);const [message,setMessage]=useState('');const [name,setName]=useState('');const [chosen,setChosen]=useState<WidgetType[]>(['browser','desmos','notes']);const [formError,setFormError]=useState('');const [query,setQuery]=useState('');const undo=useRef<WorkspaceState|null>(null);
+  const workspace=state.workspaces.find(w=>w.id===state.activeId)!;
+  const [editingGroup,setEditingGroup]=useState<string|null>(null),[groupMode,setGroupMode]=useState<GroupEditMode>();
+  const selectedGroup=workspace.groups.find(g=>g.id===editingGroup);
+  const [presetDraft,setPresetDraft]=useState<{type:PresetType;preset?:WidgetPreset}|null>(null);
+  const [appTarget,setAppTarget]=useState<{workspaceId:string;widgetId?:string;at?:{x:number;y:number};width?:number}|null>(null);
+  const [appAttachments,setAppAttachments]=useState<Record<string,AppAttachment>>({});
+  const visited=useRef(new Set<string>());visited.current.add(state.activeId);
+  function notify(value:string){setMessage(value)}
+  useEffect(()=>{if(!message)return;const timeout=setTimeout(()=>setMessage(''),4500);return()=>clearTimeout(timeout)},[message]);
+  useEffect(()=>{
+    document.body.classList.toggle('dark',state.theme==='dark');document.body.classList.toggle('compact',state.density==='compact');document.body.classList.toggle('dots',state.background==='dots');document.body.classList.toggle('liquid-glass',state.appearance==='liquid-glass');
+    document.body.style.setProperty('--wallpaper-blur',state.glass.blur+'px');
+    document.body.style.setProperty('--wallpaper-saturation',String(state.glass.saturation/100));
+    document.body.style.setProperty('--glass-alpha',String(state.glass.opacity/100));
+    try{localStorage.setItem(KEY,JSON.stringify(state));setStorage('Saved on this device')}catch{setStorage('Could not save — changes remain in this session')}
+  },[state]);
+  function switchWorkspace(id:string){setState(s=>({...s,activeId:id}));setArrange(false);}
+  function moveWorkspace(direction:WorkspaceDirection){setState(s=>({...s,activeId:adjacentWorkspaceId(s.workspaces,s.activeId,direction)}));setArrange(false);}
+  const shortcutContext=useRef({modal,moveWorkspace});shortcutContext.current={modal,moveWorkspace};
+  useEffect(()=>{if(!nativeShortcuts.available)return;let disposed=false;let unlisten:(()=>void)|undefined;
+    nativeShortcuts.subscribe(direction=>{if(!disposed&&!shortcutContext.current.modal)shortcutContext.current.moveWorkspace(direction)}).then(stop=>{if(disposed)stop();else unlisten=stop}).catch(()=>notify('Workspace shortcut handling could not start. Restart the app to try again.'));
+    return()=>{disposed=true;unlisten?.()};
+  },[]);
+  useEffect(()=>{if(nativeShortcuts.available)void nativeShortcuts.configure(state.shortcuts,!modal).catch(()=>notify('Workspace shortcuts could not be updated. Workspace shortcuts still work in the interface.'))},[state.shortcuts,modal]);
+  async function saveShortcuts(shortcuts:WorkspaceShortcuts){if(nativeShortcuts.available)await nativeShortcuts.configure(shortcuts,false);setState(s=>({...s,shortcuts}));notify('Workspace shortcuts saved.')}
+  function updateWidget(id:string,patch:Partial<WidgetInstance>){setState(s=>({...s,workspaces:s.workspaces.map(w=>w.widgets.some(i=>i.id===id)?{...w,widgets:w.widgets.map(i=>i.id===id?{...i,...patch}:i)}:w)}))}
+  function removeWidget(id:string,preserveUndo=false){if(!preserveUndo)undo.current=state;setState(s=>({...s,workspaces:s.workspaces.map(w=>w.id===s.activeId?{...w,widgets:w.widgets.filter(i=>i.id!==id)}:w)}));notify('Widget removed. '+primary+'+Z restores the previous layout.')}
+  function addWidget(type:WidgetType,at?:{x:number;y:number},width?:number){undo.current=state;setState(s=>({...s,workspaces:s.workspaces.map(w=>{if(w.id!==s.activeId)return w;const widget=createWidget(type);widget.instanceNumber=nextInstanceNumber(type,w.widgets);widget.placement=at?placement(type,{...widget.placement,...at}):nextPlacement(type,w.widgets,width);if(type==='group'){const id=crypto.randomUUID();widget.groupId=id;return{...w,groups:[...w.groups,{id,name:'',shortcuts:[],widgets:[],expanded:false}],widgets:[...w.widgets,widget]}}return {...w,widgets:[...w.widgets,widget]}})}));setModal(null);notify(widgetRegistry[type].name+' added')}
+  function changeGroup(workspaceId:string,id:string,patch:Partial<Omit<SavedGroup,'id'>>){setState(s=>({...s,workspaces:s.workspaces.map(w=>w.id===workspaceId?updateSavedGroup(w,id,patch):w)}))}
+  function editGroup(id:string,mode:GroupEditMode){setEditingGroup(id);setGroupMode(mode);setModal('group')}
+  function showGroup(workspaceId:string,id:string,at?:{x:number;y:number},width?:number){undo.current=state;setState(s=>({...s,workspaces:s.workspaces.map(w=>w.id===workspaceId?openSavedGroup(w,id,at,width):w)}));notify('Group widget added.')}
+  function removeGroup(workspaceId:string,id:string){undo.current=state;setState(s=>({...s,workspaces:s.workspaces.map(w=>w.id===workspaceId?{...w,groups:w.groups.filter(g=>g.id!==id),widgets:w.widgets.filter(i=>i.groupId!==id)}:w)}));notify('Group removed. '+primary+'+Z restores it. Your opened widgets are kept.')}
+  function openGroupWidget(workspaceId:string,entry:GroupWidgetEntry,at?:{x:number;y:number},width?:number){undo.current=state;setState(s=>({...s,workspaces:s.workspaces.map(w=>w.id===workspaceId?{...w,widgets:[...w.widgets,createWidgetFromGroupEntry(entry,w.widgets,at,width)]}:w)}));notify(entry.name+' added as a new widget.')}
+  function editPreset(type:PresetType,preset?:WidgetPreset){setPresetDraft({type,preset});setModal('preset')}
+  function savePresets(items:WidgetPreset[],preserveUndo=false){
+    const checked=items.map(widgetPreset);if(!checked.length)return;if(!preserveUndo)undo.current=state;
+    setState(s=>{const presets=[...s.presets];for(const preset of checked){const index=presets.findIndex(p=>p.id===preset.id);if(index<0)presets.push(preset);else presets[index]=preset}return{...s,presets}});
+    notify(checked.length===1?checked[0].name+' saved in the tray.':checked.length+' shortcuts saved in the tray.');
+  }
+  function savePreset(preset:WidgetPreset){savePresets([preset]);setModal(null)}
+  function removePreset(id:string){undo.current=state;setState(s=>({...s,presets:s.presets.filter(p=>p.id!==id)}));notify('Saved button removed. Open widgets are kept. '+primary+'+Z restores it.')}
+  function openPreset(workspaceId:string,preset:WidgetPreset,at?:{x:number;y:number},width?:number){undo.current=state;setState(s=>({...s,workspaces:s.workspaces.map(w=>w.id===workspaceId?{...w,widgets:[...w.widgets,preset.type==='apps'&&appPanel.available?managedAppWidget({sourceId:preset.appSourceId,name:preset.appName},preset.name,w.widgets,at,width,true):createWidgetFromPreset(preset,w.widgets,at,width)]}:w)}));notify(preset.name+' added as a new widget.')}
+  function pickApp(workspaceId:string,widgetId?:string,at?:{x:number;y:number},width?:number){setAppTarget({workspaceId,widgetId,at,width});setModal('apps')}
+  function addManagedApp(source:DroppedResource,name:string,save:boolean,window?:AppWindowChoice){
+    const target=appTarget,owner=state.workspaces.find(w=>w.id===target?.workspaceId);if(!target||!owner)throw new Error('Choose a workspace first.');
+    const existing=target.widgetId?owner.widgets.find(w=>w.id===target.widgetId&&w.type==='apps'):undefined;
+    if(target.widgetId&&!existing)throw new Error('This widget was removed. Open the Apps picker again.');
+    const created=managedAppWidget(source,name,owner.widgets,target.at,target.width,true);
+    const widget=existing?{...existing,title:created.title,appName:created.appName,appKey:created.appKey,appPanelOpen:true,appReuseExisting:true}:created;
+    const preset=save?presetFromWidget(widget):null;undo.current=state;
+    if(window)setAppAttachments(current=>({...current,[widget.id]:{hwnd:window.hwnd,pid:window.pid}}));
+    setState(s=>({...s,presets:preset?[...s.presets,preset]:s.presets,workspaces:s.workspaces.map(w=>w.id!==owner.id?w:{...w,widgets:existing?w.widgets.map(i=>i.id===widget.id?widget:i):[...w.widgets,widget]})}));
+    setModal(null);setAppTarget(null);notify(widget.title+(window?' is attaching.':' is opening in its panel.')+(save?' Saved in Apps.':''));
+  }
+  function finishAppAttachment(id:string,attachment:AppAttachment){setAppAttachments(current=>{if(current[id]?.hwnd!==attachment.hwnd||current[id]?.pid!==attachment.pid)return current;const next={...current};delete next[id];return next})}
+  function saveAppWidget(id:string){const widget=state.workspaces.flatMap(w=>w.widgets).find(w=>w.id===id);if(!widget)return;try{savePresets([presetFromWidget({...widget,title:widget.title.trim()||widget.appName||'App'})])}catch(reason){notify(String(reason))}}
+  function openDropped(workspaceId:string,items:WidgetPreset[],at:{x:number;y:number},width:number){
+    const checked=items.map(widgetPreset);if(!checked.length)return;undo.current=state;
+    setState(s=>({...s,workspaces:s.workspaces.map(w=>{if(w.id!==workspaceId)return w;const widgets=[...w.widgets];for(const [index,preset] of checked.entries())widgets.push(createWidgetFromPreset(preset,widgets,{x:at.x+index*24,y:at.y+index*24},width));return{...w,widgets}})}));
+    notify(checked.length===1?checked[0].name+' added as a new widget.':checked.length+' widgets added. Drag them onto their tray buttons to save shortcuts.');
+  }
+  function openGroupResource(workspaceId:string,link:WebShortcut,at?:{x:number;y:number}){
+    try{const owner=state.workspaces.find(w=>w.id===workspaceId);if(!owner)return;const browser=createBrowserFromGroup(link,owner.widgets,at);undo.current=state;setState(s=>({...s,workspaces:s.workspaces.map(w=>w.id===workspaceId?{...w,widgets:[...w.widgets,browser]}:w)}));notify(link.name+' opened as a new widget.')}catch(e){notify(String((e as Error).message))}
+  }
+  function bringToFront(id:string){setState(s=>({...s,workspaces:s.workspaces.map(w=>w.id===s.activeId?{...w,widgets:[...w.widgets.filter(i=>i.id!==id),...w.widgets.filter(i=>i.id===id)]}:w)}))}
+  function startCreate(){setName('');setChosen(['browser','desmos','notes']);setFormError('');setModal('create')}
+  function submitWorkspace(){try{if(modal==='rename'){const valid=workspaceName(name);setState(s=>({...s,workspaces:s.workspaces.map(w=>w.id===s.activeId?{...w,name:valid}:w)}))}else{const created=createWorkspace(name,chosen);setState(s=>({...s,activeId:created.id,workspaces:[...s.workspaces,created]}));}setModal(null);setArrange(false)}catch(error){setFormError(String(error instanceof Error?error.message:error))}}
+  function duplicate(){const copy=duplicateWorkspace(workspace,workspace.name.slice(0,55)+' copy');setState(s=>({...s,activeId:copy.id,workspaces:[...s.workspaces,copy]}));notify('Workspace duplicated with independent widget instances.')}
+  function removeWorkspace(){if(state.workspaces.length===1){notify('Keep at least one workspace.');return}undo.current=state;const remaining=state.workspaces.filter(w=>w.id!==state.activeId);setState(s=>({...s,workspaces:remaining,activeId:remaining[0].id}));setArrange(false);notify('Workspace removed. '+primary+'+Z restores it.')}
+  const commands=[...state.workspaces.map(w=>({label:'Switch to '+w.name,run:()=>switchWorkspace(w.id)})),{label:'Create workspace',run:startCreate},{label:'Add widget',run:()=>setModal('gallery')},{label:'Change appearance',run:()=>setModal('appearance')},{label:'Keyboard shortcuts',run:()=>setModal('shortcuts')},{label:'Arrange workspace',run:()=>setArrange(true)}];
+  const matches=commands.filter(c=>c.label.toLowerCase().includes(query.toLowerCase()));
+  useEffect(()=>{function onKey(event:KeyboardEvent){if(event.isComposing||modal)return;const direction=shortcutDirection(event,state.shortcuts,!!(event.target as HTMLElement)?.closest('input,textarea,select,[contenteditable=true],[role=textbox]'));if(direction){event.preventDefault();if(!event.repeat)moveWorkspace(direction);return}if(event.altKey||event.shiftKey)return;const modifier=primary==='⌘'?event.metaKey:event.ctrlKey;if(!modifier)return;const editing=(event.target as HTMLElement)?.closest('input,textarea,select,[contenteditable=true]');if(event.key.toLowerCase()==='k'){event.preventDefault();setQuery('');setModal('commands')}else if(!editing&&event.key.toLowerCase()==='z'&&undo.current){event.preventDefault();setState(undo.current);undo.current=null;notify('Previous workspace layout restored.')}else if(!editing&&/^[1-9]$/.test(event.key)){const next=state.workspaces[Number(event.key)-1];if(next){event.preventDefault();switchWorkspace(next.id)}}}document.addEventListener('keydown',onKey);return()=>document.removeEventListener('keydown',onKey)},[state,modal]);
+  const date=new Intl.DateTimeFormat('en-NZ',{timeZone:'Pacific/Auckland',weekday:'long',day:'2-digit',month:'long'}).format(new Date());
+  return <div className={"app canvas-app "+(state.sidebarCollapsed?"sidebar-collapsed":"sidebar-expanded")}><aside id="workspace-sidebar" className="sidebar"><div className="brand"><span className="brand-mark" aria-hidden="true"><i/><i/><i/></span><span className="brand-text">still.</span></div><p className="personal">Your space, at your pace.</p><p className="eyebrow side-label">Workspaces</p><nav className="nav" aria-label="Workspaces">{state.workspaces.map((w,index)=><button key={w.id} className={w.id===state.activeId?'active':''} aria-current={w.id===state.activeId?'page':undefined} title={w.name+' workspace'} aria-label={w.name+' workspace'} onClick={()=>switchWorkspace(w.id)}><Icon name="study"/><span className="nav-name">{w.name}</span>{index<9&&<kbd>{index+1}</kbd>}</button>)}</nav><button className="new-workspace" onClick={startCreate} aria-label="New workspace" title="New workspace"><Icon name="add"/><span className="nav-name">New workspace</span></button><div className="sidebar-bottom"><button title="Appearance" aria-label="Appearance" onClick={()=>setModal('appearance')}><Icon name="settings"/><span className="nav-name">Appearance</span></button><div className="profile"><div className="avatar">Y</div><div>Your workspace<small>{chromeLauncher.native?'Desktop · local':'Preview · local'}</small></div></div></div></aside>
+    <main className="main"><header className="topbar"><div className="workspace-heading"><button className="sidebar-toggle" aria-label={state.sidebarCollapsed?"Expand sidebar":"Collapse sidebar"} title={state.sidebarCollapsed?"Expand sidebar":"Collapse sidebar"} aria-expanded={!state.sidebarCollapsed} aria-controls="workspace-sidebar" onClick={()=>setState(s=>({...s,sidebarCollapsed:!s.sidebarCollapsed}))}><Icon name="sidebar"/></button><div className="breadcrumb"><span>Workspace</span><span>/</span><strong>{workspace.name}</strong></div></div><button className="search" onClick={()=>{setQuery('');setModal('commands')}}><Icon name="search"/><span className="search-label">Find an action…</span><kbd>{primary} K</kbd></button></header><div className="content"><section className="intro"><div><div className="eyebrow">{date}</div><h1>{workspace.name==='Study'?'Your workspace.':workspace.name}</h1><p>Your tools, arranged your way.</p></div><div className="actions"><button aria-pressed={arrange} onClick={()=>{setArrange(!arrange);}}><Icon name="arrange"/>{arrange?'Done':'Customize'}</button><button className="primary" onClick={()=>setModal('gallery')}><Icon name="add"/>Add widget</button></div></section>
+    {arrange&&<div className="workspace-tools"><span className="muted">Make this space yours.</span><button onClick={()=>{setName(workspace.name);setFormError('');setModal('rename')}}>Rename</button><button onClick={duplicate}>Duplicate</button><button onClick={removeWorkspace} disabled={state.workspaces.length===1}>Remove workspace</button></div>}
+    {state.workspaces.filter(w=>visited.current.has(w.id)).map(w=><div key={w.id} className="workspace-surface" hidden={w.id!==state.activeId} inert={w.id!==state.activeId}><WorkspaceCanvas appAttachments={appAttachments} appAttachmentHandled={finishAppAttachment} pickApp={(id,at,width)=>pickApp(w.id,id,at,width)} saveApp={saveAppWidget} presets={state.presets} savePresets={savePresets} openDropped={(items,at,width)=>openDropped(w.id,items,at,width)} openPreset={(preset,at,width)=>openPreset(w.id,preset,at,width)} editPreset={editPreset} removePreset={removePreset} widgets={w.widgets} groups={w.groups} updateGroup={(id,patch)=>changeGroup(w.id,id,patch)} openGroup={(id,at,width)=>showGroup(w.id,id,at,width)} editGroup={editGroup} removeGroup={id=>removeGroup(w.id,id)} openGroupWidget={(entry,at,width)=>openGroupWidget(w.id,entry,at,width)} update={updateWidget} add={addWidget} remove={removeWidget} begin={()=>{undo.current=state}} bringToFront={bringToFront} notify={notify} obscured={!!modal} workspaceActive={w.id===state.activeId} openResource={(link,at)=>openGroupResource(w.id,link,at)}/></div>)}
+    <footer className="footer"><span><i className="dot"/>{storage}</span><span>{chromeLauncher.native?'DESKTOP · in-app browser':'PREVIEW · browser controls'}</span></footer></div></main>
+    {modal==='gallery' &&<Modal title="Add a widget" close={()=>setModal(null)}><p className="notice">Each widget belongs to this workspace.</p>{widgetTypes.map(type=><button className="gallery-item" key={type} onClick={()=>addWidget(type)}><Icon name={widgetRegistry[type].icon}/><span>{widgetRegistry[type].name}<small>{widgetRegistry[type].description}</small></span><span>+</span></button>)}</Modal>}
+    {modal==='group'&&selectedGroup&&<Modal title={selectedGroup.name||'Edit group'} close={()=>setModal(null)}><GroupEditor key={selectedGroup.id+'-'+groupMode} group={selectedGroup} initialMode={groupMode} update={patch=>changeGroup(workspace.id,selectedGroup.id,patch)} openLink={link=>{openGroupResource(workspace.id,link);setModal(null)}} openWidget={entry=>{openGroupWidget(workspace.id,entry);setModal(null)}}/></Modal>}
+    {modal==='preset'&&presetDraft&&<Modal title={(presetDraft.preset?'Edit custom ':'Custom ')+widgetRegistry[presetDraft.type].name} close={()=>setModal(null)}><PresetEditor key={presetDraft.preset?.id??presetDraft.type} type={presetDraft.type} preset={presetDraft.preset} save={savePreset} close={()=>setModal(null)}/></Modal>}
+    {modal==='apps'&&appTarget&&<Modal title="Attach open app" close={()=>setModal(null)}><AppWindowPicker attach={(window,source,name,save)=>addManagedApp(source,name,save,window)} open={(source,name,save)=>addManagedApp(source,name,save)} close={()=>setModal(null)}/></Modal>}
+    {modal==='appearance'&&<Modal title="Appearance" close={()=>setModal(null)}><AppearanceSettings state={state} update={patch=>setState(s=>({...s,...patch}))} openShortcuts={()=>setModal('shortcuts')}/></Modal>}
+    {modal==='shortcuts'&&<Modal title="Keyboard shortcuts" close={()=>setModal(null)}><ShortcutSettings shortcuts={state.shortcuts} save={saveShortcuts} close={()=>setModal(null)}/></Modal>}
+    {(modal==='create'||modal==='rename')&&<Modal title={modal==='create'?'A space of your own.':'Rename workspace'} close={()=>setModal(null)}><form onSubmit={e=>{e.preventDefault();submitWorkspace()}}><label className="field-label">Workspace name<input className="palette-input" aria-label="Workspace name" placeholder="e.g. Engineering, Revision, Research…" value={name} maxLength={60} onChange={e=>setName(e.target.value)} autoFocus/></label>{modal==='create'&&<><p className="notice">Start with the tools you need. Change them any time.</p><div className="widget-choices">{widgetTypes.map(type=><label key={type}><input type="checkbox" checked={chosen.includes(type)} onChange={e=>setChosen(e.target.checked?[...chosen,type]:chosen.filter(t=>t!==type))}/><Icon name={widgetRegistry[type].icon}/>{widgetRegistry[type].name}</label>)}</div></>}{formError&&<p className="widget-error" role="alert">{formError}</p>}<button className="primary full" type="submit">{modal==='create'?'Create workspace':'Save name'}</button></form></Modal>}
+    {modal==='commands'&&<Modal title="Find your next action" close={()=>setModal(null)}><input className="palette-input" aria-label="Search commands" placeholder="Search workspaces or actions…" value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&matches[0]){setModal(null);matches[0].run()}}} autoFocus/>{matches.map((command,i)=><button className="gallery-item" key={i} onClick={()=>{setModal(null);command.run()}}>{command.label}</button>)}{!matches.length&&<p className="notice">No matching actions.</p>}</Modal>}
+    {message&&<div className="toast" role="status">{message}</div>}
+  </div>;
+}

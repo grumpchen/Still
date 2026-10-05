@@ -1,0 +1,13 @@
+# Widget canvas and Chrome shortcuts
+
+The user authorized integration into Still, keeping its shell and Liquid Glass appearance. Use a free-position canvas with persisted CSS-pixel bounds, a top widget tray, pointer move/resize handles, keyboard alternatives and multiple independent instances. Widgets may overlap; moving brings one forward. The canvas scrolls without rewriting layouts on smaller windows. Dragging a header back onto the tray removes only that instance, with undo.
+
+The Browser type retains its identifier for migration but renders Web / Chrome. Preserve existing bookmarks/current URL as shortcuts. New instances include AKO Learn, Gmail, Drive, YouTube, Desmos and Google. Provide name/icon/URL editing, removal and drag/arrow ordering. Native links launch the installed Chrome executable with only the URL, so Chrome selects its regular profile and forwards to its existing process. No custom profile, new-window flag or embedded-browser controls remain. The preview opens links in its host browser.
+
+The calculator retains the live Desmos iframe; a manual weekly timetable is added. No university timetable synchronization is implied. Notes, timers, shortcuts, timetable content and placements persist; Files folder roots retain their existing native adapter.
+
+Camera controls are separate from widget movement. Click or release a camera drag to copy the widget image, then paste into ChatGPT. Export PNG provides an attachment fallback. Windows uses WebView2 CapturePreview on the main app document, then crops to widget bounds and writes an image to the clipboard. This includes rendered Desmos content without DOM cross-origin extraction. Browser previews use html-to-image for local widgets; a cross-origin calculator capture explicitly requires Windows. Native OS file dragging into ChatGPT is deferred in favor of the user-approved quick clipboard fallback.
+
+Metadata, default sizes and minima live in widgetCatalog; renderers live in the registry. Layout, shortcut normalization and migrations remain independent of platform adapters. Validate URLs and capture rectangles natively and allow commands only from the trusted app surface. Tests cover normalization, migration, instance isolation, overlap-free placement, shortcut ordering, URL validation and capture scaling; preview checks cover complete tray/move/resize/remove/undo/persistence workflows. Native UI validation remains subject to existing access limits.
+
+References: [WebView2 CapturePreview](https://learn.microsoft.com/en-us/microsoft-edge/webview2/reference/win32/icorewebview2#capturepreview), [html-to-image](https://github.com/bubkoo/html-to-image), [arboard](https://docs.rs/arboard/latest/arboard/struct.Clipboard.html).

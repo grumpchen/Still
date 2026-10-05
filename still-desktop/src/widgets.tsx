@@ -1,0 +1,25 @@
+import FilesWidget from './FilesWidget.tsx';
+import AppsWidget from './AppsWidget.tsx';
+import { useEffect, useState, type ComponentType } from 'react';
+import BrowserWidget from './BrowserWidget.tsx';
+import TimetableWidget from './TimetableWidget.tsx';
+import GroupWidget from './GroupWidget.tsx';
+import type {WebShortcut} from './domain/webShortcuts.ts';
+import {widgetCatalog} from './domain/widgetCatalog.ts';
+import {chromeLauncher} from './platform/chrome.ts';
+import { DESMOS_URL, type WidgetInstance, type WidgetType,type SavedGroup,type GroupWidgetEntry } from './domain/workspaces.ts';
+
+
+export function Icon({name}:{name:string}) {
+  const paths:Record<string,string>={group:'M3 7V5h7l2 2h9v13H3zM7 12h10m-10 4h7',sidebar:'M3 4h18v16H3zM8 4v16',camera:'M3 7h4l2-3h6l2 3h4v13H3zM16 13a4 4 0 1 1-8 0 4 4 0 0 1 8 0',browser:'M3 5h18v14H3zM3 9h18M6 7h.01M9 7h.01',notes:'M6 3h9l4 4v14H6zM15 3v5h4M9 12h7m-7 4h5',focus:'M9 2h6M12 9v5l3 2',desmos:'M5 3h14v18H5zM8 7h8M8 12h2m4 0h2m-8 4h2m4 0h2',files:'M3 7V5h7l2 2h9v13H3z',ai:'m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z',settings:'M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1m0-12.8-2.1 2.1m-8.6 8.6-2.1 2.1',search:'m15 15 5 5',add:'M12 5v14M5 12h14',arrange:'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z',study:'M3 4h7a3 3 0 0 1 2 1 3 3 0 0 1 2-1h7v15h-7a3 3 0 0 0-2 1 3 3 0 0 0-2-1H3zM12 5v15'};
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d={name==='apps'?paths.arrange:paths[name]??paths.browser}/>{name==='search'&&<circle cx="10" cy="10" r="6"/>}{name==='focus'&&<circle cx="12" cy="13" r="8"/>}{name==='settings'&&<circle cx="12" cy="12" r="3"/>}</svg>;
+}
+export interface WidgetProps { widget:WidgetInstance; update:(patch:Partial<WidgetInstance>)=>void; obscured:boolean; workspaceActive?:boolean; notify:(message:string)=>void; lecture?:()=>void; openResource?:(link:WebShortcut)=>void;group?:SavedGroup;updateGroup?:(patch:Partial<Omit<SavedGroup,'id'>>)=>void;openGroupWidget?:(entry:GroupWidgetEntry)=>void;pickApp?:()=>void;saveApp?:()=>void;appAttachment?:import('./platform/appPanel.ts').AppAttachment;appAttachmentHandled?:()=>void }
+function Notes({widget,update}:WidgetProps){return <><div className="card-body"><h2 className="note-title">A place to begin</h2><textarea className="note" aria-label="Note text" value={widget.text} onChange={e=>update({text:e.target.value})}/></div><div className="note-status">PLAIN TEXT · SAVED LOCALLY</div></>}
+function Focus({widget,update,notify}:WidgetProps){const [now,setNow]=useState(Date.now());useEffect(()=>{const interval=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(interval)},[]);const remaining=widget.end?Math.max(0,Math.ceil((widget.end-now)/1000)):widget.remaining;useEffect(()=>{if(widget.end&&remaining===0){update({end:null,remaining:0});notify('Focus session complete. Take a breath.')}},[remaining,widget.end]);return <div className="card-body"><div className="focus-top"><span>Focus session</span><span>25 minutes</span></div><div className="timer mono">{String(Math.floor(remaining/60)).padStart(2,'0')}:{String(remaining%60).padStart(2,'0')}</div><p className="timer-label">Give your attention a little space.</p><div className="focus-actions"><button className="primary" onClick={()=>update(widget.end?{end:null,remaining}:{end:Date.now()+(remaining||1500)*1000})}>{widget.end?'Pause session':'Start session'}</button><button onClick={()=>update({end:null,remaining:1500})}>Reset</button></div></div>}
+
+function Calculator({obscured,notify}:WidgetProps){return <div className="calculator-widget"><div className="widget-subbar"><span>Desmos scientific</span><button onClick={()=>void chromeLauncher.open(DESMOS_URL).catch(e=>notify(String(e)))}>Open in Chrome ↗</button></div><iframe title="Desmos scientific calculator" src={DESMOS_URL} referrerPolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-forms" style={{pointerEvents:obscured?'none':undefined}}/></div>}
+function Assistant({notify}:WidgetProps){return <><div className="card-body"><div className="assistant-mark"><Icon name="ai"/></div><h2>A thought starts here.</h2><p className="notice">AI provider connection is a later milestone.</p></div><form className="composer" onSubmit={e=>{e.preventDefault();notify('AI is not connected in this browser-focused build.')}}><input aria-label="Assistant message" placeholder="Ask, explore, or work through an idea…"/><button>↗</button></form></>}
+export interface WidgetDefinition { id:WidgetType; name:string; description:string; icon:string; component:ComponentType<WidgetProps> }
+const renderers:Record<WidgetType,ComponentType<WidgetProps>>={browser:BrowserWidget,group:GroupWidget,desmos:Calculator,notes:Notes,focus:Focus,ai:Assistant,files:FilesWidget,apps:AppsWidget,timetable:TimetableWidget};
+export const widgetRegistry=Object.fromEntries(Object.entries(widgetCatalog).map(([id,meta])=>[id,{id:id as WidgetType,...meta,component:renderers[id as WidgetType]}])) as unknown as Record<WidgetType,WidgetDefinition>;

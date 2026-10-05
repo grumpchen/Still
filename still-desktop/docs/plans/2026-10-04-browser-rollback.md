@@ -1,0 +1,15 @@
+# ver0.13 — restore the Still-Chrome browser
+
+The user requested that the rest of ver0.12 be kept while the browser returns to the working Still-Chrome version. The original browser source was recovered from this chat's file-change records up to the 4 October 2026, 11:41 NZDT Still-Chrome build. The recovery also replayed the recorded launch-helper extraction; subsequent patch contexts all matched.
+
+Restore the original BrowserWidget lifecycle, viewport checks, native rectangle clamping, overlap checks and gesture hiding, plus Chrome's original exact-fit positioning, blocked-rectangle recovery, location synchronization and screenshot bounds. Retain the current minimal Browser header, removed Still bookmark controls, resize footer and 80% Lecture button. The owner-scoped Chrome window marker is retained so separate running Still instances cannot steal a window. The test harness continues to pump messages while closing Chrome.
+
+This intentionally returns to Still-Chrome's browser visibility rules: the browser area must be fully visible, at least 500 × 220, and clear of higher widgets. It hides during movement or resizing and reappears after release when the area fits. The other widgets still support free movement and overlap.
+
+Groups, resource editing and opening new Browser widgets, saved state, appearance, sidebar collapse and shortcut behavior remain unchanged. Hash comparison verifies that App.tsx, GroupWidget.tsx, the workspace model, widget catalog, canvas styling and native shortcut code were preserved. Existing user data and Chrome profiles are retained. Earlier executables remain available.
+
+Verification will include the restored visibility regression, the complete frontend and Rust suites, original-source comparison, the real-Chrome smoke test, Windows release compilation and a desktop resize/Lecture check in separate WebView storage. Signed-in AKO, EchoVideo and playback acceptance will still need the user's normal session.
+
+On 5 October the user chose “Finish the build; I’ll test resizing” after Computer Use rejected opening the test application. The original Still-Chrome executable had displayed Chrome during the preceding control check; the restored build's blank-panel observation remains unresolved by an interactive final check. Temporary native diagnostic logging was removed. The final artifact is a browser rollback for user testing, with desktop resize and Lecture-mode acceptance explicitly deferred.
+
+Final verification: TypeScript passed; all 29 frontend tests and 11 Rust unit tests passed (the native GUI smoke remained explicitly ignored in this final run). The original lifecycle, visibility predicate and platform adapter match the recovered Still-Chrome source. The native source matches the clean pre-diagnostic rollback. SHA256 comparisons confirm preservation of Groups, workspace state, widget catalog, styles, sidebar and native shortcuts. The production Tauri build succeeded for version 0.13.0. No final desktop GUI pass is claimed.

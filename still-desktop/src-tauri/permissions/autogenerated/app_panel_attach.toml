@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-app-panel-attach"
+description = "Enables the app_panel_attach command without any pre-configured scope."
+commands.allow = ["app_panel_attach"]
+
+[[permission]]
+identifier = "deny-app-panel-attach"
+description = "Denies the app_panel_attach command without any pre-configured scope."
+commands.deny = ["app_panel_attach"]

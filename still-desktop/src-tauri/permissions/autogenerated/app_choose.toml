@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-app-choose"
+description = "Enables the app_choose command without any pre-configured scope."
+commands.allow = ["app_choose"]
+
+[[permission]]
+identifier = "deny-app-choose"
+description = "Denies the app_choose command without any pre-configured scope."
+commands.deny = ["app_choose"]

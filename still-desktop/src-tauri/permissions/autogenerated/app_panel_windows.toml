@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-app-panel-windows"
+description = "Enables the app_panel_windows command without any pre-configured scope."
+commands.allow = ["app_panel_windows"]
+
+[[permission]]
+identifier = "deny-app-panel-windows"
+description = "Denies the app_panel_windows command without any pre-configured scope."
+commands.deny = ["app_panel_windows"]

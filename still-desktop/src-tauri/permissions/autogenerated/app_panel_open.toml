@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-app-panel-open"
+description = "Enables the app_panel_open command without any pre-configured scope."
+commands.allow = ["app_panel_open"]
+
+[[permission]]
+identifier = "deny-app-panel-open"
+description = "Denies the app_panel_open command without any pre-configured scope."
+commands.deny = ["app_panel_open"]

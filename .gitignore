@@ -1,0 +1,3 @@
+# Local release builds and source archives are kept in the workspace, not in Git history.
+*.exe
+*.zip
