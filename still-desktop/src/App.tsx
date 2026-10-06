@@ -3,7 +3,7 @@ import { createBrowserFromGroup,createWidgetFromPreset,createWidgetFromGroupEntr
 import { Icon, widgetRegistry } from './widgets.tsx';
 import {chromeLauncher} from './platform/chrome.ts';
 import WorkspaceCanvas from './WorkspaceCanvas.tsx';
-import {canvasExtent,nextPlacement,placement} from './domain/layout.ts';
+import {canvasExtent,nextPlacement,placement,constrainPlacement} from './domain/layout.ts';
 import { nativeShortcuts } from './platform/shortcuts.ts';
 import { adjacentWorkspaceId, shortcutDirection, type WorkspaceDirection, type WorkspaceShortcuts } from './domain/shortcuts.ts';
 import ShortcutSettings from './ShortcutSettings.tsx';
@@ -52,6 +52,7 @@ export default function App(){
   function switchWorkspace(id:string){setState(s=>({...s,activeId:id}));setArrange(false);}
   // One shared updater path for the header toggle button and the command-palette action.
   function toggleSidebar(){setState(s=>({...s,sidebarCollapsed:toggleSidebarCollapsed(s.sidebarCollapsed)}))}
+  function boundNewWidget(widget:WidgetInstance,widgets:WidgetInstance[],width?:number){const viewportWidth=document.querySelector<HTMLElement>('.workspace-surface:not([hidden]) .canvas-viewport')?.clientWidth??1000;const extent=width??canvasExtent(viewportWidth,[...widgets,widget]);return {...widget,placement:constrainPlacement(widget.type,widget.placement,extent,{width:widget.appPanelOpen?widget.appMinWidth:undefined,height:widget.appPanelOpen?widget.appMinHeight:undefined})}}
   function moveWorkspace(direction:WorkspaceDirection){setState(s=>({...s,activeId:adjacentWorkspaceId(s.workspaces,s.activeId,direction)}));setArrange(false);}
   const shortcutContext=useRef({modal,moveWorkspace});shortcutContext.current={modal,moveWorkspace};
   useEffect(()=>{if(!nativeShortcuts.available)return;let disposed=false;let unlisten:(()=>void)|undefined;
@@ -62,13 +63,13 @@ export default function App(){
   async function saveShortcuts(shortcuts:WorkspaceShortcuts){if(nativeShortcuts.available)await nativeShortcuts.configure(shortcuts,false);setState(s=>({...s,shortcuts}));notify('Workspace shortcuts saved.')}
   function updateWidget(id:string,patch:Partial<WidgetInstance>){setState(s=>({...s,workspaces:s.workspaces.map(w=>w.widgets.some(i=>i.id===id)?{...w,widgets:w.widgets.map(i=>i.id===id?{...i,...patch}:i)}:w)}))}
   function removeWidget(id:string,preserveUndo=false){if(!preserveUndo)undo.current=state;setState(s=>({...s,workspaces:s.workspaces.map(w=>w.id===s.activeId?{...w,widgets:w.widgets.filter(i=>i.id!==id)}:w)}));notify('Widget removed. '+primary+'+Z restores the previous layout.')}
-  function addWidget(type:WidgetType,at?:{x:number;y:number},width?:number){const viewportWidth=width??document.querySelector<HTMLElement>('.workspace-surface:not([hidden]) .canvas-viewport')?.clientWidth??1000;undo.current=state;setState(s=>({...s,workspaces:s.workspaces.map(w=>{if(w.id!==s.activeId)return w;const widget=createWidget(type);widget.instanceNumber=nextInstanceNumber(type,w.widgets);widget.placement=at?placement(type,{...widget.placement,...at}):nextPlacement(type,w.widgets,width??canvasExtent(viewportWidth,w.widgets));if(type==='group'){const id=crypto.randomUUID();widget.groupId=id;return{...w,groups:[...w.groups,{id,name:'',shortcuts:[],widgets:[],expanded:false}],widgets:[...w.widgets,widget]}}return {...w,widgets:[...w.widgets,widget]}})}));setModal(null);notify(widgetRegistry[type].name+' added')}
+  function addWidget(type:WidgetType,at?:{x:number;y:number},width?:number){const viewportWidth=width??document.querySelector<HTMLElement>('.workspace-surface:not([hidden]) .canvas-viewport')?.clientWidth??1000;undo.current=state;setState(s=>({...s,workspaces:s.workspaces.map(w=>{if(w.id!==s.activeId)return w;const widget=createWidget(type);widget.instanceNumber=nextInstanceNumber(type,w.widgets);widget.placement=at?placement(type,{...widget.placement,...at}):nextPlacement(type,w.widgets,width??canvasExtent(viewportWidth,w.widgets));const bounded=boundNewWidget(widget,w.widgets,width);if(type==='group'){const id=crypto.randomUUID();bounded.groupId=id;return{...w,groups:[...w.groups,{id,name:'',shortcuts:[],widgets:[],expanded:false}],widgets:[...w.widgets,bounded]}}return {...w,widgets:[...w.widgets,bounded]}})}));setModal(null);notify(widgetRegistry[type].name+' added')}
   function changeGroup(workspaceId:string,id:string,patch:Partial<Omit<SavedGroup,'id'>>){setState(s=>({...s,workspaces:s.workspaces.map(w=>w.id===workspaceId?updateSavedGroup(w,id,patch):w)}))}
   function saveWidgetInGroup(workspaceId:string,widget:WidgetInstance,groupId?:string,preserveUndo=false){const workspace=state.workspaces.find(w=>w.id===workspaceId);if(!workspace){notify('This workspace is no longer available.');return}try{addWidgetToGroup(workspace,widget,groupId)}catch(error){notify(String((error as Error).message??error));return}if(!preserveUndo)undo.current=state;setState(s=>({...s,workspaces:s.workspaces.map(w=>w.id===workspaceId?addWidgetToGroup(w,widget,groupId):w)}));notify(groupId?'Widget saved to group.':'New group created and widget saved.')}
   function editGroup(id:string,mode:GroupEditMode){setEditingGroup(id);setGroupMode(mode);setModal('group')}
-  function showGroup(workspaceId:string,id:string,at?:{x:number;y:number},width?:number){undo.current=state;setState(s=>({...s,workspaces:s.workspaces.map(w=>w.id===workspaceId?openSavedGroup(w,id,at,width):w)}));notify('Group widget added.')}
+  function showGroup(workspaceId:string,id:string,at?:{x:number;y:number},width?:number){undo.current=state;setState(s=>({...s,workspaces:s.workspaces.map(w=>{if(w.id!==workspaceId)return w;const opened=openSavedGroup(w,id,at,width),last=opened.widgets.at(-1);return last?{...opened,widgets:[...opened.widgets.slice(0,-1),boundNewWidget(last,opened.widgets.slice(0,-1),width)]}:opened})}));notify('Group widget added.')}
   function removeGroup(workspaceId:string,id:string){undo.current=state;setState(s=>({...s,workspaces:s.workspaces.map(w=>w.id===workspaceId?{...w,groups:w.groups.filter(g=>g.id!==id),widgets:w.widgets.filter(i=>i.groupId!==id)}:w)}));notify('Group removed. '+primary+'+Z restores it. Your opened widgets are kept.')}
-  function openGroupWidget(workspaceId:string,entry:GroupWidgetEntry,at?:{x:number;y:number},width?:number){undo.current=state;setState(s=>({...s,workspaces:s.workspaces.map(w=>w.id===workspaceId?{...w,widgets:[...w.widgets,createWidgetFromGroupEntry(entry,w.widgets,at,width)]}:w)}));notify(entry.name+' added as a new widget.')}
+  function openGroupWidget(workspaceId:string,entry:GroupWidgetEntry,at?:{x:number;y:number},width?:number){undo.current=state;setState(s=>({...s,workspaces:s.workspaces.map(w=>{if(w.id!==workspaceId)return w;const created=createWidgetFromGroupEntry(entry,w.widgets,at,width);return{...w,widgets:[...w.widgets,boundNewWidget(created,w.widgets,width)]}})}));notify(entry.name+' added as a new widget.')}
   function editPreset(type:PresetType,preset?:WidgetPreset){setPresetDraft({type,preset});setModal('preset')}
   function savePresets(items:WidgetPreset[],preserveUndo=false){
     const checked=items.map(widgetPreset);if(!checked.length)return;if(!preserveUndo)undo.current=state;
@@ -77,7 +78,7 @@ export default function App(){
   }
   function savePreset(preset:WidgetPreset){savePresets([preset]);setModal(null)}
   function removePreset(id:string){undo.current=state;setState(s=>({...s,presets:s.presets.filter(p=>p.id!==id)}));notify('Saved button removed. Open widgets are kept. '+primary+'+Z restores it.')}
-  function openPreset(workspaceId:string,preset:WidgetPreset,at?:{x:number;y:number},width?:number){undo.current=state;setState(s=>({...s,workspaces:s.workspaces.map(w=>w.id===workspaceId?{...w,widgets:[...w.widgets,preset.type==='apps'&&appPanel.available?managedAppWidget({sourceId:preset.appSourceId,name:preset.appName},preset.name,w.widgets,at,width,true):createWidgetFromPreset(preset,w.widgets,at,width)]}:w)}));notify(preset.name+' added as a new widget.')}
+  function openPreset(workspaceId:string,preset:WidgetPreset,at?:{x:number;y:number},width?:number){undo.current=state;setState(s=>({...s,workspaces:s.workspaces.map(w=>{if(w.id!==workspaceId)return w;const created=preset.type==='apps'&&appPanel.available?managedAppWidget({sourceId:preset.appSourceId,name:preset.appName},preset.name,w.widgets,at,width,true):createWidgetFromPreset(preset,w.widgets,at,width);return{...w,widgets:[...w.widgets,boundNewWidget(created,w.widgets,width)]}})}));notify(preset.name+' added as a new widget.')}
   function pickApp(workspaceId:string,widgetId?:string,at?:{x:number;y:number},width?:number){setAppTarget({workspaceId,widgetId,at,width});setModal('apps')}
   function addManagedApp(source:DroppedResource,name:string,save:boolean,window?:AppWindowChoice){
     const target=appTarget,owner=state.workspaces.find(w=>w.id===target?.workspaceId);if(!target||!owner)throw new Error('Choose a workspace first.');
@@ -87,18 +88,18 @@ export default function App(){
      const widget=existing?{...existing,title:created.title,appName:created.appName,appKey:created.appKey,appPanelOpen:true,appReuseExisting:true,appMinWidth:undefined,appMinHeight:undefined}:created;
     const preset=save?presetFromWidget(widget):null;undo.current=state;
     if(window)setAppAttachments(current=>({...current,[widget.id]:{hwnd:window.hwnd,pid:window.pid}}));
-    setState(s=>({...s,presets:preset?[...s.presets,preset]:s.presets,workspaces:s.workspaces.map(w=>w.id!==owner.id?w:{...w,widgets:existing?w.widgets.map(i=>i.id===widget.id?widget:i):[...w.widgets,widget]})}));
+    setState(s=>({...s,presets:preset?[...s.presets,preset]:s.presets,workspaces:s.workspaces.map(w=>w.id!==owner.id?w:{...w,widgets:existing?w.widgets.map(i=>i.id===widget.id?boundNewWidget(widget,w.widgets,target.width):i):[...w.widgets,boundNewWidget(widget,w.widgets,target.width)]})}));
     setModal(null);setAppTarget(null);notify(widget.title+(window?' is attaching.':' is opening in its panel.')+(save?' Saved in Apps.':''));
   }
   function finishAppAttachment(id:string,attachment:AppAttachment){setAppAttachments(current=>{if(current[id]?.hwnd!==attachment.hwnd||current[id]?.pid!==attachment.pid)return current;const next={...current};delete next[id];return next})}
   function saveAppWidget(id:string){const widget=state.workspaces.flatMap(w=>w.widgets).find(w=>w.id===id);if(!widget)return;try{savePresets([presetFromWidget({...widget,title:widget.title.trim()||widget.appName||'App'})])}catch(reason){notify(String(reason))}}
   function openDropped(workspaceId:string,items:WidgetPreset[],at:{x:number;y:number},width:number){
     const checked=items.map(widgetPreset);if(!checked.length)return;undo.current=state;
-    setState(s=>({...s,workspaces:s.workspaces.map(w=>{if(w.id!==workspaceId)return w;const widgets=[...w.widgets];for(const [index,preset] of checked.entries())widgets.push(createWidgetFromPreset(preset,widgets,{x:at.x+index*24,y:at.y+index*24},width));return{...w,widgets}})}));
+    setState(s=>({...s,workspaces:s.workspaces.map(w=>{if(w.id!==workspaceId)return w;const widgets=[...w.widgets];for(const [index,preset] of checked.entries()){const created=createWidgetFromPreset(preset,widgets,{x:at.x+index*24,y:at.y+index*24},width);widgets.push(boundNewWidget(created,widgets,width))}return{...w,widgets}})}));
     notify(checked.length===1?checked[0].name+' added as a new widget.':checked.length+' widgets added. Drag them onto their tray buttons to save shortcuts.');
   }
   function openGroupResource(workspaceId:string,link:WebShortcut,at?:{x:number;y:number}){
-    try{const owner=state.workspaces.find(w=>w.id===workspaceId);if(!owner)return;const browser=createBrowserFromGroup(link,owner.widgets,at);undo.current=state;setState(s=>({...s,workspaces:s.workspaces.map(w=>w.id===workspaceId?{...w,widgets:[...w.widgets,browser]}:w)}));notify(link.name+' opened as a new widget.')}catch(e){notify(String((e as Error).message))}
+    try{const owner=state.workspaces.find(w=>w.id===workspaceId);if(!owner)return;const browser=boundNewWidget(createBrowserFromGroup(link,owner.widgets,at),owner.widgets);undo.current=state;setState(s=>({...s,workspaces:s.workspaces.map(w=>w.id===workspaceId?{...w,widgets:[...w.widgets,browser]}:w)}));notify(link.name+' opened as a new widget.')}catch(e){notify(String((e as Error).message))}
   }
   function bringToFront(id:string){setState(s=>({...s,workspaces:s.workspaces.map(w=>w.id===s.activeId?{...w,widgets:[...w.widgets.filter(i=>i.id!==id),...w.widgets.filter(i=>i.id===id)]}:w)}))}
   function startCreate(){setName('');setChosen(['browser','desmos','notes']);setFormError('');setModal('create')}

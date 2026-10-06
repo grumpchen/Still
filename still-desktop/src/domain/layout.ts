@@ -17,6 +17,19 @@ export function nextPlacement(type:WidgetType, widgets:Array<{placement:Placemen
 }
 export function translate(type:WidgetType,p:Placement,dx:number,dy:number):Placement {return placement(type,{...p,x:p.x+dx,y:p.y+dy})}
 export function resize(type:WidgetType,p:Placement,dx:number,dy:number):Placement {return placement(type,{...p,width:p.width+dx,height:p.height+dy})}
+export function canvasHeight(viewportHeight:number,widgets:Array<{placement:Placement}>):number {
+ return Math.max(560,Math.ceil(Number.isFinite(viewportHeight)?Math.max(0,viewportHeight):0),Math.max(0,...widgets.map(w=>w.placement.y+w.placement.height+20)));
+}
+export function constrainPlacement(type:WidgetType,candidate:Placement,canvasWidth:number,minimum:{width?:number;height?:number}={}):Placement {
+ const meta=widgetCatalog[type],p=placement(type,candidate);
+ const minWidth=Math.max(meta.minWidth,Number.isFinite(minimum.width)?Math.ceil(minimum.width!):0);
+ const minHeight=Math.max(meta.minHeight,Number.isFinite(minimum.height)?Math.ceil(minimum.height!):0);
+ const extent=Math.floor(canvasWidth),widthLimit=Math.max(minWidth,Math.min(3000,extent-20));
+ let width=Math.max(minWidth,Math.min(widthLimit,p.width)),x=Math.max(0,p.x);
+ const availableAtX=extent-x-20;
+ if(width>availableAtX){if(availableAtX>=minWidth)width=availableAtX;else x=Math.max(0,extent-width-20)}
+ return {x,y:Math.max(0,Math.min(20000,p.y)),width,height:Math.max(minHeight,p.height)};
+}
 // Horizontal canvas extent: 30% of scrollable room beyond the visible viewport,
 // but never less than the furthest widget's right edge (plus padding). This is
 // extra scrollable space, not zoom — saved placements are never clamped.

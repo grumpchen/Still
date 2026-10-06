@@ -23,12 +23,12 @@ This work is scheduled after the active wider-canvas/resize phase is accepted an
 
 - Keep the compact workspace header as the first persistent row and the widget tray directly beneath it as the second persistent row. The tray remains at the very top of the workspace client area, above the canvas, and remains visible in fullscreen.
 - Reduce unnecessary spacing and labels without hiding the tray, changing widget scale, or adding a new row. The tray remains the source and target for existing add/save/remove gestures.
-- Preserve type-specific preset controls and existing tray drag targets. Group expansion is a distinct interaction from preset menus.
+- Keep every dropdown arrow's existing open/close state and actions, but place its contents directly after its button in the same horizontally scrollable tray row. This applies to Browser, Calculator, Notes, Focus, Files, Apps, Timetable and every expanded Group. Expanding contents pushes later tray buttons right. No dropdown may open a second row or shelf under the tray. Preset dropdowns remain mutually exclusive as before; Groups may remain independently expanded.
 
 ### Group expansion and saved-widget icons
 
-- Replace the separate below-tray group shelf with inline expansion from each group button. Expanding a group reveals its saved links/widgets to its right in the same tray row and shifts subsequent group and tray controls to the right. Collapsing returns the row to its compact form. Groups remain independently expandable; expanding one does not silently close another.
-- Keep the tray horizontally scrollable when the expanded row exceeds available width. Do not wrap controls onto a second row or place expanded contents over the canvas/native windows. Keyboard focus on an expanded item scrolls it into view.
+- Replace the separate below-tray group and preset shelves with inline expansion from the originating tray button. Expanding a group reveals its saved links/widgets immediately to its right; expanding a widget type reveals that type's saved presets immediately to its right. Both shift later controls right. Collapsing returns the row to its compact form. Groups remain independently expandable; expanding one does not silently close another. Preset dropdowns preserve their existing one-open-at-a-time behavior.
+- Keep the tray horizontally scrollable when the expanded row exceeds available width. Do not wrap controls onto a second row, open a separate shelf, or place expanded contents over the canvas/native windows. Keyboard focus on an expanded item scrolls it into view.
 - Render saved widget entries with the corresponding widget/app icon where available. Existing text initials and legacy entries remain readable through a generic/type-icon fallback. App icons use the existing app-picker PNG source when available; saved data must be bounded and validated, and must never persist HWNDs or PIDs. The implementation plan must select a backward-compatible representation and an explicit size cap before code is changed.
 - Keep entry labels and accessible names, and retain all current group actions (add/edit/remove/open) in the expanded region. Preserve current saved expansion state unless the user collapses a group.
 
@@ -67,7 +67,7 @@ Expected implementation files (final list to be confirmed against the accepted b
 | --- | --- |
 | `still-desktop/src/App.tsx` | Fullscreen toggle/state lifecycle and header placement; preserve sidebar toggle. |
 | `still-desktop/src/WorkspaceCanvas.tsx` | Canvas extent, growth/bound-aware pointer and keyboard operations, compact tray/group placement, scroll coordination hooks. |
-| `still-desktop/src/GroupTray.tsx` and possibly `PresetTray.tsx` | Inline group expansion and icon rendering; retain preset menu behavior. |
+| `still-desktop/src/GroupTray.tsx`, `still-desktop/src/PresetTray.tsx` | Inline expansion for all group and type preset dropdowns, icon rendering; preserve existing actions and state behavior. |
 | `still-desktop/src/domain/layout.ts` | Shared bounded move/resize/placement helpers and canvas extent rules. |
 | `still-desktop/src/domain/workspaces.ts` | Backward-compatible saved entry icon representation only if required. |
 | `still-desktop/src/BrowserWidget.tsx`, `still-desktop/src/AppsWidget.tsx` | Immediate native hide and final-geometry resync on viewport scroll. |
@@ -91,7 +91,7 @@ This task must not run concurrently with Phase 1, Phase 2, or Phase 3: it shares
 ## Acceptance criteria
 
 - At normal and narrow supported widths, the compact header and persistent tray remain the first two workspace rows; no extra static intro row or shelf is introduced.
-- Group expansion is inline and pushes later controls right; multiple groups can remain expanded; the tray scrolls horizontally instead of wrapping/overlapping the canvas.
+- Every dropdown-arrow menu, including type presets and Groups, is inline immediately to the right of its source button and pushes later controls right; multiple groups can remain expanded; the tray scrolls horizontally instead of adding a shelf, wrapping, or overlapping the canvas.
 - Saved app/widget entries show an actual app/widget icon where available and a legible fallback for missing or legacy icon data. State round-trips through save/reload with bounded data and no native handles.
 - Fullscreen covers the Still workspace while retaining tray access; Escape and the toggle restore the previous windowed bounds. Fullscreen transitions keep native panels aligned.
 - At an empty layout, the canvas is at least 1.3 times the visible width. Existing saved widgets beyond that extent remain visible and retain coordinates. New/moved/resized widgets stay fully inside the workspace and resize handles remain reachable.

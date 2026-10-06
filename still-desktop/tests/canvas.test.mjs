@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {placement,nextPlacement,translate,resize,canvasExtent} from '../src/domain/layout.ts';
+import {placement,nextPlacement,translate,resize,canvasExtent,canvasHeight,constrainPlacement} from '../src/domain/layout.ts';
 import {createInitialState,createWorkspace,duplicateWorkspace,parseState,widgetTypes} from '../src/domain/workspaces.ts';
 import {shortcut,reorderShortcuts,parseWebShortcuts} from '../src/domain/webShortcuts.ts';
 
@@ -24,6 +24,30 @@ test('the canvas extends 30% beyond the viewport but never discards content furt
   assert.equal(canvasExtent(1000,[{placement:{x:0,y:0,width:2000,height:500}}]),2020,'Content beyond 130% is preserved, never clamped to the viewport');
   assert.equal(canvasExtent(1000,[]),1300,'An empty canvas still gets the viewport extent');
   assert.equal(canvasExtent(200,[]),390,'A tiny viewport keeps a usable minimum extent');
+});
+test('canvasHeight includes every widget and a 20px trailing margin',()=>{
+  assert.equal(canvasHeight(700,[]),700);
+  assert.equal(canvasHeight(600,[{placement:{x:0,y:0,width:240,height:340}},{placement:{x:800,y:920,width:300,height:240}}]),1180);
+  assert.equal(canvasHeight(900,[{placement:{x:0,y:0,width:240,height:340}}]),900);
+});
+test('constrainPlacement keeps move and resize within horizontal bounds',()=>{
+  const moved=constrainPlacement('notes',{x:1200,y:240,width:400,height:340},1300);
+  assert.deepEqual(moved,{x:880,y:240,width:400,height:340});
+  const resized=constrainPlacement('notes',{x:1000,y:240,width:600,height:400},1300);
+  assert.deepEqual(resized,{x:1000,y:240,width:280,height:400});
+  const atEdge=constrainPlacement('notes',{x:2000,y:240,width:600,height:400},1300);
+  assert.ok(atEdge.x+atEdge.width+20<=1300);
+});
+test('constrainPlacement respects native and catalog minimum sizes',()=>{
+  const native=constrainPlacement('apps',{x:1100,y:60,width:600,height:420},1300,{width:680,height:410});
+  assert.deepEqual(native,{x:600,y:60,width:680,height:420});
+  const catalog=constrainPlacement('notes',{x:1200,y:20,width:5,height:5},1300);
+  assert.deepEqual(catalog,{x:1040,y:20,width:240,height:180});
+});
+test('legacy saved overflow remains part of the canvas extent',()=>{
+  const saved=[{placement:{x:2400,y:100,width:500,height:500}}];
+  assert.equal(canvasExtent(1000,saved),2920);
+  assert.deepEqual(constrainPlacement('notes',saved[0].placement,canvasExtent(1000,saved)),saved[0].placement);
 });
 test('version 2 browser migration preserves bookmarks, custom URL, notes, appearance and shortcuts',()=>{
   const state=createInitialState();state.version=2;const w=state.workspaces[0];w.layout='lecture';

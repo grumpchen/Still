@@ -1,7 +1,7 @@
 import {useEffect,useRef,useState,type PointerEvent,type KeyboardEvent,type DragEvent} from 'react';
 import {Icon,widgetRegistry} from './widgets.tsx';
 import {widgetTypes,type WidgetInstance,type WidgetType,type SavedGroup,type GroupWidgetEntry} from './domain/workspaces.ts';
-import {placement,translate,resize,type Placement,canvasExtent} from './domain/layout.ts';
+import {placement,translate,resize,type Placement,canvasExtent,canvasHeight,constrainPlacement} from './domain/layout.ts';
 import {captureWidget,downloadCapture} from './platform/capture.ts';
 import {toggleLecture} from './domain/lecture.ts';
 import type {WebShortcut} from './domain/webShortcuts.ts';
@@ -20,7 +20,7 @@ type SaveCue={kind:'widget';type:WidgetType}|{kind:'group-create'}|{kind:'group'
 export default function WorkspaceCanvas({presets,openPreset,editPreset,removePreset,savePresets,openDropped,widgets,groups,updateGroup,saveToGroup,openGroup,editGroup,removeGroup,openGroupWidget,update,add,remove,begin,bringToFront,notify,obscured,workspaceActive=true,openResource,pickApp,saveApp,appAttachments,appAttachmentHandled}:Props&DropProps&AppPickerProps){
   const viewport=useRef<HTMLDivElement>(null),tray=useRef<HTMLDivElement>(null),gesture=useRef<Gesture|null>(null);
   const [active,setActive]=useState<string|null>(null),[trayDragging,setTrayDragging]=useState(false),[overTray,setOverTray]=useState(false),[overCanvas,setOverCanvas]=useState(false),[busy,setBusy]=useState<string|null>(null);
-  const [viewportWidth,setViewportWidth]=useState(0);
+  const [viewportWidth,setViewportWidth]=useState(0),[viewportHeight,setViewportHeight]=useState(0);
   const [presetMenu,setPresetMenu]=useState<PresetType|null>(null);
   const [saveTarget,setSaveTarget]=useState<SaveCue|null>(null),[externalDragging,setExternalDragging]=useState(false),[trayGhost,setTrayGhost]=useState<TrayDragPosition|null>(null);
   const externalEntries=useRef<DroppedResource[]>([]),nativeHandler=useRef<(event:ResourceDropEvent)=>void>(()=>{});
@@ -57,8 +57,9 @@ export default function WorkspaceCanvas({presets,openPreset,editPreset,removePre
   useEffect(()=>{if(!workspaceActive||obscured)clearDrop()},[workspaceActive,obscured]);
   // The canvas extent must track the visible viewport reactively (sidebar
   // toggle, window resize) so the 30% scroll room recomputes with it.
-  useEffect(()=>{const node=viewport.current;if(!node)return;setViewportWidth(node.clientWidth);const observer=new ResizeObserver(()=>setViewportWidth(node.clientWidth));observer.observe(node);return()=>observer.disconnect()},[]);
-  function lecture(w:WidgetInstance){const v=viewport.current;if(!v)return;begin();update(w.id,toggleLecture(w.placement,w.lectureRestore,v.clientWidth,v.clientHeight,v.scrollLeft,v.scrollTop));bringToFront(w.id);}
+  useEffect(()=>{const node=viewport.current;if(!node)return;const measure=()=>{setViewportWidth(node.clientWidth);setViewportHeight(node.clientHeight)};measure();const observer=new ResizeObserver(measure);observer.observe(node);return()=>observer.disconnect()},[]);
+  function bounded(w:WidgetInstance,p:Placement){return constrainPlacement(w.type,p,extent,{width:w.appPanelOpen?w.appMinWidth:undefined,height:w.appPanelOpen?w.appMinHeight:undefined})}
+  function lecture(w:WidgetInstance){const v=viewport.current;if(!v)return;begin();const next=toggleLecture(w.placement,w.lectureRestore,v.clientWidth,v.clientHeight,v.scrollLeft,v.scrollTop);update(w.id,{...next,placement:bounded(w,next.placement)});bringToFront(w.id);}
   function start(e:PointerEvent<HTMLElement>,w:WidgetInstance,mode:'move'|'resize'){
     if(e.button!==0 || obscured || (mode==='move'&&(e.target as HTMLElement).closest('button')))return;
     e.preventDefault();begin();e.currentTarget.setPointerCapture(e.pointerId);
@@ -66,7 +67,7 @@ export default function WorkspaceCanvas({presets,openPreset,editPreset,removePre
   }
   function move(e:PointerEvent<HTMLElement>){const g=gesture.current;if(!g)return;
     const scroll=viewport.current!, dx=e.clientX-g.startX+scroll.scrollLeft-g.scrollX,dy=e.clientY-g.startY+scroll.scrollTop-g.scrollY;
-     update(g.id,{placement:g.mode==='move'?translate(g.type,g.p,dx,dy):resize(g.type,g.p,dx,dy)});
+     const w=widgets.find(item=>item.id===g.id);if(w)update(g.id,{placement:bounded(w,g.mode==='move'?translate(g.type,g.p,dx,dy):resize(g.type,g.p,dx,dy))});
     const r=tray.current!.getBoundingClientRect();if(g.mode==='move')widgetFeedback(e.clientX,e.clientY,g.type);
     const v=scroll.getBoundingClientRect();if(e.clientY>v.bottom-32)scroll.scrollTop+=10;if(e.clientY<v.top+32&&e.clientY>r.bottom)scroll.scrollTop-=10;
     if(e.clientX>v.right-32)scroll.scrollLeft+=10;if(e.clientX<v.left+32)scroll.scrollLeft-=10;
@@ -83,7 +84,7 @@ export default function WorkspaceCanvas({presets,openPreset,editPreset,removePre
   function key(e:KeyboardEvent<HTMLElement>,w:WidgetInstance,mode:'move'|'resize'){
     const delta:Record<string,[number,number]>={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]};
     if(e.target!==e.currentTarget||!delta[e.key])return;e.preventDefault();begin();const [x,y]=delta[e.key],step=e.shiftKey?1:10;
-      update(w.id,{placement:mode==='move'?translate(w.type,w.placement,x*step,y*step):resize(w.type,w.placement,x*step,y*step)});
+      update(w.id,{placement:bounded(w,mode==='move'?translate(w.type,w.placement,x*step,y*step):resize(w.type,w.placement,x*step,y*step))});
   }
   async function snapshot(id:string,download=false){if(busy)return;setBusy(id);
     try{
@@ -96,7 +97,7 @@ export default function WorkspaceCanvas({presets,openPreset,editPreset,removePre
     }catch(e){notify(String((e as Error).message??e))}finally{setBusy(null)}
   }
   const extent=canvasExtent(viewportWidth,widgets);
-  const height=Math.max(560,...widgets.map(w=>w.placement.y+w.placement.height+20));
+  const height=canvasHeight(viewportHeight,widgets);
   const visibleOrigin=()=>({x:(viewport.current?.scrollLeft??0)+12,y:(viewport.current?.scrollTop??0)+12});
   function trayDragChange(drag:TrayDragPosition|null){setTrayDragging(!!drag);setTrayGhost(drag);setOverCanvas(!!drag&&contains(viewport.current!.getBoundingClientRect(),drag.clientX,drag.clientY))}
   function trayDragDrop({payload,clientX,clientY}:TrayDragPosition){

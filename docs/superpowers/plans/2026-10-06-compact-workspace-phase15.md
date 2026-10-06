@@ -1,8 +1,8 @@
 # Compact Workspace Phase 1.5 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:executing-plans` to implement the tasks sequentially. Keep one OC-owned worktree for this task; do not parallelize overlapping canvas or native-panel edits.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:executing-plans` to implement the tasks sequentially. Codex owns this isolated worktree because OC reached its usage limit; do not parallelize overlapping canvas or native-panel edits.
 
-**Goal:** On the user-tested Still Phase 1+2 baseline, compact the tray and expand groups inline, constrain widgets to a horizontal workspace that can grow vertically, add whole-Still fullscreen, and prevent native Chrome/Apps panels from drifting during canvas scroll.
+**Goal:** On the user-tested Still Phase 1+2 baseline, compact the tray and expand every dropdown-arrow item inline, constrain widgets to a horizontal workspace that can grow vertically, add whole-Still fullscreen, and prevent native Chrome/Apps panels from drifting during canvas scroll.
 
 **Architecture:** Keep the React/Tauri layout and native top-level Chrome/Apps windows. Implement shared layout bounds first, then the tray/group presentation and bounded app-icon persistence, then fullscreen and a shared scroll-state signal that serializes hide/reposition/show through existing per-panel queues.
 
@@ -14,16 +14,16 @@
 
 - **Task ID:** `compact_workspace_phase15`
 - **Exact baseline:** `81c4d22420b376eb78f966b1ef96f0a8de31328e` (`agent/codex/integrate-next-features`), the source branch for the user-tested `ver0.21-test-canvas-groups.exe` candidate.
-- **Implementation branch/worktree:** `agent/opencode/compact-workspace` at `.worktrees/still-opencode-compact-workspace`, created cleanly from the exact baseline after user approval of this plan.
+- **Implementation branch/worktree:** `agent/codex/compact-workspace` at `.worktrees/still-codex-compact-workspace`; worktree was created cleanly from the exact baseline. OC reached its usage limit; Codex is the implementation owner.
 - **Dependencies:** Phase 1 wider-canvas and Phase 2 group-save are present together at the baseline and user reported the test build works. The independent Windows acceptance of this new Phase 1.5 build remains required. Phase 3 Apps/files work must wait until Phase 1.5 is ready for test/accepted.
-- **Owned files:** `still-desktop/src/App.tsx`, `WorkspaceCanvas.tsx`, `GroupTray.tsx`, `BrowserWidget.tsx`, `AppsWidget.tsx`, `domain/layout.ts`, `domain/workspaces.ts`, `domain/appPicker.ts`, `platform/canvasScroll.ts` (new), `canvas.css`; tests `canvas.test.mjs`, `group-tray.test.mjs`, `app-panel.test.mjs`, `chrome-overlay.test.mjs`, and `canvas-scroll.test.mjs` (new). No Tauri Rust changes or dependency changes are planned.
+- **Owned files:** `still-desktop/src/App.tsx`, `WorkspaceCanvas.tsx`, `GroupTray.tsx`, `PresetTray.tsx`, `BrowserWidget.tsx`, `AppsWidget.tsx`, `domain/layout.ts`, `domain/workspaces.ts`, `domain/appPicker.ts`, `platform/canvasScroll.ts` (new), `canvas.css`; tests `canvas.test.mjs`, `group-tray.test.mjs`, `presets.test.mjs`, `app-panel.test.mjs`, `chrome-overlay.test.mjs`, and `canvas-scroll.test.mjs` (new). No Tauri Rust changes or dependency changes are planned.
 - **Out of ownership:** Do not modify the other OC Phase 1 worktree, group branch, shared resize-grip worktree, integration branch, `main`, or existing test executables.
 - **Acceptance:** Complete all three feature tasks and checks below, build a uniquely named `ver0.21-test-compact-workspace.exe`, report checks and limitations, then stop at `READY TO TEST`. Do not launch it, merge, push, or mark a release.
 
 ## Global Constraints
 
 - Keep the compact header and persistent widget tray as the first two rows; the tray remains visible in fullscreen.
-- Keep the closed tray row at its current compact 44 CSS px target; group expansion uses horizontal space rather than adding a group shelf row.
+- Keep the closed tray row at its current compact 44 CSS px target; every dropdown expansion uses horizontal space in that same row rather than adding a shelf or second row.
 - Preserve free overlap, existing valid saved coordinates, independent widget state, and Phase 1/2 behavior.
 - Horizontal canvas width is at least `ceil(max(300, visibleViewportWidth) * 1.3)` and includes valid saved placements plus 20 CSS px margin; new gestures stay inside that computed width.
 - Vertical canvas height is at least 560 CSS px and expands to include widgets plus 20 CSS px; cap new widget y coordinates at the existing 20,000 CSS px layout safety bound.
@@ -83,15 +83,16 @@ Expected: all focused tests pass and TypeScript exits 0.
 
 Commit the layout helpers, placement routing, and focused tests as `fix(canvas): constrain widgets to workspace bounds`.
 
-### Task 2: Inline group expansion and saved app icons
+### Task 2: Inline tray dropdowns and saved app icons
 
 **Files:**
 - Modify: `still-desktop/src/GroupTray.tsx`
+- Modify: `still-desktop/src/PresetTray.tsx`
 - Modify: `still-desktop/src/WorkspaceCanvas.tsx`
 - Modify: `still-desktop/src/domain/appPicker.ts`
 - Modify: `still-desktop/src/domain/workspaces.ts`
 - Modify: `still-desktop/src/canvas.css`
-- Test: `still-desktop/tests/group-tray.test.mjs`, `still-desktop/tests/trayDrop.test.mjs`, and `still-desktop/tests/app-picker.test.mjs`
+- Test: `still-desktop/tests/group-tray.test.mjs`, `still-desktop/tests/presets.test.mjs`, `still-desktop/tests/trayDrop.test.mjs`, and `still-desktop/tests/app-picker.test.mjs`
 
 **Interfaces:**
 - Extend `WidgetInstance` with optional `appIconData?: string`; extend `GroupWidgetEntry` with optional `iconData?: string` while retaining its existing `icon: string` fallback.
@@ -102,12 +103,12 @@ Commit the layout helpers, placement routing, and focused tests as `fix(canvas):
 
 - [ ] **Step 1: Add failing persistence and rendering tests**
 
-Add tests named `group app icons persist within size limits`, `invalid or oversized group icons fall back without dropping entries`, `workspace icon budget strips the newest over-budget icon`, `old text-only group icons still render`, and `expanded group entries render inline after their group button`. Assert two expanded groups can remain open, later tray buttons follow their expanded entries, and the closed tray remains a single compact row.
+Add tests named `group app icons persist within size limits`, `invalid or oversized group icons fall back without dropping entries`, `workspace icon budget strips the newest over-budget icon`, `old text-only group icons still render`, and `every dropdown renders inline immediately after its button`. Assert two expanded groups can remain open, preset dropdown contents are in the same row immediately after the matching type button, later tray buttons follow expanded contents, and no lower dropdown shelf is rendered.
 
 - [ ] **Step 2: Run focused group tests and confirm failures**
 
 Run: `corepack pnpm --dir still-desktop exec node --test tests/group-tray.test.mjs`
-Expected: new icon-data and inline-order assertions fail; existing group-save/source-retention tests remain present.
+Expected: new icon-data and inline-order assertions fail; existing group-save/source-retention and preset action/state tests remain present.
 
 - [ ] **Step 3: Add bounded optional icon data to the schema**
 
@@ -119,7 +120,7 @@ In `App.tsx` and `domain/appPicker.ts`, pass the selected `AppWindowChoice.icon`
 
 - [ ] **Step 5: Render group contents inline and preserve tray interactions**
 
-Refactor `GroupTray.tsx` so each expanded group renders its entries immediately after its group button inside `.tray-items`; do not render group contents in `.tray-shelf-area`. Expanded entries push subsequent controls right. Keep the closed main row at a 44 CSS px target; the expanded items share that same row and make it horizontally scrollable instead of wrapping or creating vertical group shelves. Keep the green group save drop target hit-testable, allow independently expanded groups, and preserve per-widget preset shelves and the tray's red blank-area remove target. Update `canvas.css` without wrapping or overlaying the canvas. Audit the accepted baseline sidebar: preserve its one collapse toggle; remove separate workspace arrow buttons only if any exist.
+Refactor `WorkspaceCanvas.tsx`, `GroupTray.tsx`, and `PresetTray.tsx` so every expanded menu renders immediately after its originating arrow button in `.tray-items`. Do not render any dropdown contents in `.tray-shelf-area`. Expanded controls push subsequent controls right and share the single compact row; the outer row scrolls horizontally without wrapping. Keep all preset editing/removal/creation/attach actions, green group save hit targets, independent group expansion, and the tray's red blank-area remove target. Update `canvas.css` without overlaying the canvas. Audit the accepted baseline sidebar: preserve its one collapse toggle; remove separate workspace arrow buttons only if any exist.
 
 - [ ] **Step 6: Run focused tests and frontend checks**
 
