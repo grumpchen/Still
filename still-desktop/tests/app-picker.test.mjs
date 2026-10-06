@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {filterAppWindows,managedAppWidget} from '../src/domain/appPicker.ts';
+import {filterAppWindows,managedAppWidget,appIconData} from '../src/domain/appPicker.ts';
 import {createInitialState,parseState} from '../src/domain/workspaces.ts';
 
 test('open app search distinguishes document windows and keeps attached windows marked after available choices',()=>{
@@ -21,4 +21,13 @@ test('attaching a chosen app saves its grant and name without persisting native 
  const saved=JSON.stringify(state);assert.ok(!saved.includes('"hwnd"'));assert.ok(!saved.includes('"pid"'));
  const restored=parseState(saved).workspaces[0].widgets;
  assert.equal(restored.at(-1).appReuseExisting,true);assert.equal(restored.at(-2).appReuseExisting,false);
+});
+
+test('selected app icon bytes are bounded PNG data and never store native window identity',()=>{
+ const bytes=[137,80,78,71,13,10,26,10,1,2,3];
+ const icon=appIconData(bytes);assert.ok(icon?.startsWith('data:image/png;base64,iVBORw0KGgo'));
+ assert.equal(appIconData([1,2,3]),undefined);
+ assert.equal(appIconData([...bytes,...Array(13_000).fill(0)]),undefined);
+ const widget=managedAppWidget({sourceId:'app-word',name:'Word'},'Chem notes',[],undefined,undefined,false,bytes);
+ assert.equal(widget.appIconData,icon);assert.equal(JSON.stringify(widget).includes('hwnd'),false);assert.equal(JSON.stringify(widget).includes('pid'),false);
 });

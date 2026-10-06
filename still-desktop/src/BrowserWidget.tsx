@@ -3,6 +3,7 @@ import {Icon,type WidgetProps} from './widgets.tsx';
 import {overlayVisible} from './domain/chromeOverlay.ts';
 import {chromePanel} from './platform/chromePanel.ts';
 import {chromeLauncher} from './platform/chrome.ts';
+import {observeCanvasScroll} from './platform/canvasScroll.ts';
 
 export default function BrowserWidget({widget,obscured,workspaceActive=true,lecture}:WidgetProps){
  const host=useRef<HTMLDivElement>(null),current=useRef({widget,obscured,workspaceActive});current.current={widget,obscured,workspaceActive};
@@ -10,15 +11,15 @@ export default function BrowserWidget({widget,obscured,workspaceActive=true,lect
  const schedule=useRef<()=>void>(()=>{}),launch=useRef<()=>Promise<void>>(async()=>{});
  useEffect(()=>{
   if(!chromePanel.available)return;
-  let disposed=false,frame=0,stop:(()=>void)|undefined,opened=false,launching=false,busy=false,dirty=false,last='';
+  let disposed=false,frame=0,stop:(()=>void)|undefined,stopScroll:(()=>void)|undefined,opened=false,launching=false,busy=false,dirty=false,scrolling=false,last='';
   const node=host.current!,viewport=node.closest('.canvas-viewport') as HTMLElement,canvas=node.closest('.workspace-canvas')!;
   function rectangle(){const r=node.getBoundingClientRect();return{x:Math.max(0,r.x),y:Math.max(0,r.y),width:Math.max(1,r.width),height:Math.max(1,r.height)}}
-  async function sync(){frame=0;if(disposed||!opened)return;if(busy){dirty=true;return}busy=true;
+  async function sync(){frame=0;if(disposed||!opened)return;if(scrolling){dirty=true;return}if(busy){dirty=true;return}busy=true;
    try{
     const r=node.getBoundingClientRect(),outer=viewport.getBoundingClientRect(),content=node.closest('.widget-content')!.getBoundingClientRect(),card=node.closest('.canvas-card') as HTMLElement,level=Number(card.style.zIndex);
     const v={left:Math.max(outer.left,content.left),right:Math.min(outer.right,content.right),top:Math.max(outer.top,content.top),bottom:Math.min(outer.bottom,content.bottom)};
     const overlap=Array.from(canvas.querySelectorAll<HTMLElement>('.canvas-card')).some(other=>{if(other===card||Number(other.style.zIndex)<=level)return false;const b=other.getBoundingClientRect();return b.left<r.right&&b.right>r.left&&b.top<r.bottom&&b.bottom>r.top});
-    const show=overlayVisible(r,v,current.current.workspaceActive,current.current.obscured,overlap),bounds=rectangle(),next=JSON.stringify({show,bounds});
+    const show=!scrolling&&overlayVisible(r,v,current.current.workspaceActive,current.current.obscured,overlap),bounds=rectangle(),next=JSON.stringify({show,bounds});
     if(next!==last){await chromePanel.present(widget.id,bounds,show);last=next;node.dataset.nativeVisible=String(show)}
    }catch(e){if(!disposed){setError(String(e));node.dataset.nativeVisible='false';if(String(e).includes('closed')){opened=false;last='';setReady(false)}}}finally{busy=false;if(dirty){dirty=false;schedule.current()}}
   }
@@ -30,9 +31,10 @@ export default function BrowserWidget({widget,obscured,workspaceActive=true,lect
   };
   const resize=new ResizeObserver(schedule.current);resize.observe(node);resize.observe(viewport);
   const mutation=new MutationObserver(schedule.current);mutation.observe(canvas,{subtree:true,attributes:true,attributeFilter:['style','class'],childList:true});
-  const scroll=()=>schedule.current();canvas.addEventListener('scroll',scroll,true);viewport.addEventListener('scroll',scroll,{passive:true});window.addEventListener('resize',scroll);
+  stopScroll=observeCanvasScroll(viewport,value=>{scrolling=value;if(value){if(frame){cancelAnimationFrame(frame);frame=0}dirty=true;void chromePanel.present(widget.id,rectangle(),false).catch(()=>undefined)}else{last='';dirty=false;schedule.current()}});
+  const scroll=()=>schedule.current();window.addEventListener('resize',scroll);
   void chromePanel.subscribe(event=>{if(disposed||event.id!==widget.id)return;if(!event.open){opened=false;last='';setReady(false);node.dataset.nativeVisible='false';setError('Chrome was closed. Reopen it below.')}}).then(unlisten=>{if(disposed)unlisten();else{stop=unlisten;void launch.current()}}).catch(e=>{if(!disposed)setError(String(e))});
-  return()=>{disposed=true;cancelAnimationFrame(frame);resize.disconnect();mutation.disconnect();canvas.removeEventListener('scroll',scroll,true);viewport.removeEventListener('scroll',scroll);window.removeEventListener('resize',scroll);stop?.();void chromePanel.close(widget.id).catch(()=>undefined)};
+  return()=>{disposed=true;cancelAnimationFrame(frame);resize.disconnect();mutation.disconnect();window.removeEventListener('resize',scroll);stopScroll?.();stop?.();void chromePanel.close(widget.id).catch(()=>undefined)};
  },[widget.id]);
  useEffect(()=>{schedule.current()},[workspaceActive,obscured,widget.placement,error]);
  return <div className="embedded-browser chrome-panel">

@@ -10,13 +10,13 @@ export {widgetTypes, type WidgetType} from './widgetCatalog.ts';
 export const DESMOS_URL = 'https://www.desmos.com/scientific';
 export interface Bookmark { id: string; name: string; url: string }
 export interface ScheduleEntry {id:string; day:number; time:string; title:string; location:string}
-export interface GroupWidgetEntry {id:string;type:Exclude<WidgetType,'group'>;name:string;icon:string}
+export interface GroupWidgetEntry {id:string;type:Exclude<WidgetType,'group'>;name:string;icon:string;iconData?:string}
 export interface SavedGroup {id:string;name:string;shortcuts:WebShortcut[];widgets:GroupWidgetEntry[];expanded:boolean}
 export interface WidgetInstance {
   id: string; type: WidgetType; span: 1 | 2 | 3; instanceNumber:number; title:string;
   text: string;
   remaining: number; end: number | null; url: string; bookmarks: Bookmark[];
-   homeVersion?: number; folderName?: string;folderKey:string|null;fileKey:string|null;fileName?:string;fileKind?:FileKind;appKey:string|null;appName?:string;appPanelOpen:boolean;appReuseExisting:boolean;appMinWidth?:number;appMinHeight?:number;
+   homeVersion?: number; folderName?: string;folderKey:string|null;fileKey:string|null;fileName?:string;fileKind?:FileKind;appKey:string|null;appName?:string;appIconData?:string;appPanelOpen:boolean;appReuseExisting:boolean;appMinWidth?:number;appMinHeight?:number;
   browserVersion:1; browserToolsExpanded:boolean; bookmarksExpanded:boolean; pageTitle:string; lectureRestore:Placement|null;
   placement:Placement; shortcuts:WebShortcut[]; schedule:ScheduleEntry[]; groupId:string|null;
 }
@@ -79,14 +79,24 @@ export function createBrowserFromGroup(link:WebShortcut,widgets:WidgetInstance[]
  widget.placement=at?placement('browser',{...widget.placement,...at}):nextPlacement('browser',widgets);
  return widget;
 }
-export function groupWidgetEntry(value:{id?:string;type:WidgetType;name?:string;icon?:string}):GroupWidgetEntry {
+const GROUP_ICON_LIMIT=16*1024,GROUP_ICON_BUDGET=512*1024;
+export function checkedAppIconData(value:unknown):string|undefined {
+ return typeof value==='string'&&value.length<=GROUP_ICON_LIMIT&&/^data:image\/png;base64,iVBORw0KGgo[A-Za-z0-9+/]*={0,2}$/.test(value)?value:undefined;
+}
+export function groupIconBudget(groups:SavedGroup[],candidate?:GroupWidgetEntry):boolean {
+ const total=groups.reduce((sum,group)=>sum+group.widgets.reduce((amount,item)=>amount+(item.iconData?.length??0),0),0)+(candidate?.iconData?.length??0);
+ return total<=GROUP_ICON_BUDGET;
+}
+export function groupWidgetEntry(value:{id?:string;type:WidgetType;name?:string;icon?:string;iconData?:string}):GroupWidgetEntry {
  if(!widgetTypes.includes(value.type)||value.type==='group')throw new Error('Choose a widget type for this group.');
  const name=value.name===undefined?widgetCatalog[value.type].name:value.name.trim();
  if(!name||name.length>60)throw new Error('Use a name from 1 to 60 characters.');
- return{id:value.id??crypto.randomUUID(),type:value.type,name,icon:(value.icon?.trim()||name.slice(0,2).toUpperCase()).slice(0,8)};
+ const iconData=checkedAppIconData(value.iconData);
+ return{id:value.id??crypto.randomUUID(),type:value.type,name,icon:(value.icon?.trim()||name.slice(0,2).toUpperCase()).slice(0,8),...(value.type==='apps'&&iconData?{iconData}:{})};
 }
 export function saveWidgetToGroup(workspace:Workspace,widget:WidgetInstance,groupId?:string):Workspace {
- const entry=groupWidgetEntry({type:widget.type,name:widget.title.trim()||widgetCatalog[widget.type].name});
+ let entry=groupWidgetEntry({type:widget.type,name:widget.title.trim()||widgetCatalog[widget.type].name,iconData:widget.type==='apps'?widget.appIconData:undefined});
+ if(!groupIconBudget(workspace.groups,entry)){const {iconData:_ignored,...fallback}=entry;entry=fallback}
  if(groupId){
   const group=workspace.groups.find(item=>item.id===groupId);
   if(!group)throw new Error('This group is no longer available.');
@@ -97,10 +107,11 @@ export function saveWidgetToGroup(workspace:Workspace,widget:WidgetInstance,grou
  return{...workspace,groups:[...workspace.groups,{id:crypto.randomUUID(),name:'',shortcuts:[],widgets:[entry],expanded:true}]};
 }
 function parseGroupEntries(value:unknown):GroupWidgetEntry[]{
- if(!Array.isArray(value))return [];const ids=new Set<string>();
+ if(!Array.isArray(value))return [];const ids=new Set<string>();let iconBytes=0;
  return value.slice(0,200).flatMap(v=>{try{
   if(!v||typeof v.type!=='string'||(v.name!==undefined&&typeof v.name!=='string'))return [];
-  const item=groupWidgetEntry({id:typeof v.id==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(v.id)&&!ids.has(v.id)?v.id:undefined,type:v.type,name:v.name,icon:typeof v.icon==='string'?v.icon:undefined});ids.add(item.id);return[item];
+  let item=groupWidgetEntry({id:typeof v.id==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(v.id)&&!ids.has(v.id)?v.id:undefined,type:v.type,name:v.name,icon:typeof v.icon==='string'?v.icon:undefined,iconData:typeof v.iconData==='string'?v.iconData:undefined});ids.add(item.id);
+  if(item.iconData){if(iconBytes+item.iconData.length>GROUP_ICON_BUDGET){const {iconData:_ignored,...fallback}=item;item=fallback}else iconBytes+=item.iconData.length}return[item];
  }catch{return []}});
 }
 function parseGroups(value:unknown):SavedGroup[]{
@@ -111,7 +122,7 @@ function parseGroups(value:unknown):SavedGroup[]{
  });
 }
 export function createWidgetFromGroupEntry(entry:GroupWidgetEntry,widgets:WidgetInstance[],at?:{x:number;y:number},width?:number):WidgetInstance {
- const checked=groupWidgetEntry(entry),widget=createWidget(checked.type);widget.title=checked.name;widget.instanceNumber=nextInstanceNumber(checked.type,widgets);
+ const checked=groupWidgetEntry(entry),widget=createWidget(checked.type);widget.title=checked.name;widget.instanceNumber=nextInstanceNumber(checked.type,widgets);if(checked.type==='apps')widget.appIconData=checked.iconData;
  widget.placement=at?placement(checked.type,{...widget.placement,...at}):nextPlacement(checked.type,widgets,width);return widget;
 }
 export function createWidgetFromPreset(preset:WidgetPreset,widgets:WidgetInstance[],at?:{x:number;y:number},width?:number):WidgetInstance {
@@ -160,7 +171,7 @@ function checkedWidget(value: unknown): WidgetInstance {
     folderKey:!checkedFileKey&&item.type==='files'&&typeof item.folderKey==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(item.folderKey)?item.folderKey:null,
     fileKey:checkedFileKey,fileName:checkedFileKey&&fileName(item.fileName)?item.fileName:undefined,fileKind:checkedFileKey&&fileKind(item.fileKind)?item.fileKind:undefined,
     appKey:checkedAppKey,
-    appName:item.type==='apps'&&fileName(item.appName)?item.appName:undefined,
+    appName:item.type==='apps'&&fileName(item.appName)?item.appName:undefined,appIconData:item.type==='apps'?checkedAppIconData(item.appIconData):undefined,
      appPanelOpen:checkedAppPanelOpen,appMinWidth,appMinHeight,
     appReuseExisting:!!checkedAppKey&&item.appReuseExisting===true,
     instanceNumber:typeof item.instanceNumber==='number'&&Number.isSafeInteger(item.instanceNumber)&&item.instanceNumber>0&&item.instanceNumber<1000000?item.instanceNumber:1,
@@ -189,7 +200,8 @@ export function parseState(text: string): WorkspaceState {
       for(const link of defaultWebShortcuts())if(!widget.shortcuts.some(s=>s.url===link.url))widget.shortcuts.push(link);
     }
     for (const widget of widgets) { if (widgetIds.has(widget.id)) throw new Error('Duplicate widget instance'); widgetIds.add(widget.id); }
-    const groups=parseGroups(workspace.groups);
+    const groups=parseGroups(workspace.groups);let iconBytes=0;
+    for(const group of groups)group.widgets=group.widgets.map(item=>{if(!item.iconData)return item;if(iconBytes+item.iconData.length>GROUP_ICON_BUDGET){const {iconData:_ignored,...fallback}=item;return fallback}iconBytes+=item.iconData.length;return item});
     // Older Group cards become reusable tray collections, without changing their links or geometry.
     for(const widget of widgets)if(widget.type==='group'){
       if(!widget.groupId||!groups.some(g=>g.id===widget.groupId)){

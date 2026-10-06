@@ -80,3 +80,45 @@ test('invalid group entries are discarded while valid groups and old notes survi
  assert.deepEqual(saved.groups[0].widgets.map(w=>w.type),['desmos']);assert.equal(saved.groups[0].shortcuts.length,1);
  assert.equal(saved.widgets[0].text,'Keep my notes');
 });
+
+test('group app icons persist within size limits and over-budget icons fall back safely',()=>{
+ const icon='data:image/png;base64,iVBORw0KGgo=';
+ assert.equal(typeof workspaces.checkedAppIconData,'function');
+ assert.equal(workspaces.checkedAppIconData(icon),icon);
+ assert.equal(workspaces.checkedAppIconData('data:image/png;base64,not-png'),undefined);
+ assert.equal(workspaces.checkedAppIconData('data:image/png;base64,'+'A'.repeat(16*1024)),undefined);
+ const workspace=workspaces.createWorkspace('Apps',['group']);
+ const source=workspaces.createWidget('apps');source.title='Word';source.appIconData=icon;
+ const saved=workspaces.saveWidgetToGroup(workspace,source);
+ assert.equal(saved.groups.at(-1).widgets[0].iconData,icon);
+ const roundtrip=workspaces.parseState(JSON.stringify({...workspaces.createInitialState(),workspaces:[saved],activeId:saved.id})).workspaces[0];
+ assert.equal(roundtrip.groups.at(-1).widgets[0].iconData,icon);
+ const tooMuch={...source,appIconData:'data:image/png;base64,iVBORw0KGgo='+'.'.repeat(16*1024)};
+ const fallback=workspaces.saveWidgetToGroup(workspace,tooMuch);
+ assert.equal(fallback.groups.at(-1).widgets[0].iconData,undefined);
+ assert.equal(fallback.groups.at(-1).widgets[0].icon,'WO');
+});
+
+test('the workspace icon budget is enforced without dropping saved group entries',()=>{
+ const icon='data:image/png;base64,iVBORw0KGgo='+'A'.repeat(2000);
+ const groups=[{id:'g1',name:'One',shortcuts:[],widgets:[{id:'e1',type:'apps',name:'One',icon:'ON',iconData:icon}],expanded:false}];
+ assert.equal(workspaces.groupIconBudget(groups),true);
+ assert.equal(workspaces.groupIconBudget(groups,{id:'e2',type:'apps',name:'Two',icon:'TW',iconData:'A'.repeat(512*1024)}),false);
+ const workspace=workspaces.createWorkspace('Apps',[]);workspace.groups=groups;
+ const source=workspaces.createWidget('apps');source.appIconData='data:image/png;base64,iVBORw0KGgo='+'A'.repeat(14*1024);
+ const saved=workspaces.saveWidgetToGroup(workspace,source,'g1');
+ assert.equal(saved.groups[0].widgets.length,2);assert.equal(saved.groups[0].widgets[1].iconData,undefined);
+ const restored=workspaces.parseState(JSON.stringify({...workspaces.createInitialState(),workspaces:[saved],activeId:saved.id})).workspaces[0];
+ assert.equal(restored.groups[0].widgets.length,2);assert.equal(restored.groups[0].widgets[1].iconData,undefined);
+});
+
+test('parsing caps app icon data across all groups in one workspace',()=>{
+ const prefix='data:image/png;base64,iVBORw0KGgo',icon=prefix+'A'.repeat(16*1024-prefix.length);
+ const workspace=workspaces.createWorkspace('Icon library',[]);
+ workspace.groups=Array.from({length:33},(_,index)=>({id:'group-'+index,name:'Group '+index,shortcuts:[],widgets:[{id:'entry-'+index,type:'apps',name:'App '+index,icon:'AP',iconData:icon}],expanded:false}));
+ const state={...workspaces.createInitialState(),workspaces:[workspace],activeId:workspace.id};
+ const restored=workspaces.parseState(JSON.stringify(state)).workspaces[0];
+ assert.equal(restored.groups.reduce((count,group)=>count+group.widgets.length,0),33);
+ const total=restored.groups.reduce((sum,group)=>sum+(group.widgets[0].iconData?.length??0),0);
+ assert.ok(total<=512*1024);assert.ok(restored.groups.some(group=>!group.widgets[0].iconData));
+});
