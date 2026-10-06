@@ -2,7 +2,7 @@ import { AKO_URL, GOOGLE_URL, normalizeUrl } from './browser.ts';
 import { defaultShortcuts, parseShortcuts, type WorkspaceShortcuts } from './shortcuts.ts';
 import { defaultGlass, parseGlass, type Appearance, type GlassSettings } from './appearance.ts';
 import {widgetCatalog,widgetTypes, type WidgetType} from './widgetCatalog.ts';
-import {placement, nextPlacement, type Placement} from './layout.ts';
+import {placement, nextPlacement,constrainPlacement,type Placement} from './layout.ts';
 import {defaultWebShortcuts, parseWebShortcuts, shortcut, type WebShortcut} from './webShortcuts.ts';
 import {parseBookmarks} from './bookmarks.ts';
 import {widgetPreset,parsePresets,fileKind,fileName,type FileKind,type WidgetPreset} from './presets.ts';
@@ -72,6 +72,14 @@ export function duplicateWorkspace(original: Workspace, name: string): Workspace
   const ids=new Map(original.groups.map(g=>[g.id,crypto.randomUUID()]));
   return { ...original, id: crypto.randomUUID(), name: workspaceName(name),groups:original.groups.map(g=>({...structuredClone(g),id:ids.get(g.id)!})), widgets: original.widgets.map(widget => ({...structuredClone(widget),id:crypto.randomUUID(),groupId:widget.groupId?ids.get(widget.groupId)??null:null,end:null})) };
 }
+export function transferWidgetInstance(source:Workspace,destination:Workspace,widgetId:string,canvasWidth:number,canvasHeight:number):{source:Workspace;destination:Workspace}|null{
+ if(source.id===destination.id)return null;
+ const widget=source.widgets.find(item=>item.id===widgetId);if(!widget)return null;
+ let moved={...widget,placement:constrainPlacement(widget.type,widget.placement,canvasWidth,{},canvasHeight)},groups=destination.groups;
+ const linked=widget.type==='group'&&widget.groupId?source.groups.find(group=>group.id===widget.groupId):undefined;
+ if(linked){let id=linked.id;if(groups.some(group=>group.id===id))id=crypto.randomUUID();groups=[...groups,{...structuredClone(linked),id}];if(id!==widget.groupId)moved={...moved,groupId:id}}
+ return{source:{...source,widgets:source.widgets.filter(item=>item.id!==widgetId)},destination:{...destination,widgets:[...destination.widgets,moved],groups}};
+}
 export function nextInstanceNumber(type:WidgetType,widgets:WidgetInstance[]):number {return Math.max(0,...widgets.filter(w=>w.type===type).map(w=>w.instanceNumber))+1}
 export function createBrowserFromGroup(link:WebShortcut,widgets:WidgetInstance[],at?:{x:number;y:number}):WidgetInstance {
  const checked=shortcut(link),widget=createWidget('browser');
@@ -130,7 +138,7 @@ export function createWidgetFromPreset(preset:WidgetPreset,widgets:WidgetInstanc
  if(checked.type==='browser')widget.url=checked.url;
  else if(checked.type==='files'&&checked.resourceKind==='document'){widget.fileKey=checked.fileSourceId;widget.fileName=checked.fileName;widget.fileKind=checked.fileKind}
  else if(checked.type==='files'){widget.folderName=checked.folderName;widget.folderKey=checked.folderSourceId}
- else if(checked.type==='apps'){widget.appKey=checked.appSourceId;widget.appName=checked.appName}
+  else if(checked.type==='apps'){widget.appKey=checked.appSourceId;widget.appName=checked.appName;widget.appIconData=checked.iconData}
  else if(checked.type==='notes'||checked.type==='ai')widget.text=checked.text??widget.text;
  else if(checked.type==='focus')widget.remaining=checked.remaining??widget.remaining;
  else if(checked.type==='timetable')widget.schedule=structuredClone(checked.schedule??[]);

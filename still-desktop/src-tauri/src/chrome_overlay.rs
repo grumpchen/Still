@@ -3,17 +3,18 @@
 use serde::{Deserialize,Serialize};
 use std::{collections::HashMap,sync::{Mutex,OnceLock}};
 use tauri::{AppHandle,Emitter,Manager,Webview};
-use windows::{core::PCWSTR,Win32::{Foundation::{HWND,LPARAM,POINT,RECT,WPARAM},Graphics::Gdi::ClientToScreen,UI::{WindowsAndMessaging::*,Accessibility::{SetWinEventHook,HWINEVENTHOOK}}}};
+use windows::{core::PCWSTR,Win32::{Foundation::{HWND,LPARAM,POINT,RECT,WPARAM},Graphics::Gdi::*,UI::{WindowsAndMessaging::*,Accessibility::{SetWinEventHook,HWINEVENTHOOK}}}};
 
 #[derive(Clone,Debug,Deserialize)]
 pub struct Bounds {pub x:f64,pub y:f64,pub width:f64,pub height:f64}
 impl Bounds {
  fn validate(&self)->Result<(),String>{
-  if [self.x,self.y,self.width,self.height].iter().any(|v|!v.is_finite())||self.x<0.||self.y<0.||self.width<1.||self.height<1.||self.x+self.width>20000.||self.y+self.height>20000. {Err("Invalid Chrome panel bounds".into())}else{Ok(())}
+   if [self.x,self.y,self.width,self.height].iter().any(|v|!v.is_finite())||self.x< -20000.||self.y< -20000.||self.x>20000.||self.y>20000.||self.width<1.||self.height<1.||self.x+self.width>40000.||self.y+self.height>40000. {Err("Invalid Chrome panel bounds".into())}else{Ok(())}
  }
  fn screen(&self,origin:POINT,scale:f64)->(i32,i32,i32,i32){((origin.x as f64+self.x*scale).round() as i32,(origin.y as f64+self.y*scale).round() as i32,(self.width*scale).round().max(1.) as i32,(self.height*scale).round().max(1.) as i32)}
 }
-struct Entry {hwnd:usize,pid:u32,bounds:Bounds,visible:bool,shown:bool,last:Option<(i32,i32,i32,i32)>,blocked:Option<(i32,i32,i32,i32)>}
+type ScreenRect=(i32,i32,i32,i32);
+struct Entry {hwnd:usize,pid:u32,bounds:Bounds,clip:Bounds,occlusions:Vec<Bounds>,visible:bool,shown:bool,last:Option<(ScreenRect,ScreenRect,Vec<ScreenRect>,bool)>}
 #[derive(Default)]
 pub struct ChromeState(Mutex<HashMap<String,Entry>>);
 pub(crate) fn managed_windows(app:&AppHandle)->Vec<(usize,u32)>{app.state::<ChromeState>().0.lock().map(|s|s.values().map(|e|(e.hwnd,e.pid)).collect()).unwrap_or_default()}
@@ -41,6 +42,26 @@ fn expanded(hwnd:HWND)->bool{unsafe{
  if GetWindowRect(hwnd,&mut r).is_err()||!GetMonitorInfoW(MonitorFromWindow(hwnd,MONITOR_DEFAULTTONEAREST),&mut monitor).as_bool(){return false}
  let m=monitor.rcMonitor;r.left<=m.left+2&&r.top<=m.top+2&&r.right>=m.right-2&&r.bottom>=m.bottom-2
 }}
+fn clipped_region(actual:&RECT,clip:ScreenRect,occlusions:&[ScreenRect])->Result<(HRGN,bool),String>{unsafe{
+ let left=(clip.0-actual.left).max(0);let top=(clip.1-actual.top).max(0);
+ let right=(clip.0+clip.2-actual.left).min(actual.right-actual.left).max(left);
+ let bottom=(clip.1+clip.3-actual.top).min(actual.bottom-actual.top).max(top);
+ let region=CreateRectRgn(left,top,right,bottom);
+ if region.0.is_null(){return Err("Unable to create the Chrome clipping region.".into())}
+ for hole in occlusions{
+  let hole_left=(hole.0-actual.left).max(left);let hole_top=(hole.1-actual.top).max(top);
+  let hole_right=(hole.0+hole.2-actual.left).min(right);let hole_bottom=(hole.1+hole.3-actual.top).min(bottom);
+  if hole_left>=hole_right||hole_top>=hole_bottom{continue}
+  let cutout=CreateRectRgn(hole_left,hole_top,hole_right,hole_bottom);
+  if cutout.0.is_null(){let _=DeleteObject(HGDIOBJ(region.0));return Err("Unable to mask overlapping workspace widgets.".into())}
+  if CombineRgn(Some(region),Some(region),Some(cutout),RGN_DIFF)==RGN_ERROR{let _=DeleteObject(HGDIOBJ(cutout.0));let _=DeleteObject(HGDIOBJ(region.0));return Err("Unable to mask overlapping workspace widgets.".into())}
+  let _=DeleteObject(HGDIOBJ(cutout.0));
+ }
+ let mut box_rect=RECT::default();let result=GetRgnBox(region,&mut box_rect);
+ if result==NULLREGION{let _=DeleteObject(HGDIOBJ(region.0));return Ok((HRGN(std::ptr::null_mut()),false))}
+ if result==RGN_ERROR{let _=DeleteObject(HGDIOBJ(region.0));return Err("Unable to measure the Chrome clipping region.".into())}
+ Ok((region,true))
+}}
 fn place(app:&AppHandle,items:&mut HashMap<String,Entry>){
  let Ok(main)=owner(app) else{return};
  let mut origin=POINT::default();if !unsafe{ClientToScreen(main,&mut origin).as_bool()}{return}
@@ -51,18 +72,26 @@ fn place(app:&AppHandle,items:&mut HashMap<String,Entry>){
   let hwnd=handle(item.hwnd);if !unsafe{IsWindow(Some(hwnd)).as_bool()}{continue}
   let show=item.visible&&parent_visible&&group;
   if !show {if item.shown{unsafe{let _=ShowWindow(hwnd,SW_HIDE);}item.shown=false;}continue}
-  let r=item.bounds.screen(origin,scale);
-  if item.blocked==Some(r){continue}
-  if item.blocked.take().is_some(){let _=app.emit_to("main","chrome-state",serde_json::json!({"id":id,"open":true,"error":null}));}
+  let r=item.bounds.screen(origin,scale);let clip=item.clip.screen(origin,scale);let occlusions=item.occlusions.iter().map(|hole|hole.screen(origin,scale)).collect::<Vec<_>>();
   // Fullscreen/maximized video is Chrome's own mode. Leave it alone until the
   // user returns to the panel; hiding the workspace still hides this window.
-  if !expanded(hwnd)&&(item.last!=Some(r)||!item.shown){
+  let is_expanded=expanded(hwnd);
+  let signature=(r,clip,occlusions.clone(),is_expanded);
+  if !is_expanded&&(item.last.as_ref().map(|last|last.0)!=Some(r)||!item.shown){
    let positioned=unsafe{SetWindowPos(hwnd,Some(HWND_TOP),r.0,r.1,r.2,r.3,SWP_NOACTIVATE|SWP_NOOWNERZORDER)};
    let mut actual=RECT::default();let measured=unsafe{GetWindowRect(hwnd,&mut actual)};
-   if positioned.is_err()||measured.is_err()||(actual.left,actual.top,actual.right-actual.left,actual.bottom-actual.top)!=r{
-    unsafe{let _=ShowWindow(hwnd,SW_HIDE);}item.shown=false;item.blocked=Some(r);
-    let _=app.emit_to("main","chrome-state",serde_json::json!({"id":id,"open":true,"error":"Chrome could not fit this area. Enlarge the Browser widget to show it."}));continue;
-   }item.last=Some(r);
+    if positioned.is_err()||measured.is_err()||(actual.left,actual.top)!=(r.0,r.1){
+     unsafe{let _=ShowWindow(hwnd,SW_HIDE);}item.shown=false;item.last=None;
+     let _=app.emit_to("main","chrome-state",serde_json::json!({"id":id,"open":true,"error":"Chrome could not align with its Browser widget."}));continue;
+     }
+  }
+  if item.last.as_ref()!=Some(&signature){
+   let mut actual=RECT::default();if unsafe{GetWindowRect(hwnd,&mut actual)}.is_err(){unsafe{let _=ShowWindow(hwnd,SW_HIDE);}item.shown=false;item.last=None;continue}
+   let (region,has_region)=if is_expanded{(HRGN(std::ptr::null_mut()),true)}else{match clipped_region(&actual,clip,&occlusions){Ok(value)=>value,Err(_)=>{unsafe{let _=ShowWindow(hwnd,SW_HIDE);}item.shown=false;item.last=None;continue}}};
+   if !has_region{unsafe{let _=ShowWindow(hwnd,SW_HIDE);}item.shown=false;item.last=None;continue}
+   let applied=unsafe{SetWindowRgn(hwnd,(!region.0.is_null()).then_some(region),true)};
+   if applied==0&&!region.0.is_null(){let _=unsafe{DeleteObject(HGDIOBJ(region.0))};unsafe{let _=ShowWindow(hwnd,SW_HIDE);}item.shown=false;item.last=None;continue}
+   item.last=Some(signature);
   }
   if !item.shown{unsafe{let _=ShowWindow(hwnd,SW_SHOWNOACTIVATE);}item.shown=true;}
  }
@@ -86,9 +115,9 @@ unsafe extern "system" fn event(_:HWINEVENTHOOK,event:u32,hwnd:HWND,object:i32,c
   if let Ok(mut items)=app.state::<ChromeState>().0.try_lock(){
    let mut r=RECT::default();if GetWindowRect(hwnd,&mut r).is_err(){return}
    if let Some(e)=items.values_mut().find(|e|e.hwnd==hwnd.0 as usize&&e.shown){
-    if let Some(wanted)=e.last{
-     // Chrome's minimum dimensions must not cause an endless resize loop.
-     if (r.left,r.top,r.right-r.left,r.bottom-r.top)!=wanted{e.last=None;place(app,&mut items);}
+    if let Some((wanted,_,_,_))=e.last.as_ref(){
+     // Chrome may enforce a larger minimum; only correct position or undersizing.
+     if (r.left,r.top)!=(wanted.0,wanted.1)||r.right-r.left<wanted.2||r.bottom-r.top<wanted.3{e.last=None;place(app,&mut items);}
     }
    }
   }
@@ -167,20 +196,20 @@ pub async fn chrome_panel_open(app:AppHandle,webview:Webview,id:String,url:Strin
   let (hwnd,process)=open_window(&profile,&url,&id,main,&items)?;
   CHROME_PID.store(process,std::sync::atomic::Ordering::Relaxed);
   crate::shortcuts::refresh_editing(app.clone());
-  items.insert(id.clone(),Entry{hwnd,pid:process,bounds,visible:false,shown:false,last:None,blocked:None});
+   items.insert(id.clone(),Entry{hwnd,pid:process,clip:bounds.clone(),bounds,occlusions:Vec::new(),visible:false,shown:false,last:None});
   let _=app.emit_to("main","chrome-state",serde_json::json!({"id":id,"open":true}));
   Ok(Info{hwnd,pid:process})
  }).await.map_err(|e|e.to_string())?
 }
 #[tauri::command]
-pub async fn chrome_panel_present(app:AppHandle,webview:Webview,id:String,bounds:Bounds,visible:bool)->Result<(),String>{
- crate::browser::authorize(&webview)?;bounds.validate()?;
+pub async fn chrome_panel_present(app:AppHandle,webview:Webview,id:String,bounds:Bounds,clip:Bounds,occlusions:Vec<Bounds>,visible:bool)->Result<(),String>{
+ crate::browser::authorize(&webview)?;instance(&id)?;bounds.validate()?;clip.validate()?;if occlusions.len()>256{return Err("Too many overlapping workspace widgets".into())}for item in &occlusions{item.validate()?}
  let main=owner(&app)?;let state=app.state::<ChromeState>();let mut items=state.0.lock().map_err(|_|"Chrome state unavailable")?;
  let item=items.get_mut(&id).ok_or("Chrome was closed. Use Reopen Chrome.")?;
  if !unsafe{IsWindow(Some(handle(item.hwnd))).as_bool()}{items.remove(&id);if items.is_empty(){CHROME_PID.store(0,std::sync::atomic::Ordering::Relaxed);}return Err("Chrome was closed. Use Reopen Chrome.".into())}
  // Returning focus prevents the next workspace shortcut targeting a hidden view.
  if !visible&&unsafe{GetForegroundWindow()==handle(item.hwnd)}{unsafe{let _=SetForegroundWindow(main);}}
- item.bounds=bounds;item.visible=visible;place(&app,&mut items);Ok(())
+  item.bounds=bounds;item.clip=clip;item.occlusions=occlusions;item.visible=visible;place(&app,&mut items);Ok(())
 }
 #[tauri::command]
 pub async fn chrome_panel_navigate(app:AppHandle,webview:Webview,id:String,url:String)->Result<(),String>{
@@ -210,7 +239,7 @@ pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
  let item=items.get(id).ok_or("Reopen Chrome before capturing")?;
  let main=owner(app)?;
  if !item.shown||!item.visible||!is_group(app,&items,main){return Err("Bring Still and this Chrome panel to the front before capturing".into())}
- let (x,y,w,h)=item.last.ok_or("Chrome is not positioned yet")?;
+  let (x,y,w,h)=item.last.as_ref().map(|last|last.0).ok_or("Chrome is not positioned yet")?;
  let mut actual=RECT::default();unsafe{GetWindowRect(handle(item.hwnd),&mut actual).map_err(|e|e.to_string())?;}
  if (actual.left,actual.top,actual.right-actual.left,actual.bottom-actual.top)!=(x,y,w,h){return Err("Exit Chrome fullscreen and bring the browser into its panel before capturing".into())}
  if w<1||h<1||w as i64*h as i64>16000000{return Err("Chrome capture is too large".into())}
@@ -234,9 +263,16 @@ pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
  use super::*;
  #[test]fn css_bounds_convert_to_physical_screen_coordinates_including_negative_monitors(){
   let b=Bounds{x:170.,y:210.,width:800.,height:500.};assert_eq!(b.screen(POINT{x:-1920,y:45},1.5),(-1665,360,1200,750));
+  let partial=Bounds{x:-30.,y:40.,width:500.,height:300.};assert!(partial.validate().is_ok());assert_eq!(partial.screen(POINT{x:100,y:20},1.5),(55,80,750,450));
   assert!(Bounds{x:f64::NAN,..b.clone()}.validate().is_err());assert!(Bounds{width:0.,..b}.validate().is_err());
  }
  #[test]fn only_valid_instance_ids_can_become_native_properties(){assert!(instance("abc-123").is_ok());assert!(instance("../main").is_err());assert!(instance("").is_err());}
+ #[test]fn chrome_region_clips_to_viewport_and_cuts_out_higher_widgets(){unsafe{
+  let actual=RECT{left:0,top:0,right:100,bottom:100};
+  let (visible,has_visible)=clipped_region(&actual,(0,0,100,100),&[(25,25,50,50)]).unwrap();
+  assert!(has_visible);assert!(PtInRegion(visible,10,10).as_bool());assert!(!PtInRegion(visible,40,40).as_bool());let _=DeleteObject(HGDIOBJ(visible.0));
+  let (_,fully_occluded)=clipped_region(&actual,(0,0,100,100),&[(0,0,100,100)]).unwrap();assert!(!fully_occluded);
+ }}
  #[test]
  #[ignore="Launches real Chrome in an isolated test profile; run explicitly on Windows"]
  fn real_chrome_launch_position_hide_recover_and_reopen(){unsafe{

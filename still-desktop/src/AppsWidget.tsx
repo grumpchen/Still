@@ -3,6 +3,7 @@ import {Icon,type WidgetProps} from './widgets.tsx';
 import {localApps,previewFileDrop,type DroppedResource} from './platform/resourceDrop.ts';
 import {appPanel,type AppAttachment,type AppPanelInfo} from './platform/appPanel.ts';
 import {appPanelFit,appPanelGeometry} from './domain/appPanel.ts';
+import {constrainPlacement} from './domain/layout.ts';
 import {observeCanvasScroll} from './platform/canvasScroll.ts';
 
 export default function AppsWidget({widget,update,notify,obscured,workspaceActive=true,pickApp,saveApp,appAttachment,appAttachmentHandled}:WidgetProps){
@@ -16,9 +17,10 @@ export default function AppsWidget({widget,update,notify,obscured,workspaceActiv
   let disposed=false,frame=0,opened=false,launching=false,presenting=false,dirty=false,scrolling=false,last='',stop:(()=>void)|undefined,stopScroll:(()=>void)|undefined;
   const node=host.current!,viewport=node.closest('.canvas-viewport') as HTMLElement,canvas=node.closest('.workspace-canvas')!;
   function geometry(){const content=node.closest('.widget-content')!.getBoundingClientRect(),v=viewport.getBoundingClientRect(),grip=node.closest('.canvas-card')?.querySelector<HTMLElement>('.widget-resize')?.getBoundingClientRect()??null;const clipped={left:Math.max(v.left,content.left),top:Math.max(v.top,content.top),right:Math.min(v.right,content.right),bottom:Math.min(v.bottom,content.bottom),width:0,height:0};return appPanelGeometry(node.getBoundingClientRect(),clipped,current.current.workspaceActive,current.current.obscured,grip)}
-  function fit(info:AppPanelInfo){const c=current.current,card=node.closest('.canvas-card')!.getBoundingClientRect(),r=node.getBoundingClientRect(),frameWidth=Math.max(0,card.width-r.width),frameHeight=Math.max(0,card.height-r.height);
-   const patch=appPanelFit(c.widget,info,frameWidth,frameHeight);
-   if(Object.keys(patch).length)c.update(patch);
+   function fit(info:AppPanelInfo){const c=current.current,card=node.closest('.canvas-card')!.getBoundingClientRect(),r=node.getBoundingClientRect(),frameWidth=Math.max(0,card.width-r.width),frameHeight=Math.max(0,card.height-r.height),canvas=node.closest('.workspace-canvas') as HTMLElement;
+    const patch=appPanelFit(c.widget,info,frameWidth,frameHeight);
+    if(patch.placement)patch.placement=constrainPlacement('apps',patch.placement,canvas.clientWidth,{width:c.widget.appMinWidth,height:c.widget.appMinHeight},canvas.clientHeight);
+    if(Object.keys(patch).length)c.update(patch);
   }
   async function sync(){frame=0;if(disposed||!opened)return;if(scrolling){dirty=true;return}if(presenting){dirty=true;return}presenting=true;
     try{const g=geometry(),next=JSON.stringify(g);if(next!==last){const info=await appPanel.present(widget.id,g.bounds,g.clip,g.grip,g.visible&&!scrolling);last=next;node.dataset.nativeVisible=String(g.visible&&!scrolling);if(g.visible&&!scrolling&&info.probing){last='';schedule.current()}else if(g.visible&&!scrolling&&info.measured)fit(info)}}

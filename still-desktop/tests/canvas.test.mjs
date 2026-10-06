@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {placement,nextPlacement,translate,resize,canvasExtent,canvasHeight,constrainPlacement} from '../src/domain/layout.ts';
-import {createInitialState,createWorkspace,duplicateWorkspace,parseState,widgetTypes} from '../src/domain/workspaces.ts';
+import {createInitialState,createWidget,createWorkspace,duplicateWorkspace,parseState,transferWidgetInstance,widgetTypes} from '../src/domain/workspaces.ts';
 import {shortcut,reorderShortcuts,parseWebShortcuts} from '../src/domain/webShortcuts.ts';
 
 test('canvas geometry normalizes corrupt data and applies free movement/resizing with useful minima',()=>{
@@ -19,16 +19,16 @@ test('adding widgets finds free space without rearranging existing cards',()=>{
   assert.deepEqual(workspace.widgets,before);
   for(const {placement:p} of workspace.widgets)assert.ok(candidate.x+candidate.width<=p.x || candidate.x>=p.x+p.width || candidate.y+candidate.height<=p.y || candidate.y>=p.y+p.height);
 });
-test('the canvas extends 30% beyond the viewport but never discards content further right',()=>{
-  assert.equal(canvasExtent(1000,[{placement:{x:0,y:0,width:900,height:500}}]),1300,'Scroll room is 130% of the visible viewport');
-  assert.equal(canvasExtent(1000,[{placement:{x:0,y:0,width:2000,height:500}}]),2020,'Content beyond 130% is preserved, never clamped to the viewport');
-  assert.equal(canvasExtent(1000,[]),1300,'An empty canvas still gets the viewport extent');
-  assert.equal(canvasExtent(200,[]),390,'A tiny viewport keeps a usable minimum extent');
+test('the canvas stays within a 150% viewport bound regardless of saved placements',()=>{
+  assert.equal(canvasExtent(1000,[{placement:{x:0,y:0,width:900,height:500}}]),1500);
+  assert.equal(canvasExtent(1000,[{placement:{x:0,y:0,width:2000,height:500}}]),1500,'Legacy overflow cannot grow the canvas');
+  assert.equal(canvasExtent(1000,[]),1500);
+  assert.equal(canvasExtent(200,[]),300);
 });
-test('canvasHeight includes every widget and a 20px trailing margin',()=>{
-  assert.equal(canvasHeight(700,[]),700);
-  assert.equal(canvasHeight(600,[{placement:{x:0,y:0,width:240,height:340}},{placement:{x:800,y:920,width:300,height:240}}]),1180);
-  assert.equal(canvasHeight(900,[{placement:{x:0,y:0,width:240,height:340}}]),900);
+test('canvas height stays within a 150% viewport bound regardless of saved placements',()=>{
+  assert.equal(canvasHeight(700,[]),1050);
+  assert.equal(canvasHeight(600,[{placement:{x:0,y:920,width:300,height:240}}]),900);
+  assert.equal(canvasHeight(900,[{placement:{x:0,y:0,width:240,height:340}}]),1350);
 });
 test('constrainPlacement keeps move and resize within horizontal bounds',()=>{
   const moved=constrainPlacement('notes',{x:1200,y:240,width:400,height:340},1300);
@@ -38,16 +38,22 @@ test('constrainPlacement keeps move and resize within horizontal bounds',()=>{
   const atEdge=constrainPlacement('notes',{x:2000,y:240,width:600,height:400},1300);
   assert.ok(atEdge.x+atEdge.width+20<=1300);
 });
+test('constrainPlacement keeps frames inside both bounded canvas dimensions',()=>{
+  assert.deepEqual(constrainPlacement('notes',{x:1400,y:1400,width:600,height:500},300,{},250),{x:0,y:0,width:280,height:230});
+  assert.deepEqual(constrainPlacement('apps',{x:1300,y:1300,width:500,height:450},300,{width:900,height:800},260),{x:0,y:0,width:280,height:240});
+});
 test('constrainPlacement respects native and catalog minimum sizes',()=>{
   const native=constrainPlacement('apps',{x:1100,y:60,width:600,height:420},1300,{width:680,height:410});
   assert.deepEqual(native,{x:600,y:60,width:680,height:420});
   const catalog=constrainPlacement('notes',{x:1200,y:20,width:5,height:5},1300);
   assert.deepEqual(catalog,{x:1040,y:20,width:240,height:180});
 });
-test('legacy saved overflow remains part of the canvas extent',()=>{
+test('legacy saved overflow is clamped without changing widget content',()=>{
   const saved=[{placement:{x:2400,y:100,width:500,height:500}}];
-  assert.equal(canvasExtent(1000,saved),2920);
-  assert.deepEqual(constrainPlacement('notes',saved[0].placement,canvasExtent(1000,saved)),saved[0].placement);
+  const original={id:'note-one',text:'Keep this note',...saved[0]};
+  assert.equal(canvasExtent(1000,saved),1500);
+  assert.deepEqual(constrainPlacement('notes',saved[0].placement,canvasExtent(1000,saved),{},1500),{x:980,y:100,width:500,height:500});
+  assert.equal(original.text,'Keep this note');assert.equal(original.id,'note-one');
 });
 test('version 2 browser migration preserves bookmarks, custom URL, notes, appearance and shortcuts',()=>{
   const state=createInitialState();state.version=2;const w=state.workspaces[0];w.layout='lecture';
@@ -73,6 +79,22 @@ test('multiple instances and duplicated workspaces retain independent state and 
   const copy=duplicateWorkspace(workspace,'Copy');copy.widgets[0].shortcuts[0].name='Changed';copy.widgets[4].schedule[0].title='Different';
   assert.equal(workspace.widgets[0].shortcuts[0].name,'My AKO');assert.equal(workspace.widgets[4].schedule[0].title,'Engineering');
   assert.deepEqual(copy.widgets[2].placement,workspace.widgets[2].placement);
+});
+test('transferring one widget preserves its instance state and clamps it to destination bounds',()=>{
+  const source=createWorkspace('Source',[]),destination=createWorkspace('Destination',[]),note=createWidget('notes');
+  note.id='transfer-note';note.title='Keep identity';note.text='Keep this content';note.placement={x:800,y:900,width:400,height:300};source.widgets=[note];
+  const moved=transferWidgetInstance(source,destination,note.id,300,250);
+  assert.ok(moved);assert.equal(moved.source.widgets.length,0);assert.equal(moved.destination.widgets.length,1);
+  assert.equal(moved.destination.widgets[0].id,note.id);assert.equal(moved.destination.widgets[0].type,'notes');assert.equal(moved.destination.widgets[0].title,note.title);assert.equal(moved.destination.widgets[0].text,note.text);
+  assert.deepEqual(moved.destination.widgets[0].placement,{x:0,y:0,width:280,height:230});
+  assert.equal(transferWidgetInstance(source,destination,'missing',300,250),null);
+  assert.equal(transferWidgetInstance(source,source,note.id,300,250),null);
+});
+test('transferring a Group card also preserves its linked collection in the destination',()=>{
+  const source=createWorkspace('Source',[]),destination=createWorkspace('Destination',[]),group=createWidget('group');group.id='group-card';group.groupId='group-library';group.placement={x:0,y:0,width:400,height:360};
+  source.groups=[{id:'group-library',name:'Research',shortcuts:[{id:'link',name:'Paper',url:'https://example.com',icon:'↗'}],widgets:[],expanded:true}];source.widgets=[group];
+  const moved=transferWidgetInstance(source,destination,group.id,1000,900);
+  assert.equal(moved.destination.widgets[0].id,group.id);assert.equal(moved.destination.groups[0].id,group.groupId);assert.equal(moved.destination.groups[0].shortcuts[0].name,'Paper');
 });
 test('shortcut editing and reordering accept only safe links and preserve intentional empty lists',()=>{
   assert.throws(()=>shortcut({name:'',url:'https://example.com'}));assert.throws(()=>shortcut({name:'Bad',url:'javascript:alert(1)'}));

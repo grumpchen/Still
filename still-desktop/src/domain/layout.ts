@@ -17,22 +17,26 @@ export function nextPlacement(type:WidgetType, widgets:Array<{placement:Placemen
 }
 export function translate(type:WidgetType,p:Placement,dx:number,dy:number):Placement {return placement(type,{...p,x:p.x+dx,y:p.y+dy})}
 export function resize(type:WidgetType,p:Placement,dx:number,dy:number):Placement {return placement(type,{...p,width:p.width+dx,height:p.height+dy})}
-export function canvasHeight(viewportHeight:number,widgets:Array<{placement:Placement}>):number {
- return Math.max(560,Math.ceil(Number.isFinite(viewportHeight)?Math.max(0,viewportHeight):0),Math.max(0,...widgets.map(w=>w.placement.y+w.placement.height+20)));
+export function canvasHeight(viewportHeight:number,_widgets:Array<{placement:Placement}>):number {
+ const viewport=Math.max(1,Number.isFinite(viewportHeight)?viewportHeight:0);
+ return Math.ceil(viewport*1.5);
 }
-export function constrainPlacement(type:WidgetType,candidate:Placement,canvasWidth:number,minimum:{width?:number;height?:number}={}):Placement {
+export function constrainPlacement(type:WidgetType,candidate:Placement,canvasWidth:number,minimum:{width?:number;height?:number}={},canvasHeight=Number.POSITIVE_INFINITY):Placement {
  const meta=widgetCatalog[type],p=placement(type,candidate);
- const minWidth=Math.max(meta.minWidth,Number.isFinite(minimum.width)?Math.ceil(minimum.width!):0);
- const minHeight=Math.max(meta.minHeight,Number.isFinite(minimum.height)?Math.ceil(minimum.height!):0);
- const extent=Math.floor(canvasWidth),widthLimit=Math.max(minWidth,Math.min(3000,extent-20));
- let width=Math.max(minWidth,Math.min(widthLimit,p.width)),x=Math.max(0,p.x);
- const availableAtX=extent-x-20;
- if(width>availableAtX){if(availableAtX>=minWidth)width=availableAtX;else x=Math.max(0,extent-width-20)}
- return {x,y:Math.max(0,Math.min(20000,p.y)),width,height:Math.max(minHeight,p.height)};
+ const widthLimit=Math.max(1,Math.min(3000,Math.floor(canvasWidth)-20));
+ const heightLimit=Math.max(1,Math.min(3000,Math.floor(canvasHeight)-20));
+ const minWidth=Math.min(widthLimit,Math.max(meta.minWidth,Number.isFinite(minimum.width)?Math.ceil(minimum.width!):0));
+ const minHeight=Math.min(heightLimit,Math.max(meta.minHeight,Number.isFinite(minimum.height)?Math.ceil(minimum.height!):0));
+ let width=Math.max(minWidth,Math.min(widthLimit,p.width)),height=Math.max(minHeight,Math.min(heightLimit,p.height)),x=Math.max(0,p.x),y=Math.max(0,p.y);
+ const availableWidth=Math.floor(canvasWidth)-x-20;
+ if(width>availableWidth){if(availableWidth>=minWidth)width=availableWidth;else x=Math.max(0,Math.floor(canvasWidth)-width-20)}
+ const availableHeight=Math.floor(canvasHeight)-y-20;
+ if(height>availableHeight){if(availableHeight>=minHeight)height=availableHeight;else y=Math.max(0,Math.floor(canvasHeight)-height-20)}
+ return {x,y,width,height};
 }
-// Horizontal canvas extent: 30% of scrollable room beyond the visible viewport,
-// but never less than the furthest widget's right edge (plus padding). This is
-// extra scrollable space, not zoom — saved placements are never clamped.
-export function canvasExtent(viewportWidth:number,widgets:Array<{placement:Placement}>):number {
- return Math.max(Math.ceil(Math.max(300,viewportWidth)*1.3),Math.max(0,...widgets.map(w=>w.placement.x+w.placement.width+20)));
+// Keep a fixed, discoverable extension so widgets can be moved into it while
+// ensuring corrupt or legacy placements can never grow the workspace itself.
+export function canvasExtent(viewportWidth:number,_widgets:Array<{placement:Placement}>):number {
+ const viewport=Math.max(1,Number.isFinite(viewportWidth)?viewportWidth:0);
+ return Math.ceil(viewport*1.5);
 }

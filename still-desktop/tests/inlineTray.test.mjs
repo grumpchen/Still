@@ -27,3 +27,13 @@ test('the tray row scrolls horizontally and inline dropdowns do not form another
  assert.match(css,/\.tray-widget-button\{[^}]*flex-shrink:0/);
  assert.doesNotMatch(css,/\.tray-shelf-area\{|\.tray-group-shelves\{/);
 });
+test('Apps shortcuts are icon-only and the single plus opens the combined Apps dialog',()=>{
+ assert.match(presets,/preset-app-icon/);assert.match(presets,/apps-tray-add/);assert.match(presets,/aria-label=\{'Open '\+preset\.name\}/);
+ assert.doesNotMatch(presets,/Attach open app/);assert.match(presets,/type==='apps'\?<button className="apps-tray-add"/);
+ const app=readFileSync(new URL('../src/App.tsx',import.meta.url),'utf8');
+ assert.match(app,/appsDialogMode==='attach'\?\s*<AppWindowPicker/);assert.match(app,/<PresetEditor[^>]*type="apps"/);
+ assert.match(app,/setModal\('appsTray'\)/);
+});
+test('workspace overview is descriptive and cannot intercept workspace interaction',()=>{
+ assert.match(canvas,/canvas-overview/);assert.match(canvas,/Workspace overview map/);assert.match(css,/\.canvas-overview\{[^}]*pointer-events:none/);
+});

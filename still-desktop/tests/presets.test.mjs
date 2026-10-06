@@ -25,6 +25,14 @@ test('a custom Files preset saves a selected-folder reference and creates separa
  const reopened=workspaces.parseState(JSON.stringify(saved));assert.equal(reopened.presets.length,0);
  assert.equal(reopened.workspaces[0].widgets.find(w=>w.id===first.id).folderKey,'chosen-folder');
 });
+test('saved Apps shortcuts retain only bounded validated PNG icon data',()=>{
+ const icon='data:image/png;base64,iVBORw0KGgo=';
+ const state=workspaces.createInitialState();state.presets=[{id:'app-shortcut',type:'apps',name:'Editor',appSourceId:'grant-1',appName:'Editor.exe',iconData:icon}];
+ const saved=workspaces.parseState(JSON.stringify(state)),preset=saved.presets[0];
+ assert.equal(preset.iconData,icon);const widget=workspaces.createWidgetFromPreset(preset,[]);assert.equal(widget.appIconData,icon);assert.equal(widget.appKey,'grant-1');
+ state.presets=[{...state.presets[0],iconData:'data:image/png;base64,not-a-png'}];assert.equal(workspaces.parseState(JSON.stringify(state)).presets[0].iconData,undefined);
+ state.presets=[{...state.presets[0],iconData:'data:image/png;base64,iVBORw0KGgo,'+'A'.repeat(16*1024)}];assert.equal(workspaces.parseState(JSON.stringify(state)).presets[0].iconData,undefined);
+});
 
 test('older layouts gain an empty preset list and invalid URLs or folder references are rejected',()=>{
  const state=workspaces.createInitialState();delete state.presets;const browser=state.workspaces[0].widgets[0];

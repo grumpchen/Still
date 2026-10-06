@@ -8,10 +8,11 @@ export interface PresetScheduleEntry {id:string;day:number;time:string;title:str
 export type WidgetPreset={id:string;type:'browser';name:string;url:string}
  |{id:string;type:'files';name:string;resourceKind?:'folder';folderSourceId:string;folderName:string}
  |{id:string;type:'files';name:string;resourceKind:'document';fileSourceId:string;fileName:string;fileKind:FileKind}
- |{id:string;type:'apps';name:string;appSourceId:string;appName:string}
+ |{id:string;type:'apps';name:string;appSourceId:string;appName:string;iconData?:string}
  |{id:string;type:GenericPresetType;name:string;text?:string;remaining?:number;schedule?:PresetScheduleEntry[]};
 export function fileKind(value:unknown):value is FileKind{return value==='pdf'||value==='image'||value==='media'||value==='document'}
 export function fileName(value:unknown):value is string{return typeof value==='string'&&value.length>0&&value.length<=260&&!/[\\/\x00-\x1f]/.test(value)&&value!=='.'&&value!=='..'}
+function checkedIconData(value:unknown):string|undefined{return typeof value==='string'&&value.length<=16*1024&&/^data:image\/png;base64,iVBORw0KGgo[A-Za-z0-9+/]*={0,2}$/.test(value)?value:undefined}
 function savedSchedule(value:unknown):PresetScheduleEntry[]{
  if(!Array.isArray(value))return [];
  const ids=new Set<string>();return value.slice(0,500).flatMap(entry=>{
@@ -35,7 +36,8 @@ export function widgetPreset(value:WidgetPreset):WidgetPreset {
  }
  if(value.type==='apps'){
   if(typeof value.appSourceId!=='string'||!/^[a-zA-Z0-9-]{1,80}$/.test(value.appSourceId)||!fileName(value.appName))throw new Error('Choose an application shortcut before saving this Apps widget.');
-  return{id:value.id,type:'apps',name,appSourceId:value.appSourceId,appName:value.appName};
+   const iconData=checkedIconData(value.iconData);
+   return{id:value.id,type:'apps',name,appSourceId:value.appSourceId,appName:value.appName,...(iconData?{iconData}:{})};
  }
  if(value.type==='notes'||value.type==='ai'){
   if(value.text!==undefined&&(typeof value.text!=='string'||value.text.length>2*1024*1024))throw new Error('Use valid saved text.');
@@ -59,7 +61,7 @@ export function presetFromWidget(widget:WidgetInstance):WidgetPreset {
  }
  if(widget.type==='apps'){
   if(!widget.appKey||!widget.appName)throw new Error('Choose an application shortcut before saving this Apps widget.');
-  return widgetPreset({id,type:'apps',name,appSourceId:widget.appKey,appName:widget.appName});
+   return widgetPreset({id,type:'apps',name,appSourceId:widget.appKey,appName:widget.appName,iconData:widget.appIconData});
  }
  if(widget.type==='group')throw new Error('Groups are already saved in the widget tray.');
  return widgetPreset({id,type:widget.type,name,
