@@ -21,27 +21,31 @@ test('collapsed or unavailable resize handles are omitted from app presentation'
 });
 test('a delayed native size reply preserves a newer drag and only grows a card to the required app minimum',()=>{
  const widget=createWidget('apps');widget.placement={x:20,y:40,width:720,height:540};
- const info={minWidth:1000,minHeight:800,requiredWidth:600,requiredHeight:400};
+  const info={minWidth:1000,minHeight:800,requiredWidth:600,requiredHeight:400,measured:true,probing:false};
  assert.deepEqual(appPanelFit(widget,info,2,100),{appMinWidth:602,appMinHeight:500});
  widget.placement.width=480;widget.placement.height=380;
  assert.deepEqual(appPanelFit(widget,info,2,100),{placement:{x:20,y:40,width:602,height:500},appMinWidth:602,appMinHeight:500});
 });
 test('reported app minima can update after a monitor change without retaining an obsolete larger limit',()=>{
  const widget=createWidget('apps');widget.placement={x:20,y:40,width:960,height:680};widget.appMinWidth=900;widget.appMinHeight=620;
- assert.deepEqual(appPanelFit(widget,{minWidth:800,minHeight:580,requiredWidth:600,requiredHeight:400},2,100),{appMinWidth:602,appMinHeight:500});
+  assert.deepEqual(appPanelFit(widget,{minWidth:800,minHeight:580,requiredWidth:600,requiredHeight:400,measured:true,probing:false},2,100),{appMinWidth:602,appMinHeight:500});
 });
 test('missing or invalid native minima keep a saved safe limit without restoring an old window size',()=>{
  const widget=createWidget('apps');widget.placement={x:20,y:40,width:720,height:540};widget.appMinWidth=602;widget.appMinHeight=500;
- assert.deepEqual(appPanelFit(widget,{minWidth:1400,minHeight:900,requiredWidth:null,requiredHeight:NaN,measured:false},2,100),{});
- const fresh=createWidget('apps');assert.deepEqual(appPanelFit(fresh,{minWidth:1400,minHeight:900,requiredWidth:Infinity,requiredHeight:-1,measured:false},2,100),{});
+  assert.deepEqual(appPanelFit(widget,{minWidth:1400,minHeight:900,requiredWidth:null,requiredHeight:NaN,measured:false,probing:false},2,100),{});
+  const fresh=createWidget('apps');assert.deepEqual(appPanelFit(fresh,{minWidth:1400,minHeight:900,requiredWidth:Infinity,requiredHeight:-1,measured:false,probing:false},2,100),{});
 });
 test('a confirmed no-floor clears the cached app minimum instead of sticking it forever',()=>{
  const widget=createWidget('apps');widget.placement={x:20,y:40,width:720,height:540};widget.appMinWidth=602;widget.appMinHeight=500;
- assert.deepEqual(appPanelFit(widget,{minWidth:1400,minHeight:900,requiredWidth:null,requiredHeight:null,measured:true},2,100),{appMinWidth:undefined,appMinHeight:undefined});
+  assert.deepEqual(appPanelFit(widget,{minWidth:1400,minHeight:900,requiredWidth:null,requiredHeight:null,measured:true,probing:false},2,100),{appMinWidth:undefined,appMinHeight:undefined});
  assert.equal(widget.appMinWidth,602,'The cached value is only cleared through the returned patch, never mutated in place');
  // A valid measured floor still wins over the cached limit.
- assert.deepEqual(appPanelFit(widget,{minWidth:1400,minHeight:900,requiredWidth:500,requiredHeight:300,measured:true},2,100),{appMinWidth:502,appMinHeight:400});
-});
+  assert.deepEqual(appPanelFit(widget,{minWidth:1400,minHeight:900,requiredWidth:500,requiredHeight:300,measured:true,probing:false},2,100),{appMinWidth:502,appMinHeight:400});
+ });
+test('a native refusal probe does not reapply the stale minimum while the window is being remeasured',()=>{
+ const widget=createWidget('apps');widget.placement={x:20,y:40,width:320,height:240};widget.appMinWidth=602;widget.appMinHeight=500;
+ assert.deepEqual(appPanelFit(widget,{minWidth:900,minHeight:700,requiredWidth:null,requiredHeight:null,measured:true,probing:true},2,100),{});
+ });
 test('app panels keep their full coordinates and clip only the visible area instead of going blank on overlap',()=>{
  const result=appPanelGeometry(rect(140,200,800,500),rect(170,180,1000,620),true,false);
  assert.equal(result.visible,true);

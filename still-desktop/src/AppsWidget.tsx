@@ -20,7 +20,7 @@ export default function AppsWidget({widget,update,notify,obscured,workspaceActiv
    if(Object.keys(patch).length)c.update(patch);
   }
   async function sync(){frame=0;if(disposed||!opened)return;if(presenting){dirty=true;return}presenting=true;
-    try{const g=geometry(),next=JSON.stringify(g);if(next!==last){const info=await appPanel.present(widget.id,g.bounds,g.clip,g.grip,g.visible);last=next;node.dataset.nativeVisible=String(g.visible);if(g.visible&&(info.requiredWidth!==null||info.requiredHeight!==null||info.measured===true))fit(info)}}
+    try{const g=geometry(),next=JSON.stringify(g);if(next!==last){const info=await appPanel.present(widget.id,g.bounds,g.clip,g.grip,g.visible);last=next;node.dataset.nativeVisible=String(g.visible);if(g.visible&&info.probing){last='';schedule.current()}else if(g.visible&&info.measured)fit(info)}}
    catch(reason){if(!disposed&&opened){setError(String(reason));node.dataset.nativeVisible='false';if(String(reason).includes('closed')){opened=false;setReady(false);current.current.update({appPanelOpen:false})}}}
    finally{presenting=false;if(dirty){dirty=false;schedule.current()}}
   }

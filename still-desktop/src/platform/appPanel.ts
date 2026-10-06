@@ -6,7 +6,7 @@ import type {DroppedResource} from './resourceDrop.ts';
 export interface AppWindow {hwnd:number;pid:number;title:string}
 export interface AppAttachment {hwnd:number;pid:number}
 export function appImageUrl(bytes:number[]):string{let binary='';for(let offset=0;offset<bytes.length;offset+=8192)binary+=String.fromCharCode(...bytes.slice(offset,offset+8192));return'data:image/png;base64,'+btoa(binary)}
-export interface AppPanelInfo {hwnd:number;pid:number;minWidth:number;minHeight:number;requiredWidth:number|null;requiredHeight:number|null;measured:boolean}
+export interface AppPanelInfo {hwnd:number;pid:number;minWidth:number;minHeight:number;requiredWidth:number|null;requiredHeight:number|null;measured:boolean;probing:boolean}
 const pending=new Map<string,Promise<unknown>>();
 function command<T>(id:string,name:string,args:Record<string,unknown>={}):Promise<T>{
  const task=(pending.get(id)??Promise.resolve()).catch(()=>undefined).then(()=>invoke<T>(name,{id,...args}));pending.set(id,task);

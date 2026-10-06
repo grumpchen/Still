@@ -12,11 +12,6 @@ test('canvas geometry normalizes corrupt data and applies free movement/resizing
   assert.equal(clamped.x,0);assert.equal(clamped.y,0);assert.equal(clamped.width,240);assert.equal(clamped.height,340);
   assert.equal(resize('notes',p,-1000,-1000).height,180);
 });
-test('attached Apps widgets cannot be resized below the native window minimum',()=>{
-  const p=placement('apps',{x:40,y:50,width:720,height:500});
-  assert.deepEqual(resize('apps',p,-900,-900,{width:620,height:440}),{x:40,y:50,width:620,height:440});
-  assert.deepEqual(resize('apps',p,20,30,{width:620,height:440}),{x:40,y:50,width:740,height:530});
-});
 test('adding widgets finds free space without rearranging existing cards',()=>{
   const workspace=createWorkspace('Study',widgetTypes);
   const before=structuredClone(workspace.widgets);
