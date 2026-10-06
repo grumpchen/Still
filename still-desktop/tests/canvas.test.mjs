@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {placement,nextPlacement,translate,resize} from '../src/domain/layout.ts';
+import {placement,nextPlacement,translate,resize,canvasExtent} from '../src/domain/layout.ts';
 import {createInitialState,createWorkspace,duplicateWorkspace,parseState,widgetTypes} from '../src/domain/workspaces.ts';
 import {shortcut,reorderShortcuts,parseWebShortcuts} from '../src/domain/webShortcuts.ts';
 
@@ -23,6 +23,12 @@ test('adding widgets finds free space without rearranging existing cards',()=>{
   const candidate=nextPlacement('notes',workspace.widgets,700);
   assert.deepEqual(workspace.widgets,before);
   for(const {placement:p} of workspace.widgets)assert.ok(candidate.x+candidate.width<=p.x || candidate.x>=p.x+p.width || candidate.y+candidate.height<=p.y || candidate.y>=p.y+p.height);
+});
+test('the canvas extends 30% beyond the viewport but never discards content further right',()=>{
+  assert.equal(canvasExtent(1000,[{placement:{x:0,y:0,width:900,height:500}}]),1300,'Scroll room is 130% of the visible viewport');
+  assert.equal(canvasExtent(1000,[{placement:{x:0,y:0,width:2000,height:500}}]),2020,'Content beyond 130% is preserved, never clamped to the viewport');
+  assert.equal(canvasExtent(1000,[]),1300,'An empty canvas still gets the viewport extent');
+  assert.equal(canvasExtent(200,[]),390,'A tiny viewport keeps a usable minimum extent');
 });
 test('version 2 browser migration preserves bookmarks, custom URL, notes, appearance and shortcuts',()=>{
   const state=createInitialState();state.version=2;const w=state.workspaces[0];w.layout='lecture';

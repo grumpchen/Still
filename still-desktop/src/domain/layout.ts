@@ -18,3 +18,9 @@ export function nextPlacement(type:WidgetType, widgets:Array<{placement:Placemen
 }
 export function translate(type:WidgetType,p:Placement,dx:number,dy:number):Placement {return placement(type,{...p,x:p.x+dx,y:p.y+dy})}
 export function resize(type:WidgetType,p:Placement,dx:number,dy:number,minimum?:PlacementMinimum):Placement {return placement(type,{...p,width:Math.max(minimum?.width??0,p.width+dx),height:Math.max(minimum?.height??0,p.height+dy)})}
+// Horizontal canvas extent: 30% of scrollable room beyond the visible viewport,
+// but never less than the furthest widget's right edge (plus padding). This is
+// extra scrollable space, not zoom — saved placements are never clamped.
+export function canvasExtent(viewportWidth:number,widgets:Array<{placement:Placement}>):number {
+ return Math.max(Math.ceil(Math.max(300,viewportWidth)*1.3),Math.max(0,...widgets.map(w=>w.placement.x+w.placement.width+20)));
+}

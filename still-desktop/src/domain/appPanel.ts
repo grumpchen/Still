@@ -1,9 +1,12 @@
 import {placement} from './layout.ts';
 import type {WidgetInstance} from './workspaces.ts';
 import {widgetCatalog} from './widgetCatalog.ts';
-export interface AppSizeInfo {minWidth:number;minHeight:number;requiredWidth:number|null;requiredHeight:number|null}
+export interface AppSizeInfo {minWidth:number;minHeight:number;requiredWidth:number|null;requiredHeight:number|null;measured?:boolean}
 export function appPanelFit(widget:WidgetInstance,info:AppSizeInfo,frameWidth:number,frameHeight:number):Partial<WidgetInstance>{
- const minimum=(reported:number|null,frame:number,base:number,cached:number|undefined)=>typeof reported==='number'&&Number.isFinite(reported)&&reported>0?Math.min(3000,Math.max(base,Math.ceil(reported+Math.max(0,Number.isFinite(frame)?frame:0)))):cached;
+ // A valid reported minimum always wins. A null with measured:true is a
+ // CONFIRMED no-floor and clears the cached limit (the C2 frontend half); a
+ // null with measured:false is transient, so the saved limit stays.
+ const minimum=(reported:number|null,frame:number,base:number,cached:number|undefined)=>typeof reported==='number'&&Number.isFinite(reported)&&reported>0?Math.min(3000,Math.max(base,Math.ceil(reported+Math.max(0,Number.isFinite(frame)?frame:0)))):info.measured===true?undefined:cached;
  const appMinWidth=minimum(info.requiredWidth,frameWidth,widgetCatalog.apps.minWidth,widget.appMinWidth),appMinHeight=minimum(info.requiredHeight,frameHeight,widgetCatalog.apps.minHeight,widget.appMinHeight);
  // minWidth/minHeight describe the reply's window, which may predate the user's latest drag.
  // Grow the current card only to the required minimum, never back to an earlier requested size.

@@ -35,27 +35,37 @@ type Physical=(i32,i32,i32,i32);
 struct Entry {
  hwnd:usize,pid:u32,source_id:String,bounds:Bounds,clip:Bounds,grip:Option<Bounds>,visible:bool,shown:bool,
  original_owner:usize,original_placement:WINDOWPLACEMENT,original_region:usize,original_visible:bool,
- required_width:Option<f64>,required_height:Option<f64>,minimum_scale:Option<f64>,
+ // PHYSICAL pixel floor storage (C1-C5). declared: from WM_GETMINMAXINFO,
+ // replaced on every successful query. measured: from an observed refusal,
+ // only after the same refusal is seen on two consecutive position() calls.
+ // pending: candidate awaiting that second confirmation.
+ declared:Option<(i32,i32)>,measured:Option<(i32,i32)>,pending:Option<(i32,i32)>,minimum_scale:Option<f64>,
+ fresh:bool,
  last:Option<(Physical,Physical,Physical,Option<Physical>)>,error:String,
 }
 impl Drop for Entry{fn drop(&mut self){if self.original_region!=0{unsafe{let _=DeleteObject(HGDIOBJ(self.original_region as *mut _));}}}}
 #[derive(Default)]struct Panels {items:HashMap<String,Entry>,pending:HashMap<String,Launch>,running:HashSet<String>,generation:HashMap<String,u64>,closed:bool}
 #[derive(Default)]pub struct AppPanelState(Mutex<Panels>);
-#[derive(Serialize)]#[serde(rename_all="camelCase")]pub struct Info{hwnd:usize,pid:u32,min_width:f64,min_height:f64,required_width:Option<f64>,required_height:Option<f64>}
-fn info(entry:&Entry,main:HWND)->Info{
- let scale=unsafe{windows::Win32::UI::HiDpi::GetDpiForWindow(main)}.max(96) as f64/96.;
- let size=rect(handle(entry.hwnd)).unwrap_or((0,0,640,400));
- Info{hwnd:entry.hwnd,pid:entry.pid,min_width:size.2 as f64/scale,min_height:size.3 as f64/scale,required_width:entry.required_width,required_height:entry.required_height}
+#[derive(Serialize)]#[serde(rename_all="camelCase")]pub struct Info{hwnd:usize,pid:u32,min_width:f64,min_height:f64,required_width:Option<f64>,required_height:Option<f64>,measured:bool}
+fn physical_floor(entry:&Entry)->(i32,i32){let declared=entry.declared.unwrap_or((0,0));let measured=entry.measured.unwrap_or((0,0));(declared.0.max(measured.0),declared.1.max(measured.1))}
+fn info(entry:&Entry,main:HWND,measured:bool)->Info{info_at(entry,unsafe{windows::Win32::UI::HiDpi::GetDpiForWindow(main)}.max(96) as f64/96.,measured)}
+fn info_at(entry:&Entry,scale:f64,measured:bool)->Info{
+ let size=rect(handle(entry.hwnd)).unwrap_or((0,0,640,400));let floor=physical_floor(entry);
+ // C5: divide the effective PHYSICAL floor by the CURRENT scale so a monitor
+ // or DPI change can never leave a stale capture-time CSS value behind.
+ Info{hwnd:entry.hwnd,pid:entry.pid,min_width:size.2 as f64/scale,min_height:size.3 as f64/scale,required_width:(floor.0>0).then_some(floor.0 as f64/scale),required_height:(floor.1>0).then_some(floor.1 as f64/scale),measured}
 }
-fn required_size(wanted:Physical,actual:Physical,scale:f64)->(Option<f64>,Option<f64>){
- ((actual.2>wanted.2+1).then_some(actual.2 as f64/scale),(actual.3>wanted.3+1).then_some(actual.3 as f64/scale))
-}
-fn tracking_minimum(hwnd:HWND,scale:f64)->(Option<f64>,Option<f64>){unsafe{
- let dpi=windows::Win32::UI::HiDpi::GetDpiForWindow(hwnd).max(96);
- let mut minimum=MINMAXINFO::default();minimum.ptMinTrackSize=POINT{x:windows::Win32::UI::HiDpi::GetSystemMetricsForDpi(SM_CXMINTRACK,dpi),y:windows::Win32::UI::HiDpi::GetSystemMetricsForDpi(SM_CYMINTRACK,dpi)};
+// C6: the observed size answers what Still REQUESTED (wanted plus any floor),
+// never the raw wanted size — Still's own floor is not an app refusal.
+fn required_size(requested:Physical,actual:Physical)->(bool,bool){(actual.2>requested.2+1,actual.3>requested.3+1)}
+fn tracking_minimum(hwnd:HWND)->(Option<i32>,Option<i32>){unsafe{
+ // C4: never pre-seed OS track metrics; an app that leaves ptMinTrackSize
+ // zero has declared no minimum and must not inherit a fabricated floor.
+ let mut minimum=MINMAXINFO::default();
  let delivered=SendMessageTimeoutW(hwnd,WM_GETMINMAXINFO,windows::Win32::Foundation::WPARAM(0),LPARAM(&mut minimum as *mut MINMAXINFO as isize),SMTO_ABORTIFHUNG|SMTO_BLOCK|SMTO_ERRORONEXIT,100,None);
  if delivered.0==0{return (None,None)}
- let dimension=|value:i32|(value>0&&value<=20000).then_some(value as f64/scale);
+ // C5: keep physical pixels physical; callers divide by the CURRENT scale.
+ let dimension=|value:i32|(value>0&&value<=20000).then_some(value);
  (dimension(minimum.ptMinTrackSize.x),dimension(minimum.ptMinTrackSize.y))
 }}
 pub(crate) fn executable(process:u32)->Option<String>{unsafe{
@@ -136,7 +146,7 @@ fn attach(window:&WindowInfo,source_id:String,bounds:Bounds,clip:Bounds,grip:Opt
  let mut original_placement=WINDOWPLACEMENT{length:std::mem::size_of::<WINDOWPLACEMENT>() as u32,..Default::default()};
  GetWindowPlacement(hwnd,&mut original_placement).map_err(|e|e.to_string())?;
  let region=CreateRectRgn(0,0,0,0);let original_region=if GetWindowRgn(hwnd,region)!=RGN_ERROR{region.0 as usize}else{let _=DeleteObject(HGDIOBJ(region.0));0};
- let mut entry=Entry{hwnd:window.hwnd,pid:window.pid,source_id,bounds,clip,grip,visible:false,shown:false,original_owner,original_placement,original_region,original_visible:IsWindowVisible(hwnd).as_bool(),required_width:None,required_height:None,minimum_scale:None,last:None,error:String::new()};
+ let mut entry=Entry{hwnd:window.hwnd,pid:window.pid,source_id,bounds,clip,grip,visible:false,shown:false,original_owner,original_placement,original_region,original_visible:IsWindowVisible(hwnd).as_bool(),declared:None,measured:None,pending:None,minimum_scale:None,fresh:false,last:None,error:String::new()};
  // Top-level ownership, never SetParent/WS_CHILD. Restore it before Still closes.
  SetWindowLongPtrW(hwnd,GWLP_HWNDPARENT,main.0 as isize);
  if GetWindow(hwnd,GW_OWNER).ok()!=Some(main){SetWindowLongPtrW(hwnd,GWLP_HWNDPARENT,original_owner as isize);return Err("The app could not be attached. Still and the app must run at the same Windows permission level.".into())}
@@ -152,20 +162,47 @@ fn restore(entry:&mut Entry){unsafe{
  let mut placement=entry.original_placement;if !entry.original_visible{placement.showCmd=SW_HIDE.0 as u32;}
  let _=SetWindowPlacement(hwnd,&placement);let _=ShowWindow(hwnd,if entry.original_visible{SW_SHOWNA}else{SW_HIDE});
 }}
-fn position(entry:&mut Entry,main:HWND,origin:POINT,scale:f64)->Result<(),String>{unsafe{
+fn position(entry:&mut Entry,main:HWND,origin:POINT,scale:f64)->Result<bool,String>{unsafe{
  let hwnd=handle(entry.hwnd);let wanted=entry.bounds.screen(origin,scale);let clip=entry.clip.screen(origin,scale);let grip=entry.grip.as_ref().map(|bounds|bounds.screen(origin,scale));
  let actual=rect(hwnd)?;
- if entry.shown&&entry.minimum_scale==Some(scale)&&entry.last==Some((wanted,clip,actual,grip)){return Ok(())}
- if IsZoomed(hwnd).as_bool()||IsIconic(hwnd).as_bool(){let _=ShowWindow(hwnd,SW_SHOWNOACTIVATE);}
- if !entry.shown||entry.minimum_scale!=Some(scale){
-  let (width,height)=tracking_minimum(hwnd,scale);if width.is_some(){entry.required_width=width}if height.is_some(){entry.required_height=height}entry.minimum_scale=Some(scale);
+ // Cache a settled state only. An armed refusal candidate (pending) must force
+ // another full pass so the two-pass confirmation can complete.
+ if entry.shown&&entry.minimum_scale==Some(scale)&&entry.pending.is_none()&&entry.last==Some((wanted,clip,actual,grip)){return Ok(false)}
+ // C1: a maximized window measures its monitor, not its panel. Restore before
+ // any sampling so a maximized or hidden first sample can never latch the
+ // monitor size as a permanent floor.
+ if IsZoomed(hwnd).as_bool(){let _=ShowWindow(hwnd,SW_RESTORE);}else if IsIconic(hwnd).as_bool(){let _=ShowWindow(hwnd,SW_SHOWNOACTIVATE);}
+ let floor=physical_floor(entry);
+ let wants_smaller=wanted.2<floor.0||wanted.3<floor.1;
+ // C2/C3: re-query the declared minimum on the first shown pass, after a DPI
+ // or scale change, or when the user drags below the floor (a now-lower app
+ // minimum must take effect). A total query failure leaves minimum_scale
+ // unstamped so the next pass retries instead of freezing a stale floor.
+ if !entry.shown||entry.minimum_scale!=Some(scale)||wants_smaller{
+  let (width,height)=tracking_minimum(hwnd);
+  if width.is_some()||height.is_some(){entry.declared=Some((width.unwrap_or(0),height.unwrap_or(0)));entry.minimum_scale=Some(scale);}
  }
- let width=wanted.2.max(entry.required_width.map_or(0,|value|(value*scale).ceil() as i32));let height=wanted.3.max(entry.required_height.map_or(0,|value|(value*scale).ceil() as i32));
- SetWindowPos(hwnd,Some(HWND_TOP),wanted.0,wanted.1,width,height,SWP_NOACTIVATE|SWP_NOOWNERZORDER).map_err(|e|e.to_string())?;
+ let floor=physical_floor(entry);
+ let requested:Physical=(wanted.0,wanted.1,wanted.2.max(floor.0),wanted.3.max(floor.1));
+ SetWindowPos(hwnd,Some(HWND_TOP),wanted.0,wanted.1,requested.2,requested.3,SWP_NOACTIVATE|SWP_NOOWNERZORDER).map_err(|e|e.to_string())?;
  let actual=rect(hwnd)?;
- let (required_width,required_height)=required_size(wanted,actual,scale);
- if let Some(width)=required_width{entry.required_width=Some(entry.required_width.map_or(width,|current|current.max(width)))}
- if let Some(height)=required_height{entry.required_height=Some(entry.required_height.map_or(height,|current|current.max(height)))}
+ // C6: compare against the REQUESTED size (which already contains Still's
+ // own floor), never against the raw wanted size.
+ let (refused_w,refused_h)=required_size(requested,actual);
+ let mut measured_pass=false;
+ if refused_w||refused_h{
+  let candidate=((if refused_w{actual.2}else{floor.0}),(if refused_h{actual.3}else{floor.1}));
+  // Two-pass confirmation: one observation can be a hidden, initializing or
+  // maximized transient; only a second identical refusal becomes the floor.
+  if entry.pending==Some(candidate){entry.measured=Some(candidate);measured_pass=true}
+  entry.pending=Some(candidate);
+ }else{
+  entry.pending=None;
+  // The app accepted the requested size while the user asked for less than
+  // the floor: the floor was too high, so it clears and can be re-learned
+  // lower (C2 decrease).
+  if wants_smaller{entry.measured=None;entry.declared=None;measured_pass=true;}
+ }
  // Apps can enforce their own minimum size. A region keeps excess native UI
  // from covering Still controls, while the frontend grows the card on opening.
  let left=(clip.0-actual.0).max(0);let top=(clip.1-actual.1).max(0);
@@ -185,7 +222,7 @@ fn position(entry:&mut Entry,main:HWND,origin:POINT,scale:f64)->Result<(),String
   }
  }
  if SetWindowRgn(hwnd,Some(region),true)==0{let _=DeleteObject(HGDIOBJ(region.0));return Err("The app cannot fit this panel at its current Windows permission level.".into())}
- entry.last=Some((wanted,clip,actual,grip));let _=main;Ok(())
+ entry.last=Some((wanted,clip,actual,grip));let _=main;Ok(measured_pass)
 }}
 fn remove_closed(app:&AppHandle,panels:&mut Panels,window:Option<usize>){
  let gone=panels.items.iter().filter(|(_,e)|window.is_none_or(|h|h==e.hwnd)&&!valid_window(e)).map(|(id,_)|id.clone()).collect::<Vec<_>>();
@@ -197,8 +234,8 @@ fn place(app:&AppHandle,panels:&mut Panels){
  let scale=unsafe{windows::Win32::UI::HiDpi::GetDpiForWindow(main)}.max(96) as f64/96.;
  let parent=unsafe{IsWindowVisible(main).as_bool()&&!IsIconic(main).as_bool()}&&parent_context(&panels.items,main,app);
  for (id,entry) in panels.items.iter_mut(){if !valid_window(entry){continue}
-  let hwnd=handle(entry.hwnd);if !entry.visible||!parent{if entry.shown{unsafe{let _=ShowWindow(hwnd,SW_HIDE);}entry.shown=false;}continue}
-  match position(entry,main,origin,scale){Ok(())=>{if !entry.shown{unsafe{let _=ShowWindow(hwnd,SW_SHOWNOACTIVATE);}entry.shown=true;}if !entry.error.is_empty(){entry.error.clear();let _=app.emit_to("main","app-panel-state",serde_json::json!({"id":id,"open":true,"error":null}));}},Err(error)=>{if entry.error!=error{entry.error=error.clone();let _=app.emit_to("main","app-panel-state",serde_json::json!({"id":id,"open":true,"error":error}));}}}
+  let hwnd=handle(entry.hwnd);if !entry.visible||!parent{if entry.shown{unsafe{let _=ShowWindow(hwnd,SW_HIDE);}entry.shown=false;}entry.fresh=false;continue}
+  match position(entry,main,origin,scale){Ok(measured)=>{entry.fresh=measured;if !entry.shown{unsafe{let _=ShowWindow(hwnd,SW_SHOWNOACTIVATE);}entry.shown=true;}if !entry.error.is_empty(){entry.error.clear();let _=app.emit_to("main","app-panel-state",serde_json::json!({"id":id,"open":true,"error":null}));}},Err(error)=>{entry.fresh=false;if entry.error!=error{entry.error=error.clone();let _=app.emit_to("main","app-panel-state",serde_json::json!({"id":id,"open":true,"error":error}));}}}
  }
 }
 pub fn refresh(app:&AppHandle){if let Ok(mut panels)=app.state::<AppPanelState>().0.try_lock(){place(app,&mut panels)}}
@@ -228,7 +265,7 @@ pub async fn app_panel_open(app:AppHandle,webview:Webview,id:String,source_id:St
   let main=owner()?;let state=app.state::<AppPanelState>();
   let (epoch,pending)={let mut s=state.0.lock().map_err(|_|"App panels are unavailable")?;
    if s.closed{return Err("Still is closing".into())}
-   if let Some(entry)=s.items.get(&id){if entry.source_id==source_id&&valid_window(entry){return Ok(info(entry,main))}}
+   if let Some(entry)=s.items.get(&id){if entry.source_id==source_id&&valid_window(entry){return Ok(info(entry,main,false))}}
    if !s.running.insert(id.clone()){return Err("This app is already opening.".into())}
    (*s.generation.entry(id.clone()).or_default(),s.pending.get(&id).cloned())
   };
@@ -246,8 +283,8 @@ pub async fn app_panel_open(app:AppHandle,webview:Webview,id:String,source_id:St
       let mut entry=attach(candidate,source_id.clone(),bounds.clone(),clip.clone(),grip.clone(),main)?;
      let mut origin=POINT::default();if !unsafe{ClientToScreen(main,&mut origin).as_bool()}{restore(&mut entry);return Err("Still window is unavailable".into())}
      let scale=unsafe{windows::Win32::UI::HiDpi::GetDpiForWindow(main)}.max(96) as f64/96.;
-     if let Err(error)=position(&mut entry,main,origin,scale){restore(&mut entry);return Err(error)}
-     let information=info(&entry,main);let mut s=state.0.lock().map_err(|_|"App panels are unavailable")?;
+     let measured=match position(&mut entry,main,origin,scale){Ok(measured)=>measured,Err(error)=>{restore(&mut entry);return Err(error)}};
+     let information=info(&entry,main,measured);let mut s=state.0.lock().map_err(|_|"App panels are unavailable")?;
      if s.closed||s.generation.get(&id)!=Some(&epoch){restore(&mut entry);return Err("App attachment was cancelled.".into())}
      if let Some(mut old)=s.items.insert(id.clone(),entry){restore(&mut old)}s.pending.remove(&id);
      let _=app.emit_to("main","app-panel-state",serde_json::json!({"id":id,"open":true}));return Ok(information)
@@ -266,8 +303,8 @@ pub async fn app_panel_attach(app:AppHandle,webview:Webview,id:String,hwnd:usize
  tauri::async_runtime::spawn_blocking(move||{
   let main=owner()?;let choices=windows();let candidate=choices.iter().find(|w|w.hwnd==hwnd&&w.pid==pid).ok_or("This window is no longer available. Refresh the app list.")?;
   let mut entry=attach(candidate,String::new(),bounds,clip,grip,main)?;let mut origin=POINT::default();if !unsafe{ClientToScreen(main,&mut origin).as_bool()}{restore(&mut entry);return Err("Still window is unavailable".into())}
-  let scale=unsafe{windows::Win32::UI::HiDpi::GetDpiForWindow(main)}.max(96) as f64/96.;if let Err(e)=position(&mut entry,main,origin,scale){restore(&mut entry);return Err(e)}
-  let information=info(&entry,main);let state=app.state::<AppPanelState>();let mut s=state.0.lock().map_err(|_|"App panels unavailable")?;
+  let scale=unsafe{windows::Win32::UI::HiDpi::GetDpiForWindow(main)}.max(96) as f64/96.;let measured=match position(&mut entry,main,origin,scale){Ok(measured)=>measured,Err(e)=>{restore(&mut entry);return Err(e)}};
+  let information=info(&entry,main,measured);let state=app.state::<AppPanelState>();let mut s=state.0.lock().map_err(|_|"App panels unavailable")?;
   if s.closed{restore(&mut entry);return Err("Still is closing".into())}*s.generation.entry(id.clone()).or_default()+=1;s.pending.remove(&id);
   if let Some(mut old)=s.items.insert(id.clone(),entry){restore(&mut old)}
   // An explicit picker selection returns focus to Still after releasing any old panel.
@@ -284,7 +321,7 @@ pub async fn app_panel_present(app:AppHandle,webview:Webview,id:String,bounds:Bo
  if !valid_window(entry){s.items.remove(&id);return Err("The app was closed. Reopen it below.".into())}
  if !visible&&belongs(unsafe{GetForegroundWindow()},entry.hwnd,entry.pid){if let Ok(main)=owner(){unsafe{let _=SetForegroundWindow(main);}}}
  entry.bounds=bounds;entry.clip=clip;entry.grip=grip;entry.visible=visible;place(&app,&mut s);
- let main=owner()?;let entry=s.items.get(&id).ok_or("The app was closed. Reopen it below.")?;Ok(info(entry,main))
+ let main=owner()?;let entry=s.items.get(&id).ok_or("The app was closed. Reopen it below.")?;Ok(info(entry,main,entry.fresh))
 }
 #[tauri::command]
 pub async fn app_panel_release(app:AppHandle,webview:Webview,id:String)->Result<(),String>{crate::browser::authorize(&webview)?;instance(&id)?;release(&app,&id);Ok(())}
@@ -318,10 +355,17 @@ pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
    assert!(Bounds{width:f64::NAN,..b.clone()}.validate().is_err());
    assert!(Bounds{width:0.,..b}.validate().is_err());
   }
-  #[test]fn app_window_minimum_is_recorded_only_when_it_refuses_a_requested_dimension(){
-   assert_eq!(required_size((0,0,540,420),(0,0,900,420),1.5),(Some(600.),None));
-   assert_eq!(required_size((0,0,540,420),(0,0,540,720),1.5),(None,Some(480.)));
-   assert_eq!(required_size((0,0,540,420),(0,0,540,420),1.5),(None,None));
+  // C6: Still compares the observed size against what it REQUESTED (wanted
+  // plus any floor), never against the raw wanted size.
+  #[test]fn required_size_compares_the_observed_size_against_the_requested_size_not_the_wanted_size(){
+   assert_eq!(required_size((0,0,900,600),(0,0,900,600)),(false,false));
+   assert_eq!(required_size((0,0,900,600),(0,0,901,600)),(false,false),"The +1 physical-pixel tolerance still applies");
+   assert_eq!(required_size((0,0,900,600),(0,0,902,600)),(true,false));
+   assert_eq!(required_size((0,0,900,600),(0,0,900,610)),(false,true));
+   // Still's own floor inside the request is not an app refusal (the old
+   // code compared against wanted, which is smaller than the request here).
+   assert_eq!(required_size((0,0,900,600),(0,0,600,375)),(false,false),"An app smaller than requested is not a refusal");
+   assert_eq!(required_size((0,0,600,375),(0,0,900,600)),(true,true),"A genuine clamp above the request is a refusal");
   }
  #[test]fn discovery_never_claims_an_old_document_unrelated_app_or_already_managed_window(){
   let launch=Launch{pid:22,executable:Some("C:\\Office\\WINWORD.EXE".into()),before:vec![101]};
@@ -348,24 +392,128 @@ pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
   if message==WM_GETMINMAXINFO{let minimum=&mut *(lparam.0 as *mut MINMAXINFO);minimum.ptMinTrackSize=POINT{x:900,y:600};return windows::Win32::Foundation::LRESULT(0)}
   DefWindowProcW(hwnd,message,wparam,lparam)
  }
- #[test]fn app_minimum_is_known_before_shrinking_and_native_bounds_never_go_below_it(){unsafe{
+ #[test]fn declared_minimum_is_physical_applied_to_requests_and_cleared_when_smaller_is_accepted(){unsafe{
   let class=wide("StillMinimumSizeFixture");let instance=windows::Win32::Foundation::HINSTANCE(windows::Win32::System::LibraryLoader::GetModuleHandleW(None).unwrap().0);
   let definition=WNDCLASSW{lpfnWndProc:Some(minimum_fixture_proc),hInstance:instance,lpszClassName:PCWSTR(class.as_ptr()),..Default::default()};assert_ne!(RegisterClassW(&definition),0);
   let hwnd=CreateWindowExW(WINDOW_EX_STYLE(0),PCWSTR(class.as_ptr()),PCWSTR(class.as_ptr()),WS_OVERLAPPEDWINDOW,0,0,1600,1000,None,None,Some(instance),None).unwrap();let target=Fixture(hwnd);let main=Fixture::new("Still minimum owner");
-  let original_placement=WINDOWPLACEMENT{length:std::mem::size_of::<WINDOWPLACEMENT>() as u32,..Default::default()};
   let bounds=Bounds{x:10.,y:20.,width:1000.,height:700.};
-  let mut entry=Entry{hwnd:hwnd.0 as usize,pid:std::process::id(),source_id:"minimum-test".into(),bounds:bounds.clone(),clip:bounds,grip:None,visible:true,shown:false,original_owner:0,original_placement,original_region:0,original_visible:false,required_width:None,required_height:None,minimum_scale:None,last:None,error:String::new()};
+  let mut entry=test_entry(hwnd.0 as usize,&bounds);
   position(&mut entry,main.0,POINT{x:0,y:0},1.5).unwrap();
-  assert_eq!((entry.required_width,entry.required_height),(Some(600.),Some(400.)),"Learn the app's tracking minimum even while its window is larger");
+  assert_eq!(entry.declared,Some((900,600)),"Learn the app's declared tracking minimum as PHYSICAL pixels");
+  assert_eq!(info_at(&entry,1.5,false).required_width,Some(600.),"Info divides the physical floor by the current scale");
+  let size=rect(hwnd).unwrap();assert_eq!((size.2,size.3),(1500,1050),"The panel follows the requested size when it exceeds the minimum");
   entry.bounds.width=200.;entry.bounds.height=100.;position(&mut entry,main.0,POINT{x:0,y:0},1.5).unwrap();
+  let size=rect(hwnd).unwrap();assert_eq!((size.2,size.3),(900,600),"The requested size still includes the declared minimum");
+  assert_eq!((entry.declared,entry.measured,entry.pending),(None,None,None),"An accepted smaller request clears the stale floor so it can be re-learned (C2)");
+  drop(target);assert!(UnregisterClassW(PCWSTR(class.as_ptr()),Some(instance)).is_ok());
+ }}
+ // A fresh Entry wired to a fixture window, with the PHYSICAL floor storage.
+ fn test_entry(hwnd:usize,bounds:&Bounds)->Entry{Entry{hwnd,pid:std::process::id(),source_id:"test-app".into(),bounds:bounds.clone(),clip:bounds.clone(),grip:None,visible:true,shown:false,original_owner:0,original_placement:WINDOWPLACEMENT{length:std::mem::size_of::<WINDOWPLACEMENT>() as u32,..Default::default()},original_region:0,original_visible:false,declared:None,measured:None,pending:None,minimum_scale:None,fresh:false,last:None,error:String::new()}}
+ unsafe fn class_window(class:&[u16],proc:unsafe extern "system" fn(HWND,u32,windows::Win32::Foundation::WPARAM,LPARAM)->windows::Win32::Foundation::LRESULT,title:&str)->(HWND,windows::Win32::Foundation::HINSTANCE){
+  let instance=windows::Win32::Foundation::HINSTANCE(windows::Win32::System::LibraryLoader::GetModuleHandleW(None).unwrap().0);
+  let definition=WNDCLASSW{lpfnWndProc:Some(proc),hInstance:instance,lpszClassName:PCWSTR(class.as_ptr()),..Default::default()};assert_ne!(RegisterClassW(&definition),0);
+  let title=wide(title);
+  let hwnd=CreateWindowExW(WINDOW_EX_STYLE(0),PCWSTR(class.as_ptr()),PCWSTR(title.as_ptr()),WS_OVERLAPPEDWINDOW,0,0,1600,1000,None,None,Some(instance),None).unwrap();
+  (hwnd,instance)
+ }
+ // Declares 900x600 physical via WM_GETMINMAXINFO and enforces it on WM_WINDOWPOSCHANGING.
+ unsafe extern "system" fn declaring_clamping_proc(hwnd:HWND,message:u32,wparam:windows::Win32::Foundation::WPARAM,lparam:LPARAM)->windows::Win32::Foundation::LRESULT{
+  if message==WM_GETMINMAXINFO{let minimum=&mut *(lparam.0 as *mut MINMAXINFO);minimum.ptMinTrackSize=POINT{x:900,y:600};return windows::Win32::Foundation::LRESULT(0)}
+  if message==WM_WINDOWPOSCHANGING{let position=&mut *(lparam.0 as *mut WINDOWPOS);if position.cx<900{position.cx=900}if position.cy<600{position.cy=600};return windows::Win32::Foundation::LRESULT(0)}
+  DefWindowProcW(hwnd,message,wparam,lparam)
+ }
+ static ACCEPT_SMALLER:std::sync::atomic::AtomicBool=std::sync::atomic::AtomicBool::new(false);
+ // Enforces 900x600 only while ACCEPT_SMALLER is false; never declares a minimum.
+ unsafe extern "system" fn silent_clamping_proc(hwnd:HWND,message:u32,wparam:windows::Win32::Foundation::WPARAM,lparam:LPARAM)->windows::Win32::Foundation::LRESULT{
+  if message==WM_WINDOWPOSCHANGING&&!ACCEPT_SMALLER.load(std::sync::atomic::Ordering::Relaxed){let position=&mut *(lparam.0 as *mut WINDOWPOS);if position.cx<900{position.cx=900}if position.cy<600{position.cy=600};return windows::Win32::Foundation::LRESULT(0)}
+  DefWindowProcW(hwnd,message,wparam,lparam)
+ }
+ static RETRIED:std::sync::atomic::AtomicBool=std::sync::atomic::AtomicBool::new(false);
+ // The first WM_GETMINMAXINFO is answered with a zeroed MINMAXINFO; later ones declare 900x600.
+ unsafe extern "system" fn retrying_proc(hwnd:HWND,message:u32,wparam:windows::Win32::Foundation::WPARAM,lparam:LPARAM)->windows::Win32::Foundation::LRESULT{
+  if message==WM_GETMINMAXINFO{
+   if !RETRIED.swap(true,std::sync::atomic::Ordering::Relaxed){return windows::Win32::Foundation::LRESULT(0)}
+   let minimum=&mut *(lparam.0 as *mut MINMAXINFO);minimum.ptMinTrackSize=POINT{x:900,y:600};return windows::Win32::Foundation::LRESULT(0)
+  }
+  DefWindowProcW(hwnd,message,wparam,lparam)
+ }
+ #[test]fn c1_a_maximized_first_sample_never_becomes_the_floor(){unsafe{
+  ACCEPT_SMALLER.store(false,std::sync::atomic::Ordering::Relaxed);
+  let class=wide("StillC1MaximizedFixture");let (hwnd,instance)=class_window(&class,declaring_clamping_proc,"Still C1 fixture");
+  let target=Fixture(hwnd);let main=Fixture::new("Still C1 owner");
+  let _=ShowWindow(hwnd,SW_MAXIMIZE);assert!(IsZoomed(hwnd).as_bool());
+  let maximized=rect(hwnd).unwrap();assert!(maximized.2>900&&maximized.3>600,"The fixture must be maximized larger than the app minimum");
+  let bounds=Bounds{x:10.,y:20.,width:400.,height:250.};let mut entry=test_entry(hwnd.0 as usize,&bounds);
+  let measured=position(&mut entry,main.0,POINT{x:0,y:0},1.5).unwrap();
+  assert!(!IsZoomed(hwnd).as_bool(),"position() must restore a maximized window before sampling");
+  assert_eq!(entry.declared,Some((900,600)),"The declared minimum stays PHYSICAL pixels");
   let size=rect(hwnd).unwrap();assert_eq!((size.2,size.3),(900,600));
+  let reported=info_at(&entry,1.5,measured);
+  assert_eq!((reported.required_width,reported.required_height),(Some(600.),Some(400.)),"Info divides the physical floor by the current scale");
+  assert_ne!(reported.required_width,Some(maximized.2 as f64/1.5),"The maximized monitor size must never be latched as a minimum");
+  drop(target);assert!(UnregisterClassW(PCWSTR(class.as_ptr()),Some(instance)).is_ok());
+ }}
+ #[test]fn c2_the_stored_floor_clears_once_the_app_accepts_a_smaller_request(){unsafe{
+  ACCEPT_SMALLER.store(false,std::sync::atomic::Ordering::Relaxed);
+  let class=wide("StillC2DecreaseFixture");let (hwnd,instance)=class_window(&class,silent_clamping_proc,"Still C2 fixture");
+  let target=Fixture(hwnd);let main=Fixture::new("Still C2 owner");
+  let bounds=Bounds{x:0.,y:0.,width:200.,height:134.};let mut entry=test_entry(hwnd.0 as usize,&bounds);
+  position(&mut entry,main.0,POINT{x:0,y:0},1.5).unwrap();
+  assert_eq!(entry.pending,Some((900,600)),"A first refusal only arms the two-pass confirmation");
+  assert_eq!(entry.measured,None);
+  position(&mut entry,main.0,POINT{x:0,y:0},1.5).unwrap();
+  assert_eq!(entry.measured,Some((900,600)),"A second identical refusal confirms the physical floor");
+  ACCEPT_SMALLER.store(true,std::sync::atomic::Ordering::Relaxed);
+  position(&mut entry,main.0,POINT{x:0,y:0},1.5).unwrap();
+  assert_eq!((entry.measured,entry.declared,entry.pending),(None,None,None),"An accepted smaller request clears the stale floor (C2 decrease)");
+  position(&mut entry,main.0,POINT{x:0,y:0},1.5).unwrap();
+  let size=rect(hwnd).unwrap();assert_eq!((size.2,size.3),(300,201),"With the floor cleared the panel follows the requested size");
+  drop(target);assert!(UnregisterClassW(PCWSTR(class.as_ptr()),Some(instance)).is_ok());
+ }}
+ #[test]fn c3_a_failed_minimum_query_is_retried_on_the_next_pass(){unsafe{
+  let class=wide("StillC3RetryFixture");let (hwnd,instance)=class_window(&class,retrying_proc,"Still C3 fixture");
+  RETRIED.store(false,std::sync::atomic::Ordering::Relaxed);
+  let target=Fixture(hwnd);let main=Fixture::new("Still C3 owner");
+  let bounds=Bounds{x:0.,y:0.,width:800.,height:500.};let mut entry=test_entry(hwnd.0 as usize,&bounds);
+  position(&mut entry,main.0,POINT{x:0,y:0},1.0).unwrap();
+  assert_eq!(entry.minimum_scale,None,"A total query failure must not stamp the scale");
+  assert_eq!(entry.declared,None);
+  entry.shown=true;
+  position(&mut entry,main.0,POINT{x:0,y:0},1.0).unwrap();
+  assert_eq!((entry.declared,entry.minimum_scale),(Some((900,600)),Some(1.0)),"The next pass retries the query and learns the declared minimum");
+  drop(target);assert!(UnregisterClassW(PCWSTR(class.as_ptr()),Some(instance)).is_ok());
+ }}
+ #[test]fn c4_a_window_that_never_declares_a_minimum_gets_no_fabricated_floor(){
+  let main=Fixture::new("Still C4 owner");let target=Fixture::new("Still C4 app");
+  assert_eq!(tracking_minimum(target.0),(None,None),"An unanswered WM_GETMINMAXINFO must not inherit OS track metrics");
+  let bounds=Bounds{x:0.,y:0.,width:300.,height:200.};let mut entry=test_entry(target.0.0 as usize,&bounds);
+  position(&mut entry,main.0,POINT{x:0,y:0},1.0).unwrap();
+  assert_eq!((entry.declared,entry.measured,entry.pending),(None,None,None));
+  assert_eq!(physical_floor(&entry),(0,0));
+  let reported=info_at(&entry,1.0,true);assert_eq!((reported.required_width,reported.required_height),(None,None));
+ }
+ #[test]fn c5_the_physical_floor_reports_consistently_against_the_current_scale(){unsafe{
+  let class=wide("StillC5DpiFixture");let (hwnd,instance)=class_window(&class,declaring_clamping_proc,"Still C5 fixture");
+  let target=Fixture(hwnd);let main=Fixture::new("Still C5 owner");
+  let bounds=Bounds{x:0.,y:0.,width:400.,height:250.};let mut entry=test_entry(hwnd.0 as usize,&bounds);
+  position(&mut entry,main.0,POINT{x:0,y:0},1.0).unwrap();
+  assert_eq!(entry.declared,Some((900,600)),"Physical storage is scale-invariant");
+  assert_eq!(info_at(&entry,1.0,false).required_width,Some(900.));
+  assert_eq!(info_at(&entry,2.0,false).required_width,Some(450.),"The CSS report follows the CURRENT scale, never a stale capture-time value");
+  assert_eq!(info_at(&entry,2.0,false).required_height,Some(300.));
+  // The same CSS minimum declared as different physical pixels at different
+  // scales reports the same CSS value in Info (the C5 stale-by-DPI-ratio defect).
+  let mut scaled=test_entry(0,&bounds);scaled.declared=Some((900,600));
+  assert_eq!(info_at(&scaled,1.5,false).required_width,Some(600.));
+  scaled.declared=Some((1200,800));
+  assert_eq!(info_at(&scaled,2.0,false).required_width,Some(600.));
   drop(target);assert!(UnregisterClassW(PCWSTR(class.as_ptr()),Some(instance)).is_ok());
  }}
  #[test]fn real_window_fixture_tracks_bounds_clips_native_content_and_releases_without_closing(){unsafe{
   let main=Fixture::new("Still fixture owner");let target=Fixture::new("Still fixture app");let original=rect(target.0).unwrap();
   let mut original_placement=WINDOWPLACEMENT{length:std::mem::size_of::<WINDOWPLACEMENT>() as u32,..Default::default()};GetWindowPlacement(target.0,&mut original_placement).unwrap();
   let bounds=Bounds{x:100.,y:140.,width:800.,height:500.};let clip=Bounds{x:130.,y:160.,width:700.,height:450.};let grip=Bounds{x:798.,y:578.,width:32.,height:32.};
-  let mut entry=Entry{hwnd:target.0.0 as usize,pid:std::process::id(),source_id:"test-app".into(),bounds:bounds.clone(),clip:clip.clone(),grip:Some(grip),visible:true,shown:false,original_owner:0,original_placement,original_region:0,original_visible:false,required_width:None,required_height:None,minimum_scale:None,last:None,error:String::new()};
+  let mut entry=Entry{hwnd:target.0.0 as usize,pid:std::process::id(),source_id:"test-app".into(),bounds:bounds.clone(),clip:clip.clone(),grip:Some(grip),visible:true,shown:false,original_owner:0,original_placement,original_region:0,original_visible:false,declared:None,measured:None,pending:None,minimum_scale:None,fresh:false,last:None,error:String::new()};
   SetWindowLongPtrW(target.0,GWLP_HWNDPARENT,main.0.0 as isize);SetPropW(target.0,PCWSTR(marker().as_ptr()),Some(HANDLE(main.0.0))).unwrap();
   position(&mut entry,main.0,POINT{x:30,y:20},1.5).unwrap();assert_eq!(rect(target.0).unwrap(),(180,230,1200,750));
   let region=CreateRectRgn(0,0,0,0);assert_ne!(GetWindowRgn(target.0,region),RGN_ERROR);let mut box_rect=RECT::default();GetRgnBox(region,&mut box_rect);assert_eq!((box_rect.left,box_rect.top,box_rect.right,box_rect.bottom),(45,30,1095,705));

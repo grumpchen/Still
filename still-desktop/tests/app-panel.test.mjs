@@ -32,8 +32,15 @@ test('reported app minima can update after a monitor change without retaining an
 });
 test('missing or invalid native minima keep a saved safe limit without restoring an old window size',()=>{
  const widget=createWidget('apps');widget.placement={x:20,y:40,width:720,height:540};widget.appMinWidth=602;widget.appMinHeight=500;
- assert.deepEqual(appPanelFit(widget,{minWidth:1400,minHeight:900,requiredWidth:null,requiredHeight:NaN},2,100),{});
- const fresh=createWidget('apps');assert.deepEqual(appPanelFit(fresh,{minWidth:1400,minHeight:900,requiredWidth:Infinity,requiredHeight:-1},2,100),{});
+ assert.deepEqual(appPanelFit(widget,{minWidth:1400,minHeight:900,requiredWidth:null,requiredHeight:NaN,measured:false},2,100),{});
+ const fresh=createWidget('apps');assert.deepEqual(appPanelFit(fresh,{minWidth:1400,minHeight:900,requiredWidth:Infinity,requiredHeight:-1,measured:false},2,100),{});
+});
+test('a confirmed no-floor clears the cached app minimum instead of sticking it forever',()=>{
+ const widget=createWidget('apps');widget.placement={x:20,y:40,width:720,height:540};widget.appMinWidth=602;widget.appMinHeight=500;
+ assert.deepEqual(appPanelFit(widget,{minWidth:1400,minHeight:900,requiredWidth:null,requiredHeight:null,measured:true},2,100),{appMinWidth:undefined,appMinHeight:undefined});
+ assert.equal(widget.appMinWidth,602,'The cached value is only cleared through the returned patch, never mutated in place');
+ // A valid measured floor still wins over the cached limit.
+ assert.deepEqual(appPanelFit(widget,{minWidth:1400,minHeight:900,requiredWidth:500,requiredHeight:300,measured:true},2,100),{appMinWidth:502,appMinHeight:400});
 });
 test('app panels keep their full coordinates and clip only the visible area instead of going blank on overlap',()=>{
  const result=appPanelGeometry(rect(140,200,800,500),rect(170,180,1000,620),true,false);

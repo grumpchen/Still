@@ -1,7 +1,7 @@
 import {useEffect,useRef,useState,type PointerEvent,type KeyboardEvent,type DragEvent} from 'react';
 import {Icon,widgetRegistry} from './widgets.tsx';
 import {widgetTypes,type WidgetInstance,type WidgetType,type SavedGroup,type GroupWidgetEntry} from './domain/workspaces.ts';
-import {placement,translate,resize,type Placement} from './domain/layout.ts';
+import {placement,translate,resize,type Placement,canvasExtent} from './domain/layout.ts';
 import {captureWidget,downloadCapture} from './platform/capture.ts';
 import {toggleLecture} from './domain/lecture.ts';
 import type {WebShortcut} from './domain/webShortcuts.ts';
@@ -19,6 +19,7 @@ type Gesture={id:string;type:WidgetType;mode:'move'|'resize';startX:number;start
 export default function WorkspaceCanvas({presets,openPreset,editPreset,removePreset,savePresets,openDropped,widgets,groups,updateGroup,openGroup,editGroup,removeGroup,openGroupWidget,update,add,remove,begin,bringToFront,notify,obscured,workspaceActive=true,openResource,pickApp,saveApp,appAttachments,appAttachmentHandled}:Props&DropProps&AppPickerProps){
   const viewport=useRef<HTMLDivElement>(null),tray=useRef<HTMLDivElement>(null),gesture=useRef<Gesture|null>(null);
   const [active,setActive]=useState<string|null>(null),[trayDragging,setTrayDragging]=useState(false),[overTray,setOverTray]=useState(false),[overCanvas,setOverCanvas]=useState(false),[busy,setBusy]=useState<string|null>(null);
+  const [viewportWidth,setViewportWidth]=useState(0);
   const [presetMenu,setPresetMenu]=useState<PresetType|null>(null);
   const [saveTarget,setSaveTarget]=useState<WidgetType|null>(null),[externalDragging,setExternalDragging]=useState(false),[trayGhost,setTrayGhost]=useState<TrayDragPosition|null>(null);
   const externalEntries=useRef<DroppedResource[]>([]),nativeHandler=useRef<(event:ResourceDropEvent)=>void>(()=>{});
@@ -38,7 +39,7 @@ export default function WorkspaceCanvas({presets,openPreset,editPreset,removePre
   function acceptResources(entries:DroppedResource[],x:number,y:number,errors:string[]=[]){
    const target=trayTarget(x,y),inCanvas=!target.insideTray&&contains(viewport.current!.getBoundingClientRect(),x,y);
    const accepted=inCanvas?entries:entries.filter(entry=>trayDropDecision({source:entrySource(entry),...target})==='save');
-   try{const saved=accepted.map(presetForDroppedResource);if(saved.length){if(inCanvas)openDropped(saved,canvasPoint(x,y),viewport.current!.clientWidth);else{savePresets(saved);setPresetMenu(saved[0].type)}}else notify(errors[0]??'Drop on the matching tray button to save, or on the workspace to add a widget.');if(saved.length&&errors.length)notify('Added '+saved.length+' shortcut(s). '+errors[0])}catch(e){notify(String((e as Error).message??e))}finally{clearDrop()}
+   try{const saved=accepted.map(presetForDroppedResource);if(saved.length){if(inCanvas)openDropped(saved,canvasPoint(x,y),extent);else{savePresets(saved);setPresetMenu(saved[0].type)}}else notify(errors[0]??'Drop on the matching tray button to save, or on the workspace to add a widget.');if(saved.length&&errors.length)notify('Added '+saved.length+' shortcut(s). '+errors[0])}catch(e){notify(String((e as Error).message??e))}finally{clearDrop()}
   }
   nativeHandler.current=event=>{
    if(!workspaceActive||obscured)return;
@@ -50,6 +51,9 @@ export default function WorkspaceCanvas({presets,openPreset,editPreset,removePre
   };
   useEffect(()=>{if(!resourceDrop.available)return;let disposed=false,stop:(()=>void)|undefined;void resourceDrop.subscribe(event=>{if(!disposed)nativeHandler.current(event)}).then(unlisten=>{if(disposed)unlisten();else stop=unlisten}).catch(()=>notify('File drop handling could not start. Restart Still to try again.'));return()=>{disposed=true;stop?.()}},[]);
   useEffect(()=>{if(!workspaceActive||obscured)clearDrop()},[workspaceActive,obscured]);
+  // The canvas extent must track the visible viewport reactively (sidebar
+  // toggle, window resize) so the 30% scroll room recomputes with it.
+  useEffect(()=>{const node=viewport.current;if(!node)return;setViewportWidth(node.clientWidth);const observer=new ResizeObserver(()=>setViewportWidth(node.clientWidth));observer.observe(node);return()=>observer.disconnect()},[]);
   function lecture(w:WidgetInstance){const v=viewport.current;if(!v)return;begin();update(w.id,toggleLecture(w.placement,w.lectureRestore,v.clientWidth,v.clientHeight,v.scrollLeft,v.scrollTop));bringToFront(w.id);}
   function start(e:PointerEvent<HTMLElement>,w:WidgetInstance,mode:'move'|'resize'){
     if(e.button!==0 || obscured || (mode==='move'&&(e.target as HTMLElement).closest('button')))return;
@@ -89,13 +93,13 @@ export default function WorkspaceCanvas({presets,openPreset,editPreset,removePre
       notify(download?'PNG exported. Attach it to ChatGPT.':'Widget image copied. Paste into ChatGPT with Ctrl+V.');
     }catch(e){notify(String((e as Error).message??e))}finally{setBusy(null)}
   }
-  const width=Math.max(0,...widgets.map(w=>w.placement.x+w.placement.width+20));
+  const extent=canvasExtent(viewportWidth,widgets);
   const height=Math.max(560,...widgets.map(w=>w.placement.y+w.placement.height+20));
   const visibleOrigin=()=>({x:(viewport.current?.scrollLeft??0)+12,y:(viewport.current?.scrollTop??0)+12});
   function trayDragChange(drag:TrayDragPosition|null){setTrayDragging(!!drag);setTrayGhost(drag);setOverCanvas(!!drag&&contains(viewport.current!.getBoundingClientRect(),drag.clientX,drag.clientY))}
   function trayDragDrop({payload,clientX,clientY}:TrayDragPosition){
    if(!workspaceActive||obscured||!contains(viewport.current!.getBoundingClientRect(),clientX,clientY))return;
-   const at=canvasPoint(clientX,clientY),width=viewport.current!.clientWidth;
+   const at=canvasPoint(clientX,clientY),width=extent;
    if(payload.kind==='type'){add(payload.type,at,width);return}
    if(payload.kind==='group'){openGroup(payload.id,at,width);return}
    if(payload.kind==='preset'){const preset=presets.find(p=>p.id===payload.id);if(preset)openPreset(preset,at,width);return}
@@ -123,17 +127,17 @@ export default function WorkspaceCanvas({presets,openPreset,editPreset,removePre
     <div ref={tray} role="group" className={`widget-tray ${overTray?'tray-remove':''} ${saveTarget?'tray-saving':''}`} aria-label="Widget tray" aria-describedby="widget-tray-help">
      <div className="tray-main-row">
       <div className="tray-label" aria-live="polite" aria-atomic="true"><strong>{saveTarget?'Drop to save':overTray?active?'Drop to remove':'Not saved here':'Widgets'}</strong></div>
-      <div className="tray-items">{widgetTypes.map(type=><div data-tray-type={type} className={'tray-widget-button '+(type!=='group'?'tray-split-button ':'')+(saveTarget===type?'tray-save-target':'')} key={type}><TrayDragButton dragPayload={{kind:'type',type}} onFocus={trayFocusIntoView} aria-label={type==='apps'?'Attach open app':'Add '+widgetRegistry[type].name+' widget'} title={type==='apps'?'Choose an open app · drag to add an empty Apps panel':widgetRegistry[type].description} onClick={()=>type==='apps'?pickApp(undefined,visibleOrigin(),viewport.current?.clientWidth):add(type,undefined,viewport.current?.clientWidth)}><Icon name={widgetRegistry[type].icon}/><span>{widgetRegistry[type].name}</span></TrayDragButton>{type!=='group'&&<button className="tray-preset-arrow" onFocus={trayFocusIntoView} aria-label={widgetRegistry[type].name+' presets'} title={'Custom '+widgetRegistry[type].name+' widgets'} aria-expanded={presetMenu===type} aria-controls={'preset-tray-'+type} onClick={()=>setPresetMenu(presetMenu===type?null:type)}>{presetMenu===type?'▴':'▾'}</button>}</div>)}{groups.length>0&&<span className="tray-group-separator" aria-hidden="true"/>}<GroupTrayButtons groups={groups} update={updateGroup}/></div>
+      <div className="tray-items">{widgetTypes.map(type=><div data-tray-type={type} className={'tray-widget-button '+(type!=='group'?'tray-split-button ':'')+(saveTarget===type?'tray-save-target':'')} key={type}><TrayDragButton dragPayload={{kind:'type',type}} onFocus={trayFocusIntoView} aria-label={type==='apps'?'Attach open app':'Add '+widgetRegistry[type].name+' widget'} title={type==='apps'?'Choose an open app · drag to add an empty Apps panel':widgetRegistry[type].description} onClick={()=>type==='apps'?pickApp(undefined,visibleOrigin(),extent):add(type,undefined,extent)}><Icon name={widgetRegistry[type].icon}/><span>{widgetRegistry[type].name}</span></TrayDragButton>{type!=='group'&&<button className="tray-preset-arrow" onFocus={trayFocusIntoView} aria-label={widgetRegistry[type].name+' presets'} title={'Custom '+widgetRegistry[type].name+' widgets'} aria-expanded={presetMenu===type} aria-controls={'preset-tray-'+type} onClick={()=>setPresetMenu(presetMenu===type?null:type)}>{presetMenu===type?'▴':'▾'}</button>}</div>)}{groups.length>0&&<span className="tray-group-separator" aria-hidden="true"/>}<GroupTrayButtons groups={groups} update={updateGroup}/></div>
       <div className="tray-blank-gutter" data-tray-blank-gutter="" aria-hidden="true" title="Blank tray space — drop a widget here to remove only that instance"/>
      </div>
      {(groups.some(g=>g.expanded)||presetMenu)&&<div className="tray-shelf-area">
-      {groups.some(g=>g.expanded)&&<GroupTray groups={groups} update={updateGroup} openGroup={id=>openGroup(id,visibleOrigin(),viewport.current?.clientWidth)} openLink={link=>openResource(link,visibleOrigin())} openWidget={entry=>openGroupWidget(entry,visibleOrigin(),viewport.current?.clientWidth)} edit={editGroup} remove={removeGroup}/>}
-      {presetMenu&&<PresetTray type={presetMenu} presets={presets} add={preset=>openPreset(preset,visibleOrigin(),viewport.current?.clientWidth)} edit={editPreset} remove={removePreset} collapse={()=>setPresetMenu(null)} attachApp={()=>pickApp(undefined,visibleOrigin(),viewport.current?.clientWidth)}/>}
+      {groups.some(g=>g.expanded)&&<GroupTray groups={groups} update={updateGroup} openGroup={id=>openGroup(id,visibleOrigin(),extent)} openLink={link=>openResource(link,visibleOrigin())} openWidget={entry=>openGroupWidget(entry,visibleOrigin(),extent)} edit={editGroup} remove={removeGroup}/>}
+      {presetMenu&&<PresetTray type={presetMenu} presets={presets} add={preset=>openPreset(preset,visibleOrigin(),extent)} edit={editPreset} remove={removePreset} collapse={()=>setPresetMenu(null)} attachApp={()=>pickApp(undefined,visibleOrigin(),extent)}/>}
      </div>}
      <span id="widget-tray-help" className="tray-help-text">Saved widget tray. Drag a widget header onto its matching type button to save a reusable shortcut, or onto blank tray space to remove only that open instance.</span>
     </div>
     <div className={`canvas-viewport ${overCanvas?'canvas-drop':''}`} ref={viewport} aria-label="Workspace canvas">
-      <section className="workspace-canvas" aria-label="Workspace widgets" style={{minWidth:width,height}}>
+      <section className="workspace-canvas" aria-label="Workspace widgets" style={{minWidth:extent,height}}>
         {widgets.map((w,index)=>{const d=widgetRegistry[w.type],Component=d.component,p=placement(w.type,w.placement);const count=widgets.filter(i=>i.type===w.type).length;const number=w.instanceNumber;const title=w.title||d.name+(count>1?' '+number:'');return <article id={'widget-'+w.id} key={w.id} data-widget-id={w.id} className={`card canvas-card widget-${w.type} ${active===w.id?'gesture-card':''}`} style={{left:p.x,top:p.y,width:p.width,height:p.height,zIndex:active===w.id?widgets.length+1:index+1}}>
           <div className="card-head widget-move" tabIndex={0} aria-label={'Move '+title} title="Drag to move · arrow keys move · Shift for 1px" onPointerDown={e=>start(e,w,'move')} onPointerMove={move} onPointerUp={e=>finish(e)} onPointerCancel={e=>finish(e,true)} onLostPointerCapture={e=>{if(gesture.current)finish(e,true)}} onKeyDown={e=>key(e,w,'move')}><span className="move-grip" aria-hidden="true">⠿</span><Icon name={d.icon}/><span className="widget-title">{title}</span>{(w.type==='apps'||w.type==='files'&&(w.fileKey||w.folderName))&&<small className="resource-badge">{w.type==='apps'?'App':w.fileKey?w.fileKind?.toUpperCase()??'File':'Folder'}</small>}<div className="widget-controls" data-capture-ignore>
              <button disabled={busy!==null} aria-label={'Copy screenshot of '+title} title="Click or drag this handle to copy a screenshot; paste in ChatGPT" onClick={e=>{if(e.detail===0)void snapshot(w.id)}} onPointerDown={e=>{e.stopPropagation();e.currentTarget.setPointerCapture(e.pointerId)}} onPointerUp={e=>{e.stopPropagation();void snapshot(w.id)}}><Icon name="camera"/></button>
@@ -141,7 +145,7 @@ export default function WorkspaceCanvas({presets,openPreset,editPreset,removePre
              {w.type==='apps'&&<button className="widget-resize-control" aria-label={'Resize '+title} title="Drag to resize · use arrow keys to resize" onPointerDown={e=>{e.stopPropagation();start(e,w,'resize')}} onKeyDown={e=>key(e,w,'resize')}><span aria-hidden="true">↘</span></button>}
              <button aria-label={'Remove '+title} title="Remove this instance" onClick={()=>remove(w.id)}>×</button>
           </div></div>
-          <div className="widget-content"><Component widget={w} group={groups.find(g=>g.id===w.groupId)} updateGroup={w.groupId?patch=>updateGroup(w.groupId!,patch):undefined} openGroupWidget={entry=>openGroupWidget(entry,visibleOrigin(),viewport.current?.clientWidth)} update={patch=>update(w.id,patch)} obscured={obscured||!!active||trayDragging||externalDragging} workspaceActive={workspaceActive} notify={notify} lecture={()=>lecture(w)} openResource={link=>openResource(link,visibleOrigin())} pickApp={()=>pickApp(w.id,visibleOrigin(),viewport.current?.clientWidth)} saveApp={()=>saveApp(w.id)} appAttachment={appAttachments[w.id]} appAttachmentHandled={()=>{const attachment=appAttachments[w.id];if(attachment)appAttachmentHandled(w.id,attachment)}}/></div>
+          <div className="widget-content"><Component widget={w} group={groups.find(g=>g.id===w.groupId)} updateGroup={w.groupId?patch=>updateGroup(w.groupId!,patch):undefined} openGroupWidget={entry=>openGroupWidget(entry,visibleOrigin(),extent)} update={patch=>update(w.id,patch)} obscured={obscured||!!active||trayDragging||externalDragging} workspaceActive={workspaceActive} notify={notify} lecture={()=>lecture(w)} openResource={link=>openResource(link,visibleOrigin())} pickApp={()=>pickApp(w.id,visibleOrigin(),extent)} saveApp={()=>saveApp(w.id)} appAttachment={appAttachments[w.id]} appAttachmentHandled={()=>{const attachment=appAttachments[w.id];if(attachment)appAttachmentHandled(w.id,attachment)}}/></div>
           <button className="widget-resize" data-capture-ignore aria-label={'Resize '+title} title="Drag to resize · arrow keys resize · Shift for 1px" onPointerDown={e=>start(e,w,'resize')} onPointerMove={move} onPointerUp={e=>finish(e)} onPointerCancel={e=>finish(e,true)} onLostPointerCapture={e=>{if(gesture.current)finish(e,true)}} onKeyDown={e=>key(e,w,'resize')}><span aria-hidden="true">◢</span></button>
         </article>})}
         {!widgets.length&&<div className="canvas-empty"><Icon name="arrange"/><h2>Make room for your next idea.</h2><p>Drag a widget down from the tray, or click one to add it.</p></div>}
