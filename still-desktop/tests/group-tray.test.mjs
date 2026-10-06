@@ -36,6 +36,27 @@ test('group widget entries open fresh instances and keep their catalogue after r
  assert.throws(()=>workspaces.groupWidgetEntry({type:'group'}));
 });
 
+test('saving an open widget creates or appends a reusable group entry without changing the source',()=>{
+ const workspace=workspaces.createWorkspace('Chemistry',['notes','group']);
+ const source=workspace.widgets.find(widget=>widget.type==='notes');source.title='Lab notes';source.text='Keep these notes';
+ const created=workspaces.saveWidgetToGroup(workspace,source);
+ assert.equal(created.groups.length,2);
+ const newGroup=created.groups.at(-1);
+ assert.equal(newGroup.expanded,true);assert.equal(newGroup.widgets.length,1);
+ assert.deepEqual(newGroup.widgets[0],{id:newGroup.widgets[0].id,type:'notes',name:'Lab notes',icon:'LA'});
+ assert.equal(created.widgets.find(widget=>widget.id===source.id).text,'Keep these notes');
+ assert.deepEqual(workspace.groups.at(-1).widgets,[]);
+ const calculator=workspaces.createWidget('desmos');
+ const appended=workspaces.saveWidgetToGroup(created,calculator,newGroup.id);
+ assert.equal(appended.groups.at(-1).widgets.length,2);
+ assert.equal(appended.groups.at(-1).widgets[1].name,'Calculator');
+ assert.equal(appended.widgets.find(widget=>widget.id===source.id).text,'Keep these notes');
+ const restored=workspaces.parseState(JSON.stringify({...workspaces.createInitialState(),workspaces:[appended],activeId:appended.id}));
+ assert.deepEqual(restored.workspaces[0].groups.at(-1).widgets.map(entry=>entry.type),['notes','desmos']);
+ assert.throws(()=>workspaces.saveWidgetToGroup(appended,workspaces.createWidget('group')));
+ assert.throws(()=>workspaces.saveWidgetToGroup(appended,source,'missing-group'));
+});
+
 test('renaming a group updates its instances and duplicate workspaces keep independent group libraries',()=>{
  const original=workspaces.createWorkspace('Chemistry',['group']);assert.equal(original.groups?.length,1);
  const id=original.groups[0].id;

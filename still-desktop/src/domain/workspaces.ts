@@ -85,6 +85,17 @@ export function groupWidgetEntry(value:{id?:string;type:WidgetType;name?:string;
  if(!name||name.length>60)throw new Error('Use a name from 1 to 60 characters.');
  return{id:value.id??crypto.randomUUID(),type:value.type,name,icon:(value.icon?.trim()||name.slice(0,2).toUpperCase()).slice(0,8)};
 }
+export function saveWidgetToGroup(workspace:Workspace,widget:WidgetInstance,groupId?:string):Workspace {
+ const entry=groupWidgetEntry({type:widget.type,name:widget.title.trim()||widgetCatalog[widget.type].name});
+ if(groupId){
+  const group=workspace.groups.find(item=>item.id===groupId);
+  if(!group)throw new Error('This group is no longer available.');
+  if(group.widgets.length>=200)throw new Error('This group has reached its widget limit.');
+  return updateSavedGroup(workspace,groupId,{widgets:[...group.widgets,entry],expanded:true});
+ }
+ if(workspace.groups.length>=200)throw new Error('This workspace has reached its group limit.');
+ return{...workspace,groups:[...workspace.groups,{id:crypto.randomUUID(),name:'',shortcuts:[],widgets:[entry],expanded:true}]};
+}
 function parseGroupEntries(value:unknown):GroupWidgetEntry[]{
  if(!Array.isArray(value))return [];const ids=new Set<string>();
  return value.slice(0,200).flatMap(v=>{try{

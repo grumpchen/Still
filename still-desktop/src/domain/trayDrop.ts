@@ -1,16 +1,21 @@
 import {normalizeUrl} from './browser.ts';
 import type {WidgetType} from './widgetCatalog.ts';
 
-export type TrayDropAction='save'|'remove'|'none';
+export type TrayDropAction='save'|'save-group'|'create-group'|'remove'|'none';
+export type GroupTrayDropTarget={kind:'create'}|{kind:'existing';groupId:string};
 export interface TrayDropTarget {
  source:'widget'|'file'|'website'|'app';widgetType?:WidgetType;
- targetType?:WidgetType|null;insideTray:boolean;overInteractive?:boolean;
+ targetType?:WidgetType|null;groupTarget?:GroupTrayDropTarget;insideTray:boolean;overInteractive?:boolean;
 }
 // Removal applies only to existing canvas widgets over empty tray space.
 // A rejected external drop never means deleting anything from the computer.
 export function trayDropDecision(target:TrayDropTarget):TrayDropAction {
  if(!target.insideTray)return 'none';
  if(target.source==='widget'){
+  if(target.groupTarget){
+   if(target.widgetType==='group'||target.groupTarget.kind==='existing'&&!target.groupTarget.groupId)return 'none';
+   return target.groupTarget.kind==='create'?'create-group':'save-group';
+  }
   if(target.targetType)return target.widgetType!=='group'&&target.targetType===target.widgetType?'save':'none';
   return target.overInteractive?'none':'remove';
  }

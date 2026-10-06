@@ -168,6 +168,9 @@ dialog .group-widget{height:min(480px,60dvh);min-height:270px}
 .tray-save-target{border-radius:12px;outline:2px solid #389167;outline-offset:2px}
 .tray-items .tray-save-target>button,.liquid-glass .tray-items .tray-save-target>button{background:#cdeedd;color:#1d5940;border-color:#389167}
 .tray-saving .tray-label{color:#216348}
+.tray-items .tray-save-target>button,.liquid-glass .tray-items .tray-save-target>button,.tray-items button.tray-save-target,.tray-group-shelf.tray-save-target{background:#cdeedd;color:#1d5940;border-color:#389167}
+.liquid-glass .tray-items button.tray-save-target,.liquid-glass .tray-group-shelf.tray-save-target{background:#cdeedd;color:#1d5940;border-color:#389167}
+.tray-saving .tray-label small{color:#216348}
 .preset-kind,.resource-badge{font-size:8px;color:var(--muted);border:1px solid var(--border);border-radius:5px;padding:2px 4px;white-space:nowrap}
 .resource-badge{margin-left:1px}.preset-kind{margin-left:3px}
 .tray-drag-ghost{position:fixed;z-index:9999;pointer-events:none;background:var(--surface);border:1px solid var(--border);box-shadow:0 4px 18px #152b2428;border-radius:10px;padding:9px 13px;font-size:12px;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

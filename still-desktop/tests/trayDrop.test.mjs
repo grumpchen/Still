@@ -38,6 +38,18 @@ test('only matching tray buttons save and only empty tray space removes existing
  assert.equal(trayDropDecision({source:'widget',widgetType:'group',insideTray:true,targetType:null}),'remove');
 });
 
+test('widget drops distinguish creating and adding to Groups from blank-tray removal',async()=>{
+ const {trayDropDecision}=await import('../src/domain/trayDrop.ts');
+ const notes={source:'widget',widgetType:'notes',insideTray:true};
+ assert.equal(trayDropDecision({...notes,groupTarget:{kind:'create'}}),'create-group');
+ assert.equal(trayDropDecision({...notes,groupTarget:{kind:'existing',groupId:'chem111'}}),'save-group');
+ assert.equal(trayDropDecision({source:'widget',widgetType:'group',insideTray:true,groupTarget:{kind:'create'}}),'none');
+ assert.equal(trayDropDecision({...notes,targetType:null,overInteractive:false}),'remove');
+ assert.equal(trayDropDecision({...notes,targetType:'notes'}),'save');
+ assert.equal(trayDropDecision({source:'file',insideTray:true,groupTarget:{kind:'create'}}),'none');
+ assert.equal(trayDropDecision({source:'app',insideTray:true,groupTarget:{kind:'existing',groupId:'chem111'}}),'none');
+});
+
 test('saving notes and timetable templates preserves content but gives each opened widget independent state',()=>{
  const state=createInitialState(),note=state.workspaces[0].widgets.find(w=>w.type==='notes');note.title='Chemistry notes';note.text='Keep this formula';
  assert.equal(typeof presets.presetFromWidget,'function');
