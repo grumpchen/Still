@@ -1,12 +1,12 @@
 # Compact workspace, group tray, fullscreen, and native-panel scrolling
 
-**Status:** Design draft for user review. No implementation is authorized by this document.
+**Status:** Implemented on `agent/codex/compact-workspace`; awaiting user Windows acceptance. This spec records the approved scope and implementation outcome.
 
 ## Goal
 
 Make the workspace feel compact and keep its controls easy to reach while preserving movable, overlapping widgets and managed native app panels. Put the widget tray at the top of the Still client area, expand saved groups inline, support whole-app fullscreen, extend the canvas vertically, and keep every widget inside its workspace bounds.
 
-This work is scheduled after the active wider-canvas/resize phase is accepted and before the existing Group drag/save and Apps/file phases. It is a prerequisite for those phases where their tray, group, or native-panel behavior overlaps.
+This work was implemented after the wider-canvas/resize and Group drag/save baseline was accepted, and before the Apps/file phase. It remains a prerequisite where later tray, group, or native-panel behavior overlaps.
 
 ## Existing architecture and constraints
 
