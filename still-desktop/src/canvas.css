@@ -5,7 +5,7 @@
 .canvas-app .sidebar{padding:24px 10px 16px}.canvas-app .personal{font-size:10px;margin:8px 5px 26px}.canvas-app .brand{padding:0 5px}
 .canvas-app .nav button{padding:10px 8px;gap:7px;font-size:12px}.canvas-app .nav kbd{font-size:9px}
 .canvas-app .workspace-tools{margin-bottom:8px;flex-shrink:0;display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11px}.canvas-app .workspace-tools button{padding:4px 8px;font-size:11px}.canvas-app .footer{margin-top:6px;flex-shrink:0;font-size:9px}
-.canvas-system{min-height:0;flex:1;display:flex;flex-direction:column;gap:8px;position:relative}
+.canvas-system{min-height:0;flex:1;display:flex;flex-direction:column;gap:8px;position:relative}\r\n.tray-widget-button{display:flex;align-items:center;gap:6px;padding:4px 10px;min-height:32px;cursor:grab;border-radius:12px;background:transparent}
 .workspace-surface{display:flex;flex:1;min-height:0;flex-direction:column}.workspace-surface[hidden]{display:none}
 .chrome-panel .browser-tools{flex-wrap:wrap}.chrome-panel .browser-placeholder h2{font-size:22px}.chrome-panel .browser-toolbar form button{white-space:nowrap}
 .widget-tray{display:flex;align-items:center;gap:16px;padding:5px 12px;flex-shrink:0;border:1px solid var(--border);border-radius:16px;background:var(--surface);box-shadow:0 3px 15px #14233206;transition:background .15s,border-color .15s}
@@ -134,8 +134,8 @@
 .tray-items .tray-group-button{cursor:pointer;border-color:color-mix(in srgb,var(--accent) 28%,var(--border))}
 .tray-group-button small{font-size:9px;color:var(--muted);padding:2px 4px;background:var(--tint);border-radius:5px}
 .tray-items .tray-group-button[aria-expanded=true]{background:var(--tint);color:var(--accent)}
-.tray-group-inline{display:flex;align-items:center;gap:5px;flex-shrink:0}
-.tray-group-inline-contents{display:flex;align-items:center;flex-wrap:nowrap;gap:5px;min-height:32px;padding:0 5px;border-left:1px solid var(--border);border-radius:9px;flex-shrink:0;white-space:nowrap}
+.tray-group-inline{display:flex;align-items:center;gap:5px;flex-shrink:0;border-radius:12px}
+.tray-group-inline-contents{display:flex;align-items:center;flex-wrap:nowrap;gap:5px;min-height:32px;padding:0 5px;border-radius:9px;flex-shrink:0;white-space:nowrap}
 .tray-group-inline-title{font-size:10px;font-weight:500;color:var(--muted);max-width:120px;overflow:hidden;text-overflow:ellipsis}
 .tray-group-inline-contents button{display:flex;align-items:center;gap:5px;font-size:10px;padding:4px 8px;min-height:26px;border-radius:8px;max-width:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:var(--tint);flex-shrink:0}
 .tray-group-inline-contents button[draggable=true]{cursor:grab}
@@ -154,7 +154,7 @@ dialog .group-widget{height:min(480px,60dvh);min-height:270px}
 .tray-split-button>button:first-child{border-top-right-radius:0!important;border-bottom-right-radius:0!important;padding-right:8px}
 .tray-items .tray-preset-arrow{padding:6px;cursor:pointer;border-left:0;border-top-left-radius:0!important;border-bottom-left-radius:0!important;box-shadow:none}
 .tray-preset-arrow[aria-expanded=true]{color:var(--accent);background:var(--tint)!important}
-.preset-tray{display:flex;align-items:center;gap:5px;padding:0 5px;border-left:1px solid var(--border);border-radius:9px;flex-shrink:0;white-space:nowrap}
+.preset-tray{display:flex;align-items:center;gap:5px;padding:0 5px;border-radius:9px;flex-shrink:0;white-space:nowrap}
 .preset-tray-label{font-size:10px;font-weight:500;color:var(--muted)}
 .preset-tray-entries{display:flex;align-items:center;gap:5px;flex-wrap:nowrap}
 .preset-tray .preset-open{padding:4px 8px;font-size:10px;gap:5px}

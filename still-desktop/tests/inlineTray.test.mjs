@@ -34,6 +34,31 @@ test('Apps shortcuts are icon-only and the single plus opens the combined Apps d
  assert.match(app,/appsDialogMode==='attach'\?\s*<AppWindowPicker/);assert.match(app,/<PresetEditor[^>]*type="apps"/);
  assert.match(app,/setModal\('appsTray'\)/);
 });
+
+test('disclosure controls and expanded contents belong to one rounded in-row pill',()=>{
+ const split=canvas.slice(canvas.indexOf('<div data-tray-type={type}'),canvas.indexOf('{groups.length>0'));
+ assert.match(split,/tray-pill|tray-widget-button/);
+ assert.match(css,/\.tray-widget-button[^}]*border-radius/);
+ assert.doesNotMatch(css,/\.preset-tray\{[^}]*border-left/);
+ assert.match(groups,/tray-group-inline/);assert.match(css,/\.tray-group-inline[^}]*border-radius/);
+ assert.doesNotMatch(css,/\.tray-group-inline-contents\{[^}]*border-left/);
+});
+
+test('saved Apps shortcut launch passes only validated icon data and retains the accessible name',()=>{
+ assert.match(presets,/aria-label=\{'Open '\+preset\.name\}/);assert.match(presets,/title=\{[^}]*preset\.appName/);
+ const app=readFileSync(new URL('../src/App.tsx',import.meta.url),'utf8');
+ assert.match(app,/checkedAppIconData\(preset\.iconData\)/);
+});
+
+test('minimize buttons affect live workspace widgets only and compact buttons stay out of tray hit targets',()=>{
+ const live=canvas.slice(canvas.indexOf('{widgets.map('),canvas.indexOf('{!widgets.length'));
+ assert.match(live,/minimizeWidget|Minimize/);assert.match(live,/onDoubleClick/);
+ assert.match(canvas,/minimized-widgets|workspace-minimized/);
+ assert.doesNotMatch(presets,/minimizeWidget|Minimize/);assert.doesNotMatch(groups,/minimizeWidget|Minimize/);
+});
+
 test('workspace overview is descriptive and cannot intercept workspace interaction',()=>{
  assert.match(canvas,/canvas-overview/);assert.match(canvas,/Workspace overview map/);assert.match(css,/\.canvas-overview\{[^}]*pointer-events:none/);
+ assert.doesNotMatch(canvas,/scrollOffset\.x\+Math\.max/);
+ assert.match(canvas,/overviewViewportRef|updateOverview/);
 });
