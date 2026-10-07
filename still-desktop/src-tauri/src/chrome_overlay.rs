@@ -14,15 +14,20 @@ impl Bounds {
  fn screen(&self,origin:POINT,scale:f64)->(i32,i32,i32,i32){((origin.x as f64+self.x*scale).round() as i32,(origin.y as f64+self.y*scale).round() as i32,(self.width*scale).round().max(1.) as i32,(self.height*scale).round().max(1.) as i32)}
 }
 type ScreenRect=(i32,i32,i32,i32);
-struct Entry {hwnd:usize,pid:u32,bounds:Bounds,clip:Bounds,occlusions:Vec<Bounds>,visible:bool,shown:bool,stacking_rank:i64,revision:u64,last:Option<(ScreenRect,ScreenRect,Vec<ScreenRect>,bool)>,last_region:Option<(ScreenRect,ScreenRect,Vec<ScreenRect>,bool)>}
+struct Entry {hwnd:usize,pid:u32,bounds:Bounds,clip:Bounds,occlusions:Vec<Bounds>,viewport_right:f64,visible:bool,shown:bool,edge_hidden:bool,stacking_rank:i64,revision:u64,last:Option<(ScreenRect,ScreenRect,Vec<ScreenRect>,bool)>,last_region:Option<(ScreenRect,ScreenRect,Vec<ScreenRect>,bool)>}
 #[derive(Default)]
 pub struct ChromeState(Mutex<HashMap<String,Entry>>);
 pub(crate) fn managed_windows(app:&AppHandle)->Vec<(usize,u32)>{app.state::<ChromeState>().0.lock().map(|s|s.values().map(|e|(e.hwnd,e.pid)).collect()).unwrap_or_default()}
 pub(crate) fn ordered_windows(app:&AppHandle)->Option<Vec<(i64,usize)>>{app.state::<ChromeState>().0.try_lock().ok().map(|s|s.values().filter(|e|e.shown).map(|e|(e.stacking_rank,e.hwnd)).collect())}
 fn refresh_clipped_child(app:&AppHandle,child:HWND)->bool{
  let root=unsafe{GetAncestor(child,GA_ROOT)};if root.0.is_null()||root==child{return false}
- let process=pid(root);let state=app.state::<ChromeState>();let Ok(items)=state.0.try_lock()else{return false};
- if !items.values().any(|entry|entry.hwnd==root.0 as usize&&entry.pid==process&&entry.shown&&entry.visible){return false}
+ let process=pid(root);let state=app.state::<ChromeState>();let Ok(mut items)=state.0.try_lock()else{return false};
+ let Some(entry)=items.values_mut().find(|entry|entry.hwnd==root.0 as usize&&entry.pid==process&&entry.visible)else{return false};
+ let Some((_,origin,scale, _))=placement_context(app)else{return false};let mut actual=RECT::default();if unsafe{GetWindowRect(root,&mut actual)}.is_err(){return false}
+ let unsafe_edge=crate::native_panels::right_edge_is_unsafe(actual.right,origin.x,entry.viewport_right,scale)&&!expanded(root);
+ if unsafe_edge{if entry.shown{unsafe{let _=ShowWindow(root,SW_HIDE);}}entry.shown=false;entry.edge_hidden=true;entry.last=None;entry.last_region=None;return true}
+ let restore_edge=entry.edge_hidden;entry.edge_hidden=false;let shown=entry.shown;
+ drop(items);if restore_edge{crate::native_panels::refresh_all(app);return true}if !shown{return false}
  let _=crate::native_panels::refresh_clipped_child_region(root,child);
  true
 }
@@ -113,7 +118,9 @@ fn place_entry(app:&AppHandle,id:&str,item:&mut Entry,origin:POINT,scale:f64,par
   }
   item.last=Some(signature);
  }
- if !item.shown{unsafe{let _=ShowWindow(hwnd,SW_SHOWNOACTIVATE);}item.shown=true;}
+ let mut actual=RECT::default();if unsafe{GetWindowRect(hwnd,&mut actual)}.is_err(){unsafe{let _=ShowWindow(hwnd,SW_HIDE);}item.shown=false;item.edge_hidden=true;return}
+ if !is_expanded&&crate::native_panels::right_edge_is_unsafe(actual.right,origin.x,item.viewport_right,scale){if item.shown{unsafe{let _=ShowWindow(hwnd,SW_HIDE);}}item.shown=false;item.edge_hidden=true;return}
+ item.edge_hidden=false;if !item.shown{unsafe{let _=ShowWindow(hwnd,SW_SHOWNOACTIVATE);}item.shown=true;}
 }
 fn place(app:&AppHandle,items:&mut HashMap<String,Entry>){
  let Some((main,origin,scale,parent_visible))=placement_context(app) else{return};let group=is_group(app,items,main);
@@ -224,23 +231,23 @@ pub async fn chrome_panel_open(app:AppHandle,webview:Webview,id:String,url:Strin
   let (hwnd,process)=open_window(&profile,&url,&id,main,&items)?;
   CHROME_PID.store(process,std::sync::atomic::Ordering::Relaxed);
   crate::shortcuts::refresh_editing(app.clone());
-  items.insert(id.clone(),Entry{hwnd,pid:process,clip:bounds.clone(),bounds,occlusions:Vec::new(),visible:false,shown:false,stacking_rank:0,revision:0,last:None,last_region:None});
+  items.insert(id.clone(),Entry{hwnd,pid:process,clip:bounds.clone(),bounds,occlusions:Vec::new(),viewport_right:0.,visible:false,shown:false,edge_hidden:false,stacking_rank:0,revision:0,last:None,last_region:None});
   let _=app.emit_to("main","chrome-state",serde_json::json!({"id":id,"open":true}));
   Ok(Info{hwnd,pid:process})
  }).await.map_err(|e|e.to_string())?
 }
 #[tauri::command]
-pub async fn chrome_panel_present(app:AppHandle,webview:Webview,id:String,bounds:Bounds,clip:Bounds,occlusions:Vec<Bounds>,visible:bool,stacking_rank:i64,revision:u64)->Result<bool,String>{
- crate::browser::authorize(&webview)?;instance(&id)?;bounds.validate()?;clip.validate()?;if occlusions.len()>256{return Err("Too many overlapping workspace widgets".into())}for item in &occlusions{item.validate()?}
+pub async fn chrome_panel_present(app:AppHandle,webview:Webview,id:String,bounds:Bounds,clip:Bounds,occlusions:Vec<Bounds>,viewport_right:f64,visible:bool,stacking_rank:i64,revision:u64)->Result<bool,String>{
+ crate::browser::authorize(&webview)?;instance(&id)?;bounds.validate()?;clip.validate()?;if !viewport_right.is_finite()||!(-20000.0..=40000.0).contains(&viewport_right){return Err("Invalid Browser viewport edge".into())}if occlusions.len()>256{return Err("Too many overlapping workspace widgets".into())}for item in &occlusions{item.validate()?}
  let main=owner(&app)?;let state=app.state::<ChromeState>();let mut items=state.0.lock().map_err(|_|"Chrome state unavailable")?;
  let item=items.get_mut(&id).ok_or("Chrome was closed. Use Reopen Chrome.")?;
  if !unsafe{IsWindow(Some(handle(item.hwnd))).as_bool()}{items.remove(&id);if items.is_empty(){CHROME_PID.store(0,std::sync::atomic::Ordering::Relaxed);}return Err("Chrome was closed. Use Reopen Chrome.".into())}
- if revision<item.revision{return Ok(item.shown)}
+ if crate::native_panels::snapshot_is_stale(item.revision,revision){return Ok(item.shown)}
  // Returning focus prevents the next workspace shortcut targeting a hidden view.
  if !visible&&unsafe{GetForegroundWindow()==handle(item.hwnd)}{unsafe{let _=SetForegroundWindow(main);}}
- let changed=item.bounds!=bounds||item.clip!=clip||item.occlusions!=occlusions;
+ let changed=item.bounds!=bounds||item.clip!=clip||item.occlusions!=occlusions||item.viewport_right!=viewport_right;
  if changed&&item.shown{unsafe{let _=ShowWindow(handle(item.hwnd),SW_HIDE);}item.shown=false;item.last=None;item.last_region=None;}
- item.bounds=bounds;item.clip=clip;item.occlusions=occlusions;item.visible=visible;item.stacking_rank=stacking_rank;item.revision=revision;
+ item.bounds=bounds;item.clip=clip;item.occlusions=occlusions;item.viewport_right=viewport_right;item.visible=visible;item.stacking_rank=stacking_rank;item.revision=revision;
  let shown=place_one(&app,&mut items,&id);drop(items);crate::native_panels::apply_order(&app);Ok(shown)
 }
 #[tauri::command]

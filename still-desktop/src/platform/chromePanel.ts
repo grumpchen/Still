@@ -10,7 +10,7 @@ function command<T>(id:string,name:string,args:Record<string,unknown>={}):Promis
 export const chromePanel={
  available:isTauri(),
  open:(id:string,url:string,bounds:BrowserBounds)=>command<{hwnd:number;pid:number}>(id,'chrome_panel_open',{url,bounds}),
- present:(id:string,bounds:BrowserBounds,clip:OverlayBounds,occlusions:OverlayBounds[],visible:boolean,stackingRank:number,revision:number)=>command<boolean>(id,'chrome_panel_present',{bounds,clip,occlusions,visible,stackingRank,revision}),
+ present:(id:string,bounds:BrowserBounds,clip:OverlayBounds,occlusions:OverlayBounds[],visible:boolean,stackingRank:number,revision:number,viewportRight:number)=>command<boolean>(id,'chrome_panel_present',{bounds,clip,occlusions,visible,stackingRank,revision,viewportRight}),
  navigate:(id:string,url:string)=>command<void>(id,'chrome_panel_navigate',{url}),
  close:(id:string)=>command<void>(id,'chrome_panel_close'),
  subscribe:(callback:(event:{id:string;open:boolean;error?:string|null})=>void):Promise<UnlistenFn>=>listen<{id:string;open:boolean;error?:string|null}>('chrome-state',event=>callback(event.payload)),

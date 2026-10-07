@@ -12,7 +12,7 @@ test('switching away from a workspace sends valid hide geometry even when its DO
   assert.ok(bounds.width>=1&&bounds.height>=1,'Native bounds validation must accept hiding');
  }
  const restored=appPanelGeometry(rect(140,200,800,500),rect(140,180,1000,620),true,false,rect(900,640,32,32));
- assert.equal(restored.visible,true);assert.equal(restored.grip.width,32);
+ assert.equal(restored.visible,true);assert.equal(restored.grip.width,32);assert.equal(restored.viewportRight,1140);
 });
 test('collapsed or unavailable resize handles are omitted from app presentation',()=>{
  for(const grip of [rect(900,640,0,32),rect(900,640,32,0)]){
@@ -59,6 +59,12 @@ test('app panel geometry preserves the resize grip bounds for native-region excl
  const result=appPanelGeometry(rect(140,200,800,500),rect(170,180,1000,620),true,false,rect(900,640,32,32));
  assert.deepEqual(result.grip,{x:900,y:640,width:32,height:32});
  assert.equal(appPanelGeometry(rect(140,200,800,500),rect(170,180,1000,620),true,false,null).grip,null);
+});
+test('Apps native edge uses the workspace viewport rather than the narrower widget content clip',()=>{
+ const workspace=rect(0,0,1200,800),contentClip=rect(300,120,500,500),panel=rect(300,120,500,500);
+ const result=appPanelGeometry(panel,contentClip,true,false,null,[],workspace.right);
+ assert.equal(result.clip.x,300);assert.equal(result.clip.width,500);
+ assert.equal(result.viewportRight,1200);
 });
 test('native app minimum size persists with its Apps widget and invalid limits are discarded',()=>{
  const state=createInitialState(),app=createWidget('apps');app.appKey='codex';app.appPanelOpen=true;app.appMinWidth=640;app.appMinHeight=460;state.workspaces[0].widgets.push(app);

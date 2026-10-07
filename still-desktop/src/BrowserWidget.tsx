@@ -23,7 +23,7 @@ export default function BrowserWidget({widget,obscured,workspaceActive=true,lect
    async function sync(){frame=0;if(disposed||!opened)return;if(scrolling||busy){dirty=true;return}busy=true;let requestRevision=revision;
     try{
      const g=geometry(),next=JSON.stringify(g);requestRevision=revision;
-     if(next!==last){const shown=await chromePanel.present(widget.id,g.bounds,g.clip,g.occlusions,g.visible,g.stackingRank,requestRevision);if(disposed||requestRevision!==revision)return;last=next;node.dataset.nativeVisible=String(shown)}
+     if(next!==last){const shown=await chromePanel.present(widget.id,g.bounds,g.clip,g.occlusions,g.visible,g.stackingRank,requestRevision,g.viewportRight);if(disposed||requestRevision!==revision)return;last=next;node.dataset.nativeVisible=String(shown)}
    }catch(e){if(!disposed&&requestRevision===revision){setError(String(e));node.dataset.nativeVisible='false';if(String(e).includes('closed')){opened=false;last='';setReady(false)}}}finally{busy=false;if(dirty){dirty=false;schedule.current()}}
   }
   schedule.current=()=>{if(disposed)return;invalidate();if(!frame)frame=requestAnimationFrame(()=>void sync())};
@@ -34,7 +34,7 @@ export default function BrowserWidget({widget,obscured,workspaceActive=true,lect
   };
   const resize=new ResizeObserver(schedule.current);resize.observe(node);resize.observe(viewport);
   const mutation=new MutationObserver(schedule.current);mutation.observe(canvas,{subtree:true,attributes:true,attributeFilter:['style','class'],childList:true});
-  stopScroll=observeCanvasScroll(viewport,value=>{scrolling=value;if(value){invalidate(true);if(frame){cancelAnimationFrame(frame);frame=0}dirty=true;const g=geometry(),hideRevision=revision;void chromePanel.present(widget.id,g.bounds,g.clip,g.occlusions,false,g.stackingRank,hideRevision).then(shown=>{if(!disposed&&hideRevision===revision)node.dataset.nativeVisible=String(shown)}).catch(()=>undefined)}else{dirty=false;schedule.current()}},120);
+  stopScroll=observeCanvasScroll(viewport,value=>{scrolling=value;if(value){invalidate(true);if(frame){cancelAnimationFrame(frame);frame=0}dirty=true;const g=geometry(),hideRevision=revision;void chromePanel.present(widget.id,g.bounds,g.clip,g.occlusions,false,g.stackingRank,hideRevision,g.viewportRight).then(shown=>{if(!disposed&&hideRevision===revision)node.dataset.nativeVisible=String(shown)}).catch(()=>undefined)}else{dirty=false;schedule.current()}},120);
   const scroll=()=>schedule.current();window.addEventListener('resize',scroll);
   void chromePanel.subscribe(event=>{if(disposed||event.id!==widget.id)return;if(!event.open){opened=false;last='';setReady(false);node.dataset.nativeVisible='false';setError('Chrome was closed. Reopen it below.')}}).then(unlisten=>{if(disposed)unlisten();else{stop=unlisten;void launch.current()}}).catch(e=>{if(!disposed)setError(String(e))});
   return()=>{disposed=true;invalidate();cancelAnimationFrame(frame);resize.disconnect();mutation.disconnect();window.removeEventListener('resize',scroll);stopScroll?.();stop?.();void chromePanel.close(widget.id).catch(()=>undefined)};
@@ -47,7 +47,7 @@ export default function BrowserWidget({widget,obscured,workspaceActive=true,lect
   {error&&<p className="widget-error" role="alert">{error}</p>}
   <div ref={host} className="browser-host" data-native-browser-id={chromePanel.available?widget.id:undefined} data-chrome-overlay={chromePanel.available?'true':undefined}>
    <div className="browser-placeholder"><span className="site-symbol"><Icon name="browser"/></span><h2>{opening?'Opening Chrome…':ready?'Chrome, in your workspace.':widget.title||'Your real Chrome browser.'}</h2>
-    <p>{ready?'Enlarge this panel to at least 500 × 220 and bring it fully into view. Keep other widgets clear of the browser area.':chromePanel.available?'Chrome provides tabs, bookmarks, extensions and sign-in.':'The Windows app opens a separate real Chrome window for this widget. This is a web preview.'}</p>
+    <p>{ready?'Enlarge this panel to at least 500 × 220 and keep it inside the workspace. Chrome hides while its right edge crosses the workspace boundary.':chromePanel.available?'Chrome provides tabs, bookmarks, extensions and sign-in.':'The Windows app opens a separate real Chrome window for this widget. This is a web preview.'}</p>
     {chromePanel.available&&!ready&&<button className="primary" disabled={opening} onClick={()=>void launch.current()}>{opening?'Opening…':'Reopen Chrome'}</button>}
     {!chromePanel.available&&<button className="button-link" onClick={()=>void chromeLauncher.open(widget.url).catch(e=>setError(String(e)))}>Open website in Chrome</button>}
    </div>

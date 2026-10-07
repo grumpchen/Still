@@ -15,7 +15,7 @@ function command<T>(id:string,name:string,args:Record<string,unknown>={}):Promis
 export const appPanel={
  available:isTauri(),
  open:(id:string,sourceId:string,bounds:PanelBounds,clip:PanelBounds,grip:PanelBounds|null,reuseExisting=false)=>command<AppPanelInfo>(id,'app_panel_open',{sourceId,bounds,clip,grip,reuseExisting}),
- present:(id:string,bounds:PanelBounds,clip:PanelBounds,grip:PanelBounds|null,occlusions:PanelBounds[],visible:boolean,stackingRank:number,revision:number)=>command<AppPanelInfo>(id,'app_panel_present',{bounds,clip,grip,occlusions,visible,stackingRank,revision}),
+ present:(id:string,bounds:PanelBounds,clip:PanelBounds,grip:PanelBounds|null,occlusions:PanelBounds[],visible:boolean,stackingRank:number,revision:number,viewportRight:number)=>command<AppPanelInfo>(id,'app_panel_present',{bounds,clip,grip,occlusions,visible,stackingRank,revision,viewportRight}),
  attach:(id:string,window:AppAttachment,bounds:PanelBounds,clip:PanelBounds,grip:PanelBounds|null)=>command<AppPanelInfo>(id,'app_panel_attach',{hwnd:window.hwnd,pid:window.pid,bounds,clip,grip}),
  windows:()=>invoke<AppWindow[]>('app_panel_windows'),
  choices:(sourceId?:string)=>invoke<AppWindowChoice[]>('app_picker_windows',{sourceId:sourceId??null}),

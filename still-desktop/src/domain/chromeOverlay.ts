@@ -1,6 +1,6 @@
 export interface OverlayRect {left:number;top:number;right:number;bottom:number;width?:number;height?:number}
 export interface OverlayBounds {x:number;y:number;width:number;height:number}
-export interface ChromeClipGeometry {bounds:OverlayBounds;clip:OverlayBounds;occlusions:OverlayBounds[];visible:boolean}
+export interface ChromeClipGeometry {bounds:OverlayBounds;clip:OverlayBounds;occlusions:OverlayBounds[];visible:boolean;viewportRight:number}
 
 function intersection(a:OverlayRect,b:OverlayRect):OverlayRect|null{
  const left=Math.max(a.left,b.left),top=Math.max(a.top,b.top),right=Math.min(a.right,b.right),bottom=Math.min(a.bottom,b.bottom);
@@ -25,7 +25,7 @@ export function chromeClipGeometry(rect:OverlayRect,viewport:OverlayRect,content
  const visibleRect=intersection(intersection(rect,viewport)??{left:0,top:0,right:0,bottom:0},content);
  const clip=visibleRect?bounds(visibleRect):{x:Math.max(0,viewport.left),y:Math.max(0,viewport.top),width:1,height:1};
  const clipped=higher.flatMap(item=>{const overlap=visibleRect&&intersection(visibleRect,item);return overlap?[overlap]:[]}),tooMany=clipped.length>256,occlusions=clipped.slice(0,256).map(bounds);
- return{bounds:{x:rect.left,y:rect.top,width:Math.max(1,rect.right-rect.left),height:Math.max(1,rect.bottom-rect.top)},clip,occlusions,visible:!!visibleRect&&!tooMany&&hasUncoveredArea(visibleRect,clipped)&&active&&!obscured};
+ return{bounds:{x:rect.left,y:rect.top,width:Math.max(1,rect.right-rect.left),height:Math.max(1,rect.bottom-rect.top)},clip,occlusions,visible:!!visibleRect&&!tooMany&&hasUncoveredArea(visibleRect,clipped)&&active&&!obscured,viewportRight:viewport.right};
 }
 
 /** Used by visibility tests; partial viewport intersections are now supported. */

@@ -19,6 +19,7 @@ test('Chrome clip geometry retains partial viewport edges and masks only higher 
  assert.deepEqual(geometry.clip,{x:0,y:100,width:400,height:200});
  assert.deepEqual(geometry.occlusions,[{x:180,y:150,width:100,height:100}]);
  assert.equal(geometry.visible,true);
+ assert.equal(geometry.viewportRight,400,'The native guard receives the viewport edge in logical client coordinates');
  assert.equal(chromeClipGeometry({left:0,top:0,right:100,bottom:100},{left:0,top:0,right:100,bottom:100},{left:0,top:0,right:100,bottom:100},[{left:0,top:0,right:100,bottom:100}],true,false).visible,false);
 });
 test('Chrome remains hidden only when outside the viewport, workspace inactive, or obscured',()=>{
@@ -36,6 +37,6 @@ test('Chrome uses the viewport-relative DOM rectangle without applying canvas sc
 test('Chrome is hidden on scroll start and repositioned only after scrolling settles',()=>{
  const source=readFileSync(fileURLToPath(new URL('../src/BrowserWidget.tsx',import.meta.url)),'utf8');
  assert.match(source,/observeCanvasScroll\(viewport,value=>\{scrolling=value;if\(value\)/);
- assert.match(source,/chromePanel\.present\(widget\.id,g\.bounds,g\.clip,g\.occlusions,false\)/);
+ assert.match(source,/chromePanel\.present\(widget\.id,g\.bounds,g\.clip,g\.occlusions,false,g\.stackingRank,hideRevision,g\.viewportRight\)/);
  assert.doesNotMatch(source,/120,schedule\.current/);
 });
