@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {filterAppWindows,managedAppWidget,appIconData} from '../src/domain/appPicker.ts';
+import {filterAppWindows,refreshedAppSelection,managedAppWidget,appIconData} from '../src/domain/appPicker.ts';
 import {createInitialState,parseState} from '../src/domain/workspaces.ts';
 
 test('open app search distinguishes document windows and keeps attached windows marked after available choices',()=>{
@@ -10,6 +10,14 @@ test('open app search distinguishes document windows and keeps attached windows 
  assert.equal(filterAppWindows(windows,'report')[0].attached,true);
  assert.equal(filterAppWindows(windows,'excel')[0].minimized,true);
  assert.deepEqual(filterAppWindows(windows,'no match'),[]);
+});
+test('refresh keeps the exact selected HWND/PID and adopts its latest title and icon',()=>{
+ const selected={hwnd:41,pid:7,appName:'Word',title:'Draft.docx',attached:false,minimized:false};
+ const refreshed={...selected,title:'Final.docx',icon:[1,2,3]};
+ const otherWindow={...selected,hwnd:42,title:'Other.docx'};
+ assert.equal(refreshedAppSelection(selected,[otherWindow,refreshed]),refreshed);
+ assert.equal(refreshedAppSelection(selected,[{...refreshed,attached:true}]),null);
+ assert.equal(refreshedAppSelection(selected,[]),null);
 });
 test('attaching a chosen app saves its grant and name without persisting native window handles',()=>{
  const selected={sourceId:'app-word',name:'Microsoft Word',hwnd:77,pid:99};

@@ -201,20 +201,21 @@ html.native-transparent .workspace-canvas{background-image:none}
 .canvas-card.widget-apps .widget-resize{width:32px;height:32px}
 .app-panel-tools>input{flex:1;min-width:80px;width:100px;background:transparent;border:1px solid transparent;border-radius:6px;color:var(--text);font:inherit;font-size:10px;padding:4px}
 .app-panel-tools>input:hover,.app-panel-tools>input:focus{border-color:var(--border);background:var(--tint)}
-dialog:has(.app-picker){display:flex;flex-direction:column;width:min(720px,94vw);max-height:90dvh;min-height:0;overflow:hidden}
-dialog:has(.app-picker)>.dialog-head{flex-shrink:0}
-.app-picker{display:flex;flex:1 1 auto;flex-direction:column;gap:10px;min-height:0;max-height:calc(90dvh - 110px);overflow:hidden}
+dialog:has(.app-picker){display:flex;flex-direction:column;width:min(720px,94vw);height:min(760px,90dvh);max-height:90dvh;min-height:0;overflow:hidden}
+dialog:has(.app-picker)>.dialog-head{flex:0 0 auto}
+.app-picker{display:flex;flex:1 1 auto;flex-direction:column;gap:10px;min-height:0;overflow:hidden}
+.app-picker>.notice,.app-picker-toolbar,.app-picker-options,.app-picker>.form-actions{flex:0 0 auto}
 .app-picker>.notice{margin:0}
 .app-picker-toolbar{display:flex;align-items:center;gap:6px}
 .app-picker-toolbar input{flex:1;min-width:0;padding:9px 11;border:1px solid var(--border);border-radius:10px;background:var(--tint);color:var(--text);font:inherit;font-size:12px}
 .app-picker-toolbar button{white-space:nowrap;font-size:11px;padding:8px 10px}
 .app-picker-list{flex:1 1 0;max-height:min(48vh,520px);min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;display:flex;flex-direction:column;gap:7px;padding:2px}
-.app-picker-row{border:1px solid var(--border);border-radius:12px;background:var(--tint);overflow:hidden}
+.app-picker-row{flex:0 0 auto;border:1px solid var(--border);border-radius:12px;background:var(--tint);overflow:hidden}
 .app-picker-row.selected{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
 .app-picker-row.attached{opacity:.65}
 .app-picker-row-main{display:flex;align-items:center;gap:8px;min-height:56px;padding:7px 9px}
 .app-picker-choice{display:flex;align-items:center;gap:10px;flex:1;min-width:0;text-align:left;border:0;background:transparent;box-shadow:none;padding:3px}
-.app-picker-choice>span:last-child{display:flex;flex-direction:column;gap:3px;min-width:0}
+.app-picker-choice>span:last-child{display:flex;flex-direction:column;gap:3px;min-width:0;overflow:hidden}
 .app-picker-choice strong{font-size:12px;font-weight:600}
 .app-picker-choice small{font-size:10px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .app-picker-icon{width:34px;height:34px;flex-shrink:0;border-radius:8px;object-fit:contain}

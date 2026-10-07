@@ -1,14 +1,14 @@
 import {useEffect,useRef,useState} from 'react';
 import {Icon} from './widgets.tsx';
 import {appImageUrl,appPanel} from './platform/appPanel.ts';
-import {filterAppWindows,type AppWindowChoice} from './domain/appPicker.ts';
+import {filterAppWindows,refreshedAppSelection,type AppWindowChoice} from './domain/appPicker.ts';
 import {localApps,type DroppedResource} from './platform/resourceDrop.ts';
 
 interface Props {sourceId?:string;attach:(window:AppWindowChoice,source:DroppedResource,name:string,save:boolean)=>void;open:(source:DroppedResource,name:string,save:boolean)=>void;close:()=>void}
 export default function AppWindowPicker({sourceId,attach,open,close}:Props){
  const [windows,setWindows]=useState<AppWindowChoice[]>([]),[query,setQuery]=useState(''),[selected,setSelected]=useState<AppWindowChoice|null>(null),[name,setName]=useState(''),[save,setSave]=useState(false),[busy,setBusy]=useState(false),[loading,setLoading]=useState(false),[error,setError]=useState('');
  const mounted=useRef(true),generation=useRef(0);useEffect(()=>{mounted.current=true;void refresh();return()=>{mounted.current=false;generation.current++}},[sourceId]);
- async function refresh(){if(!appPanel.available)return;const ticket=++generation.current;setLoading(true);setError('');try{const items=await appPanel.choices(sourceId);if(!mounted.current||ticket!==generation.current)return;setWindows(items);setSelected(current=>current&&items.find(w=>w.hwnd===current.hwnd&&w.pid===current.pid&&!w.attached)||null)}catch(reason){if(mounted.current&&ticket===generation.current)setError(String(reason))}finally{if(mounted.current&&ticket===generation.current)setLoading(false)}}
+ async function refresh(){if(!appPanel.available)return;const ticket=++generation.current;setLoading(true);setError('');try{const items=await appPanel.choices(sourceId);if(!mounted.current||ticket!==generation.current)return;setWindows(items);setSelected(current=>refreshedAppSelection(current,items))}catch(reason){if(mounted.current&&ticket===generation.current)setError(String(reason))}finally{if(mounted.current&&ticket===generation.current)setLoading(false)}}
  function choose(window:AppWindowChoice){if(window.attached||busy)return;setSelected(window);setName(window.appName.slice(0,60));setError('')}
  async function attachWindow(window:AppWindowChoice){if(busy||window.attached)return;setBusy(true);setError('');try{const source=await appPanel.prepare(window);if(mounted.current)attach(window,source,selected?.hwnd===window.hwnd&&selected.pid===window.pid?name.trim()||window.appName.slice(0,60):window.appName.slice(0,60),save)}catch(reason){if(mounted.current)setError(String(reason))}finally{if(mounted.current)setBusy(false)}}
  async function openApp(){setBusy(true);setError('');try{const source=await localApps.choose();if(source&&mounted.current)open(source,source.name.slice(0,60),save)}catch(reason){if(mounted.current)setError(String(reason))}finally{if(mounted.current)setBusy(false)}}

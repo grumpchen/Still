@@ -64,8 +64,11 @@ fn choices(app:&AppHandle,source_id:Option<&str>)->Result<Vec<PickerWindow>,Stri
   result.push(PickerWindow{hwnd:window.hwnd,pid:window.pid,app_name:name,title:window.title,attached:managed.contains(&(window.hwnd,window.pid)),minimized:unsafe{IsIconic(handle(window.hwnd)).as_bool()},icon:picture});
  }Ok(result)
 }
+fn selected_from(windows:Vec<crate::app_panel::WindowInfo>,hwnd:usize,pid:u32)->Result<crate::app_panel::WindowInfo,String>{
+ windows.into_iter().find(|w|w.hwnd==hwnd&&w.pid==pid&&window_matches(hwnd,pid)).ok_or("This window is closed or already attached. Refresh the list.".into())
+}
 fn selected(hwnd:usize,pid:u32)->Result<crate::app_panel::WindowInfo,String>{
- crate::app_panel::windows().into_iter().find(|w|w.hwnd==hwnd&&w.pid==pid&&window_matches(hwnd,pid)).ok_or("This window is closed or already attached. Refresh the list.".into())
+ selected_from(crate::app_panel::windows(),hwnd,pid)
 }
 #[tauri::command]
 pub async fn app_picker_windows(app:AppHandle,webview:Webview,source_id:Option<String>)->Result<Vec<PickerWindow>,String>{
@@ -103,6 +106,7 @@ pub async fn app_picker_preview(webview:Webview,hwnd:usize,pid:u32)->Result<Vec<
 
 #[cfg(test)]mod tests{
  use super::*;
+ use crate::app_panel::WindowInfo;
  #[test]fn names_are_safe_for_saved_app_references(){assert_eq!(clean_name("  Microsoft / Word\n "),"Microsoft   Word");assert!(clean_name(&"a".repeat(500)).len()<=200);}
  #[test]fn bitmap_icon_rendering_encodes_real_pixels_and_rejects_unbounded_dimensions(){unsafe{
   assert!(Bitmap::new(0,20).is_err());assert!(Bitmap::new(20000,20000).is_err());
@@ -113,5 +117,13 @@ pub async fn app_picker_preview(webview:Webview,hwnd:usize,pid:u32)->Result<Vec<
   let class=wide("STATIC");let caption=wide("Still app preview fixture");let hwnd=CreateWindowExW(WINDOW_EX_STYLE(0),PCWSTR(class.as_ptr()),PCWSTR(caption.as_ptr()),WS_OVERLAPPEDWINDOW,0,0,640,400,None,None,None,None).unwrap();
   let id=hwnd.0 as usize;let process=std::process::id();assert!(window_matches(id,process));assert!(!window_matches(id,process+1));
   assert!(render_preview(id,process).unwrap_err().contains("Restore"));let _=DestroyWindow(hwnd);assert!(!window_matches(id,process));assert!(render_preview(id,process).is_err());
+ }}
+ #[test]fn preparation_resolves_the_exact_window_identity_and_rejects_stale_handles(){unsafe{
+  let class=wide("STATIC");let caption=wide("Still picker identity fixture");let hwnd=CreateWindowExW(WINDOW_EX_STYLE(0),PCWSTR(class.as_ptr()),PCWSTR(caption.as_ptr()),WS_OVERLAPPEDWINDOW,0,0,640,400,None,None,None,None).unwrap();
+  let id=hwnd.0 as usize;let process=std::process::id();let other=WindowInfo{hwnd:id+1,pid:process,title:"Other document".into(),executable:None};
+  let stale=WindowInfo{hwnd:id,pid:process+1,title:"Wrong process".into(),executable:None};let exact=WindowInfo{hwnd:id,pid:process,title:"Selected document".into(),executable:None};
+  assert_eq!(selected_from(vec![other,stale,exact],id,process).unwrap().title,"Selected document");
+  let _=DestroyWindow(hwnd);let gone=WindowInfo{hwnd:id,pid:process,title:"Closed document".into(),executable:None};
+  assert!(selected_from(vec![gone],id,process).is_err());
  }}
 }
