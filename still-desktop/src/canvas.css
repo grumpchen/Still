@@ -6,6 +6,7 @@
 .canvas-app .nav button{padding:10px 8px;gap:7px;font-size:12px}.canvas-app .nav kbd{font-size:9px}
 .canvas-app .workspace-tools{margin-bottom:8px;flex-shrink:0;display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11px}.canvas-app .workspace-tools button{padding:4px 8px;font-size:11px}.canvas-app .footer{margin-top:6px;flex-shrink:0;font-size:9px}
 .canvas-system{min-height:0;flex:1;display:flex;flex-direction:column;gap:8px;position:relative}
+.workspace-surface{display:flex;flex:1;min-height:0;flex-direction:column}.workspace-surface[hidden]{display:none}
 .tray-disclosure{display:flex;align-items:center;gap:5px;flex-shrink:0;background:transparent;border:0;padding:0;border-radius:0}
 .tray-widget-button{display:flex;align-items:center;gap:6px;padding:4px 10px;min-height:32px;cursor:grab;border-radius:12px;border:1px solid var(--border);background:var(--surface);flex-shrink:0}
 .tray-widget-button .tray-disclosure-arrow{font-size:14px;line-height:1;margin-left:2px;color:var(--muted)}
