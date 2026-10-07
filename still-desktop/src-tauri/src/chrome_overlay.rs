@@ -19,6 +19,13 @@ struct Entry {hwnd:usize,pid:u32,bounds:Bounds,clip:Bounds,occlusions:Vec<Bounds
 pub struct ChromeState(Mutex<HashMap<String,Entry>>);
 pub(crate) fn managed_windows(app:&AppHandle)->Vec<(usize,u32)>{app.state::<ChromeState>().0.lock().map(|s|s.values().map(|e|(e.hwnd,e.pid)).collect()).unwrap_or_default()}
 pub(crate) fn ordered_windows(app:&AppHandle)->Option<Vec<(i64,usize)>>{app.state::<ChromeState>().0.try_lock().ok().map(|s|s.values().filter(|e|e.shown).map(|e|(e.stacking_rank,e.hwnd)).collect())}
+fn refresh_clipped_child(app:&AppHandle,child:HWND)->bool{
+ let root=unsafe{GetAncestor(child,GA_ROOT)};if root.0.is_null()||root==child{return false}
+ let process=pid(root);let state=app.state::<ChromeState>();let Ok(items)=state.0.try_lock()else{return false};
+ if !items.values().any(|entry|entry.hwnd==root.0 as usize&&entry.pid==process&&entry.shown&&entry.visible){return false}
+ let _=crate::native_panels::refresh_clipped_child_region(root,child);
+ true
+}
 static APP:OnceLock<AppHandle>=OnceLock::new();
 static OWNER:std::sync::atomic::AtomicUsize=std::sync::atomic::AtomicUsize::new(0);
 static CHROME_PID:std::sync::atomic::AtomicU32=std::sync::atomic::AtomicU32::new(0);
@@ -131,6 +138,7 @@ unsafe extern "system" fn event(_:HWINEVENTHOOK,event:u32,hwnd:HWND,object:i32,c
  // Parent location changes arrive during the modal Windows move/resize loop,
  // where ordinary Tauri window events can be delayed.
  if event==EVENT_OBJECT_LOCATIONCHANGE&&object==0&&owner(app).ok()==Some(hwnd){crate::native_panels::refresh_all(app);}
+ if event==EVENT_OBJECT_LOCATIONCHANGE&&object==0&&child==0&&owner(app).ok()!=Some(hwnd)&&refresh_clipped_child(app,hwnd){return}
  if event==EVENT_OBJECT_LOCATIONCHANGE&&object==0&&owner(app).ok()!=Some(hwnd)&&is_managed_foreground(app,hwnd)&&!expanded(hwnd){
   if let Ok(mut items)=app.state::<ChromeState>().0.try_lock(){
    let mut r=RECT::default();if GetWindowRect(hwnd,&mut r).is_err(){return}

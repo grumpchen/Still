@@ -50,16 +50,18 @@
 .canvas-app.sidebar-expanded{grid-template-columns:160px minmax(0,1fr)}
 .canvas-app.sidebar-collapsed{grid-template-columns:52px minmax(0,1fr)}
 .canvas-app.sidebar-collapsed .sidebar{padding:14px 4px 12px;margin-left:4px;margin-right:4px;border-radius:17px}
+.canvas-app.sidebar-collapsed .nav{overflow-x:hidden}
 .sidebar-collapsed .brand-text,.sidebar-collapsed .personal,.sidebar-collapsed .side-label,.sidebar-collapsed .nav-name,.sidebar-collapsed .nav kbd,.sidebar-collapsed .profile{display:none}
 .canvas-app.sidebar-collapsed .brand{justify-content:center;padding:0;margin-bottom:18px}
-.canvas-app.sidebar-collapsed .nav button,.canvas-app.sidebar-collapsed .sidebar-bottom button,.canvas-app.sidebar-collapsed .new-workspace{justify-content:center;padding:9px 4px;gap:0;border-radius:10px}
+.canvas-app.sidebar-collapsed .nav button,.canvas-app.sidebar-collapsed .sidebar-bottom button,.canvas-app.sidebar-collapsed .new-workspace{justify-content:center;padding:9px 1px;gap:0;border-radius:10px}
+.canvas-app.sidebar-collapsed .nav button svg{width:14px;height:14px;flex-shrink:0}
 .canvas-app.sidebar-collapsed .new-workspace{margin-top:10px;margin-bottom:12px}
 .sidebar-expanded .sidebar .brand-text,.sidebar-expanded .sidebar .personal,.sidebar-expanded .sidebar .side-label,.sidebar-expanded .sidebar .nav-name{display:block}
 .sidebar-expanded .sidebar .nav kbd{display:inline-block}.sidebar-expanded .sidebar .profile{display:flex}
 .canvas-app .nav button.active{box-shadow:inset 3px 0 0 var(--accent)}
 .liquid-glass .canvas-app .nav button.active{box-shadow:inset 3px 0 0 var(--accent),inset 0 1px 0 rgb(255 255 255 / .22),0 3px 12px rgb(10 30 15 / .08)}
 .canvas-app .nav-badge{display:none}
-.canvas-app.sidebar-collapsed .nav-badge{display:inline-grid;place-items:center;min-width:24px;height:18px;padding:0 4px;border-radius:6px;background:var(--tint);color:var(--muted);font-family:"Cascadia Code",Consolas,monospace;font-size:9px;letter-spacing:.4px}
+.canvas-app.sidebar-collapsed .nav-badge{display:inline-grid;place-items:center;min-width:16px;height:16px;padding:0 1px;border-radius:6px;background:var(--tint);color:var(--muted);font-family:"Cascadia Code",Consolas,monospace;font-size:7px;letter-spacing:0}
 .canvas-app.sidebar-collapsed .nav button.active .nav-badge{color:var(--accent)}
 .canvas-app.focus-mode{grid-template-columns:minmax(0,1fr)}
 .canvas-app.focus-mode .sidebar{display:none}
@@ -145,6 +147,7 @@
 .preset-tray-entry .preset-open{border:0;border-radius:0;background:transparent;box-shadow:none}
 .preset-tray-entry .preset-open svg{width:14px;height:14px;flex-shrink:0}
 .preset-tray-entry .preset-action{font-size:10px;padding:3px 5px;border:0;border-radius:0;background:transparent;box-shadow:none;flex-shrink:0}
+.preset-file-entry{max-width:240px}.preset-file-entry .preset-open{min-width:0;max-width:205px;overflow:hidden}.preset-file-entry .preset-open>span:first-of-type{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .preset-tray .preset-app-entry{background:transparent;border:0;overflow:visible;gap:3px}
 .preset-app-entry .preset-open{width:34px;height:34px;min-width:34px;justify-content:center;padding:4px;border:1px solid var(--border);border-radius:9px;background:var(--tint);box-shadow:none}
 .preset-app-entry .preset-open svg,.preset-app-icon{width:23px;height:23px;object-fit:contain;flex-shrink:0}
@@ -198,24 +201,24 @@
 .canvas-card.widget-apps .widget-resize{width:32px;height:32px}
 .app-panel-tools>input{flex:1;min-width:80px;width:100px;background:transparent;border:1px solid transparent;border-radius:6px;color:var(--text);font:inherit;font-size:10px;padding:4px}
 .app-panel-tools>input:hover,.app-panel-tools>input:focus{border-color:var(--border);background:var(--tint)}
-dialog:has(.app-picker){width:min(720px,94vw);max-height:90vh}
-.app-picker{display:flex;flex-direction:column;gap:12px}
+dialog:has(.app-picker){width:min(720px,94vw);max-height:90dvh;overflow:hidden}
+.app-picker{display:flex;flex-direction:column;gap:10px;min-height:0;max-height:calc(90dvh - 110px)}
 .app-picker>.notice{margin:0}
 .app-picker-toolbar{display:flex;align-items:center;gap:6px}
 .app-picker-toolbar input{flex:1;min-width:0;padding:9px 11;border:1px solid var(--border);border-radius:10px;background:var(--tint);color:var(--text);font:inherit;font-size:12px}
 .app-picker-toolbar button{white-space:nowrap;font-size:11px;padding:8px 10px}
-.app-picker-list{max-height:45vh;min-height:130px;overflow:auto;display:flex;flex-direction:column;gap:7px;padding:1px}
+.app-picker-list{flex:1;max-height:min(45vh,500px);min-height:130px;overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:7px;padding:2px}
 .app-picker-row{border:1px solid var(--border);border-radius:12px;background:var(--tint);overflow:hidden}
 .app-picker-row.selected{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
 .app-picker-row.attached{opacity:.65}
-.app-picker-row-main{display:flex;align-items:center;gap:8px;padding:7px}
+.app-picker-row-main{display:flex;align-items:center;gap:8px;min-height:54px;padding:7px}
 .app-picker-choice{display:flex;align-items:center;gap:10px;flex:1;min-width:0;text-align:left;border:0;background:transparent;box-shadow:none;padding:3px}
 .app-picker-choice>span:last-child{display:flex;flex-direction:column;gap:3px;min-width:0}
 .app-picker-choice strong{font-size:12px;font-weight:600}
 .app-picker-choice small{font-size:10px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .app-picker-icon{width:34px;height:34px;flex-shrink:0;border-radius:8px;object-fit:contain}
 .app-picker-icon-fallback{display:grid;place-items:center;background:var(--surface);color:var(--accent)}
-.app-picker-row-actions{display:flex;align-items:center;gap:6px;font-size:11px;white-space:nowrap;padding-bottom:9px}
+.app-picker-row-actions{display:flex;align-items:center;gap:6px;font-size:11px;white-space:nowrap;padding:0;flex-shrink:0}
 .app-picker-options{display:flex;align-items:flex-end;gap:18px;padding-top:3px}.app-picker-options>.field-label{flex:1;min-width:0}
 .app-picker-options .field-label input{font-size:12px;padding:8px 10px;margin-top:6px;background:var(--tint);border:1px solid var(--border);border-radius:9px;color:var(--text);width:100%}
 .app-picker-save{display:flex;align-items:center;gap:6px;font-size:11px;white-space:nowrap;padding-bottom:9px}

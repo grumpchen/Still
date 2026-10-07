@@ -12,7 +12,7 @@ export type WidgetPreset={id:string;type:'browser';name:string;url:string}
  |{id:string;type:GenericPresetType;name:string;text?:string;remaining?:number;schedule?:PresetScheduleEntry[]};
 export function fileKind(value:unknown):value is FileKind{return value==='pdf'||value==='image'||value==='media'||value==='document'}
 export function fileName(value:unknown):value is string{return typeof value==='string'&&value.length>0&&value.length<=260&&!/[\\/\x00-\x1f]/.test(value)&&value!=='.'&&value!=='..'}
-function checkedIconData(value:unknown):string|undefined{return typeof value==='string'&&value.length<=16*1024&&/^data:image\/png;base64,iVBORw0KGgo[A-Za-z0-9+/]*={0,2}$/.test(value)?value:undefined}
+function checkedIconData(value:unknown):string|undefined{return typeof value==='string'&&value.length<=32*1024&&/^data:image\/png;base64,iVBORw0KGgo[A-Za-z0-9+/]*={0,2}$/.test(value)?value:undefined}
 function savedSchedule(value:unknown):PresetScheduleEntry[]{
  if(!Array.isArray(value))return [];
  const ids=new Set<string>();return value.slice(0,500).flatMap(entry=>{
