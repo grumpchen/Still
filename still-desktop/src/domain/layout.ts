@@ -19,7 +19,7 @@ export function translate(type:WidgetType,p:Placement,dx:number,dy:number):Place
 export function resize(type:WidgetType,p:Placement,dx:number,dy:number):Placement {return placement(type,{...p,width:p.width+dx,height:p.height+dy})}
 export function canvasHeight(viewportHeight:number,_widgets:Array<{placement:Placement}>):number {
  const viewport=Math.max(1,Number.isFinite(viewportHeight)?viewportHeight:0);
- return Math.ceil(viewport*1.5);
+ return Math.ceil(viewport);
 }
 export function constrainPlacement(type:WidgetType,candidate:Placement,canvasWidth:number,minimum:{width?:number;height?:number}={},canvasHeight=Number.POSITIVE_INFINITY):Placement {
  const meta=widgetCatalog[type],p=placement(type,candidate);

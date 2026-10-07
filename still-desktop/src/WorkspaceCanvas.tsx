@@ -58,7 +58,7 @@ export default function WorkspaceCanvas({workspaceId,transferWidget,setWorkspace
   useEffect(()=>{if(!workspaceActive||obscured)clearDrop()},[workspaceActive,obscured]);
   const extent=canvasExtent(viewportWidth,widgets);
   const height=canvasHeight(viewportHeight,widgets);
-  // Resize the fixed 150% work area with the visible viewport.
+  // Keep vertical space equal to the viewport; horizontal workspace extension remains available.
   function updateOverviewViewport(){const node=viewport.current,marker=overviewViewportRef.current;if(!node||!marker)return;marker.setAttribute('x',String(node.scrollLeft));marker.setAttribute('y',String(node.scrollTop));marker.setAttribute('width',String(node.clientWidth));marker.setAttribute('height',String(node.clientHeight))}
   useEffect(()=>{const node=viewport.current;if(!node)return;const measure=()=>{setViewportWidth(node.clientWidth);setViewportHeight(node.clientHeight);updateOverviewViewport()};measure();const observer=new ResizeObserver(measure);observer.observe(node);node.addEventListener('scroll',updateOverviewViewport,{passive:true});return()=>{observer.disconnect();node.removeEventListener('scroll',updateOverviewViewport)}},[]);
   useEffect(()=>{updateOverviewViewport()},[extent,height,viewportWidth,viewportHeight]);
