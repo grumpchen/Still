@@ -26,10 +26,16 @@ test('Chrome remains hidden only when outside the viewport, workspace inactive, 
  assert.equal(chromeClipGeometry(r,v,r,[],true,false).visible,false);
  assert.equal(chromeClipGeometry(r,{...r},r,[],false,false).visible,false);
  assert.equal(chromeClipGeometry(r,{...r},r,[],true,true).visible,false);
- const duringHorizontalScroll=chromeClipGeometry({left:40,top:100,right:440,bottom:300},{left:72,top:80,right:500,bottom:400},{left:40,top:100,right:440,bottom:300},[],true,false,true);
- assert.equal(duringHorizontalScroll.visible,true);assert.equal(duringHorizontalScroll.clip.x,72);assert.equal(duringHorizontalScroll.clip.width,368);
+ const partialViewport=chromeClipGeometry({left:40,top:100,right:440,bottom:300},{left:72,top:80,right:500,bottom:400},{left:40,top:100,right:440,bottom:300},[],true,false);
+ assert.equal(partialViewport.visible,true);assert.equal(partialViewport.clip.x,72);assert.equal(partialViewport.clip.width,368);
 });
 test('Chrome uses the viewport-relative DOM rectangle without applying canvas scroll twice',()=>{
  const source=readFileSync(fileURLToPath(new URL('../src/BrowserWidget.tsx',import.meta.url)),'utf8');
  assert.match(source,/chromeClipGeometry\(r,v,content,higher/);assert.doesNotMatch(source,/r\.x\s*\+\s*\(?viewport\.scrollLeft/);
+});
+test('Chrome is hidden on scroll start and repositioned only after scrolling settles',()=>{
+ const source=readFileSync(fileURLToPath(new URL('../src/BrowserWidget.tsx',import.meta.url)),'utf8');
+ assert.match(source,/observeCanvasScroll\(viewport,value=>\{scrolling=value;if\(value\)/);
+ assert.match(source,/chromePanel\.present\(widget\.id,g\.bounds,g\.clip,g\.occlusions,false\)/);
+ assert.doesNotMatch(source,/120,schedule\.current/);
 });
