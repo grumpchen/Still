@@ -79,6 +79,24 @@ fn tracking_minimum(hwnd:HWND)->Option<(Option<f64>,Option<f64>)>{unsafe{
   Some((physical_to_css(minimum.ptMinTrackSize.x,dpi),physical_to_css(minimum.ptMinTrackSize.y,dpi)))
  }}
 fn physical_to_css(value:i32,dpi:u32)->Option<f64>{(value>0&&value<=20000).then_some(value as f64/(dpi.max(96) as f64/96.))}
+
+fn refresh_window_region(hwnd:HWND)->bool{unsafe{
+ let region=CreateRectRgn(0,0,0,0);if region.0.is_null(){return false}
+ if GetWindowRgn(hwnd,region)==RGN_ERROR{let _=DeleteObject(HGDIOBJ(region.0));return false}
+ if SetWindowRgn(hwnd,Some(region),true)==0{let _=DeleteObject(HGDIOBJ(region.0));return false}
+ true
+}}
+fn child_overlaps_clipped_region(parent:HWND,child:HWND)->bool{unsafe{
+ let region=CreateRectRgn(0,0,0,0);if region.0.is_null(){return false}
+ if GetWindowRgn(parent,region)==RGN_ERROR{let _=DeleteObject(HGDIOBJ(region.0));return false}
+ let result=match(rect(parent),rect(child)){
+  (Ok((px,py,_,_)),Ok((cx,cy,cw,ch))) if cw>0&&ch>0=>[
+   (cx,cy),(cx+cw-1,cy),(cx,cy+ch-1),(cx+cw-1,cy+ch-1),(cx+cw/2,cy+ch/2)
+  ].iter().any(|(x,y)|!PtInRegion(region,x-px,y-py).as_bool()),
+  _=>false,
+ };
+ let _=DeleteObject(HGDIOBJ(region.0));result
+}}
 pub(crate) fn executable(process:u32)->Option<String>{unsafe{
  let handle=OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION,false,process).ok()?;
  let mut path=vec![0u16;32768];let mut length=path.len() as u32;
@@ -275,6 +293,13 @@ fn place(app:&AppHandle,panels:&mut Panels){
  }
 }
 pub fn refresh(app:&AppHandle){if let Ok(mut panels)=app.state::<AppPanelState>().0.try_lock(){place(app,&mut panels)}}
+fn refresh_clipped_child(app:&AppHandle,child:HWND)->bool{
+ let root=unsafe{GetAncestor(child,GA_ROOT)};if root.0.is_null()||root==child{return false}
+ let state=app.state::<AppPanelState>();let Ok(panels)=state.0.try_lock()else{return false};
+ if !panels.items.values().any(|entry|entry.hwnd==root.0 as usize&&entry.pid==pid(child)&&entry.shown&&entry.visible){return false}
+ if child_overlaps_clipped_region(root,child){let _=refresh_window_region(root);}
+ true
+}
 unsafe extern "system" fn event(_:HWINEVENTHOOK,event:u32,hwnd:HWND,object:i32,child:i32,_:u32,_:u32){
  let Some(app)=APP.get()else{return};
  if event==EVENT_OBJECT_DESTROY&&object==0&&child==0{
@@ -283,7 +308,9 @@ unsafe extern "system" fn event(_:HWINEVENTHOOK,event:u32,hwnd:HWND,object:i32,c
   else{let app=app.clone();tauri::async_runtime::spawn_blocking(move||{let state=app.state::<AppPanelState>();if let Ok(mut s)=state.0.lock(){remove_closed(&app,&mut s,Some(dead));};});}
  }
  if event==EVENT_SYSTEM_FOREGROUND{crate::shortcuts::refresh_editing(app.clone());refresh(app);}
- if event==EVENT_OBJECT_LOCATIONCHANGE&&object==0&&(owner().ok()==Some(hwnd)||is_managed_foreground(app,hwnd)){refresh(app)}
+ if event==EVENT_OBJECT_LOCATIONCHANGE&&object==0&&child==0{
+  if owner().ok()==Some(hwnd){refresh(app)}else if !refresh_clipped_child(app,hwnd)&&is_managed_foreground(app,hwnd){refresh(app)}
+ }
 }
 pub fn install(app:&AppHandle)->Result<(),String>{
  let _=APP.set(app.clone());let main=app.get_window("main").ok_or("Still window is missing")?.hwnd().map_err(|e|e.to_string())?;
@@ -414,6 +441,22 @@ pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
   assert_eq!(launch_arguments(std::path::Path::new("C:\\Office\\WINWORD.EXE"),"/q"),"/q /n");
   assert_eq!(launch_arguments(std::path::Path::new("C:\\Apps\\Editor.exe"),"--profile \"Study Space\""),"--profile \"Study Space\"");
  }
+ #[test]fn refreshing_a_window_region_preserves_its_shape(){unsafe{
+  let target=Fixture::new("Still fixture region refresh");let original=CreateRectRgn(12,18,90,120);
+  assert_ne!(original.0,std::ptr::null_mut());assert_ne!(SetWindowRgn(target.0,Some(original),true),0);
+  assert!(refresh_window_region(target.0));
+  let copied=CreateRectRgn(0,0,0,0);assert_eq!(GetWindowRgn(target.0,copied),SIMPLEREGION);
+  let mut bounds=RECT::default();assert!(GetRgnBox(copied,&mut bounds).0>=0);
+  assert_eq!((bounds.left,bounds.top,bounds.right,bounds.bottom),(12,18,90,120));let _=DeleteObject(HGDIOBJ(copied.0));
+ }}
+ #[test]fn child_window_crossing_a_clipped_edge_is_detected_for_region_refresh(){unsafe{
+  let parent=Fixture::new("Still fixture clipped parent");let class=wide("STATIC");let title=wide("Still fixture child");
+  let child=CreateWindowExW(WINDOW_EX_STYLE(0),PCWSTR(class.as_ptr()),PCWSTR(title.as_ptr()),WS_CHILD|WS_VISIBLE,-30,40,100,90,Some(parent.0),None,None,None).unwrap();
+  let region=CreateRectRgn(40,0,820,500);assert_ne!(SetWindowRgn(parent.0,Some(region),true),0);
+  assert!(child_overlaps_clipped_region(parent.0,child));
+  SetWindowPos(child,Some(HWND_TOP),100,40,100,90,SWP_NOACTIVATE).unwrap();
+  assert!(!child_overlaps_clipped_region(parent.0,child));let _=DestroyWindow(child);
+ }}
  #[test]fn saved_app_reuse_requires_one_exact_matching_window(){
   let window=|hwnd,path:&str|WindowInfo{hwnd,pid:22,title:"Document".into(),executable:Some(path.into())};
   let choices=vec![window(101,"C:\\Office\\WINWORD.EXE"),window(102,"C:\\Apps\\Editor.exe")];
