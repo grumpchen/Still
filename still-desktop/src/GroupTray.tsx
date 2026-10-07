@@ -14,7 +14,6 @@ export default function GroupTray({groups,update,openGroup,openLink,openWidget,e
    {group.widgets.map(item=><TrayDragButton key={item.id} dragPayload={{kind:'group-entry',groupId:group.id,id:item.id,entryKind:'widget'}} onFocus={trayFocusIntoView} aria-label={'Add '+item.name+' from '+(group.name||'Group')} onClick={()=>openWidget(item)}>{item.iconData?<img className="tray-entry-image" src={item.iconData} alt=""/>:<span className="tray-entry-icon">{item.icon}</span>}{item.name}</TrayDragButton>)}
    <button className="tray-group-add" onFocus={trayFocusIntoView} onClick={()=>edit(group.id,'widget')}>+ Add widget</button><button className="tray-group-add" onFocus={trayFocusIntoView} onClick={()=>edit(group.id,'link')}>+ Add link</button>
    <button onFocus={trayFocusIntoView} onClick={()=>edit(group.id,undefined)} aria-label={'Edit '+(group.name||'Group')+' group'}>Edit</button><button onFocus={trayFocusIntoView} onClick={()=>openGroup(group.id)}>Open group</button><button onFocus={trayFocusIntoView} onClick={()=>remove(group.id)}>Remove group</button>
-   <button className="tray-group-close" onFocus={trayFocusIntoView} onClick={()=>update(group.id,{expanded:false})} aria-label={'Collapse '+(group.name||'Group')+' group items'}>▴</button>
   </section>}
  </div>)}</>;
 }
