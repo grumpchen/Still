@@ -5,11 +5,11 @@ import {observeCanvasScroll} from '../src/platform/canvasScroll.ts';
 function viewport(){const listeners=new Map();return{addEventListener(name,listener){const set=listeners.get(name)??new Set();set.add(listener);listeners.set(name,set)},removeEventListener(name,listener){listeners.get(name)?.delete(listener)},dispatch(name){for(const listener of listeners.get(name)??[])listener()},count(name){return listeners.get(name)?.size??0}}}
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 
-test('canvas scroll hides native surfaces immediately and restores once after settling',async()=>{
- const node=viewport(),states=[];const stop=observeCanvasScroll(node,value=>states.push(value),20);
+test('canvas scroll reports movement updates and start/settle transitions separately',async()=>{
+ const node=viewport(),states=[],updates=[];const stop=observeCanvasScroll(node,value=>states.push(value),20,()=>updates.push('scroll'));
  node.dispatch('scroll');assert.deepEqual(states,[true]);
  node.dispatch('scroll');assert.deepEqual(states,[true]);
- await wait(30);assert.deepEqual(states,[true,false]);stop();
+ assert.deepEqual(updates,['scroll','scroll']);await wait(30);assert.deepEqual(states,[true,false]);stop();
 });
 
 test('scrollend and idle fallback do not restore twice',async()=>{

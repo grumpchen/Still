@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { createBrowserFromGroup,createWidgetFromPreset,createWidgetFromGroupEntry,openSavedGroup,updateSavedGroup,saveWidgetToGroup as addWidgetToGroup,transferWidgetInstance, createInitialState, nextInstanceNumber, createWidget, createWorkspace, duplicateWorkspace, migratePreview, parseState, workspaceName, toggleSidebarCollapsed, sidebarToggleLabel, workspaceInitials, sidebarBadges, widgetTypes, type WorkspaceState, type WidgetType, type WidgetInstance,type SavedGroup,type GroupWidgetEntry } from './domain/workspaces.ts';
+import { createBrowserFromGroup,createWidgetFromPreset,createWidgetFromGroupEntry,openSavedGroup,updateSavedGroup,saveWidgetToGroup as addWidgetToGroup,transferWidgetInstance, createInitialState, nextInstanceNumber, createWidget, createWorkspace, duplicateWorkspace, migratePreview, parseState, workspaceName, toggleSidebarCollapsed, sidebarToggleLabel, workspaceInitials, sidebarBadges, widgetTypes, checkedAppIconData, type WorkspaceState, type WidgetType, type WidgetInstance,type SavedGroup,type GroupWidgetEntry } from './domain/workspaces.ts';
 import { Icon, widgetRegistry } from './widgets.tsx';
 import {chromeLauncher} from './platform/chrome.ts';
 import WorkspaceCanvas from './WorkspaceCanvas.tsx';

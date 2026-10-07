@@ -53,7 +53,8 @@ test('saved Apps shortcut launch passes only validated icon data and retains the
 test('minimize buttons affect live workspace widgets only and compact buttons stay out of tray hit targets',()=>{
  const live=canvas.slice(canvas.indexOf('{widgets.map('),canvas.indexOf('{!widgets.length'));
  assert.match(live,/minimizeWidget|Minimize/);assert.match(live,/onDoubleClick/);
- assert.match(canvas,/minimized-widgets|workspace-minimized/);
+ assert.match(canvas,/if\(!w\.minimized\)e\.preventDefault\(\)/);
+ assert.match(canvas,/widget-minimized/);assert.match(canvas,/target\.insideTray/);
  assert.doesNotMatch(presets,/minimizeWidget|Minimize/);assert.doesNotMatch(groups,/minimizeWidget|Minimize/);
 });
 

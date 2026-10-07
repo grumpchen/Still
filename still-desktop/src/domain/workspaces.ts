@@ -18,7 +18,7 @@ export interface WidgetInstance {
   remaining: number; end: number | null; url: string; bookmarks: Bookmark[];
    homeVersion?: number; folderName?: string;folderKey:string|null;fileKey:string|null;fileName?:string;fileKind?:FileKind;appKey:string|null;appName?:string;appIconData?:string;appPanelOpen:boolean;appReuseExisting:boolean;appMinWidth?:number;appMinHeight?:number;
   browserVersion:1; browserToolsExpanded:boolean; bookmarksExpanded:boolean; pageTitle:string; lectureRestore:Placement|null;
-  placement:Placement; shortcuts:WebShortcut[]; schedule:ScheduleEntry[]; groupId:string|null;
+  placement:Placement; minimized:boolean; restorePlacement:Placement|null; shortcuts:WebShortcut[]; schedule:ScheduleEntry[]; groupId:string|null;
 }
 export interface Workspace { id: string; name: string; widgets: WidgetInstance[]; groups:SavedGroup[]; layout: 'canvas'; browserWidth: number; browserHeight: number }
 export function browserSize(value: unknown, fallback: number, maximum: number): number {
@@ -35,7 +35,35 @@ export function createWidget(type: WidgetType): WidgetInstance {
     text: type === 'notes' ? 'A clear space, a clear mind.\n\nStart with one important thing.\nLeave room for a new idea.' : '',
     remaining: 1500, end: null, placement:placement(type,null), shortcuts:type==='browser'?defaultWebShortcuts():[], schedule:[],groupId:null,folderKey:null,fileKey:null,appKey:null,appPanelOpen:false,appReuseExisting:false,
     url: type==='desmos'?DESMOS_URL:GOOGLE_URL, homeVersion:1,browserVersion:1,browserToolsExpanded:false,bookmarksExpanded:false,pageTitle:'',lectureRestore:null,
-    bookmarks:type==='browser'?parseBookmarks(defaultWebShortcuts()):[] };
+    bookmarks:type==='browser'?parseBookmarks(defaultWebShortcuts()):[],minimized:false,restorePlacement:null };
+}
+const MINIMIZED_WIDTH=136,MINIMIZED_HEIGHT=42;
+function compactPlacement(value:unknown,canvasWidth=20020,canvasHeight=20020):Placement{
+ const p=value&&typeof value==='object'?value as Partial<Placement>:{};
+ const width=Math.max(1,Math.min(MINIMIZED_WIDTH,Math.floor(canvasWidth)-20,Number.isFinite(p.width)?Math.round(p.width!):MINIMIZED_WIDTH));
+ const height=Math.max(1,Math.min(MINIMIZED_HEIGHT,Math.floor(canvasHeight)-20,Number.isFinite(p.height)?Math.round(p.height!):MINIMIZED_HEIGHT));
+ return{x:Math.max(0,Math.min(Math.floor(canvasWidth)-width-20,Number.isFinite(p.x)?Math.round(p.x!):0)),y:Math.max(0,Math.min(Math.floor(canvasHeight)-height-20,Number.isFinite(p.y)?Math.round(p.y!):0)),width,height};
+}
+export function minimizeWidgetInstance(widget:WidgetInstance,canvasWidth:number,canvasHeight:number):WidgetInstance{
+ const restore=widget.minimized?widget.restorePlacement:widget.placement;
+ return{...widget,minimized:true,restorePlacement:placement(widget.type,restore),placement:compactPlacement(widget.placement,canvasWidth,canvasHeight)};
+}
+export function moveMinimizedWidgetInstance(widget:WidgetInstance,at:{x:number;y:number},canvasWidth:number,canvasHeight:number):WidgetInstance{
+ if(!widget.minimized)return widget;
+ const moved=compactPlacement({...widget.placement,...at},canvasWidth,canvasHeight),restore=widget.restorePlacement??widget.placement;
+ return{...widget,placement:moved,restorePlacement:{...restore,x:moved.x,y:moved.y}};
+}
+function checkedRestorePlacement(type:WidgetType,value:unknown):Placement|null{
+ if(!value||typeof value!=='object')return null;
+ const p=value as Partial<Placement>,meta=widgetCatalog[type];
+ if([p.x,p.y,p.width,p.height].some(item=>typeof item!=='number'||!Number.isFinite(item))||p.x!<0||p.y!<0||p.width!<meta.minWidth||p.height!<meta.minHeight||p.width!>3000||p.height!>3000)return null;
+ return placement(type,p);
+}
+export function restoreWidgetInstance(widget:WidgetInstance,canvasWidth:number,canvasHeight:number):WidgetInstance{
+ if(!widget.minimized)return widget;
+ const saved=widget.restorePlacement??widget.placement,candidate={...saved,x:widget.placement.x,y:widget.placement.y};
+ const minimum=widget.type==='apps'&&widget.appPanelOpen?{width:widget.appMinWidth,height:widget.appMinHeight}:{};
+ return{...widget,minimized:false,restorePlacement:null,placement:constrainPlacement(widget.type,candidate,canvasWidth,minimum,canvasHeight)};
 }
 export function workspaceName(value: string): string {
   const name = value.trim(); if (!name || name.length > 60) throw new Error('Use a workspace name from 1 to 60 characters'); return name;
@@ -75,7 +103,7 @@ export function duplicateWorkspace(original: Workspace, name: string): Workspace
 export function transferWidgetInstance(source:Workspace,destination:Workspace,widgetId:string,canvasWidth:number,canvasHeight:number):{source:Workspace;destination:Workspace}|null{
  if(source.id===destination.id)return null;
  const widget=source.widgets.find(item=>item.id===widgetId);if(!widget)return null;
- let moved={...widget,placement:constrainPlacement(widget.type,widget.placement,canvasWidth,{},canvasHeight)},groups=destination.groups;
+ let moved=widget.minimized?moveMinimizedWidgetInstance(widget,widget.placement,canvasWidth,canvasHeight):{...widget,placement:constrainPlacement(widget.type,widget.placement,canvasWidth,{},canvasHeight)},groups=destination.groups;
  const linked=widget.type==='group'&&widget.groupId?source.groups.find(group=>group.id===widget.groupId):undefined;
  if(linked){let id=linked.id;if(groups.some(group=>group.id===id))id=crypto.randomUUID();groups=[...groups,{...structuredClone(linked),id}];if(id!==widget.groupId)moved={...moved,groupId:id}}
  return{source:{...source,widgets:source.widgets.filter(item=>item.id!==widgetId)},destination:{...destination,widgets:[...destination.widgets,moved],groups}};
@@ -168,8 +196,10 @@ function checkedWidget(value: unknown): WidgetInstance {
   const checkedAppPanelOpen=!!checkedAppKey&&item.appPanelOpen===true;
   const checkedAppMinSize=(size:unknown,minimum:number):number|undefined=>item.type==='apps'&&checkedAppKey&&typeof size==='number'&&Number.isFinite(size)&&size>=minimum&&size<=3000?Math.ceil(size):undefined;
   const appMinWidth=checkedAppMinSize(item.appMinWidth,widgetCatalog.apps.minWidth),appMinHeight=checkedAppMinSize(item.appMinHeight,widgetCatalog.apps.minHeight);
-  const checkedPlacement=placement(item.type as WidgetType,item.placement);
-  if(checkedAppPanelOpen){if(appMinWidth!==undefined)checkedPlacement.width=Math.max(checkedPlacement.width,appMinWidth);if(appMinHeight!==undefined)checkedPlacement.height=Math.max(checkedPlacement.height,appMinHeight)}
+  const restorePlacement=item.minimized===true?checkedRestorePlacement(item.type as WidgetType,item.restorePlacement):null;
+  const minimized=item.minimized===true&&restorePlacement!==null;
+  const checkedPlacement=minimized?compactPlacement(item.placement):placement(item.type as WidgetType,item.placement);
+  if(checkedAppPanelOpen&&!minimized){if(appMinWidth!==undefined)checkedPlacement.width=Math.max(checkedPlacement.width,appMinWidth);if(appMinHeight!==undefined)checkedPlacement.height=Math.max(checkedPlacement.height,appMinHeight)}
   if (item.text !== undefined && typeof item.text !== 'string') throw new Error('Invalid note');
   return {...defaults,...item,type:item.type as WidgetType,span:item.span===2?2:item.span===3?3:1,
     title:typeof item.title==='string'?item.title.trim().slice(0,60):'',
@@ -183,7 +213,7 @@ function checkedWidget(value: unknown): WidgetInstance {
      appPanelOpen:checkedAppPanelOpen,appMinWidth,appMinHeight,
     appReuseExisting:!!checkedAppKey&&item.appReuseExisting===true,
     instanceNumber:typeof item.instanceNumber==='number'&&Number.isSafeInteger(item.instanceNumber)&&item.instanceNumber>0&&item.instanceNumber<1000000?item.instanceNumber:1,
-     placement:checkedPlacement,
+     placement:checkedPlacement,minimized,restorePlacement:minimized?restorePlacement:null,
     browserVersion:1,browserToolsExpanded:item.browserToolsExpanded===true,bookmarksExpanded:item.bookmarksExpanded===true,pageTitle:typeof item.pageTitle==='string'?item.pageTitle.slice(0,200):'',
     lectureRestore:item.type==='browser'&&item.lectureRestore&&typeof item.lectureRestore==='object'?placement('browser',item.lectureRestore):null,
     shortcuts:parseWebShortcuts(item.shortcuts,item.type==='browser'?parseWebShortcuts(item.bookmarks,defaults.shortcuts):[]),

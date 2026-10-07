@@ -21,11 +21,11 @@ function hasUncoveredArea(base:OverlayRect,covers:OverlayRect[]):boolean{
 }
 
 /** Geometry for a top-level Chrome window and its viewport/overlap clipping region. */
-export function chromeClipGeometry(rect:OverlayRect,viewport:OverlayRect,content:OverlayRect,higher:OverlayRect[],active:boolean,obscured:boolean,scrolling=false):ChromeClipGeometry{
+export function chromeClipGeometry(rect:OverlayRect,viewport:OverlayRect,content:OverlayRect,higher:OverlayRect[],active:boolean,obscured:boolean):ChromeClipGeometry{
  const visibleRect=intersection(intersection(rect,viewport)??{left:0,top:0,right:0,bottom:0},content);
  const clip=visibleRect?bounds(visibleRect):{x:Math.max(0,viewport.left),y:Math.max(0,viewport.top),width:1,height:1};
  const clipped=higher.flatMap(item=>{const overlap=visibleRect&&intersection(visibleRect,item);return overlap?[overlap]:[]}),tooMany=clipped.length>256,occlusions=clipped.slice(0,256).map(bounds);
- return{bounds:{x:rect.left,y:rect.top,width:Math.max(1,rect.right-rect.left),height:Math.max(1,rect.bottom-rect.top)},clip,occlusions,visible:!!visibleRect&&!tooMany&&hasUncoveredArea(visibleRect,clipped)&&active&&!obscured&&!scrolling};
+ return{bounds:{x:rect.left,y:rect.top,width:Math.max(1,rect.right-rect.left),height:Math.max(1,rect.bottom-rect.top)},clip,occlusions,visible:!!visibleRect&&!tooMany&&hasUncoveredArea(visibleRect,clipped)&&active&&!obscured};
 }
 
 /** Used by visibility tests; partial viewport intersections are now supported. */

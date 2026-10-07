@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState,type PointerEvent,type KeyboardEvent,type DragEvent} from 'react';
 import {Icon,widgetRegistry} from './widgets.tsx';
-import {widgetTypes,type WidgetInstance,type WidgetType,type SavedGroup,type GroupWidgetEntry} from './domain/workspaces.ts';
+import {widgetTypes,type WidgetInstance,type WidgetType,type SavedGroup,type GroupWidgetEntry,minimizeWidgetInstance,moveMinimizedWidgetInstance,restoreWidgetInstance} from './domain/workspaces.ts';
 import {placement,translate,resize,type Placement,canvasExtent,canvasHeight,constrainPlacement} from './domain/layout.ts';
 import {captureWidget,downloadCapture} from './platform/capture.ts';
 import {toggleLecture} from './domain/lecture.ts';
@@ -20,7 +20,8 @@ type SaveCue={kind:'widget';type:WidgetType}|{kind:'group-create'}|{kind:'group'
 export default function WorkspaceCanvas({workspaceId,transferWidget,setWorkspaceDropTarget,openAppsDialog,presets,openPreset,editPreset,removePreset,savePresets,openDropped,widgets,groups,updateGroup,saveToGroup,openGroup,editGroup,removeGroup,openGroupWidget,update,add,remove,begin,bringToFront,notify,obscured,workspaceActive=true,openResource,pickApp,saveApp,appAttachments,appAttachmentHandled}:Props&DropProps&AppPickerProps){
   const viewport=useRef<HTMLDivElement>(null),tray=useRef<HTMLDivElement>(null),gesture=useRef<Gesture|null>(null);
   const [active,setActive]=useState<string|null>(null),[trayDragging,setTrayDragging]=useState(false),[overTray,setOverTray]=useState(false),[overCanvas,setOverCanvas]=useState(false),[busy,setBusy]=useState<string|null>(null);
-  const [viewportWidth,setViewportWidth]=useState(0),[viewportHeight,setViewportHeight]=useState(0),[scrollOffset,setScrollOffset]=useState({x:0,y:0});
+  const [viewportWidth,setViewportWidth]=useState(0),[viewportHeight,setViewportHeight]=useState(0);
+  const overviewViewportRef=useRef<SVGRectElement>(null);
   const [presetMenu,setPresetMenu]=useState<PresetType|null>(null);
   const [saveTarget,setSaveTarget]=useState<SaveCue|null>(null),[externalDragging,setExternalDragging]=useState(false),[trayGhost,setTrayGhost]=useState<TrayDragPosition|null>(null);
   const externalEntries=useRef<DroppedResource[]>([]),nativeHandler=useRef<(event:ResourceDropEvent)=>void>(()=>{});
@@ -58,19 +59,21 @@ export default function WorkspaceCanvas({workspaceId,transferWidget,setWorkspace
   const extent=canvasExtent(viewportWidth,widgets);
   const height=canvasHeight(viewportHeight,widgets);
   // Resize the fixed 150% work area with the visible viewport.
-  useEffect(()=>{const node=viewport.current;if(!node)return;const measure=()=>{setViewportWidth(node.clientWidth);setViewportHeight(node.clientHeight)};const scrolled=()=>setScrollOffset({x:node.scrollLeft,y:node.scrollTop});measure();scrolled();const observer=new ResizeObserver(measure);observer.observe(node);node.addEventListener('scroll',scrolled,{passive:true});return()=>{observer.disconnect();node.removeEventListener('scroll',scrolled)}},[]);
-  function bounded(w:WidgetInstance,p:Placement){return constrainPlacement(w.type,p,extent,{width:w.appPanelOpen?w.appMinWidth:undefined,height:w.appPanelOpen?w.appMinHeight:undefined},height)}
-  useEffect(()=>{if(!workspaceActive||viewportWidth<=0||viewportHeight<=0)return;for(const w of widgets){const p=bounded(w,w.placement);if(p.x!==w.placement.x||p.y!==w.placement.y||p.width!==w.placement.width||p.height!==w.placement.height)update(w.id,{placement:p})}},[workspaceActive,viewportWidth,viewportHeight,extent,height,widgets,update]);
+  function updateOverviewViewport(){const node=viewport.current,marker=overviewViewportRef.current;if(!node||!marker)return;marker.setAttribute('x',String(node.scrollLeft));marker.setAttribute('y',String(node.scrollTop));marker.setAttribute('width',String(node.clientWidth));marker.setAttribute('height',String(node.clientHeight))}
+  useEffect(()=>{const node=viewport.current;if(!node)return;const measure=()=>{setViewportWidth(node.clientWidth);setViewportHeight(node.clientHeight);updateOverviewViewport()};measure();const observer=new ResizeObserver(measure);observer.observe(node);node.addEventListener('scroll',updateOverviewViewport,{passive:true});return()=>{observer.disconnect();node.removeEventListener('scroll',updateOverviewViewport)}},[]);
+  useEffect(()=>{updateOverviewViewport()},[extent,height,viewportWidth,viewportHeight]);
+  function bounded(w:WidgetInstance,p:Placement){return w.minimized?moveMinimizedWidgetInstance(w,{x:p.x,y:p.y},extent,height).placement:constrainPlacement(w.type,p,extent,{width:w.appPanelOpen?w.appMinWidth:undefined,height:w.appPanelOpen?w.appMinHeight:undefined},height)}
+  useEffect(()=>{if(!workspaceActive||viewportWidth<=0||viewportHeight<=0)return;for(const w of widgets){if(w.minimized){const moved=moveMinimizedWidgetInstance(w,{x:w.placement.x,y:w.placement.y},extent,height);if(JSON.stringify(moved.placement)!==JSON.stringify(w.placement)||JSON.stringify(moved.restorePlacement)!==JSON.stringify(w.restorePlacement))update(w.id,{placement:moved.placement,restorePlacement:moved.restorePlacement})}else{const p=bounded(w,w.placement);if(p.x!==w.placement.x||p.y!==w.placement.y||p.width!==w.placement.width||p.height!==w.placement.height)update(w.id,{placement:p})}}},[workspaceActive,viewportWidth,viewportHeight,extent,height,widgets,update]);
   function lecture(w:WidgetInstance){const v=viewport.current;if(!v)return;begin();const next=toggleLecture(w.placement,w.lectureRestore,v.clientWidth,v.clientHeight,v.scrollLeft,v.scrollTop);update(w.id,{...next,placement:bounded(w,next.placement)});bringToFront(w.id);}
   function start(e:PointerEvent<HTMLElement>,w:WidgetInstance,mode:'move'|'resize'){
-    if(e.button!==0 || obscured || (mode==='move'&&(e.target as HTMLElement).closest('button')))return;
-    e.preventDefault();begin();e.currentTarget.setPointerCapture(e.pointerId);
+    if(e.button!==0 || obscured || (mode==='move'&&!w.minimized&&(e.target as HTMLElement).closest('button')))return;
+    if(!w.minimized)e.preventDefault();begin();e.currentTarget.setPointerCapture(e.pointerId);
     gesture.current={id:w.id,type:w.type,mode,startX:e.clientX,startY:e.clientY,p:w.placement,scrollX:viewport.current?.scrollLeft??0,scrollY:viewport.current?.scrollTop??0};setActive(w.id);
   }
   function move(e:PointerEvent<HTMLElement>){const g=gesture.current;if(!g)return;
     const scroll=viewport.current!, dx=e.clientX-g.startX+scroll.scrollLeft-g.scrollX,dy=e.clientY-g.startY+scroll.scrollTop-g.scrollY;
     const row=g.mode==='move'?document.elementFromPoint(e.clientX,e.clientY)?.closest<HTMLElement>('[data-workspace-drop-target]'):null;
-    const w=widgets.find(item=>item.id===g.id);if(w&&!row)update(g.id,{placement:bounded(w,g.mode==='move'?translate(g.type,g.p,dx,dy):resize(g.type,g.p,dx,dy))});
+    const w=widgets.find(item=>item.id===g.id);if(w&&!row){if(w.minimized&&g.mode==='move'){const moved=moveMinimizedWidgetInstance(w,{x:g.p.x+dx,y:g.p.y+dy},extent,height);update(g.id,{placement:moved.placement,restorePlacement:moved.restorePlacement})}else update(g.id,{placement:bounded(w,g.mode==='move'?translate(g.type,g.p,dx,dy):resize(g.type,g.p,dx,dy))})}
     if(g.mode==='move'){const target=row?.dataset.workspaceDropTarget??null;setWorkspaceDropTarget(target&&target!==workspaceId?target:null)}
     const r=tray.current!.getBoundingClientRect();if(g.mode==='move')widgetFeedback(e.clientX,e.clientY,g.type);
     const v=scroll.getBoundingClientRect();if(!row){if(e.clientY>v.bottom-32)scroll.scrollTop+=10;if(e.clientY<v.top+32&&e.clientY>r.bottom)scroll.scrollTop-=10;
@@ -82,7 +85,8 @@ export default function WorkspaceCanvas({workspaceId,transferWidget,setWorkspace
      gesture.current=null;setActive(null);setOverTray(false);setSaveTarget(null);setWorkspaceDropTarget(null);
      const workspaceRow=document.elementFromPoint(e.clientX,e.clientY)?.closest<HTMLElement>('[data-workspace-drop-target]'),destination=workspaceRow?.dataset.workspaceDropTarget;
      if(!cancel&&g.mode==='move'&&destination&&destination!==workspaceId&&Math.hypot(e.clientX-g.startX,e.clientY-g.startY)>4){transferWidget(workspaceId,g.id,destination);return}
-    const target=trayTarget(e.clientX,e.clientY),action=trayDropDecision({source:'widget',widgetType:g.type,...target});
+    const target=trayTarget(e.clientX,e.clientY),action=trayDropDecision({source:'widget',widgetType:g.type,...target}),currentWidget=widgets.find(w=>w.id===g.id);
+    if(!cancel&&currentWidget?.minimized&&target.insideTray){const restored=moveMinimizedWidgetInstance(currentWidget,{x:g.p.x,y:g.p.y},extent,height);update(g.id,{placement:restored.placement,restorePlacement:restored.restorePlacement});return}
     if(cancel)update(g.id,{placement:g.p});else if(g.mode==='move'&&Math.hypot(e.clientX-g.startX,e.clientY-g.startY)>4&&target.insideTray){
      if(action==='remove')remove(g.id,true);else{update(g.id,{placement:g.p});const w=widgets.find(w=>w.id===g.id);try{if(action==='save'&&w){savePresets([presetFromWidget(w)],true);if(w.type!=='group')setPresetMenu(w.type)}else if((action==='create-group'||action==='save-group')&&w){const groupId=target.groupTarget?.kind==='existing'?target.groupTarget.groupId:undefined;saveToGroup(w,groupId,true)}}catch(error){notify(String((error as Error).message??error))}}
     }else bringToFront(g.id);
@@ -92,6 +96,8 @@ export default function WorkspaceCanvas({workspaceId,transferWidget,setWorkspace
     if(e.target!==e.currentTarget||!delta[e.key])return;e.preventDefault();begin();const [x,y]=delta[e.key],step=e.shiftKey?1:10;
       update(w.id,{placement:bounded(w,mode==='move'?translate(w.type,w.placement,x*step,y*step):resize(w.type,w.placement,x*step,y*step))});
   }
+  function minimize(w:WidgetInstance){update(w.id,minimizeWidgetInstance(w,extent,height));bringToFront(w.id)}
+  function restore(w:WidgetInstance){update(w.id,restoreWidgetInstance(w,extent,height));bringToFront(w.id)}
   async function snapshot(id:string,download=false){if(busy)return;setBusy(id);
     try{
       // Raise the chosen card before the native crop so overlapping cards cannot
@@ -139,21 +145,25 @@ export default function WorkspaceCanvas({workspaceId,transferWidget,setWorkspace
      </div>
      <span id="widget-tray-help" className="tray-help-text">Saved widget tray. Drag a widget header onto a matching type button to save a reusable shortcut, drop onto Group to create a group, or onto a group button to save there. Blank tray space removes only that open instance.</span>
     </div>
+    <div className="canvas-view-shell">
     <div className={`canvas-viewport ${overCanvas?'canvas-drop':''}`} ref={viewport} aria-label="Workspace canvas">
        <section className="workspace-canvas" aria-label="Workspace widgets" style={{width:extent,height}}>
-         {widgets.map((w,index)=>{const d=widgetRegistry[w.type],Component=d.component,p=bounded(w,placement(w.type,w.placement));const count=widgets.filter(i=>i.type===w.type).length;const number=w.instanceNumber;const title=w.title||d.name+(count>1?' '+number:'');return <article id={'widget-'+w.id} key={w.id} data-widget-id={w.id} className={`card canvas-card widget-${w.type} ${active===w.id?'gesture-card':''}`} style={{left:p.x,top:p.y,width:p.width,height:p.height,zIndex:active===w.id?widgets.length+1:index+1}}>
+         {widgets.map((w,index)=>{const d=widgetRegistry[w.type],Component=d.component,p=bounded(w,placement(w.type,w.placement));const count=widgets.filter(i=>i.type===w.type).length;const number=w.instanceNumber;const title=w.title||d.name+(count>1?' '+number:'');return <article id={'widget-'+w.id} key={w.id} data-widget-id={w.id} className={`card canvas-card widget-${w.type} ${w.minimized?'widget-minimized':''} ${active===w.id?'gesture-card':''}`} style={{left:p.x,top:p.y,width:p.width,height:p.height,zIndex:active===w.id?widgets.length+1:index+1}}>
+          {w.minimized?<button className="widget-minimized-button" data-capture-ignore aria-label={'Restore '+title} title={'Double-click to restore '+title} onPointerDown={e=>start(e,w,'move')} onPointerMove={move} onPointerUp={e=>finish(e)} onPointerCancel={e=>finish(e,true)} onLostPointerCapture={e=>{if(gesture.current)finish(e,true)}} onKeyDown={e=>key(e,w,'move')} onDoubleClick={e=>{e.stopPropagation();restore(w)}}><Icon name={d.icon}/><span>{title}</span></button>:
           <div className="card-head widget-move" tabIndex={0} aria-label={'Move '+title} title="Drag to move · arrow keys move · Shift for 1px" onPointerDown={e=>start(e,w,'move')} onPointerMove={move} onPointerUp={e=>finish(e)} onPointerCancel={e=>finish(e,true)} onLostPointerCapture={e=>{if(gesture.current)finish(e,true)}} onKeyDown={e=>key(e,w,'move')}><span className="move-grip" aria-hidden="true">⠿</span><Icon name={d.icon}/><span className="widget-title">{title}</span>{(w.type==='apps'||w.type==='files'&&(w.fileKey||w.folderName))&&<small className="resource-badge">{w.type==='apps'?'App':w.fileKey?w.fileKind?.toUpperCase()??'File':'Folder'}</small>}<div className="widget-controls" data-capture-ignore>
              <button disabled={busy!==null} aria-label={'Copy screenshot of '+title} title="Click or drag this handle to copy a screenshot; paste in ChatGPT" onClick={e=>{if(e.detail===0)void snapshot(w.id)}} onPointerDown={e=>{e.stopPropagation();e.currentTarget.setPointerCapture(e.pointerId)}} onPointerUp={e=>{e.stopPropagation();void snapshot(w.id)}}><Icon name="camera"/></button>
              <button disabled={busy!==null} aria-label={'Export '+title+' PNG'} title="Export PNG" onClick={()=>void snapshot(w.id,true)}>↓</button>
              {w.type==='apps'&&<button className="widget-resize-control" aria-label={'Resize '+title} title="Drag to resize · use arrow keys to resize" onPointerDown={e=>{e.stopPropagation();start(e,w,'resize')}} onKeyDown={e=>key(e,w,'resize')}><span aria-hidden="true">↘</span></button>}
+             <button aria-label={'Minimize '+title} title="Minimize widget" onClick={()=>minimize(w)}>−</button>
              <button aria-label={'Remove '+title} title="Remove this instance" onClick={()=>remove(w.id)}>×</button>
-          </div></div>
-          <div className="widget-content"><Component widget={w} group={groups.find(g=>g.id===w.groupId)} updateGroup={w.groupId?patch=>updateGroup(w.groupId!,patch):undefined} openGroupWidget={entry=>openGroupWidget(entry,visibleOrigin(),extent)} update={patch=>update(w.id,patch)} obscured={obscured||!!active||trayDragging||externalDragging} workspaceActive={workspaceActive} notify={notify} lecture={()=>lecture(w)} openResource={link=>openResource(link,visibleOrigin())} pickApp={()=>pickApp(w.id,visibleOrigin(),extent)} saveApp={()=>saveApp(w.id)} appAttachment={appAttachments[w.id]} appAttachmentHandled={()=>{const attachment=appAttachments[w.id];if(attachment)appAttachmentHandled(w.id,attachment)}}/></div>
-           <button className="widget-resize" data-capture-ignore aria-label={'Resize '+title} title="Drag to resize · arrow keys resize · Shift for 1px" onPointerDown={e=>start(e,w,'resize')} onPointerMove={move} onPointerUp={e=>finish(e)} onPointerCancel={e=>finish(e,true)} onLostPointerCapture={e=>{if(gesture.current)finish(e,true)}} onKeyDown={e=>key(e,w,'resize')}><span aria-hidden="true">◢</span></button>
+          </div></div>}
+          <div className="widget-content" aria-hidden={w.minimized}><Component widget={w} group={groups.find(g=>g.id===w.groupId)} updateGroup={w.groupId?patch=>updateGroup(w.groupId!,patch):undefined} openGroupWidget={entry=>openGroupWidget(entry,visibleOrigin(),extent)} update={patch=>update(w.id,patch)} obscured={obscured||!!active||trayDragging||externalDragging||w.minimized} workspaceActive={workspaceActive} notify={notify} lecture={()=>lecture(w)} openResource={link=>openResource(link,visibleOrigin())} pickApp={()=>pickApp(w.id,visibleOrigin(),extent)} saveApp={()=>saveApp(w.id)} appAttachment={appAttachments[w.id]} appAttachmentHandled={()=>{const attachment=appAttachments[w.id];if(attachment)appAttachmentHandled(w.id,attachment)}}/></div>
+           {!w.minimized&&<button className="widget-resize" data-capture-ignore aria-label={'Resize '+title} title="Drag to resize · arrow keys resize · Shift for 1px" onPointerDown={e=>start(e,w,'resize')} onPointerMove={move} onPointerUp={e=>finish(e)} onPointerCancel={e=>finish(e,true)} onLostPointerCapture={e=>{if(gesture.current)finish(e,true)}} onKeyDown={e=>key(e,w,'resize')}><span aria-hidden="true">◢</span></button>}
          </article>})}
          {!widgets.length&&<div className="canvas-empty"><Icon name="arrange"/><h2>Make room for your next idea.</h2><p>Drag a widget down from the tray, or click one to add it.</p></div>}
-         <svg className="canvas-overview" style={{left:scrollOffset.x+Math.max(8,viewportWidth-Math.min(160,Math.max(96,viewportWidth-16))-8),top:scrollOffset.y+8,width:Math.min(160,Math.max(96,viewportWidth-16))}} role="img" aria-label="Workspace overview map; shaded outline shows the visible viewport" viewBox={`0 0 ${Math.max(extent,1)} ${Math.max(height,1)}`} preserveAspectRatio="none"><title>Workspace overview</title><rect className="overview-canvas" x="0" y="0" width={extent} height={height}/>{widgets.map(w=>{const p=bounded(w,w.placement);return <rect key={w.id} className="overview-widget" x={p.x} y={p.y} width={p.width} height={p.height} rx="14"/>})}<rect className="overview-viewport" x={scrollOffset.x} y={scrollOffset.y} width={viewportWidth} height={viewportHeight}/></svg>
        </section>
+     </div>
+     <svg className="canvas-overview" style={{width:Math.min(160,Math.max(96,viewportWidth-16))}} role="img" aria-label="Workspace overview map; shaded outline shows the visible viewport" viewBox={`0 0 ${Math.max(extent,1)} ${Math.max(height,1)}`} preserveAspectRatio="none"><title>Workspace overview</title><rect className="overview-canvas" x="0" y="0" width={extent} height={height}/>{widgets.map(w=>{const p=bounded(w,w.placement);return <rect key={w.id} className="overview-widget" x={p.x} y={p.y} width={p.width} height={p.height} rx="14"/>})}<rect ref={overviewViewportRef} className="overview-viewport" x="0" y="0" width={viewportWidth} height={viewportHeight}/></svg>
      </div><div className="canvas-status"><span>{widgets.length} widgets · drag headers to move between workspaces · use ◢ to resize</span><span>Camera → copy → paste in ChatGPT</span></div>
     {trayGhost&&<div className="tray-drag-ghost" aria-hidden="true" style={{left:trayGhost.clientX+14,top:trayGhost.clientY+14}}>＋ {ghostLabel}</div>}
   </div></TrayDragProvider>;

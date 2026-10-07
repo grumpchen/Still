@@ -11,15 +11,15 @@ export default function BrowserWidget({widget,obscured,workspaceActive=true,lect
  const schedule=useRef<()=>void>(()=>{}),launch=useRef<()=>Promise<void>>(async()=>{});
  useEffect(()=>{
   if(!chromePanel.available)return;
-  let disposed=false,frame=0,stop:(()=>void)|undefined,stopScroll:(()=>void)|undefined,opened=false,launching=false,busy=false,dirty=false,scrolling=false,last='';
+  let disposed=false,frame=0,stop:(()=>void)|undefined,stopScroll:(()=>void)|undefined,opened=false,launching=false,busy=false,dirty=false,last='';
   const node=host.current!,viewport=node.closest('.canvas-viewport') as HTMLElement,canvas=node.closest('.workspace-canvas')!;
    function rectangle(){const r=node.getBoundingClientRect();return{x:r.x,y:r.y,width:Math.max(1,r.width),height:Math.max(1,r.height)}}
-   function geometry(isScrolling=scrolling){
+   function geometry(){
     const r=node.getBoundingClientRect(),v=viewport.getBoundingClientRect(),content=node.closest('.widget-content')!.getBoundingClientRect(),card=node.closest('.canvas-card') as HTMLElement,level=Number(card.style.zIndex);
     const higher=Array.from(canvas.querySelectorAll<HTMLElement>('.canvas-card')).filter(other=>other!==card&&Number(other.style.zIndex)>level).map(other=>other.getBoundingClientRect());
-    return chromeClipGeometry(r,v,content,higher,current.current.workspaceActive,current.current.obscured,isScrolling);
+    return chromeClipGeometry(r,v,content,higher,current.current.workspaceActive,current.current.obscured);
    }
-   async function sync(){frame=0;if(disposed||!opened)return;if(scrolling){dirty=true;return}if(busy){dirty=true;return}busy=true;
+   async function sync(){frame=0;if(disposed||!opened)return;if(busy){dirty=true;return}busy=true;
     try{
      const g=geometry(),next=JSON.stringify(g);
      if(next!==last){await chromePanel.present(widget.id,g.bounds,g.clip,g.occlusions,g.visible);last=next;node.dataset.nativeVisible=String(g.visible)}
@@ -33,7 +33,7 @@ export default function BrowserWidget({widget,obscured,workspaceActive=true,lect
   };
   const resize=new ResizeObserver(schedule.current);resize.observe(node);resize.observe(viewport);
   const mutation=new MutationObserver(schedule.current);mutation.observe(canvas,{subtree:true,attributes:true,attributeFilter:['style','class'],childList:true});
-   stopScroll=observeCanvasScroll(viewport,value=>{scrolling=value;if(value){if(frame){cancelAnimationFrame(frame);frame=0}dirty=true;const g=geometry(true);void chromePanel.present(widget.id,g.bounds,g.clip,g.occlusions,false).catch(()=>undefined);node.dataset.nativeVisible='false'}else{last='';dirty=false;schedule.current()}});
+   stopScroll=observeCanvasScroll(viewport,value=>{if(!value){last='';schedule.current()}},120,schedule.current);
   const scroll=()=>schedule.current();window.addEventListener('resize',scroll);
   void chromePanel.subscribe(event=>{if(disposed||event.id!==widget.id)return;if(!event.open){opened=false;last='';setReady(false);node.dataset.nativeVisible='false';setError('Chrome was closed. Reopen it below.')}}).then(unlisten=>{if(disposed)unlisten();else{stop=unlisten;void launch.current()}}).catch(e=>{if(!disposed)setError(String(e))});
   return()=>{disposed=true;cancelAnimationFrame(frame);resize.disconnect();mutation.disconnect();window.removeEventListener('resize',scroll);stopScroll?.();stop?.();void chromePanel.close(widget.id).catch(()=>undefined)};

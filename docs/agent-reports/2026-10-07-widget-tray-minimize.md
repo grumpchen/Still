@@ -1,36 +1,30 @@
 # Task: widget_tray_minimize_v021_r3
 
-- Agent: opencode/Qwen-3.8-Flash (Mimo Build model)
-- Time: 2026-10-07T14:22:00-07:00
+- Agent: Codex (GPT-6; OC implementation stalled before producing the remaining changes)
+- Time: 2026-10-07T13:33:15+13:00
 
 ## Done
-
-- Implemented Phase 1 of widget tray/minimize follow-up (task ID `widget_tray_minimize_v021_r3`, baseline `c3ebd7c`).
-- Made every disclosure trigger and its inline children visually one rounded pill:
-  - Added `.tray-widget-button` CSS rule with `border-radius:12px` in `canvas.css`.
-  - Added `border-radius:12px` to `.tray-group-inline` so group disclosures match the pill visual.
-  - Removed `border-left:1px solid var(--border)` from `.preset-tray` and `.tray-group-inline-contents` so there is no separate shelf border — the pill is self-contained.
-- Propagated validated Apps icon data through the saved-open path:
-  - Added `checkedAppIconData(preset.iconData)` as the 7th argument to `managedAppWidget()` in `openPreset()` (`App.tsx:98`), ensuring the real validated icon survives when opening a saved Apps shortcut; the existing fallback, title, and accessible name behavior is preserved.
-- Added focused red-green tests in `tests/inlineTray.test.mjs`:
-  - "disclosure controls and expanded contents belong to one rounded in-row pill" — validates pill CSS conditions.
-  - "saved Apps shortcut launch passes only validated icon data and retains the accessible name" — validates `checkedAppIconData(preset.iconData)` appears in `App.tsx` source.
-- All 5 selected tray tests pass: `corepack pnpm test` green for the tray subset.
+- Completed the tray follow-up: disclosures remain inline in a single rounded tray row, Apps shortcuts retain validated icons, and the `+` control remains available.
+- Added persisted per-widget minimization. Minimized instances remain mounted, movable within workspace bounds, restore on double-click at their new position, and do not modify saved tray/group copies. Native Apps/Chrome surfaces are marked obscured while minimized.
+- Anchored the workspace overview map to the visible canvas viewport and update its viewport marker during scroll without forcing widget rerenders.
+- Fixed Chrome horizontal-scroll alignment by using its viewport-relative DOM rectangle once (removing the extra scroll offset) and updating native bounds during scroll. Partial intersections stay visible and scrolling alone no longer hides Chrome.
+- Corrected saved Apps icon handling to accept only validated PNG data URLs or bounded PNG bytes, with a safe fallback.
 
 ## Files
-
-- `still-desktop/src/App.tsx` — added `checkedAppIconData(preset.iconData)` in `openPreset`.
-- `still-desktop/src/canvas.css` — pill CSS: `.tray-widget-button` with `border-radius`, `.tray-group-inline` with `border-radius`, removed `border-left` from `.preset-tray` and `.tray-group-inline-contents`.
-- `still-desktop/tests/inlineTray.test.mjs` — added 3 test assertions (2 pass in Phase 1, 1 expected fail until Phase 4).
+- `still-desktop/src/WorkspaceCanvas.tsx`, `still-desktop/src/canvas.css` — minimization, movement/restoration, and fixed overview map.
+- `still-desktop/src/domain/workspaces.ts`, `still-desktop/src/App.tsx`, `still-desktop/src/domain/appPicker.ts` — persisted widget state and validated app icon flow.
+- `still-desktop/src/BrowserWidget.tsx`, `still-desktop/src/platform/canvasScroll.ts`, `still-desktop/src/domain/chromeOverlay.ts` — Chrome alignment and scroll synchronization.
+- `still-desktop/tests/` — minimization, tray, app-picker, scroll and overlay regressions.
 
 ## Checks
-
-- `node --test --test-name-pattern="disclosure|saved Apps|inline|Apps shortcuts" tests/inlineTray.test.mjs` → 5/5 pass.
-- `git diff --check` → clean (no line-ending anomalies introduced).
-- `corepack pnpm check` → clean (no unintended modifications to permissions or other auto-generated files).
+- `corepack pnpm test` — 103 passed, 0 failed.
+- `corepack pnpm check` — passed.
+- `corepack pnpm build` — passed.
+- `git diff --check` — passed.
+- `corepack pnpm tauri build --no-bundle` — passed; rebuilt the isolated test executable `still-desktop/src-tauri/target/release/ver0.21-test-widget-tray-minimize-r3.exe`.
+- Native Chrome alignment and interactive minimize/restore still require the user's Windows acceptance test; the executable was not launched.
 
 ## Handoff
-
-- Phase 1 complete. Subsequent phases (minimize geometry, overview map anchoring, Chrome white-strip diagnosis) are deferred to later task phases per the accepted plan in `docs/plans/2026-10-07-widget-tray-minimize-design.md`.
-- No Rust or native `src-tauri` changes were made in this phase; the `chrome_overlay.rs` file was restored to its baseline state.
-- The next phase will implement per-widget minimized state, the on-canvas movable minimize button, double-click restore, and overview map fix — all while preserving the existing tray drop/drag architecture.
+- Branch: `agent/opencode/widget-tray-minimize`; baseline: `c3ebd7c579471bf6c67c85f555da11b0daf3a2e8`.
+- Candidate: `still-desktop/src-tauri/target/release/ver0.21-test-widget-tray-minimize-r3.exe`.
+- No merge, push, or release acceptance performed. Ready for user testing; report any remaining visual issue as a fix iteration without overwriting this candidate.

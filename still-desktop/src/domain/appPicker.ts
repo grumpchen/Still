@@ -10,7 +10,7 @@ export function filterAppWindows(windows:AppWindowChoice[],query:string):AppWind
  return windows.filter(window=>terms.every(term=>(window.appName+' '+window.title).toLocaleLowerCase().includes(term)))
   .sort((a,b)=>Number(a.attached)-Number(b.attached)||a.appName.localeCompare(b.appName)||a.title.localeCompare(b.title));
 }
-export function managedAppWidget(source:{sourceId:string|null;name:string},name:string,widgets:WidgetInstance[],at?:{x:number;y:number},width?:number,reuseExisting=false,icon?:number[]):WidgetInstance{
+export function managedAppWidget(source:{sourceId:string|null;name:string},name:string,widgets:WidgetInstance[],at?:{x:number;y:number},width?:number,reuseExisting=false,icon?:number[]|string):WidgetInstance{
  const widget=createWidgetFromPreset({id:crypto.randomUUID(),type:'apps',name:name.trim()||source.name.slice(0,60),appSourceId:source.sourceId??'',appName:source.name},widgets,at,width);
- return{...widget,appPanelOpen:true,appReuseExisting:reuseExisting,appIconData:appIconData(icon)};
+ return{...widget,appPanelOpen:true,appReuseExisting:reuseExisting,appIconData:typeof icon==='string'?checkedAppIconData(icon):appIconData(icon)};
 }

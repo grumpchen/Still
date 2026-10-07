@@ -31,3 +31,10 @@ test('selected app icon bytes are bounded PNG data and never store native window
  const widget=managedAppWidget({sourceId:'app-word',name:'Word'},'Chem notes',[],undefined,undefined,false,bytes);
  assert.equal(widget.appIconData,icon);assert.equal(JSON.stringify(widget).includes('hwnd'),false);assert.equal(JSON.stringify(widget).includes('pid'),false);
 });
+
+test('saved Apps presets retain only validated PNG data URLs when reopened',()=>{
+ const icon='data:image/png;base64,iVBORw0KGgoBAgM=';
+ const widget=managedAppWidget({sourceId:'app-word',name:'Word'},'Chem notes',[],undefined,undefined,true,icon);
+ assert.equal(widget.appIconData,icon);
+ assert.equal(managedAppWidget({sourceId:'app-word',name:'Word'},'Chem notes',[],undefined,undefined,true,'data:image/svg+xml;base64,AA==').appIconData,undefined);
+});

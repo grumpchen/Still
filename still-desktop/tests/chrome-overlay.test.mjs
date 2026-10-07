@@ -1,6 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {chromeClipGeometry,overlayVisible} from '../src/domain/chromeOverlay.ts';
+import {fileURLToPath} from 'node:url';
 test('Still-Chrome visibility requires an active, clear, non-empty viewport intersection',()=>{
  const r={left:170,top:200,right:970,bottom:700,width:800,height:500},v={left:160,top:180,right:1200,bottom:900};
  assert.equal(overlayVisible(r,v,true,false,false),true);
@@ -19,10 +21,15 @@ test('Chrome clip geometry retains partial viewport edges and masks only higher 
  assert.equal(geometry.visible,true);
  assert.equal(chromeClipGeometry({left:0,top:0,right:100,bottom:100},{left:0,top:0,right:100,bottom:100},{left:0,top:0,right:100,bottom:100},[{left:0,top:0,right:100,bottom:100}],true,false).visible,false);
 });
-test('Chrome remains hidden when there is no intersection, workspace inactive, obscured, or actively scrolling',()=>{
+test('Chrome remains hidden only when outside the viewport, workspace inactive, or obscured',()=>{
  const r={left:0,top:0,right:100,bottom:100},v={left:200,top:200,right:300,bottom:300};
  assert.equal(chromeClipGeometry(r,v,r,[],true,false).visible,false);
  assert.equal(chromeClipGeometry(r,{...r},r,[],false,false).visible,false);
  assert.equal(chromeClipGeometry(r,{...r},r,[],true,true).visible,false);
- assert.equal(chromeClipGeometry(r,{...r},r,[],true,false,true).visible,false);
+ const duringHorizontalScroll=chromeClipGeometry({left:40,top:100,right:440,bottom:300},{left:72,top:80,right:500,bottom:400},{left:40,top:100,right:440,bottom:300},[],true,false,true);
+ assert.equal(duringHorizontalScroll.visible,true);assert.equal(duringHorizontalScroll.clip.x,72);assert.equal(duringHorizontalScroll.clip.width,368);
+});
+test('Chrome uses the viewport-relative DOM rectangle without applying canvas scroll twice',()=>{
+ const source=readFileSync(fileURLToPath(new URL('../src/BrowserWidget.tsx',import.meta.url)),'utf8');
+ assert.match(source,/chromeClipGeometry\(r,v,content,higher/);assert.doesNotMatch(source,/r\.x\s*\+\s*\(?viewport\.scrollLeft/);
 });
