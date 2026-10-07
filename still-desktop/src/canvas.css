@@ -79,6 +79,7 @@
 .liquid-glass .topbar-actions button:hover{background:rgb(255 255 255 / .35)}
 .embedded-browser{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}
 .canvas-card.widget-browser .widget-content{overflow:hidden}
+.canvas-card.widget-browser .browser-host{flex:1 1 0;height:auto;min-height:0}
 .canvas-card .browser-toolbar{gap:4px;padding:7px 9px;flex-shrink:0}
 .canvas-card .browser-toolbar>button{width:25px;height:27px;padding:3px;font-size:16px;border:0;background:transparent;box-shadow:none}
 .canvas-card .browser-toolbar form{border-radius:10px;padding:1px 5px}
