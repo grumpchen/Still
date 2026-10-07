@@ -25,15 +25,18 @@ test('document shortcuts reject raw paths and unknown kinds while old folder pre
  const migrated=parseState(JSON.stringify(state));assert.equal(migrated.workspaces[0].widgets[0].fileKey,null);
 });
 
-test('only matching tray buttons save and only empty tray space removes existing widgets',async()=>{
+test('open widgets save only to Groups and only empty tray space removes them',async()=>{
  const {trayDropDecision}=await import('../src/domain/trayDrop.ts');
  const widget={source:'widget',widgetType:'browser',insideTray:true};
- assert.equal(trayDropDecision({...widget,targetType:'browser',overInteractive:true}),'save');
+ assert.equal(trayDropDecision({...widget,targetType:'browser',overInteractive:true}),'none');
  assert.equal(trayDropDecision({...widget,targetType:'files'}),'none');
+ assert.equal(trayDropDecision({...widget,targetType:'apps'}),'none');
+ assert.equal(trayDropDecision({...widget,targetType:'notes'}),'none');
+ assert.equal(trayDropDecision({...widget,targetType:'calculator'}),'none');
  assert.equal(trayDropDecision({...widget,targetType:null}),'remove');
  assert.equal(trayDropDecision({...widget,targetType:null,overInteractive:true}),'none');
  assert.equal(trayDropDecision({...widget,targetType:null,insideTray:false}),'none');
- assert.equal(trayDropDecision({source:'widget',widgetType:'files',insideTray:true,targetType:'files'}),'save');
+ assert.equal(trayDropDecision({source:'widget',widgetType:'files',insideTray:true,targetType:'files'}),'none');
  assert.equal(trayDropDecision({source:'widget',widgetType:'group',insideTray:true,targetType:'group'}),'none');
  assert.equal(trayDropDecision({source:'widget',widgetType:'group',insideTray:true,targetType:null}),'remove');
 });
@@ -45,7 +48,7 @@ test('widget drops distinguish creating and adding to Groups from blank-tray rem
  assert.equal(trayDropDecision({...notes,groupTarget:{kind:'existing',groupId:'chem111'}}),'save-group');
  assert.equal(trayDropDecision({source:'widget',widgetType:'group',insideTray:true,groupTarget:{kind:'create'}}),'none');
  assert.equal(trayDropDecision({...notes,targetType:null,overInteractive:false}),'remove');
- assert.equal(trayDropDecision({...notes,targetType:'notes'}),'save');
+ assert.equal(trayDropDecision({...notes,targetType:'notes'}),'none');
  assert.equal(trayDropDecision({source:'file',insideTray:true,groupTarget:{kind:'create'}}),'none');
  assert.equal(trayDropDecision({source:'app',insideTray:true,groupTarget:{kind:'existing',groupId:'chem111'}}),'none');
 });
@@ -109,6 +112,6 @@ test('application drops save only on Apps and never turn website or ordinary fil
  assert.equal(trayDropDecision({source:'app',insideTray:true,targetType:null}),'none');
  assert.equal(trayDropDecision({source:'file',insideTray:true,targetType:'apps'}),'none');
  assert.equal(trayDropDecision({source:'website',insideTray:true,targetType:'apps'}),'none');
- assert.equal(trayDropDecision({source:'widget',widgetType:'apps',insideTray:true,targetType:'apps'}),'save');
+ assert.equal(trayDropDecision({source:'widget',widgetType:'apps',insideTray:true,targetType:'apps'}),'none');
  assert.equal(trayDropDecision({source:'widget',widgetType:'apps',insideTray:true,targetType:'files'}),'none');
 });

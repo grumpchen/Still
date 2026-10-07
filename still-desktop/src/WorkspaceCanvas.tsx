@@ -8,7 +8,7 @@ import type {WebShortcut} from './domain/webShortcuts.ts';
 import GroupTray from './GroupTray.tsx';
 import type {GroupEditMode} from './GroupEditor.tsx';
 import PresetTray from './PresetTray.tsx';
-import {presetFromWidget,type WidgetPreset,type PresetType} from './domain/presets.ts';
+import {type WidgetPreset,type PresetType} from './domain/presets.ts';
 import {trayDropDecision,droppedWebsite,type GroupTrayDropTarget} from './domain/trayDrop.ts';
 import {resourceDrop,previewFileDrop,presetForDroppedResource,type ResourceDropEvent,type DroppedResource} from './platform/resourceDrop.ts';
 import {TrayDragProvider,TrayDragButton,trayFocusIntoView,type TrayDragPosition} from './TrayDragButton.tsx';
@@ -43,7 +43,7 @@ export default function WorkspaceCanvas({workspaceId,transferWidget,setWorkspace
   function acceptResources(entries:DroppedResource[],x:number,y:number,errors:string[]=[]){
    const target=trayTarget(x,y),inCanvas=!target.insideTray&&contains(viewport.current!.getBoundingClientRect(),x,y);
    const accepted=inCanvas?entries:entries.filter(entry=>trayDropDecision({source:entrySource(entry),...target})==='save');
-   try{const saved=accepted.map(presetForDroppedResource);if(saved.length){if(inCanvas)openDropped(saved,canvasPoint(x,y),extent);else savePresets(saved)}else notify(errors[0]??'Drop on the matching tray button to save, or on the workspace to add a widget.');if(saved.length&&errors.length)notify('Added '+saved.length+' shortcut(s). '+errors[0])}catch(e){notify(String((e as Error).message??e))}finally{clearDrop()}
+   try{const saved=accepted.map(presetForDroppedResource);if(saved.length){if(inCanvas)openDropped(saved,canvasPoint(x,y),extent);else savePresets(saved)}else notify(errors[0]??'Drop on a matching tray button to save, or on the workspace to add a widget.');if(saved.length&&errors.length)notify('Added '+saved.length+' shortcut(s). '+errors[0])}catch(e){notify(String((e as Error).message??e))}finally{clearDrop()}
   }
   nativeHandler.current=event=>{
    if(!workspaceActive||obscured)return;
@@ -87,7 +87,7 @@ export default function WorkspaceCanvas({workspaceId,transferWidget,setWorkspace
     const target=trayTarget(e.clientX,e.clientY),action=trayDropDecision({source:'widget',widgetType:g.type,...target}),currentWidget=widgets.find(w=>w.id===g.id);
     if(!cancel&&currentWidget?.minimized&&target.insideTray){const restored=moveMinimizedWidgetInstance(currentWidget,{x:g.p.x,y:g.p.y},extent,height);update(g.id,{placement:restored.placement,restorePlacement:restored.restorePlacement});return}
     if(cancel)update(g.id,{placement:g.p});else if(g.mode==='move'&&Math.hypot(e.clientX-g.startX,e.clientY-g.startY)>4&&target.insideTray){
-     if(action==='remove')remove(g.id,true);else{update(g.id,{placement:g.p});const w=widgets.find(w=>w.id===g.id);try{if(action==='save'&&w){savePresets([presetFromWidget(w)],true)}else if((action==='create-group'||action==='save-group')&&w){const groupId=target.groupTarget?.kind==='existing'?target.groupTarget.groupId:undefined;saveToGroup(w,groupId,true)}}catch(error){notify(String((error as Error).message??error))}}
+     if(action==='remove')remove(g.id,true);else{update(g.id,{placement:g.p});const w=widgets.find(w=>w.id===g.id);try{if((action==='create-group'||action==='save-group')&&w){const groupId=target.groupTarget?.kind==='existing'?target.groupTarget.groupId:undefined;saveToGroup(w,groupId,true)}}catch(error){notify(String((error as Error).message??error))}}
     }else bringToFront(g.id);
   }
   function key(e:KeyboardEvent<HTMLElement>,w:WidgetInstance,mode:'move'|'resize'){
@@ -142,11 +142,11 @@ export default function WorkspaceCanvas({workspaceId,transferWidget,setWorkspace
   return <TrayDragProvider enabled={workspaceActive&&!obscured} onChange={trayDragChange} onDrop={trayDragDrop}><div className={`canvas-system ${active||trayDragging||externalDragging?'widget-gesture':''}`} onDragOverCapture={previewDragOver} onDropCapture={previewDrop} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget as Node))clearDrop()}}>
     <div ref={tray} role="group" className={`widget-tray ${overTray?'tray-remove':''} ${saveTarget?'tray-saving':''}`} aria-label="Widget tray" aria-describedby="widget-tray-help">
      <div className="tray-main-row">
-      <div className="tray-label" aria-live="polite" aria-atomic="true"><strong>{saveTarget?'Release to save':overTray?active?'Release to remove':'Not saved here':'Widget tray'}</strong><small>{saveTarget?'Reusable shortcut':overTray?active?'Only this instance':'Drop on a matching button':'Drag in · green saves · red removes'}</small></div>
+      <div className="tray-label" aria-live="polite" aria-atomic="true"><strong>{saveTarget?'Release to save to group':overTray?active?'Release to remove':'Not saved here':'Widget tray'}</strong><small>{saveTarget?'Reusable group item':overTray?active?'Only this instance':'Drop on a group':'Groups save · blank removes'}</small></div>
      <div className="tray-items">{widgetTypes.filter(type=>type!=='ai').map(type=><div data-tray-type={type} className={'tray-disclosure '+(saveTarget?.kind==='widget'&&saveTarget.type===type||saveTarget?.kind==='group-create'&&type==='group'?'tray-save-target':'')} key={type}><TrayDragButton className="tray-widget-button" dragPayload={{kind:'type',type}} data-group-drop-target={type==='group'?'create':undefined} onFocus={trayFocusIntoView} aria-label={type==='apps'?'Add or attach an app':'Add '+widgetRegistry[type].name+' widget'} title={type==='apps'?'Click to add or attach · drag to add an empty Apps panel':widgetRegistry[type].description} onClick={()=>trayTypeClick(type)}><Icon name={widgetRegistry[type].icon}/><span>{widgetRegistry[type].name}</span></TrayDragButton></div>)}{groups.length>0&&<span className="tray-group-separator" aria-hidden="true"/>}<GroupTray groups={groups} update={updateGroup} openGroup={id=>openGroup(id,visibleOrigin(),extent)} openLink={link=>openResource(link,visibleOrigin())} openWidget={entry=>openGroupWidget(entry,visibleOrigin(),extent)} edit={editGroup} remove={removeGroup} activeDropGroupId={saveTarget?.kind==='group'?saveTarget.id:null}/><span className="tray-group-separator" aria-hidden="true"/><PresetTray presets={presets} add={preset=>openPreset(preset,visibleOrigin(),extent)} edit={editPreset} remove={removePreset} attachApp={openAppsDialog}/></div>
       <div className="tray-blank-gutter" data-tray-blank-gutter="" aria-hidden="true" title="Blank tray space — drop a widget here to remove only that instance"/>
      </div>
-     <span id="widget-tray-help" className="tray-help-text">Saved widget tray. Drag a widget header onto a matching type button to save a reusable shortcut, drop onto Group to create a group, or onto a group button to save there. Blank tray space removes only that open instance.</span>
+     <span id="widget-tray-help" className="tray-help-text">Saved widget tray. Drag a widget header onto Group to create a group, or onto a group button to save there. Blank tray space removes only that open instance. Normal widget buttons add widgets when clicked.</span>
     </div>
     <div className="canvas-view-shell">
     <div className={`canvas-viewport ${overCanvas?'canvas-drop':''}`} ref={viewport} aria-label="Workspace canvas">

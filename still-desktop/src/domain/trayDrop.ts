@@ -16,7 +16,7 @@ export function trayDropDecision(target:TrayDropTarget):TrayDropAction {
    if(target.widgetType==='group'||target.groupTarget.kind==='existing'&&!target.groupTarget.groupId)return 'none';
    return target.groupTarget.kind==='create'?'create-group':'save-group';
   }
-  if(target.targetType)return target.widgetType!=='group'&&target.targetType===target.widgetType?'save':'none';
+  if(target.targetType)return 'none';
   return target.overInteractive?'none':'remove';
  }
  if(target.source==='file')return target.targetType==='files'?'save':'none';
