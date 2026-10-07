@@ -14,20 +14,21 @@ export default function AppsWidget({widget,update,notify,obscured,workspaceActiv
  async function choose(){setError('');if(!localApps.native){picker.current?.click();return}setBusy(true);try{const app=await localApps.choose();if(app)selected(app)}catch(e){setError(String(e))}finally{setBusy(false)}}
  useEffect(()=>{
   setReady(false);setOpening(false);if(!appPanel.available)return;
-  let disposed=false,frame=0,opened=false,launching=false,presenting=false,dirty=false,scrolling=false,last='',stop:(()=>void)|undefined,stopScroll:(()=>void)|undefined;
+  let disposed=false,frame=0,opened=false,launching=false,presenting=false,dirty=false,scrolling=false,last='',revision=0,stop:(()=>void)|undefined,stopScroll:(()=>void)|undefined;
   const node=host.current!,viewport=node.closest('.canvas-viewport') as HTMLElement,canvas=node.closest('.workspace-canvas')!;
-  function geometry(){const content=node.closest('.widget-content')!.getBoundingClientRect(),v=viewport.getBoundingClientRect(),grip=node.closest('.canvas-card')?.querySelector<HTMLElement>('.widget-resize')?.getBoundingClientRect()??null;const clipped={left:Math.max(v.left,content.left),top:Math.max(v.top,content.top),right:Math.min(v.right,content.right),bottom:Math.min(v.bottom,content.bottom),width:0,height:0};return appPanelGeometry(node.getBoundingClientRect(),clipped,current.current.workspaceActive,current.current.obscured,grip)}
+  function geometry(){const content=node.closest('.widget-content')!.getBoundingClientRect(),v=viewport.getBoundingClientRect(),card=node.closest('.canvas-card') as HTMLElement,level=Number(card.style.zIndex),grip=card.querySelector<HTMLElement>('.widget-resize')?.getBoundingClientRect()??null;const clipped={left:Math.max(v.left,content.left),top:Math.max(v.top,content.top),right:Math.min(v.right,content.right),bottom:Math.min(v.bottom,content.bottom),width:0,height:0};const higher=Array.from(canvas.querySelectorAll<HTMLElement>('.canvas-card')).filter(other=>other!==card&&Number(other.style.zIndex)>level).map(other=>other.getBoundingClientRect());return{...appPanelGeometry(node.getBoundingClientRect(),clipped,current.current.workspaceActive,current.current.obscured,grip,higher),stackingRank:level}}
    function fit(info:AppPanelInfo){const c=current.current,card=node.closest('.canvas-card')!.getBoundingClientRect(),r=node.getBoundingClientRect(),frameWidth=Math.max(0,card.width-r.width),frameHeight=Math.max(0,card.height-r.height),canvas=node.closest('.workspace-canvas') as HTMLElement;
     const patch=appPanelFit(c.widget,info,frameWidth,frameHeight);
     if(patch.placement)patch.placement=constrainPlacement('apps',patch.placement,canvas.clientWidth,{width:c.widget.appMinWidth,height:c.widget.appMinHeight},canvas.clientHeight);
     if(Object.keys(patch).length)c.update(patch);
   }
-  async function sync(){frame=0;if(disposed||!opened)return;if(scrolling){dirty=true;return}if(presenting){dirty=true;return}presenting=true;
-    try{const g=geometry(),next=JSON.stringify(g);if(next!==last){const info=await appPanel.present(widget.id,g.bounds,g.clip,g.grip,g.visible&&!scrolling);last=next;node.dataset.nativeVisible=String(g.visible&&!scrolling);if(g.visible&&!scrolling&&info.probing){last='';schedule.current()}else if(g.visible&&!scrolling&&info.measured)fit(info)}}
-   catch(reason){if(!disposed&&opened){setError(String(reason));node.dataset.nativeVisible='false';if(String(reason).includes('closed')){opened=false;setReady(false);current.current.update({appPanelOpen:false})}}}
+  function invalidate(forceClear=false){revision++;if(forceClear||presenting)last='';return revision}
+  async function sync(){frame=0;if(disposed||!opened)return;if(scrolling){dirty=true;return}if(presenting){dirty=true;return}presenting=true;let requestRevision=revision;
+    try{const g=geometry(),next=JSON.stringify(g);requestRevision=revision;if(next!==last){const info=await appPanel.present(widget.id,g.bounds,g.clip,g.grip,g.occlusions??[],g.visible&&!scrolling,g.stackingRank,requestRevision);if(disposed||requestRevision!==revision)return;last=next;node.dataset.nativeVisible=String(info.shown);if(g.visible&&!scrolling&&info.probing){last='';schedule.current()}else if(g.visible&&!scrolling&&info.measured)fit(info)}}
+   catch(reason){if(!disposed&&opened&&requestRevision===revision){setError(String(reason));node.dataset.nativeVisible='false';if(String(reason).includes('closed')){opened=false;setReady(false);current.current.update({appPanelOpen:false})}}}
    finally{presenting=false;if(dirty){dirty=false;schedule.current()}}
   }
-  schedule.current=()=>{if(!disposed&&!frame)frame=requestAnimationFrame(()=>void sync())};
+  schedule.current=()=>{if(disposed)return;invalidate();if(!frame)frame=requestAnimationFrame(()=>void sync())};
   launch.current=async()=>{
    const c=current.current;if(disposed||opened||launching||c.appAttachment||!c.widget.appKey||!c.workspaceActive||c.obscured)return;
    launching=true;setOpening(true);setError('');
@@ -42,10 +43,10 @@ export default function AppsWidget({widget,update,notify,obscured,workspaceActiv
   detach.current=async()=>{if(!opened&&!launching)return;opened=false;last='';node.dataset.nativeVisible='false';try{await appPanel.release(widget.id);if(!disposed){setReady(false);setError('')}}catch(reason){if(!disposed)setError(String(reason))}};
   const resize=new ResizeObserver(schedule.current);resize.observe(node);resize.observe(viewport);
   const mutation=new MutationObserver(schedule.current);mutation.observe(canvas,{subtree:true,attributes:true,attributeFilter:['style','class'],childList:true});
-  stopScroll=observeCanvasScroll(viewport,value=>{scrolling=value;if(value){if(frame){cancelAnimationFrame(frame);frame=0}dirty=true;const g=geometry();void appPanel.present(widget.id,g.bounds,g.clip,g.grip,false).catch(()=>undefined)}else{last='';dirty=false;schedule.current()}});
+  stopScroll=observeCanvasScroll(viewport,value=>{scrolling=value;if(value){invalidate(true);if(frame){cancelAnimationFrame(frame);frame=0}dirty=true;const g=geometry(),hideRevision=revision;void appPanel.present(widget.id,g.bounds,g.clip,g.grip,g.occlusions??[],false,g.stackingRank,hideRevision).then(info=>{if(!disposed&&hideRevision===revision)node.dataset.nativeVisible=String(info.shown)}).catch(()=>undefined)}else{dirty=false;schedule.current()}});
   const scroll=()=>schedule.current();window.addEventListener('resize',scroll);
   void appPanel.subscribe(event=>{if(disposed||event.id!==widget.id)return;if(!event.open){opened=false;last='';setReady(false);node.dataset.nativeVisible='false';current.current.update({appPanelOpen:false});setError('The app was closed. Open it in the panel again.')}else if(event.error!==undefined)setError(event.error??'')}).then(unlisten=>{if(disposed)unlisten();else{stop=unlisten;const c=current.current;if(c.appAttachment)void attach.current(c.appAttachment);else if(c.widget.appPanelOpen&&c.workspaceActive)void launch.current()}}).catch(reason=>{if(!disposed)setError(String(reason))});
-  return()=>{disposed=true;cancelAnimationFrame(frame);resize.disconnect();mutation.disconnect();window.removeEventListener('resize',scroll);stopScroll?.();stop?.();void appPanel.release(widget.id).catch(()=>undefined)};
+  return()=>{disposed=true;invalidate();cancelAnimationFrame(frame);resize.disconnect();mutation.disconnect();window.removeEventListener('resize',scroll);stopScroll?.();stop?.();void appPanel.release(widget.id).catch(()=>undefined)};
  },[widget.id,widget.appKey]);
  useEffect(()=>{schedule.current();if(appAttachment&&workspaceActive&&!obscured)void attach.current(appAttachment);else if(widget.appPanelOpen&&workspaceActive&&!obscured)void launch.current();else if(!widget.appPanelOpen)void detach.current()},[appAttachment,widget.appPanelOpen,workspaceActive,obscured,widget.placement]);
  return <div className="app-panel">

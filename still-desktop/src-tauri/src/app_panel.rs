@@ -3,7 +3,7 @@ use std::{collections::{HashMap,HashSet},path::{Path,PathBuf},sync::{Mutex,OnceL
 use tauri::{AppHandle,Emitter,Manager,Webview};
 use windows::{core::{Interface,PCWSTR,PWSTR},Win32::{Foundation::{CloseHandle,HANDLE,HWND,LPARAM,POINT,RECT},Graphics::Gdi::*,System::{Com::*,Threading::*},UI::{Shell::*,WindowsAndMessaging::*,Accessibility::{SetWinEventHook,HWINEVENTHOOK}}}};
 
-#[derive(Clone,Debug,Deserialize)]
+#[derive(Clone,Debug,Deserialize,PartialEq)]
 pub struct Bounds {pub x:f64,pub y:f64,pub width:f64,pub height:f64}
 impl Bounds {
  fn validate(&self)->Result<(),String>{if [self.x,self.y,self.width,self.height].iter().any(|v|!v.is_finite())||self.x.abs()>20000.||self.y.abs()>20000.||self.width<1.||self.height<1.||self.width>20000.||self.height>20000.{Err("Invalid app panel bounds".into())}else{Ok(())}}
@@ -33,7 +33,7 @@ fn owner()->Result<HWND,String>{let h=OWNER.load(std::sync::atomic::Ordering::Re
 fn marker()->Vec<u16>{wide("StillManagedAppPanel")}
 type Physical=(i32,i32,i32,i32);
 struct Entry {
- hwnd:usize,pid:u32,source_id:String,bounds:Bounds,clip:Bounds,grip:Option<Bounds>,visible:bool,shown:bool,
+ hwnd:usize,pid:u32,source_id:String,bounds:Bounds,clip:Bounds,grip:Option<Bounds>,occlusions:Vec<Bounds>,visible:bool,shown:bool,stacking_rank:i64,revision:u64,
  original_owner:usize,original_placement:WINDOWPLACEMENT,original_region:usize,original_visible:bool,
  // CSS-pixel minima; measured is a fallback for apps which refuse SetWindowPos
  // without declaring a WM_GETMINMAXINFO minimum. Pending candidates are kept in
@@ -41,19 +41,19 @@ struct Entry {
  declared_width:Option<f64>,declared_height:Option<f64>,measured_width:Option<f64>,measured_height:Option<f64>,
  pending_width:Option<i32>,pending_height:Option<i32>,probing_width:bool,probing_height:bool,
  minimum_dpi:Option<(u32,u32)>,minimum_query_after:Option<std::time::Instant>,fresh:bool,
- last:Option<(Physical,Physical,Physical,Option<Physical>)>,error:String,
+ last:Option<(Physical,Physical,Physical,Option<Physical>,Vec<Physical>)>,error:String,
 }
 impl Drop for Entry{fn drop(&mut self){if self.original_region!=0{unsafe{let _=DeleteObject(HGDIOBJ(self.original_region as *mut _));}}}}
 #[derive(Default)]struct Panels {items:HashMap<String,Entry>,pending:HashMap<String,Launch>,running:HashSet<String>,generation:HashMap<String,u64>,closed:bool}
 #[derive(Default)]pub struct AppPanelState(Mutex<Panels>);
-#[derive(Serialize)]#[serde(rename_all="camelCase")]pub struct Info{hwnd:usize,pid:u32,min_width:f64,min_height:f64,required_width:Option<f64>,required_height:Option<f64>,measured:bool,probing:bool}
+#[derive(Serialize)]#[serde(rename_all="camelCase")]pub struct Info{hwnd:usize,pid:u32,min_width:f64,min_height:f64,required_width:Option<f64>,required_height:Option<f64>,measured:bool,probing:bool,shown:bool}
 fn maximum(a:Option<f64>,b:Option<f64>)->Option<f64>{match(a,b){(Some(a),Some(b))=>Some(a.max(b)),(Some(v),None)|(None,Some(v))=>Some(v),(None,None)=>None}}
 fn info(entry:&Entry,main:HWND,measured:bool)->Info{info_at(entry,unsafe{windows::Win32::UI::HiDpi::GetDpiForWindow(main)}.max(96) as f64/96.,measured)}
 fn info_at(entry:&Entry,scale:f64,measured:bool)->Info{
  let size=rect(handle(entry.hwnd)).unwrap_or((0,0,640,400));
  let required_width=if entry.probing_width{entry.declared_width}else{maximum(entry.declared_width,entry.measured_width)};
  let required_height=if entry.probing_height{entry.declared_height}else{maximum(entry.declared_height,entry.measured_height)};
- Info{hwnd:entry.hwnd,pid:entry.pid,min_width:size.2 as f64/scale,min_height:size.3 as f64/scale,required_width,required_height,measured,probing:entry.probing_width||entry.probing_height}
+ Info{hwnd:entry.hwnd,pid:entry.pid,min_width:size.2 as f64/scale,min_height:size.3 as f64/scale,required_width,required_height,measured,probing:entry.probing_width||entry.probing_height,shown:entry.shown}
 }
 fn minimum_query_due(entry:&Entry,dpi:(u32,u32),wants_smaller:bool,now:std::time::Instant)->bool{
  entry.minimum_query_after.is_none_or(|after|now>=after)&&(entry.minimum_dpi!=Some(dpi)||wants_smaller)
@@ -175,7 +175,7 @@ fn attach(window:&WindowInfo,source_id:String,bounds:Bounds,clip:Bounds,grip:Opt
  let mut original_placement=WINDOWPLACEMENT{length:std::mem::size_of::<WINDOWPLACEMENT>() as u32,..Default::default()};
  GetWindowPlacement(hwnd,&mut original_placement).map_err(|e|e.to_string())?;
  let region=CreateRectRgn(0,0,0,0);let original_region=if GetWindowRgn(hwnd,region)!=RGN_ERROR{region.0 as usize}else{let _=DeleteObject(HGDIOBJ(region.0));0};
- let mut entry=Entry{hwnd:window.hwnd,pid:window.pid,source_id,bounds,clip,grip,visible:false,shown:false,original_owner,original_placement,original_region,original_visible:IsWindowVisible(hwnd).as_bool(),declared_width:None,declared_height:None,measured_width:None,measured_height:None,pending_width:None,pending_height:None,probing_width:false,probing_height:false,minimum_dpi:None,minimum_query_after:None,fresh:false,last:None,error:String::new()};
+ let mut entry=Entry{hwnd:window.hwnd,pid:window.pid,source_id,bounds,clip,grip,occlusions:Vec::new(),visible:false,shown:false,stacking_rank:0,revision:0,original_owner,original_placement,original_region,original_visible:IsWindowVisible(hwnd).as_bool(),declared_width:None,declared_height:None,measured_width:None,measured_height:None,pending_width:None,pending_height:None,probing_width:false,probing_height:false,minimum_dpi:None,minimum_query_after:None,fresh:false,last:None,error:String::new()};
  // Top-level ownership, never SetParent/WS_CHILD. Restore it before Still closes.
  SetWindowLongPtrW(hwnd,GWLP_HWNDPARENT,main.0 as isize);
  if GetWindow(hwnd,GW_OWNER).ok()!=Some(main){SetWindowLongPtrW(hwnd,GWLP_HWNDPARENT,original_owner as isize);return Err("The app could not be attached. Still and the app must run at the same Windows permission level.".into())}
@@ -196,8 +196,9 @@ fn position(entry:&mut Entry,main:HWND,origin:POINT,scale:f64)->Result<bool,Stri
  let zoomed=IsZoomed(hwnd).as_bool();let iconic=IsIconic(hwnd).as_bool();
  // Restore a maximized target before sampling its size. If the managed app had
  // focus, return it to Still immediately after restoration.
-   if zoomed||iconic{let foreground=GetForegroundWindow();let return_focus=if foreground==hwnd||belongs(foreground,entry.hwnd,entry.pid){main}else{foreground};let _=ShowWindow(hwnd,if zoomed{SW_RESTORE}else{SW_SHOWNOACTIVATE});if !entry.shown{let _=ShowWindow(hwnd,SW_HIDE);}if !return_focus.0.is_null(){let _=SetForegroundWindow(return_focus);}}
- let wanted=entry.bounds.screen(origin,scale);let clip=entry.clip.screen(origin,scale);let grip=entry.grip.as_ref().map(|bounds|bounds.screen(origin,scale));let actual=rect(hwnd)?;
+ if zoomed||iconic{let foreground=GetForegroundWindow();let return_focus=if foreground==hwnd||belongs(foreground,entry.hwnd,entry.pid){main}else{foreground};let _=ShowWindow(hwnd,if zoomed{SW_RESTORE}else{SW_SHOWNOACTIVATE});if !entry.shown{let _=ShowWindow(hwnd,SW_HIDE);}if !return_focus.0.is_null(){let _=SetForegroundWindow(return_focus);}}
+ let was_shown=entry.shown;
+ let wanted=entry.bounds.screen(origin,scale);let clip=entry.clip.screen(origin,scale);let grip=entry.grip.as_ref().map(|bounds|bounds.screen(origin,scale));let occlusions=entry.occlusions.iter().map(|bounds|bounds.screen(origin,scale)).collect::<Vec<_>>();let actual=rect(hwnd)?;
  let desired_css=(wanted.2 as f64/scale,wanted.3 as f64/scale);
  let now=std::time::Instant::now();let scale_changed=entry.minimum_dpi.is_some_and(|previous|previous!=dpi);
  if entry.shown&&scale_changed{
@@ -221,17 +222,20 @@ fn position(entry:&mut Entry,main:HWND,origin:POINT,scale:f64)->Result<bool,Stri
  // Probe below an observed fallback floor only when the declared floor permits
  // it. The real HWND response then decides whether that old measurement remains
  // valid. A query/accept at the floor itself is never mistaken for a decrease.
- if !entry.shown{entry.probing_width=false;entry.probing_height=false;entry.pending_width=None;entry.pending_height=None;}
+ if !was_shown{entry.probing_width=false;entry.probing_height=false;entry.pending_width=None;entry.pending_height=None;}
  else{
   if measured_w_px>0&&requested.2+1<measured_w_px||entry.pending_width.is_some(){entry.probing_width=true;}else{entry.probing_width=false;entry.pending_width=None;}
   if measured_h_px>0&&requested.3+1<measured_h_px||entry.pending_height.is_some(){entry.probing_height=true;}else{entry.probing_height=false;entry.pending_height=None;}
  }
  let declared_clamped=requested.2>wanted.2||requested.3>wanted.3;fresh|=declared_clamped;
-  if entry.shown&&!zoomed&&!iconic&&!query_due&&!entry.probing_width&&!entry.probing_height&&entry.pending_width.is_none()&&entry.pending_height.is_none()&&entry.last==Some((wanted,clip,actual,grip)){return Ok(fresh)}
- SetWindowPos(hwnd,Some(HWND_TOP),wanted.0,wanted.1,requested.2,requested.3,SWP_NOACTIVATE|SWP_NOOWNERZORDER).map_err(|e|e.to_string())?;
+  let same_layout=entry.last==Some((wanted,clip,actual,grip,occlusions.clone()));
+  if entry.shown&&!zoomed&&!iconic&&!query_due&&!entry.probing_width&&!entry.probing_height&&entry.pending_width.is_none()&&entry.pending_height.is_none()&&same_layout{return Ok(fresh)}
+  if entry.shown&&!same_layout{let _=ShowWindow(hwnd,SW_HIDE);entry.shown=false;}
+  let positioned=if entry.shown{SetWindowPos(hwnd,None,wanted.0,wanted.1,requested.2,requested.3,SWP_NOACTIVATE|SWP_NOOWNERZORDER|SWP_NOZORDER)}else{SetWindowPos(hwnd,Some(HWND_TOP),wanted.0,wanted.1,requested.2,requested.3,SWP_NOACTIVATE|SWP_NOOWNERZORDER)};
+  positioned.map_err(|e|e.to_string())?;
  let actual=rect(hwnd)?;let (refused_w,refused_h)=required_size(requested,actual);
  let mut floor_changed=fresh;let actual_css=(actual.2 as f64/scale,actual.3 as f64/scale);
- if entry.shown{
+ if was_shown{
   if refused_w{
    if entry.pending_width.is_some_and(|candidate|(candidate-actual.2).abs()<=1){entry.measured_width=Some(actual_css.0);entry.pending_width=None;entry.probing_width=false;floor_changed=true}else{entry.pending_width=Some(actual.2);entry.probing_width=true;}
   }else{
@@ -265,8 +269,20 @@ fn position(entry:&mut Entry,main:HWND,origin:POINT,scale:f64)->Result<bool,Stri
    let _=DeleteObject(HGDIOBJ(cutout.0));
   }
  }
+ // Other cards with a higher DOM stacking rank cover this native HWND. Cut
+ // those rectangles out of the native region so pixels and hit targets agree.
+ for (x,y,width,height) in &occlusions{
+  let hole_left=(x-actual.0).max(left);let hole_top=(y-actual.1).max(top);
+  let hole_right=(x+width-actual.0).min(right);let hole_bottom=(y+height-actual.1).min(bottom);
+  if hole_left<hole_right&&hole_top<hole_bottom{
+   let cutout=CreateRectRgn(hole_left,hole_top,hole_right,hole_bottom);
+   if cutout.0.is_null(){let _=DeleteObject(HGDIOBJ(region.0));return Err("Unable to reserve the overlapping widget area.".into())}
+   if CombineRgn(Some(region),Some(region),Some(cutout),RGN_DIFF)==RGN_ERROR{let _=DeleteObject(HGDIOBJ(cutout.0));let _=DeleteObject(HGDIOBJ(region.0));return Err("Unable to reserve the overlapping widget area.".into())}
+   let _=DeleteObject(HGDIOBJ(cutout.0));
+  }
+ }
  if SetWindowRgn(hwnd,Some(region),true)==0{let _=DeleteObject(HGDIOBJ(region.0));return Err("The app cannot fit this panel at its current Windows permission level.".into())}
- entry.last=Some((wanted,clip,actual,grip));let _=main;Ok(floor_changed)
+ entry.last=Some((wanted,clip,actual,grip,occlusions));let _=main;Ok(floor_changed)
 }}
 fn remove_closed(app:&AppHandle,panels:&mut Panels,window:Option<usize>){
  let gone=panels.items.iter().filter(|(_,e)|window.is_none_or(|h|h==e.hwnd)&&!valid_window(e)).map(|(id,_)|id.clone()).collect::<Vec<_>>();
@@ -292,7 +308,8 @@ fn place(app:&AppHandle,panels:&mut Panels){
   }
  }
 }
-pub fn refresh(app:&AppHandle){if let Ok(mut panels)=app.state::<AppPanelState>().0.try_lock(){place(app,&mut panels)}}
+pub(crate) fn ordered_windows(app:&AppHandle)->Option<Vec<(i64,usize)>>{app.state::<AppPanelState>().0.try_lock().ok().map(|s|s.items.values().filter(|e|e.shown&&valid_window(e)).map(|e|(e.stacking_rank,e.hwnd)).collect())}
+pub(crate) fn refresh_state(app:&AppHandle){if let Ok(mut panels)=app.state::<AppPanelState>().0.try_lock(){place(app,&mut panels)}}
 fn refresh_clipped_child(app:&AppHandle,child:HWND)->bool{
  let root=unsafe{GetAncestor(child,GA_ROOT)};if root.0.is_null()||root==child{return false}
  let state=app.state::<AppPanelState>();let Ok(panels)=state.0.try_lock()else{return false};
@@ -307,9 +324,9 @@ unsafe extern "system" fn event(_:HWINEVENTHOOK,event:u32,hwnd:HWND,object:i32,c
   if let Ok(mut s)=app.state::<AppPanelState>().0.try_lock(){remove_closed(app,&mut s,Some(dead))}
   else{let app=app.clone();tauri::async_runtime::spawn_blocking(move||{let state=app.state::<AppPanelState>();if let Ok(mut s)=state.0.lock(){remove_closed(&app,&mut s,Some(dead));};});}
  }
- if event==EVENT_SYSTEM_FOREGROUND{crate::shortcuts::refresh_editing(app.clone());refresh(app);}
+ if event==EVENT_SYSTEM_FOREGROUND{crate::shortcuts::refresh_editing(app.clone());crate::native_panels::invalidate_order();crate::native_panels::refresh_all(app);}
  if event==EVENT_OBJECT_LOCATIONCHANGE&&object==0&&child==0{
-  if owner().ok()==Some(hwnd){refresh(app)}else if !refresh_clipped_child(app,hwnd)&&is_managed_foreground(app,hwnd){refresh(app)}
+  if owner().ok()==Some(hwnd){crate::native_panels::refresh_all(app)}else if !refresh_clipped_child(app,hwnd)&&is_managed_foreground(app,hwnd){crate::native_panels::refresh_all(app)}
  }
 }
 pub fn install(app:&AppHandle)->Result<(),String>{
@@ -377,26 +394,29 @@ pub async fn app_panel_attach(app:AppHandle,webview:Webview,id:String,hwnd:usize
  }).await.map_err(|e|e.to_string())?
 }
 #[tauri::command]
-pub async fn app_panel_present(app:AppHandle,webview:Webview,id:String,bounds:Bounds,clip:Bounds,grip:Option<Bounds>,visible:bool)->Result<Info,String>{
- crate::browser::authorize(&webview)?;instance(&id)?;bounds.validate()?;clip.validate()?;if let Some(grip)=&grip{grip.validate()?}
+pub async fn app_panel_present(app:AppHandle,webview:Webview,id:String,bounds:Bounds,clip:Bounds,grip:Option<Bounds>,occlusions:Vec<Bounds>,visible:bool,stacking_rank:i64,revision:u64)->Result<Info,String>{
+ crate::browser::authorize(&webview)?;instance(&id)?;bounds.validate()?;clip.validate()?;if let Some(grip)=&grip{grip.validate()?}if occlusions.len()>256{return Err("Too many overlapping workspace widgets".into())}for item in &occlusions{item.validate()?}
  let state=app.state::<AppPanelState>();let mut s=state.0.lock().map_err(|_|"App panels unavailable")?;
  let entry=s.items.get_mut(&id).ok_or("The app was closed. Reopen it below.")?;
  if !valid_window(entry){s.items.remove(&id);return Err("The app was closed. Reopen it below.".into())}
+ if revision<entry.revision{let main=owner()?;return Ok(info(entry,main,entry.fresh))}
  if !visible&&belongs(unsafe{GetForegroundWindow()},entry.hwnd,entry.pid){if let Ok(main)=owner(){unsafe{let _=SetForegroundWindow(main);}}}
- entry.bounds=bounds;entry.clip=clip;entry.grip=grip;entry.visible=visible;place(&app,&mut s);
- let main=owner()?;let entry=s.items.get(&id).ok_or("The app was closed. Reopen it below.")?;Ok(info(entry,main,entry.fresh))
+ let changed=entry.bounds!=bounds||entry.clip!=clip||entry.grip!=grip||entry.occlusions!=occlusions;
+ if changed&&entry.shown{unsafe{let _=ShowWindow(handle(entry.hwnd),SW_HIDE);}entry.shown=false;entry.last=None;}
+ entry.bounds=bounds;entry.clip=clip;entry.grip=grip;entry.occlusions=occlusions;entry.visible=visible;entry.stacking_rank=stacking_rank;entry.revision=revision;
+ place(&app,&mut s);
+ let main=owner()?;let entry=s.items.get(&id).ok_or("The app was closed. Reopen it below.")?;let result=info(entry,main,entry.fresh);drop(s);crate::native_panels::apply_order(&app);Ok(result)
 }
 #[tauri::command]
-pub async fn app_panel_release(app:AppHandle,webview:Webview,id:String)->Result<(),String>{crate::browser::authorize(&webview)?;instance(&id)?;release(&app,&id);Ok(())}
+pub async fn app_panel_release(app:AppHandle,webview:Webview,id:String)->Result<(),String>{crate::browser::authorize(&webview)?;instance(&id)?;release(&app,&id);crate::native_panels::apply_order(&app);Ok(())}
 
 pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
  let state=app.state::<AppPanelState>();let panels=state.0.lock().map_err(|_|"App panels unavailable")?;
  let entry=panels.items.get(id).ok_or("Reopen the app before capturing")?;let main=owner()?;
  if !entry.shown||!entry.visible||!valid_window(entry)||!parent_context(&panels.items,main,app){return Err("Bring Still and this app panel to the front before capturing".into())}
- let (_, (x,y,w,h), _, _)=entry.last.ok_or("The app is not positioned yet")?;
+ let (_, (x,y,w,h), _, _, _)=entry.last.as_ref().ok_or("The app is not positioned yet")?;let (x,y,w,h)=(*x,*y,*w,*h);
  if w<1||h<1||w as i64*h as i64>16000000{return Err("App capture is too large".into())}
  unsafe{
-  SetWindowPos(handle(entry.hwnd),Some(HWND_TOP),0,0,0,0,SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE|SWP_NOOWNERZORDER).map_err(|e|e.to_string())?;
   let desktop=GetDC(None);let memory=CreateCompatibleDC(Some(desktop));let bitmap=CreateCompatibleBitmap(desktop,w,h);
   if desktop.0.is_null()||memory.0.is_null()||bitmap.0.is_null(){if !bitmap.0.is_null(){let _=DeleteObject(HGDIOBJ(bitmap.0));}if !memory.0.is_null(){let _=DeleteDC(memory);}if !desktop.0.is_null(){ReleaseDC(None,desktop);}return Err("Unable to allocate app capture".into())}
   let previous=SelectObject(memory,HGDIOBJ(bitmap.0));let copied=BitBlt(memory,0,0,w,h,Some(desktop),x,y,SRCCOPY|CAPTUREBLT);SelectObject(memory,previous);
@@ -487,7 +507,7 @@ pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
    drop(target);assert!(UnregisterClassW(PCWSTR(class.as_ptr()),Some(instance)).is_ok());
   }}
  // A fresh Entry wired to a fixture window, with the PHYSICAL floor storage.
-  fn test_entry(hwnd:usize,bounds:&Bounds)->Entry{Entry{hwnd,pid:std::process::id(),source_id:"test-app".into(),bounds:bounds.clone(),clip:bounds.clone(),grip:None,visible:true,shown:true,original_owner:0,original_placement:WINDOWPLACEMENT{length:std::mem::size_of::<WINDOWPLACEMENT>() as u32,..Default::default()},original_region:0,original_visible:false,declared_width:None,declared_height:None,measured_width:None,measured_height:None,pending_width:None,pending_height:None,probing_width:false,probing_height:false,minimum_dpi:None,minimum_query_after:None,fresh:false,last:None,error:String::new()}}
+  fn test_entry(hwnd:usize,bounds:&Bounds)->Entry{Entry{hwnd,pid:std::process::id(),source_id:"test-app".into(),bounds:bounds.clone(),clip:bounds.clone(),grip:None,occlusions:Vec::new(),visible:true,shown:true,stacking_rank:0,revision:0,original_owner:0,original_placement:WINDOWPLACEMENT{length:std::mem::size_of::<WINDOWPLACEMENT>() as u32,..Default::default()},original_region:0,original_visible:false,declared_width:None,declared_height:None,measured_width:None,measured_height:None,pending_width:None,pending_height:None,probing_width:false,probing_height:false,minimum_dpi:None,minimum_query_after:None,fresh:false,last:None,error:String::new()}}
  unsafe fn class_window(class:&[u16],proc:unsafe extern "system" fn(HWND,u32,windows::Win32::Foundation::WPARAM,LPARAM)->windows::Win32::Foundation::LRESULT,title:&str)->(HWND,windows::Win32::Foundation::HINSTANCE){
   let instance=windows::Win32::Foundation::HINSTANCE(windows::Win32::System::LibraryLoader::GetModuleHandleW(None).unwrap().0);
   let definition=WNDCLASSW{lpfnWndProc:Some(proc),hInstance:instance,lpszClassName:PCWSTR(class.as_ptr()),..Default::default()};assert_ne!(RegisterClassW(&definition),0);

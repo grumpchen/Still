@@ -18,11 +18,12 @@ export function appPanelFit(widget:WidgetInstance,info:AppSizeInfo,frameWidth:nu
 }
 export interface PanelRect {left:number;top:number;right:number;bottom:number;width:number;height:number}
 export interface PanelBounds {x:number;y:number;width:number;height:number}
-export function appPanelGeometry(rect:PanelRect,viewport:PanelRect,active:boolean,obscured:boolean,resizeGrip:PanelRect|null=null):{bounds:PanelBounds;clip:PanelBounds;grip:PanelBounds|null;visible:boolean}{
+export function appPanelGeometry(rect:PanelRect,viewport:PanelRect,active:boolean,obscured:boolean,resizeGrip:PanelRect|null=null,covered:PanelRect[]=[]):{bounds:PanelBounds;clip:PanelBounds;grip:PanelBounds|null;occlusions?:PanelBounds[];visible:boolean}{
  const left=Math.max(rect.left,viewport.left,0),top=Math.max(rect.top,viewport.top,0);
  const width=Math.max(0,Math.min(rect.right,viewport.right)-left),height=Math.max(0,Math.min(rect.bottom,viewport.bottom)-top);
  // Hidden workspace DOM has zero-sized rectangles. A missing grip is valid;
  // a zero-sized grip rejects the native presentation before it can hide the app.
  const grip=resizeGrip&&resizeGrip.width>=1&&resizeGrip.height>=1?{x:resizeGrip.left,y:resizeGrip.top,width:resizeGrip.width,height:resizeGrip.height}:null;
- return{bounds:{x:rect.left,y:rect.top,width:Math.max(1,rect.width),height:Math.max(1,rect.height)},clip:{x:left,y:top,width:Math.max(1,width),height:Math.max(1,height)},grip,visible:active&&!obscured&&width>1&&height>1};
+  const occlusions=covered.flatMap(item=>{const x=Math.max(left,item.left),y=Math.max(top,item.top),right=Math.min(left+width,item.right),bottom=Math.min(top+height,item.bottom);return right>x&&bottom>y?[{x,y,width:right-x,height:bottom-y}]:[]});
+  return{bounds:{x:rect.left,y:rect.top,width:Math.max(1,rect.width),height:Math.max(1,rect.height)},clip:{x:left,y:top,width:Math.max(1,width),height:Math.max(1,height)},grip,...(occlusions.length?{occlusions}:{}),visible:active&&!obscured&&width>1&&height>1};
 }

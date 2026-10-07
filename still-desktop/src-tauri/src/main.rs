@@ -7,6 +7,7 @@ mod chrome;
 mod capture;
 #[cfg(windows)] mod chrome_overlay;
 #[cfg(windows)] mod app_panel;
+#[cfg(windows)] mod native_panels;
 #[cfg(windows)] mod app_picker;
 use tauri::Manager;
 fn main() {
@@ -27,7 +28,7 @@ fn main() {
                 chrome_overlay::install(app.handle())?;
                 app_panel::install(app.handle())?;
                 if let Some(window)=app.get_window("main") {let handle=app.handle().clone();window.on_window_event(move |event|{
-                    match event {tauri::WindowEvent::Moved(_)|tauri::WindowEvent::Resized(_)|tauri::WindowEvent::ScaleFactorChanged{..}|tauri::WindowEvent::Focused(_)=>{chrome_overlay::refresh(&handle);app_panel::refresh(&handle)},
+                    match event {tauri::WindowEvent::Moved(_)|tauri::WindowEvent::Resized(_)|tauri::WindowEvent::ScaleFactorChanged{..}|tauri::WindowEvent::Focused(_)=>{native_panels::refresh_all(&handle)},
                     tauri::WindowEvent::CloseRequested{..}=>{app_panel::shutdown(&handle);chrome_overlay::shutdown(&handle)},_=>{}}
                 });}
             }

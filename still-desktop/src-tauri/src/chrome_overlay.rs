@@ -5,7 +5,7 @@ use std::{collections::HashMap,sync::{Mutex,OnceLock}};
 use tauri::{AppHandle,Emitter,Manager,Webview};
 use windows::{core::PCWSTR,Win32::{Foundation::{HWND,LPARAM,POINT,RECT,WPARAM},Graphics::Gdi::*,UI::{WindowsAndMessaging::*,Accessibility::{SetWinEventHook,HWINEVENTHOOK}}}};
 
-#[derive(Clone,Debug,Deserialize)]
+#[derive(Clone,Debug,Deserialize,PartialEq)]
 pub struct Bounds {pub x:f64,pub y:f64,pub width:f64,pub height:f64}
 impl Bounds {
  fn validate(&self)->Result<(),String>{
@@ -14,10 +14,11 @@ impl Bounds {
  fn screen(&self,origin:POINT,scale:f64)->(i32,i32,i32,i32){((origin.x as f64+self.x*scale).round() as i32,(origin.y as f64+self.y*scale).round() as i32,(self.width*scale).round().max(1.) as i32,(self.height*scale).round().max(1.) as i32)}
 }
 type ScreenRect=(i32,i32,i32,i32);
-struct Entry {hwnd:usize,pid:u32,bounds:Bounds,clip:Bounds,occlusions:Vec<Bounds>,visible:bool,shown:bool,last:Option<(ScreenRect,ScreenRect,Vec<ScreenRect>,bool)>,last_region:Option<(ScreenRect,ScreenRect,Vec<ScreenRect>,bool)>}
+struct Entry {hwnd:usize,pid:u32,bounds:Bounds,clip:Bounds,occlusions:Vec<Bounds>,visible:bool,shown:bool,stacking_rank:i64,revision:u64,last:Option<(ScreenRect,ScreenRect,Vec<ScreenRect>,bool)>,last_region:Option<(ScreenRect,ScreenRect,Vec<ScreenRect>,bool)>}
 #[derive(Default)]
 pub struct ChromeState(Mutex<HashMap<String,Entry>>);
 pub(crate) fn managed_windows(app:&AppHandle)->Vec<(usize,u32)>{app.state::<ChromeState>().0.lock().map(|s|s.values().map(|e|(e.hwnd,e.pid)).collect()).unwrap_or_default()}
+pub(crate) fn ordered_windows(app:&AppHandle)->Option<Vec<(i64,usize)>>{app.state::<ChromeState>().0.try_lock().ok().map(|s|s.values().filter(|e|e.shown).map(|e|(e.stacking_rank,e.hwnd)).collect())}
 static APP:OnceLock<AppHandle>=OnceLock::new();
 static OWNER:std::sync::atomic::AtomicUsize=std::sync::atomic::AtomicUsize::new(0);
 static CHROME_PID:std::sync::atomic::AtomicU32=std::sync::atomic::AtomicU32::new(0);
@@ -85,6 +86,7 @@ fn place_entry(app:&AppHandle,id:&str,item:&mut Entry,origin:POINT,scale:f64,par
  let r=item.bounds.screen(origin,scale);let clip=item.clip.screen(origin,scale);let occlusions=item.occlusions.iter().map(|hole|hole.screen(origin,scale)).collect::<Vec<_>>();
  // Keep Chrome's fullscreen video mode intact until the user returns to the panel.
  let is_expanded=expanded(hwnd);let signature=(r,clip,occlusions.clone(),is_expanded);
+ if !is_expanded&&item.shown&&item.last.as_ref()!=Some(&signature){unsafe{let _=ShowWindow(hwnd,SW_HIDE);}item.shown=false;item.last=None;item.last_region=None;}
  if !is_expanded&&(item.last.as_ref().map(|last|last.0)!=Some(r)||!item.shown){
   let positioned=unsafe{if item.shown{SetWindowPos(hwnd,None,r.0,r.1,r.2,r.3,SWP_NOACTIVATE|SWP_NOOWNERZORDER|SWP_NOZORDER)}else{SetWindowPos(hwnd,Some(HWND_TOP),r.0,r.1,r.2,r.3,SWP_NOACTIVATE|SWP_NOOWNERZORDER)}};
   let mut actual=RECT::default();let measured=unsafe{GetWindowRect(hwnd,&mut actual)};
@@ -110,11 +112,11 @@ fn place(app:&AppHandle,items:&mut HashMap<String,Entry>){
  let Some((main,origin,scale,parent_visible))=placement_context(app) else{return};let group=is_group(app,items,main);
  for (id,item) in items.iter_mut(){place_entry(app,id,item,origin,scale,parent_visible,group)}
 }
-fn place_one(app:&AppHandle,items:&mut HashMap<String,Entry>,id:&str){
- let Some((main,origin,scale,parent_visible))=placement_context(app) else{return};let group=is_group(app,items,main);
- if let Some(item)=items.get_mut(id){place_entry(app,id,item,origin,scale,parent_visible,group)}
+fn place_one(app:&AppHandle,items:&mut HashMap<String,Entry>,id:&str)->bool{
+ let Some((main,origin,scale,parent_visible))=placement_context(app) else{return false};let group=is_group(app,items,main);
+ if let Some(item)=items.get_mut(id){place_entry(app,id,item,origin,scale,parent_visible,group);return item.shown}false
 }
-pub fn refresh(app:&AppHandle){if let Ok(mut items)=app.state::<ChromeState>().0.try_lock(){place(app,&mut items)}}
+pub(crate) fn refresh_state(app:&AppHandle){if let Ok(mut items)=app.state::<ChromeState>().0.try_lock(){place(app,&mut items)}}
 unsafe extern "system" fn event(_:HWINEVENTHOOK,event:u32,hwnd:HWND,object:i32,child:i32,_:u32,_:u32){
  let Some(app)=APP.get() else{return};
  if event==EVENT_OBJECT_FOCUS {crate::shortcuts::refresh_editing(app.clone());return}
@@ -125,17 +127,17 @@ unsafe extern "system" fn event(_:HWINEVENTHOOK,event:u32,hwnd:HWND,object:i32,c
    if items.is_empty(){CHROME_PID.store(0,std::sync::atomic::Ordering::Relaxed);}
   }
  }
- if event==EVENT_SYSTEM_FOREGROUND {crate::shortcuts::refresh_editing(app.clone());refresh(app);}
+ if event==EVENT_SYSTEM_FOREGROUND {crate::shortcuts::refresh_editing(app.clone());crate::native_panels::invalidate_order();crate::native_panels::refresh_all(app);}
  // Parent location changes arrive during the modal Windows move/resize loop,
  // where ordinary Tauri window events can be delayed.
- if event==EVENT_OBJECT_LOCATIONCHANGE&&object==0&&owner(app).ok()==Some(hwnd){refresh(app);}
+ if event==EVENT_OBJECT_LOCATIONCHANGE&&object==0&&owner(app).ok()==Some(hwnd){crate::native_panels::refresh_all(app);}
  if event==EVENT_OBJECT_LOCATIONCHANGE&&object==0&&owner(app).ok()!=Some(hwnd)&&is_managed_foreground(app,hwnd)&&!expanded(hwnd){
   if let Ok(mut items)=app.state::<ChromeState>().0.try_lock(){
    let mut r=RECT::default();if GetWindowRect(hwnd,&mut r).is_err(){return}
    if let Some(e)=items.values_mut().find(|e|e.hwnd==hwnd.0 as usize&&e.shown){
     if let Some((wanted,_,_,_))=e.last.as_ref(){
      // Chrome may enforce a larger minimum; only correct position or undersizing.
-     if (r.left,r.top)!=(wanted.0,wanted.1)||r.right-r.left<wanted.2||r.bottom-r.top<wanted.3{e.last=None;place(app,&mut items);}
+     if (r.left,r.top)!=(wanted.0,wanted.1)||r.right-r.left<wanted.2||r.bottom-r.top<wanted.3{e.last=None;drop(items);crate::native_panels::refresh_all(app);}
     }
    }
   }
@@ -214,20 +216,24 @@ pub async fn chrome_panel_open(app:AppHandle,webview:Webview,id:String,url:Strin
   let (hwnd,process)=open_window(&profile,&url,&id,main,&items)?;
   CHROME_PID.store(process,std::sync::atomic::Ordering::Relaxed);
   crate::shortcuts::refresh_editing(app.clone());
-   items.insert(id.clone(),Entry{hwnd,pid:process,clip:bounds.clone(),bounds,occlusions:Vec::new(),visible:false,shown:false,last:None,last_region:None});
+  items.insert(id.clone(),Entry{hwnd,pid:process,clip:bounds.clone(),bounds,occlusions:Vec::new(),visible:false,shown:false,stacking_rank:0,revision:0,last:None,last_region:None});
   let _=app.emit_to("main","chrome-state",serde_json::json!({"id":id,"open":true}));
   Ok(Info{hwnd,pid:process})
  }).await.map_err(|e|e.to_string())?
 }
 #[tauri::command]
-pub async fn chrome_panel_present(app:AppHandle,webview:Webview,id:String,bounds:Bounds,clip:Bounds,occlusions:Vec<Bounds>,visible:bool)->Result<(),String>{
+pub async fn chrome_panel_present(app:AppHandle,webview:Webview,id:String,bounds:Bounds,clip:Bounds,occlusions:Vec<Bounds>,visible:bool,stacking_rank:i64,revision:u64)->Result<bool,String>{
  crate::browser::authorize(&webview)?;instance(&id)?;bounds.validate()?;clip.validate()?;if occlusions.len()>256{return Err("Too many overlapping workspace widgets".into())}for item in &occlusions{item.validate()?}
  let main=owner(&app)?;let state=app.state::<ChromeState>();let mut items=state.0.lock().map_err(|_|"Chrome state unavailable")?;
  let item=items.get_mut(&id).ok_or("Chrome was closed. Use Reopen Chrome.")?;
  if !unsafe{IsWindow(Some(handle(item.hwnd))).as_bool()}{items.remove(&id);if items.is_empty(){CHROME_PID.store(0,std::sync::atomic::Ordering::Relaxed);}return Err("Chrome was closed. Use Reopen Chrome.".into())}
+ if revision<item.revision{return Ok(item.shown)}
  // Returning focus prevents the next workspace shortcut targeting a hidden view.
  if !visible&&unsafe{GetForegroundWindow()==handle(item.hwnd)}{unsafe{let _=SetForegroundWindow(main);}}
-  item.bounds=bounds;item.clip=clip;item.occlusions=occlusions;item.visible=visible;place_one(&app,&mut items,&id);Ok(())
+ let changed=item.bounds!=bounds||item.clip!=clip||item.occlusions!=occlusions;
+ if changed&&item.shown{unsafe{let _=ShowWindow(handle(item.hwnd),SW_HIDE);}item.shown=false;item.last=None;item.last_region=None;}
+ item.bounds=bounds;item.clip=clip;item.occlusions=occlusions;item.visible=visible;item.stacking_rank=stacking_rank;item.revision=revision;
+ let shown=place_one(&app,&mut items,&id);drop(items);crate::native_panels::apply_order(&app);Ok(shown)
 }
 #[tauri::command]
 pub async fn chrome_panel_navigate(app:AppHandle,webview:Webview,id:String,url:String)->Result<(),String>{
@@ -242,7 +248,7 @@ pub async fn chrome_panel_navigate(app:AppHandle,webview:Webview,id:String,url:S
  std::process::Command::new(crate::chrome::executable()?).arg(format!("--user-data-dir={}",profile.display())).arg(url).creation_flags(0x08000000).spawn().map_err(|e|e.to_string())?;Ok(())
 }
 #[tauri::command]
-pub async fn chrome_panel_close(app:AppHandle,webview:Webview,id:String)->Result<(),String>{crate::browser::authorize(&webview)?;close(&app,&id);Ok(())}
+pub async fn chrome_panel_close(app:AppHandle,webview:Webview,id:String)->Result<(),String>{crate::browser::authorize(&webview)?;close(&app,&id);crate::native_panels::apply_order(&app);Ok(())}
 fn close(app:&AppHandle,id:&str){if let Ok(mut items)=app.state::<ChromeState>().0.lock(){if let Some(e)=items.remove(id){unsafe{
  SetWindowLongPtrW(handle(e.hwnd),GWLP_HWNDPARENT,0);if let Ok(main)=owner(app){let _=RemovePropW(handle(e.hwnd),PCWSTR(property(id,main).as_ptr()));}
  let _=ShowWindow(handle(e.hwnd),SW_SHOWNOACTIVATE);let _=PostMessageW(Some(handle(e.hwnd)),WM_CLOSE,WPARAM(0),LPARAM(0));
