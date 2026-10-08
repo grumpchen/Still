@@ -5,20 +5,24 @@ export type TrayDropAction='save'|'save-group'|'create-group'|'remove'|'none';
 export type GroupTrayDropTarget={kind:'create'}|{kind:'existing';groupId:string};
 export interface TrayDropTarget {
  source:'widget'|'file'|'website'|'app';widgetType?:WidgetType;
- targetType?:WidgetType|null;groupTarget?:GroupTrayDropTarget;insideTray:boolean;overInteractive?:boolean;
+ targetType?:WidgetType|null;groupTarget?:GroupTrayDropTarget;insideTray:boolean;overInteractive?:boolean;savedTarget?:boolean;trashTarget?:boolean;
 }
-// Removal applies only to existing canvas widgets over empty tray space.
+// Only an explicit Trash target removes an existing canvas widget.
 // A rejected external drop never means deleting anything from the computer.
 export function trayDropDecision(target:TrayDropTarget):TrayDropAction {
  if(!target.insideTray)return 'none';
  if(target.source==='widget'){
+  if(target.trashTarget)return 'remove';
+  if(target.savedTarget)return target.widgetType==='group'?'none':'save';
   if(target.groupTarget){
    if(target.widgetType==='group'||target.groupTarget.kind==='existing'&&!target.groupTarget.groupId)return 'none';
    return target.groupTarget.kind==='create'?'create-group':'save-group';
   }
   if(target.targetType)return 'none';
-  return target.overInteractive?'none':'remove';
+  return 'none';
  }
+ if(target.trashTarget)return 'none';
+ if(target.savedTarget)return 'save';
  if(target.source==='file')return target.targetType==='files'?'save':'none';
  if(target.source==='app')return target.targetType==='apps'?'save':'none';
  return target.targetType==='browser'?'save':'none';

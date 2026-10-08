@@ -16,7 +16,8 @@ test('widget headers expose other workspace rows as transfer targets and reset i
 
 test('compact focus state is temporary and keeps its exit control beside fullscreen',()=>{
  assert.match(app,/useState\(false\);const \[workspaceDropTarget/);
- assert.match(app,/className="topbar-focus" aria-pressed=\{focusMode\}/);
+ assert.match(app,/focusMode&&<button aria-label="Exit focus"/);
+ assert.match(app,/focus=\{\(\)=>\{setFocusMode/);
  assert.match(app,/focusMode\?' focus-mode':''/);
  assert.match(styles,/\.canvas-app\.focus-mode \.sidebar\{display:none\}/);
  assert.match(styles,/\.canvas-app\.focus-mode \.widget-tray\{display:none\}/);
