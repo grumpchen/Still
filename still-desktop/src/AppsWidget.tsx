@@ -6,7 +6,7 @@ import {appPanelFit,appPanelGeometry} from './domain/appPanel.ts';
 import {constrainPlacement} from './domain/layout.ts';
 import {observeCanvasScroll} from './platform/canvasScroll.ts';
 
-export default function AppsWidget({widget,update,notify,obscured,workspaceActive=true,pickApp,saveApp,appAttachment,appAttachmentHandled}:WidgetProps){
+export default function AppsWidget({widget,update,notify,obscured,workspaceActive=true,appAttachment,appAttachmentHandled}:WidgetProps){
  const host=useRef<HTMLDivElement>(null),picker=useRef<HTMLInputElement>(null),current=useRef({widget,update,notify,obscured,workspaceActive,appAttachment,appAttachmentHandled});current.current={widget,update,notify,obscured,workspaceActive,appAttachment,appAttachmentHandled};
  const [busy,setBusy]=useState(false),[ready,setReady]=useState(false),[opening,setOpening]=useState(false),[error,setError]=useState('');
  const [collectionResumed,setCollectionResumed]=useState(false);
@@ -58,14 +58,13 @@ export default function AppsWidget({widget,update,notify,obscured,workspaceActiv
  useEffect(()=>{schedule.current();if(appAttachment&&workspaceActive&&!obscured)void attach.current(appAttachment);else if(widget.appPanelOpen&&workspaceActive&&!obscured)void launch.current();else if(!widget.appPanelOpen&&!collectionResumed)void detach.current()},[appAttachment,widget.appPanelOpen,workspaceActive,obscured,widget.placement,collectionResumed]);
  return <div className="app-panel">
   <input ref={picker} aria-label="Choose app shortcut" type="file" accept=".exe,.lnk" hidden onChange={e=>{try{const result=previewFileDrop(Array.from(e.target.files??[]));if(result.entries[0])selected(result.entries[0]);else setError(result.errors.join(' '))}catch(reason){setError(String(reason))}e.target.value=''}}/>
-  <div className="app-panel-tools"><input aria-label="Rename app widget" placeholder={widget.appName||'Desktop app'} value={widget.title} maxLength={60} onChange={e=>update({title:e.target.value})}/><button disabled={opening||busy} onClick={pickApp}>Attach open app</button>{widget.appKey&&<button disabled={opening||busy} onClick={saveApp}>Save to tray</button>}{ready&&<button disabled={opening||busy} onClick={()=>{update({appPanelOpen:false});void detach.current();notify('App released to your desktop.')}}>Detach</button>}<button disabled={opening||busy} onClick={()=>void choose()}>{widget.appKey?'Change app':'Choose app'}</button></div>
   {error&&<p className="widget-error" role="alert">{error}</p>}
   <div ref={host} className="app-panel-host" data-native-app-id={appPanel.available&&ready?widget.id:undefined}>
    <div className="app-panel-placeholder"><span className="document-type-symbol type-app"><Icon name="apps"/></span><h2>{opening?'Opening app in panel…':ready?widget.appName+' · attached':widget.appName||'Your desktop apps'}</h2>
-    <p>{!widget.appKey?'Attach an open app above, or choose an app shortcut.':!appPanel.available?'The Windows version positions the real app window inside this panel.':ready?'The app follows this widget. Move it inside the workspace if its right edge crosses the boundary.':'Open the real app inside this widget, with its normal tools and documents.'}</p>
+    <p>{!widget.appKey?'Use Ctrl+Shift-click or the header control to attach an open app, or choose an app shortcut.':!appPanel.available?'The Windows version positions the real app window inside this panel.':ready?'The app follows this widget. Move it inside the workspace if its right edge crosses the boundary.':'Open the real app inside this widget, with its normal tools and documents.'}</p>
+    {!ready&&<button disabled={opening||busy} onClick={()=>void choose()}>{widget.appKey?'Change app…':'Choose app…'}</button>}
     {widget.appKey&&!ready&&<button className="primary" disabled={opening||busy||!appPanel.available} onClick={()=>{update({appPanelOpen:true});void launch.current()}}>{opening?'Opening…':'Open in panel'}</button>}
    </div>
   </div>
-  <div className="app-panel-status"><span>{ready?'App attached':opening?'Starting app…':appPanel.available?'App panel':'Windows app required'}</span><span>Resize ↘</span></div>
  </div>;
 }

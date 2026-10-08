@@ -1,8 +1,8 @@
 import {useEffect,useRef,useState,type KeyboardEvent,type PointerEvent} from 'react';
 
-interface Props {name:string;displayName:string;save:(name:string)=>void}
+interface Props {name:string;displayName:string;save:(name:string)=>void;label?:string;tooltip?:string}
 
-export default function GroupHeaderName({name,displayName,save}:Props){
+export default function GroupHeaderName({name,displayName,save,label='Group name',tooltip='Click to rename group'}:Props){
  const [editing,setEditing]=useState(false),[draft,setDraft]=useState(name);
  const input=useRef<HTMLInputElement>(null),cancelled=useRef(false),finished=useRef(false);
  useEffect(()=>{if(!editing)setDraft(name)},[editing,name]);
@@ -24,6 +24,6 @@ export default function GroupHeaderName({name,displayName,save}:Props){
   if(event.key==='Enter'){event.preventDefault();commit()}
   else if(event.key==='Escape'){event.preventDefault();cancel()}
  }
- if(editing)return <input ref={input} className="group-header-name-input" data-capture-ignore aria-label="Group name" maxLength={60} value={draft} onPointerDown={stopPointer} onClick={event=>event.stopPropagation()} onChange={event=>setDraft(event.target.value)} onKeyDown={key} onBlur={()=>{if(cancelled.current){cancelled.current=false;return}commit()}}/>;
- return <button type="button" className="group-header-name" data-capture-ignore aria-label={'Rename '+(displayName||'Group')} title="Click to rename group" onPointerDown={stopPointer} onClick={event=>{event.stopPropagation();finished.current=false;setDraft(name);setEditing(true)}}>{displayName||'Group'}</button>;
+ if(editing)return <input ref={input} className="group-header-name-input" data-capture-ignore aria-label={label} maxLength={60} value={draft} onPointerDown={stopPointer} onClick={event=>event.stopPropagation()} onChange={event=>setDraft(event.target.value)} onKeyDown={key} onBlur={()=>{if(cancelled.current){cancelled.current=false;return}commit()}}/>;
+ return <button type="button" className="group-header-name" data-capture-ignore aria-label={'Rename '+(displayName||label)} title={tooltip} onPointerDown={stopPointer} onClick={event=>{event.stopPropagation();finished.current=false;setDraft(name);setEditing(true)}}>{displayName||'Group'}</button>;
 }

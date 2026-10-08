@@ -39,7 +39,7 @@ export function createWidget(type: WidgetType): WidgetInstance {
     bookmarks:type==='browser'?parseBookmarks(defaultWebShortcuts()):[],minimized:false,restorePlacement:null,groupCollapsed:false,groupExpandedPlacement:null };
 }
 const MINIMIZED_WIDTH=136,MINIMIZED_HEIGHT=42;
-const GROUP_COLLAPSED_WIDTH=420,GROUP_COLLAPSED_HEIGHT=104;
+const GROUP_COLLAPSED_WIDTH=204,GROUP_COLLAPSED_HEIGHT=43;
 function compactPlacement(value:unknown,canvasWidth=20020,canvasHeight=20020):Placement{
  const p=value&&typeof value==='object'?value as Partial<Placement>:{};
  const width=Math.max(1,Math.min(MINIMIZED_WIDTH,Math.floor(canvasWidth)-20,Number.isFinite(p.width)?Math.round(p.width!):MINIMIZED_WIDTH));
@@ -68,15 +68,15 @@ export function restoreWidgetInstance(widget:WidgetInstance,canvasWidth:number,c
  return{...widget,minimized:false,restorePlacement:null,placement:constrainPlacement(widget.type,candidate,canvasWidth,minimum,canvasHeight)};
 }
 export function constrainGroupCollapsedPlacement(value:Placement,canvasWidth:number,canvasHeight:number):Placement{
- const p=placement('group',value),widthLimit=Math.max(1,Math.min(3000,Math.floor(canvasWidth)-20)),heightLimit=Math.max(1,Math.min(3000,Math.floor(canvasHeight)-20));
- const minWidth=Math.min(widthLimit,GROUP_COLLAPSED_WIDTH),width=Math.max(minWidth,Math.min(widthLimit,Math.max(GROUP_COLLAPSED_WIDTH,p.width))),height=Math.min(heightLimit,GROUP_COLLAPSED_HEIGHT);
- const x=Math.max(0,Math.min(Math.max(0,Math.floor(canvasWidth)-width-20),p.x)),y=Math.max(0,Math.min(Math.max(0,Math.floor(canvasHeight)-height-20),p.y));
+ const p=value&&typeof value==='object'?value as Partial<Placement>:{},widthLimit=Math.max(1,Math.min(3000,Math.floor(canvasWidth)-20)),heightLimit=Math.max(1,Math.min(3000,Math.floor(canvasHeight)-20));
+ const width=Math.min(widthLimit,GROUP_COLLAPSED_WIDTH),height=Math.min(heightLimit,GROUP_COLLAPSED_HEIGHT);
+ const x=Math.max(0,Math.min(Math.max(0,Math.floor(canvasWidth)-width-20),Number.isFinite(p.x)?Math.round(p.x!):0)),y=Math.max(0,Math.min(Math.max(0,Math.floor(canvasHeight)-height-20),Number.isFinite(p.y)?Math.round(p.y!):0));
  return{x,y,width,height};
 }
 export function toggleGroupCollapsed(widget:WidgetInstance,canvasWidth:number,canvasHeight:number):WidgetInstance{
  if(widget.type!=='group')return widget;
  if(!widget.groupCollapsed){
-  const expanded=placement('group',widget.placement),candidate={...widget.placement,width:Math.max(GROUP_COLLAPSED_WIDTH,widget.placement.width),height:GROUP_COLLAPSED_HEIGHT};
+  const expanded=placement('group',widget.placement),candidate={...widget.placement,width:GROUP_COLLAPSED_WIDTH,height:GROUP_COLLAPSED_HEIGHT};
   return{...widget,groupCollapsed:true,groupExpandedPlacement:expanded,placement:constrainGroupCollapsedPlacement(candidate,canvasWidth,canvasHeight)};
  }
  const saved=checkedRestorePlacement('group',widget.groupExpandedPlacement)??placement('group',null),candidate={...saved,x:widget.placement.x,y:widget.placement.y};

@@ -5,7 +5,7 @@ import {chromePanel} from './platform/chromePanel.ts';
 import {chromeLauncher} from './platform/chrome.ts';
 import {observeCanvasScroll} from './platform/canvasScroll.ts';
 
-export default function BrowserWidget({widget,obscured,workspaceActive=true,lecture}:WidgetProps){
+export default function BrowserWidget({widget,obscured,workspaceActive=true}:WidgetProps){
  const host=useRef<HTMLDivElement>(null),current=useRef({widget,obscured,workspaceActive});current.current={widget,obscured,workspaceActive};
  const [ready,setReady]=useState(false),[opening,setOpening]=useState(false),[error,setError]=useState('');
  const schedule=useRef<()=>void>(()=>{}),launch=useRef<()=>Promise<void>>(async()=>{});
@@ -41,9 +41,6 @@ export default function BrowserWidget({widget,obscured,workspaceActive=true,lect
  },[widget.id]);
  useEffect(()=>{schedule.current()},[workspaceActive,obscured,widget.placement,error]);
  return <div className="embedded-browser chrome-panel">
-  <div className="browser-tools browser-main-tools"><span>Google Chrome</span>
-   <button className="lecture-button" aria-pressed={!!widget.lectureRestore} onClick={()=>lecture?.()} title="Use 80% of the visible workspace, or restore the previous size">{widget.lectureRestore?'Restore size':'Lecture · 80%'}</button>
-  </div>
   {error&&<p className="widget-error" role="alert">{error}</p>}
   <div ref={host} className="browser-host" data-native-browser-id={chromePanel.available?widget.id:undefined} data-chrome-overlay={chromePanel.available?'true':undefined}>
    <div className="browser-placeholder"><span className="site-symbol"><Icon name="browser"/></span><h2>{opening?'Opening Chrome…':ready?'Chrome, in your workspace.':widget.title||'Your real Chrome browser.'}</h2>
@@ -52,6 +49,5 @@ export default function BrowserWidget({widget,obscured,workspaceActive=true,lect
     {!chromePanel.available&&<button className="button-link" onClick={()=>void chromeLauncher.open(widget.url).catch(e=>setError(String(e)))}>Open website in Chrome</button>}
    </div>
   </div>
-  <div className="browser-status"><span>{chromePanel.available?(ready?'Google Chrome · Still profile':opening?'Starting Chrome…':'Chrome closed'):'Design preview'}</span><span>Resize ↘</span></div>
  </div>;
 }

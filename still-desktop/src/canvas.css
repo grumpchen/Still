@@ -35,16 +35,15 @@ html.native-transparent .workspace-canvas{background-image:none}
 .canvas-card .widget-resize{position:absolute;bottom:0;right:0;width:25px;height:25px;border:0;border-radius:8px 0 0 0!important;background:var(--surface);padding:0;display:grid;place-items:center;cursor:nwse-resize;touch-action:none;box-shadow:none;z-index:2;color:var(--muted);font-size:13px;opacity:.8}
 .canvas-card .widget-resize:hover{opacity:1;color:var(--accent)}.gesture-card{box-shadow:0 15px 45px #00190e40!important;outline:2px solid var(--accent)}.widget-gesture iframe{pointer-events:none}.widget-gesture{user-select:none}
 .canvas-card.group-drop-active{outline:2px solid var(--accent);outline-offset:3px;box-shadow:0 0 0 5px color-mix(in srgb,var(--accent) 16%,transparent),0 10px 32px #00190e35!important}
-.canvas-card.group-collapsed{overflow:visible;isolation:isolate;border-color:color-mix(in srgb,var(--accent) 48%,var(--border));box-shadow:0 8px 24px #00190e24!important;background:var(--surface)}
-.canvas-card.group-collapsed::before,.canvas-card.group-collapsed::after{content:"";position:absolute;pointer-events:none;border:1px solid color-mix(in srgb,var(--accent) 24%,var(--border));border-radius:16px;background:color-mix(in srgb,var(--surface) 84%,transparent);z-index:0}
-.canvas-card.group-collapsed::before{inset:3px -4px -5px 4px;opacity:.78}.canvas-card.group-collapsed::after{inset:6px -8px -10px 8px;opacity:.5}
+.canvas-card.group-collapsed{overflow:visible;isolation:isolate;border-color:color-mix(in srgb,var(--accent) 28%,var(--border));box-shadow:0 3px 12px #00190e18!important;background:var(--surface)}
+.canvas-card.group-collapsed::before,.canvas-card.group-collapsed::after{content:"";position:absolute;pointer-events:none;border:1px solid color-mix(in srgb,var(--accent) 18%,var(--border));border-radius:13px;background:color-mix(in srgb,var(--surface) 88%,transparent);z-index:0}
+.canvas-card.group-collapsed::before{inset:2px -2px -2px 2px;opacity:.65}.canvas-card.group-collapsed::after{inset:4px -4px -4px 4px;opacity:.35}
+.canvas-card.group-collapsed .card-head{position:relative;z-index:1}
 .canvas-card.group-collapsed .widget-content,.canvas-card.group-collapsed .widget-resize{display:none!important}
-.canvas-card .group-collapsed-head{position:relative;z-index:1;height:100%;min-height:0;padding:12px 15px!important;gap:12px;background:linear-gradient(145deg,color-mix(in srgb,var(--surface) 94%,var(--accent)),var(--surface));cursor:grab}
-.group-collapsed-head:active{cursor:grabbing}.group-collapsed-head .move-grip{display:none}.group-collapsed-head>.icon,.group-collapsed-head>svg{width:22px;height:22px;flex:none;color:var(--accent)}
-.group-collapsed-copy{display:flex;flex-direction:column;min-width:0;gap:5px}.canvas-card .group-collapsed-copy .group-header-name{max-width:320px;padding:0;font-size:15px;font-weight:650}.group-collapsed-copy small{font-size:10px;line-height:1.2;color:var(--muted);white-space:nowrap}
-.canvas-card.group-collapsed .widget-controls{gap:5px}.canvas-card.group-collapsed .widget-controls button:nth-child(-n+2){display:none}.canvas-card .group-collapse-toggle{position:relative;z-index:1;flex:none;width:32px;height:32px;padding:0;border:1px solid color-mix(in srgb,var(--accent) 28%,var(--border));border-radius:10px;background:color-mix(in srgb,var(--surface) 76%,transparent);box-shadow:none;color:var(--accent);font-size:19px;line-height:1;cursor:pointer}
-.canvas-card .group-collapse-toggle:hover{background:var(--tint)}
-.canvas-card .widget-controls .widget-resize-control{font-size:16px;cursor:nwse-resize}
+.canvas-card.group-collapsed .group-hidden-header-action{display:none!important}
+.canvas-card .group-widget-count{flex:none;padding:2px 5px;border:1px solid var(--border);border-radius:999px;background:var(--tint);color:var(--muted);font-size:9px;line-height:1.2}
+.canvas-card .group-collapse-toggle{font-size:17px;line-height:1;color:var(--accent)}
+.canvas-card .widget-controls .browser-lecture-action{width:auto;min-width:32px;padding:4px;font-size:9px;white-space:nowrap}
 .canvas-card.widget-minimized{min-width:0;min-height:0;border-radius:12px;overflow:visible;box-shadow:0 3px 14px #14233224}.widget-minimized .widget-content,.widget-minimized .widget-resize{display:none!important}.widget-minimized-button{position:absolute;inset:0;width:100%;height:100%;display:flex;align-items:center;gap:8px;padding:5px 10px;border:1px solid var(--border);border-radius:12px;background:var(--surface);box-shadow:0 3px 14px #14233218;color:var(--text);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:left;cursor:grab;touch-action:none;user-select:none}.widget-minimized-button:active{cursor:grabbing}.widget-minimized-button svg{width:16px;height:16px;flex:none}.widget-minimized-button span{overflow:hidden;text-overflow:ellipsis}
 .canvas-status{display:flex;justify-content:space-between;gap:10px;font-size:9px;color:var(--muted);flex-shrink:0;padding:0 3px}
 .canvas-empty{position:absolute;top:80px;left:0;width:100%;text-align:center;color:var(--muted);padding:30px}.canvas-empty svg{height:30px;width:30px;margin-bottom:15px}.canvas-empty h2{font-size:22px;font-weight:400}.canvas-empty p{margin-top:12px;font-size:12px}
@@ -102,8 +101,6 @@ html.native-transparent .workspace-canvas{background-image:none}
 .browser-tools{display:flex;align-items:center;gap:5px;flex-wrap:wrap;flex-shrink:0;padding:6px 9px;border-bottom:1px solid var(--border);background:var(--sidebar)}
 .canvas-card .browser-tools button{font-size:10px;padding:6px 8px;border-radius:9px;white-space:nowrap}
 .browser-tools .lecture-button{margin-left:auto}
-.chrome-panel .browser-main-tools{padding:4px 8px;gap:5px;flex-wrap:nowrap;min-height:32px}
-.canvas-card .browser-main-tools button{padding:4px 7px;font-size:10px;border-radius:8px}
 .browser-extra-controls{flex-shrink:0;max-height:50%;min-height:0;overflow:auto;scrollbar-width:thin;border-bottom:1px solid var(--border)}
 .browser-extra-controls .bookmark-panel{max-height:none;border-bottom:0;padding:7px 9px}
 .browser-extra-controls .bookmark-item{display:flex;align-items:center;max-width:100%;border:1px solid var(--border);border-radius:9px;overflow:hidden;background:var(--tint)}
@@ -200,21 +197,15 @@ html.native-transparent .workspace-canvas{background-image:none}
 .document-shortcut-body .document-reconnect{font-size:10px;background:transparent;border:0;box-shadow:none;color:var(--muted);padding:4px}
 .app-panel{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}
 .canvas-card.widget-apps .widget-content{overflow:hidden}
-.app-panel-tools{display:flex;align-items:center;gap:5px;flex-shrink:0;min-height:32px;padding:4px 8px;border-bottom:1px solid var(--border);flex-wrap:wrap}
-.app-panel-tools>span{flex:1;min-width:0;font-size:10px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.canvas-card .app-panel-tools button{font-size:9px;padding:4px 6px;border-radius:7px;white-space:nowrap}
 .app-panel-host{flex:1;min-height:0;overflow:hidden;position:relative}
 .app-panel-placeholder{height:100%;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;gap:10px;padding:14px;overflow:auto}
 .app-panel-placeholder h2{font-weight:500;font-size:15px;line-height:1.4;margin:0;overflow-wrap:anywhere}
 .app-panel-placeholder p{font-size:11px;line-height:1.6;color:var(--muted);max-width:300px;margin:0}
 .app-panel-placeholder button{font-size:11px;padding:7px 12px}
-.app-panel-status{min-height:34px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-shrink:0;padding:5px 38px 5px 10px;font-size:9px;color:var(--muted);border-top:1px solid var(--border)}
 .app-window-list{flex-shrink:0;max-height:50%;overflow:auto;padding:10px;border-bottom:1px solid var(--border);font-size:11px;display:flex;flex-direction:column;gap:5px}
 .app-window-list>button{text-align:left;font-size:10px;padding:6px 8px;overflow-wrap:anywhere}
 .app-window-list>div{display:flex;gap:7px}.app-window-list>div button{font-size:10px;padding:5px 8px}
 .canvas-card.widget-apps .widget-resize{width:32px;height:32px}
-.app-panel-tools>input{flex:1;min-width:80px;width:100px;background:transparent;border:1px solid transparent;border-radius:6px;color:var(--text);font:inherit;font-size:10px;padding:4px}
-.app-panel-tools>input:hover,.app-panel-tools>input:focus{border-color:var(--border);background:var(--tint)}
 dialog:has(.app-picker){display:flex;flex-direction:column;width:min(720px,94vw);height:min(760px,90dvh);max-height:90dvh;min-height:0;overflow:hidden}
 dialog:has(.app-picker)>.dialog-head{flex:0 0 auto}
 .app-picker{display:flex;flex:1 1 auto;flex-direction:column;gap:10px;min-height:0;overflow:hidden}
