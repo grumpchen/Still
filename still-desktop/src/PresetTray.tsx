@@ -16,7 +16,7 @@ function label(preset:WidgetPreset):string {
 export default function PresetTray({presets,add}:Props){
  return <section className="preset-tray" aria-label="Saved shortcuts">
   <div className="preset-tray-entries">{presets.map(preset=>{
-   const app=preset.type==='apps',file=preset.type==='files',displayName=label(preset),accessibleName=title(preset);
+   const app=preset.type==='apps',file=preset.type==='files',displayName=label(preset),accessibleName=preset.name===title(preset)?preset.name:preset.name+' · '+title(preset);
    const icon=file&&preset.resourceKind==='document'?'notes':file?'files':widgetRegistry[preset.type].icon;
    return <div className={'preset-tray-entry '+(app?'preset-app-entry':'')+(file?' preset-file-entry':'')} key={preset.id}>
     <TrayDragButton className="preset-open" dragPayload={{kind:'preset',id:preset.id}} onFocus={trayFocusIntoView} aria-label={'Open '+accessibleName} title={accessibleName} onClick={()=>add(preset)}>

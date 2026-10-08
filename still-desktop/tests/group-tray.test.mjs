@@ -166,7 +166,7 @@ test('canvas widgets can target Group cards while ordinary tray buttons remain n
  const styles=readFileSync(new URL('../src/canvas.css',import.meta.url),'utf8');
  assert.match(canvas,/data-group-drop-target=\{w\.type==='group'&&w\.groupId\?'canvas':undefined\}/);
  assert.match(canvas,/function canvasGroupTarget\(/);
- assert.match(canvas,/saveToGroup\(\{\.\.\.currentWidget,placement:g\.p\},canvasTarget,true\)/);
+ assert.match(canvas,/saveToGroup\(original,canvasTarget,true\)/);
  assert.match(canvas,/trayDropDecision\(\{source:'widget',widgetType:g\.type,\.\.\.target\}\)/);
  assert.match(canvas,/group-collapse-toggle/);assert.match(canvas,/collectedWidgetCount\(group\)/);
  assert.match(canvas,/aria-expanded=\{!groupCollapsed\}/);assert.match(styles,/\.canvas-card\.group-collapsed::before/);assert.match(styles,/\.canvas-card\.group-collapsed \.widget-content/);

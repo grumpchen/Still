@@ -51,7 +51,7 @@ export default function WorkspaceCanvas({workspaceId,transferWidget,setWorkspace
   function acceptResources(entries:DroppedResource[],x:number,y:number,errors:string[]=[]){
    const target=trayTarget(x,y),inCanvas=!target.insideTray&&contains(viewport.current!.getBoundingClientRect(),x,y);
    const accepted=inCanvas?entries:entries.filter(entry=>trayDropDecision({source:entrySource(entry),...target})==='save');
-   try{const saved=accepted.map(presetForDroppedResource);if(saved.length){if(inCanvas)openDropped(saved,canvasPoint(x,y),extent);else savePresets(saved)}else notify(errors[0]??'Drop on a matching tray button to save, or on the workspace to add a widget.');if(saved.length&&errors.length)notify('Added '+saved.length+' shortcut(s). '+errors[0])}catch(e){notify(String((e as Error).message??e))}finally{clearDrop()}
+   try{const saved=accepted.map(presetForDroppedResource);if(saved.length){if(inCanvas)openDropped(saved,canvasPoint(x,y),extent);else savePresets(saved)}else notify(errors[0]??'Drop on Saved + to save, or on the workspace to add a widget.');if(saved.length&&errors.length)notify('Added '+saved.length+' shortcut(s). '+errors[0])}catch(e){notify(String((e as Error).message??e))}finally{clearDrop()}
   }
   nativeHandler.current=event=>{
    if(!workspaceActive||obscured)return;
