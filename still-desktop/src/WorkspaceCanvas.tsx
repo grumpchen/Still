@@ -14,6 +14,8 @@ import {presetFromWidget,type WidgetPreset,type PresetType} from './domain/prese
 import {trayDropDecision,droppedWebsite,type GroupTrayDropTarget} from './domain/trayDrop.ts';
 import {resourceDrop,previewFileDrop,presetForDroppedResource,type ResourceDropEvent,type DroppedResource} from './platform/resourceDrop.ts';
 import {TrayDragProvider,TrayDragButton,trayFocusIntoView,type TrayDragPosition} from './TrayDragButton.tsx';
+import {chromePanel} from './platform/chromePanel.ts';
+import {appPanel} from './platform/appPanel.ts';
 interface DropProps {savePresets:(presets:WidgetPreset[],preserveUndo?:boolean)=>void;openDropped:(presets:WidgetPreset[],at:{x:number;y:number},width:number)=>void}
 interface AppPickerProps {pickApp:(id?:string,at?:{x:number;y:number},width?:number)=>void;saveApp:(id:string)=>void;appAttachments:Record<string,import('./platform/appPanel.ts').AppAttachment>;appAttachmentHandled:(id:string,attachment:import('./platform/appPanel.ts').AppAttachment)=>void}
 interface Props {workspaceId:string;transferWidget:(sourceWorkspaceId:string,widgetId:string,destinationId:string)=>void;setWorkspaceDropTarget:(id:string|null)=>void;openAppsDialog:()=>void;editTray:()=>void;presets:WidgetPreset[];openPreset:(preset:WidgetPreset,at?:{x:number;y:number},width?:number)=>void;editPreset:(type:PresetType,preset?:WidgetPreset)=>void;removePreset:(id:string)=>void;renamePreset:(id:string)=>void;renameGroup:(id:string)=>void;widgets:WidgetInstance[];groups:SavedGroup[];updateGroup:(id:string,patch:Partial<Omit<SavedGroup,'id'>>)=>void;saveToGroup:(widget:WidgetInstance,groupId?:string,preserveUndo?:boolean)=>void;openGroup:(id:string,at?:{x:number;y:number},width?:number)=>void;editGroup:(id:string,mode:GroupEditMode)=>void;removeGroup:(id:string)=>void;openGroupWidget:(entry:GroupWidgetEntry,at?:{x:number;y:number},width?:number)=>void; update:(id:string,patch:Partial<WidgetInstance>)=>void; add:(type:WidgetType,at?:{x:number;y:number},width?:number)=>void; remove:(id:string,preserveUndo?:boolean)=>void; begin:()=>void; bringToFront:(id:string)=>void; notify:(s:string)=>void; obscured:boolean; workspaceActive?:boolean; openResource:(link:WebShortcut,at:{x:number;y:number})=>void}
@@ -78,7 +80,12 @@ export default function WorkspaceCanvas({workspaceId,transferWidget,setWorkspace
   function lecture(w:WidgetInstance){const v=viewport.current;if(!v)return;begin();const next=toggleLecture(w.placement,w.lectureRestore,v.clientWidth,v.clientHeight,v.scrollLeft,v.scrollTop);update(w.id,{...next,placement:bounded(w,next.placement)});bringToFront(w.id);}
   function start(e:PointerEvent<HTMLElement>,w:WidgetInstance,mode:'move'|'resize'){
     if(e.button!==0 || obscured || (mode==='move'&&!w.minimized&&(e.target as HTMLElement).closest('button')))return;
-    if(!w.minimized)e.preventDefault();begin();e.currentTarget.setPointerCapture(e.pointerId);
+    if(!w.minimized)e.preventDefault();
+    // Native panels are separate top-level HWNDs, so DOM iframe pointer-events
+    // cannot keep them from taking the mouse during a canvas drag. Queue the
+    // native hide before React's drag-state render and its later present call.
+    if(mode==='move'&&!w.minimized){const suspend=w.type==='browser'&&chromePanel.available?chromePanel.suspendForDrag(w.id):w.type==='apps'&&appPanel.available?appPanel.suspendForDrag(w.id):undefined;if(suspend)void suspend.catch(error=>notify('Native panel could not be suspended for dragging: '+String(error)))}
+    begin();e.currentTarget.setPointerCapture(e.pointerId);
     gesture.current={id:w.id,type:w.type,mode,startX:e.clientX,startY:e.clientY,p:w.placement,scrollX:viewport.current?.scrollLeft??0,scrollY:viewport.current?.scrollTop??0};setActive(w.id);
   }
   function move(e:PointerEvent<HTMLElement>){const g=gesture.current;if(!g)return;

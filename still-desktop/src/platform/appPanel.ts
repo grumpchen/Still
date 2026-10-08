@@ -28,4 +28,5 @@ export const appPanel={
  consumeCollectionRetention:(id:string)=>{const retained=retainedForCollection.has(id);retainedForCollection.delete(id);return retained},
  resume:(id:string)=>command<AppPanelInfo>(id,'app_panel_resume'),
  subscribe:(callback:(event:{id:string;open:boolean;error?:string|null})=>void):Promise<UnlistenFn>=>listen<{id:string;open:boolean;error?:string|null}>('app-panel-state',event=>callback(event.payload)),
+ suspendForDrag:(id:string)=>command<boolean>(id,'app_panel_suspend'),
 };

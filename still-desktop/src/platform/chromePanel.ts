@@ -18,4 +18,5 @@ export const chromePanel={
  suspendForCollection:async(id:string)=>{if(await command<boolean>(id,'chrome_panel_suspend'))retainedForCollection.add(id)},
  consumeCollectionRetention:(id:string)=>{const retained=retainedForCollection.has(id);retainedForCollection.delete(id);return retained},
  subscribe:(callback:(event:{id:string;open:boolean;error?:string|null})=>void):Promise<UnlistenFn>=>listen<{id:string;open:boolean;error?:string|null}>('chrome-state',event=>callback(event.payload)),
+ suspendForDrag:(id:string)=>command<boolean>(id,'chrome_panel_suspend'),
 };
