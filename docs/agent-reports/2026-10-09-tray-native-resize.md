@@ -5,15 +5,15 @@
 
 ## Done
 - Completed the permanent compact tray and explicit saved-copy, group-collection, and Trash flows; added the native resize guard for attached Apps and Chrome windows.
-- Built the current source at `2833de229cf50691ac6cfeb02c91eddf314b4677` as `src-tauri/target/tray-native-resize/release/ver0.21-test-tray-native-resize-r2.exe` (15,187,968 bytes). SHA-256: `82FF6471A2B2BEE18C68DDE0D3CC807E24257A8983E2973352A87B8EBFCAA31C`.
+- Built the current source at `2833de229cf50691ac6cfeb02c91eddf314b4677` as `still-desktop/src-tauri/target/tray-native-resize/release/ver0.21-test-tray-native-resize-r2.exe` (15,187,968 bytes). SHA-256: `82FF6471A2B2BEE18C68DDE0D3CC807E24257A8983E2973352A87B8EBFCAA31C`.
 - Preserved the earlier `ver0.21-test-tray-native-resize.exe` candidate (SHA-256 `BAF176D7424489BB96144B6136F907089631B31A270C9721C742C1FB46B80132`).
 - Ready to test. No Still candidate was launched; no merge or push was performed.
 
 ## Files
-- Tray UI and interactions: `src/App.tsx`, `src/WorkspaceCanvas.tsx`, `src/PresetTray.tsx`, `src/GroupTray.tsx`, `src/TrayEditor.tsx`, `src/domain/trayActions.ts`, `src/domain/trayDrop.ts`, `src/canvas.css`, `src/widgets.tsx`.
-- Native resize guard and managed window wiring: `src-tauri/src/native_resize.rs`, `src-tauri/src/app_panel.rs`, `src-tauri/src/chrome_overlay.rs`, `src-tauri/src/main.rs`.
-- Focused tray regression tests: `tests/group-tray.test.mjs`, `tests/inlineTray.test.mjs`, `tests/tray-cleanup.test.mjs`, `tests/trayDrop.test.mjs`, `tests/workspace-controls.test.mjs`.
-- Build and verification logs are kept in ignored `src-tauri/target/tray-native-resize/verification/`.
+- Tray UI and interactions: `still-desktop/src/App.tsx`, `still-desktop/src/WorkspaceCanvas.tsx`, `still-desktop/src/PresetTray.tsx`, `still-desktop/src/GroupTray.tsx`, `still-desktop/src/TrayEditor.tsx`, `still-desktop/src/domain/trayActions.ts`, `still-desktop/src/domain/trayDrop.ts`, `still-desktop/src/canvas.css`, `still-desktop/src/widgets.tsx`.
+- Native resize guard and managed window wiring: `still-desktop/src-tauri/src/native_resize.rs`, `still-desktop/src-tauri/src/app_panel.rs`, `still-desktop/src-tauri/src/chrome_overlay.rs`, `still-desktop/src-tauri/src/main.rs`.
+- Focused tray regression tests: `still-desktop/tests/group-tray.test.mjs`, `still-desktop/tests/inlineTray.test.mjs`, `still-desktop/tests/tray-cleanup.test.mjs`, `still-desktop/tests/trayDrop.test.mjs`, `still-desktop/tests/workspace-controls.test.mjs`.
+- Build and verification logs are kept in ignored `still-desktop/src-tauri/target/tray-native-resize/verification/`.
 
 ## Checks
 - Focused tray frontend regression: 65 passed, 0 failed (`focused-tray-tests.txt`).
@@ -29,3 +29,5 @@
 - Live Windows acceptance is still needed for tray drop/cancel/delete and group-confirmation flows, attached Apps detach/release behavior, and Still's corner resizing across Windows display scales. The hidden Win32 fixture covers native edge hit testing and programmatic sizing; it does not establish live Chrome/custom-app appearance.
 - Chrome/custom-app white residue and app-specific style rewrites remain unproven. No clipping or movement redesign was included.
 - Manual acceptance should confirm Trash cancellation/outside drops do not delete, deleting a card keeps its saved collection, collected library entries cannot be deleted, Apps release without closing the application, and native edge drags do not resize managed windows.
+
+
