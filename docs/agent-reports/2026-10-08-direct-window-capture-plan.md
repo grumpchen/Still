@@ -1,26 +1,21 @@
-# Task: Direct window capture plan
+# Task: Direct Ctrl+Shift-click attachment plan
 
-- Agent: Codex coordinator
-- Time: 2026-10-08, Pacific/Auckland (UTC+13; exact time not recorded)
+- Agent: Codex
+- Time: 2026-10-08T20:49:16+13:00 (Pacific/Auckland)
 
 ## Done
-- Verified the requested attach-edge-r2 executable hash against the committed Phase 1 report and checked source history: last source change is `afe209e5e2fe319b13f88e218cd4d1435f432b57`; later attach-edge worktree changes are documentation only.
-- Created `agent/codex/direct-window-capture` at that exact source baseline in `.worktrees/still-codex-direct-window-capture`.
-- Traced the baseline's keyboard hooks, picker preparation, widget creation, transient attachment map, native direct attach, focus transitions and saved-state behavior. Inspected e04a45f only as reference; did not import it.
-- Planned one feature using source-free exact HWND/PID attachment, passive click observation, capture-specific focus handling, deduplication, lazy saving and bounded failure diagnostics. No application source changed.
+- Trimmed the plan to passive Ctrl+Shift-click capture and direct attachment of the exact HWND/PID after mouse-up.
+- Specified `appKey: null`, single-attachment deduplication, normal click/focus passthrough, modifier-release behavior, and minimal stage logging with visible failure feedback.
+- Removed Save-to-tray, reusable shortcut, executable preparation, relaunch, and broad diagnostics work from implementation scope.
 
 ## Files
-- `docs/plans/2026-10-08-direct-window-capture.md`.
-- This report.
+- `docs/plans/2026-10-08-direct-window-capture.md`
+- `docs/agent-reports/2026-10-08-direct-window-capture-plan.md`
 
 ## Checks
-- Baseline executable SHA-256: `3E098E5719DEDE0A2AEBCD26AC722CDD41184CA2B5C385941CD529598CA06A6A` (matches report).
-- Source diff from `afe209e` to attach-edge worktree HEAD `e769413`: documentation files only.
-- Fresh branch/worktree creation succeeded at exact baseline.
-- Source inspection confirms baseline global mouse capture/listener absent; executable preparation fails before direct attach when identity is missing; direct attach accepts identity without executable but explicitly activates Still; maximized normalization can also return focus to Still.
-- No tests, executable launch or build: planning-only instruction. Live event/focus verification is pending implementation.
+- `git diff --check` — passed.
+- Reviewed for source changes — none; no tests or build run because this task only trims the plan.
 
 ## Handoff
-- PLAN COMPLETE. Recommend GPT-6 Luna High implementation; moderate-to-high native focus/race difficulty. Sol remains appropriate for scoped difficult-debugging review only.
-- Preserve all prior branches/builds and shared uncommitted work. No geometry, containment, Group, tray, white-stripe or Phase 2.5 changes authorized by this plan.
-- Wait for the user's implementation instruction. After a single test candidate is produced, stop for Windows acceptance.
+- Implementation baseline remains `afe209e5e2fe319b13f88e218cd4d1435f432b57` in the isolated `agent/codex/direct-window-capture` worktree.
+- Await the user's implementation instruction; when authorized, produce one Windows test executable and stop for manual testing.
