@@ -34,7 +34,7 @@ fn marker()->Vec<u16>{wide("StillManagedAppPanel")}
 type Physical=(i32,i32,i32,i32);
 struct Entry {
  hwnd:usize,pid:u32,source_id:String,bounds:Bounds,clip:Bounds,grip:Option<Bounds>,occlusions:Vec<Bounds>,viewport_right:Option<f64>,visible:bool,shown:bool,edge_hidden:bool,preserve_focus:bool,stacking_rank:i64,revision:u64,
- original_owner:usize,original_placement:WINDOWPLACEMENT,original_region:usize,original_visible:bool,
+ resize_guard:Option<crate::native_resize::NativeResizeGuard>,original_owner:usize,original_placement:WINDOWPLACEMENT,original_region:usize,original_visible:bool,
  // CSS-pixel minima; measured is a fallback for apps which refuse SetWindowPos
  // without declaring a WM_GETMINMAXINFO minimum. Pending candidates are kept in
  // physical pixels so consecutive samples compare exactly.
@@ -183,16 +183,18 @@ fn attach(window:&WindowInfo,source_id:String,bounds:Bounds,clip:Bounds,grip:Opt
  GetWindowPlacement(hwnd,&mut original_placement).map_err(|e|e.to_string())?;
  let region=CreateRectRgn(0,0,0,0);let original_region=if GetWindowRgn(hwnd,region)!=RGN_ERROR{region.0 as usize}else{let _=DeleteObject(HGDIOBJ(region.0));0};
   let original_visible=IsWindowVisible(hwnd).as_bool();
-  let mut entry=Entry{hwnd:window.hwnd,pid:window.pid,source_id,bounds,clip,grip,occlusions:Vec::new(),viewport_right:None,visible:preserve_focus&&original_visible,shown:preserve_focus&&original_visible,edge_hidden:false,preserve_focus,stacking_rank:0,revision:0,original_owner,original_placement,original_region,original_visible,declared_width:None,declared_height:None,measured_width:None,measured_height:None,pending_width:None,pending_height:None,probing_width:false,probing_height:false,minimum_dpi:None,minimum_query_after:None,fresh:false,last:None,error:String::new()};
+  let mut entry=Entry{hwnd:window.hwnd,pid:window.pid,source_id,bounds,clip,grip,occlusions:Vec::new(),viewport_right:None,visible:preserve_focus&&original_visible,shown:preserve_focus&&original_visible,edge_hidden:false,preserve_focus,stacking_rank:0,revision:0,resize_guard:None,original_owner,original_placement,original_region,original_visible,declared_width:None,declared_height:None,measured_width:None,measured_height:None,pending_width:None,pending_height:None,probing_width:false,probing_height:false,minimum_dpi:None,minimum_query_after:None,fresh:false,last:None,error:String::new()};
  // Top-level ownership, never SetParent/WS_CHILD. Restore it before Still closes.
  SetWindowLongPtrW(hwnd,GWLP_HWNDPARENT,main.0 as isize);
  if GetWindow(hwnd,GW_OWNER).ok()!=Some(main){SetWindowLongPtrW(hwnd,GWLP_HWNDPARENT,original_owner as isize);return Err("The app could not be attached. Still and the app must run at the same Windows permission level.".into())}
  if let Err(error)=SetPropW(hwnd,PCWSTR(marker().as_ptr()),Some(HANDLE(main.0))){restore(&mut entry);return Err(error.to_string())}
+ entry.resize_guard=match crate::native_resize::NativeResizeGuard::install(hwnd){Ok(guard)=>Some(guard),Err(error)=>{restore(&mut entry);return Err(error)}};
  if !preserve_focus{let _=ShowWindow(hwnd,SW_HIDE);}
  Ok(entry)
 }}
 fn restore(entry:&mut Entry){unsafe{
  let hwnd=handle(entry.hwnd);if !valid_window(entry){return}
+ if let Some(guard)=entry.resize_guard.as_mut(){guard.restore();}
  SetWindowLongPtrW(hwnd,GWLP_HWNDPARENT,entry.original_owner as isize);let _=RemovePropW(hwnd,PCWSTR(marker().as_ptr()));
  let saved=(entry.original_region!=0).then(||HRGN(entry.original_region as *mut _));
  if SetWindowRgn(hwnd,saved,true)!=0{entry.original_region=0;}
@@ -585,7 +587,7 @@ pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
    drop(target);assert!(UnregisterClassW(PCWSTR(class.as_ptr()),Some(instance)).is_ok());
   }}
  // A fresh Entry wired to a fixture window, with the PHYSICAL floor storage.
-  fn test_entry(hwnd:usize,bounds:&Bounds)->Entry{Entry{hwnd,pid:std::process::id(),source_id:"test-app".into(),bounds:bounds.clone(),clip:bounds.clone(),grip:None,occlusions:Vec::new(),viewport_right:None,visible:true,shown:true,edge_hidden:false,preserve_focus:false,stacking_rank:0,revision:0,original_owner:0,original_placement:WINDOWPLACEMENT{length:std::mem::size_of::<WINDOWPLACEMENT>() as u32,..Default::default()},original_region:0,original_visible:false,declared_width:None,declared_height:None,measured_width:None,measured_height:None,pending_width:None,pending_height:None,probing_width:false,probing_height:false,minimum_dpi:None,minimum_query_after:None,fresh:false,last:None,error:String::new()}}
+  fn test_entry(hwnd:usize,bounds:&Bounds)->Entry{Entry{hwnd,pid:std::process::id(),source_id:"test-app".into(),bounds:bounds.clone(),clip:bounds.clone(),grip:None,occlusions:Vec::new(),viewport_right:None,visible:true,shown:true,edge_hidden:false,preserve_focus:false,stacking_rank:0,revision:0,resize_guard:None,original_owner:0,original_placement:WINDOWPLACEMENT{length:std::mem::size_of::<WINDOWPLACEMENT>() as u32,..Default::default()},original_region:0,original_visible:false,declared_width:None,declared_height:None,measured_width:None,measured_height:None,pending_width:None,pending_height:None,probing_width:false,probing_height:false,minimum_dpi:None,minimum_query_after:None,fresh:false,last:None,error:String::new()}}
  unsafe fn class_window(class:&[u16],proc:unsafe extern "system" fn(HWND,u32,windows::Win32::Foundation::WPARAM,LPARAM)->windows::Win32::Foundation::LRESULT,title:&str)->(HWND,windows::Win32::Foundation::HINSTANCE){
   let instance=windows::Win32::Foundation::HINSTANCE(windows::Win32::System::LibraryLoader::GetModuleHandleW(None).unwrap().0);
   let definition=WNDCLASSW{lpfnWndProc:Some(proc),hInstance:instance,lpszClassName:PCWSTR(class.as_ptr()),..Default::default()};assert_ne!(RegisterClassW(&definition),0);
@@ -674,16 +676,17 @@ pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
    assert_eq!(info_at(&entry,1.0,true).required_width,Some(600.));assert_eq!(info_at(&entry,2.0,true).required_width,Some(600.));
   }
  #[test]fn real_window_fixture_tracks_bounds_clips_native_content_and_releases_without_closing(){unsafe{
-  let main=Fixture::new("Still fixture owner");let target=Fixture::new("Still fixture app");let original=rect(target.0).unwrap();
+  let main=Fixture::new("Still fixture owner");let target=Fixture::new("Still fixture app");let original=rect(target.0).unwrap();let original_style=GetWindowLongPtrW(target.0,GWL_STYLE);
   let mut original_placement=WINDOWPLACEMENT{length:std::mem::size_of::<WINDOWPLACEMENT>() as u32,..Default::default()};GetWindowPlacement(target.0,&mut original_placement).unwrap();
   let bounds=Bounds{x:100.,y:140.,width:800.,height:500.};let clip=Bounds{x:130.,y:160.,width:700.,height:450.};let grip=Bounds{x:798.,y:578.,width:32.,height:32.};
    let mut entry=test_entry(target.0.0 as usize,&bounds);entry.clip=clip.clone();entry.grip=Some(grip);entry.original_placement=original_placement;
   SetWindowLongPtrW(target.0,GWLP_HWNDPARENT,main.0.0 as isize);SetPropW(target.0,PCWSTR(marker().as_ptr()),Some(HANDLE(main.0.0))).unwrap();
+  entry.resize_guard=Some(crate::native_resize::NativeResizeGuard::install(target.0).unwrap());assert_eq!(GetWindowLongPtrW(target.0,GWL_STYLE)&WS_THICKFRAME.0 as isize,0);
   position(&mut entry,main.0,POINT{x:30,y:20},1.5).unwrap();assert_eq!(rect(target.0).unwrap(),(180,230,1200,750));
   let region=CreateRectRgn(0,0,0,0);assert_ne!(GetWindowRgn(target.0,region),RGN_ERROR);let mut box_rect=RECT::default();GetRgnBox(region,&mut box_rect);assert_eq!((box_rect.left,box_rect.top,box_rect.right,box_rect.bottom),(45,30,1095,705));
   assert!(!PtInRegion(region,1070,680).as_bool(),"The native window must leave Still's resize grip uncovered");assert!(PtInRegion(region,1020,680).as_bool(),"App content outside the resize grip must remain visible");let _=DeleteObject(HGDIOBJ(region.0));
   entry.bounds.x=220.;position(&mut entry,main.0,POINT{x:30,y:20},1.5).unwrap();assert_eq!(rect(target.0).unwrap().0,360);
-  restore(&mut entry);assert!(IsWindow(Some(target.0)).as_bool());assert_eq!(GetWindowLongPtrW(target.0,GWLP_HWNDPARENT),0);assert_eq!(rect(target.0).unwrap(),original);assert!(!IsWindowVisible(target.0).as_bool());
+  restore(&mut entry);assert_eq!(GetWindowLongPtrW(target.0,GWL_STYLE),original_style);assert!(IsWindow(Some(target.0)).as_bool());assert_eq!(GetWindowLongPtrW(target.0,GWLP_HWNDPARENT),0);assert_eq!(rect(target.0).unwrap(),original);assert!(!IsWindowVisible(target.0).as_bool());
   assert!(GetPropW(target.0,PCWSTR(marker().as_ptr())).0.is_null());
   drop(target);assert!(!valid_window(&entry),"A closed app window must be rejected instead of retaining an attached card");
  }}

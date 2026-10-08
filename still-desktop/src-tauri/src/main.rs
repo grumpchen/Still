@@ -9,6 +9,7 @@ mod capture;
 #[cfg(windows)] mod chrome_overlay;
 #[cfg(windows)] mod app_panel;
 #[cfg(windows)] mod native_panels;
+#[cfg(windows)] mod native_resize;
 #[cfg(windows)] mod app_picker;
 use tauri::Manager;
 fn main() {

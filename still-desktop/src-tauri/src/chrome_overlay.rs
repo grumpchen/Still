@@ -14,7 +14,7 @@ impl Bounds {
  fn screen(&self,origin:POINT,scale:f64)->(i32,i32,i32,i32){((origin.x as f64+self.x*scale).round() as i32,(origin.y as f64+self.y*scale).round() as i32,(self.width*scale).round().max(1.) as i32,(self.height*scale).round().max(1.) as i32)}
 }
 type ScreenRect=(i32,i32,i32,i32);
-struct Entry {hwnd:usize,pid:u32,bounds:Bounds,clip:Bounds,occlusions:Vec<Bounds>,viewport_right:f64,visible:bool,shown:bool,edge_hidden:bool,stacking_rank:i64,revision:u64,last:Option<(ScreenRect,ScreenRect,Vec<ScreenRect>,bool)>,last_region:Option<(ScreenRect,ScreenRect,Vec<ScreenRect>,bool)>}
+struct Entry {resize_guard:crate::native_resize::NativeResizeGuard,hwnd:usize,pid:u32,bounds:Bounds,clip:Bounds,occlusions:Vec<Bounds>,viewport_right:f64,visible:bool,shown:bool,edge_hidden:bool,stacking_rank:i64,revision:u64,last:Option<(ScreenRect,ScreenRect,Vec<ScreenRect>,bool)>,last_region:Option<(ScreenRect,ScreenRect,Vec<ScreenRect>,bool)>}
 #[derive(Default)]
 pub struct ChromeState(Mutex<HashMap<String,Entry>>);
 pub(crate) fn managed_windows(app:&AppHandle)->Vec<(usize,u32)>{app.state::<ChromeState>().0.lock().map(|s|s.values().map(|e|(e.hwnd,e.pid)).collect()).unwrap_or_default()}
@@ -229,9 +229,12 @@ pub async fn chrome_panel_open(app:AppHandle,webview:Webview,id:String,url:Strin
   let main=owner(&app)?;let profile=app.path().app_data_dir().map_err(|e|e.to_string())?.join("chrome-profile");
   std::fs::create_dir_all(&profile).map_err(|e|e.to_string())?;
   let (hwnd,process)=open_window(&profile,&url,&id,main,&items)?;
+  let resize_guard=match crate::native_resize::NativeResizeGuard::install(handle(hwnd)){
+   Ok(guard)=>guard,Err(error)=>{unsafe{SetWindowLongPtrW(handle(hwnd),GWLP_HWNDPARENT,0);let _=RemovePropW(handle(hwnd),PCWSTR(property(&id,main).as_ptr()));let _=ShowWindow(handle(hwnd),SW_SHOWNOACTIVATE);}return Err(error)}
+  };
   CHROME_PID.store(process,std::sync::atomic::Ordering::Relaxed);
   crate::shortcuts::refresh_editing(app.clone());
-  items.insert(id.clone(),Entry{hwnd,pid:process,clip:bounds.clone(),bounds,occlusions:Vec::new(),viewport_right:0.,visible:false,shown:false,edge_hidden:false,stacking_rank:0,revision:0,last:None,last_region:None});
+  items.insert(id.clone(),Entry{resize_guard,hwnd,pid:process,clip:bounds.clone(),bounds,occlusions:Vec::new(),viewport_right:0.,visible:false,shown:false,edge_hidden:false,stacking_rank:0,revision:0,last:None,last_region:None});
   let _=app.emit_to("main","chrome-state",serde_json::json!({"id":id,"open":true}));
   Ok(Info{hwnd,pid:process})
  }).await.map_err(|e|e.to_string())?
@@ -279,7 +282,7 @@ pub async fn chrome_panel_suspend(app:AppHandle,webview:Webview,id:String)->Resu
  }
  drop(items);crate::native_panels::apply_order(&app);Ok(retained)
 }
-fn close(app:&AppHandle,id:&str){if let Ok(mut items)=app.state::<ChromeState>().0.lock(){if let Some(e)=items.remove(id){unsafe{
+fn close(app:&AppHandle,id:&str){if let Ok(mut items)=app.state::<ChromeState>().0.lock(){if let Some(mut e)=items.remove(id){e.resize_guard.restore();unsafe{
  SetWindowLongPtrW(handle(e.hwnd),GWLP_HWNDPARENT,0);if let Ok(main)=owner(app){let _=RemovePropW(handle(e.hwnd),PCWSTR(property(id,main).as_ptr()));}
  let _=ShowWindow(handle(e.hwnd),SW_SHOWNOACTIVATE);let _=PostMessageW(Some(handle(e.hwnd)),WM_CLOSE,WPARAM(0),LPARAM(0));
 }}if items.is_empty(){CHROME_PID.store(0,std::sync::atomic::Ordering::Relaxed);}}}
