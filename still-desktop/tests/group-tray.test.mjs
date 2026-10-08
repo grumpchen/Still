@@ -125,6 +125,30 @@ test('workspace duplication gives collected widgets independent instance identit
  assert.notEqual(copy.groups[0].id,collected.groups[0].id);
 });
 
+test('canvas Groups collapse into a distinctive wide card and expand at their moved position',()=>{
+ const workspace=workspaces.createWorkspace('Chemistry',['group']),group=workspace.widgets[0];
+ assert.equal(typeof workspaces.toggleGroupCollapsed,'function');
+ const expanded={...group,placement:{x:80,y:110,width:460,height:370}};
+ const compact=workspaces.toggleGroupCollapsed(expanded,1200,800);
+ assert.equal(compact.groupCollapsed,true);assert.equal(compact.placement.height,104);assert.equal(compact.placement.width,460);
+ assert.deepEqual(compact.groupExpandedPlacement,expanded.placement);
+ const moved={...compact,placement:{...compact.placement,x:520,y:180}};
+ const restored=workspaces.toggleGroupCollapsed(moved,1200,800);
+ assert.equal(restored.groupCollapsed,false);assert.equal(restored.placement.x,520);assert.equal(restored.placement.y,180);
+ assert.equal(restored.placement.width,460);assert.equal(restored.placement.height,370);
+ const roundtrip=workspaces.parseState(JSON.stringify({...workspaces.createInitialState(),workspaces:[{...workspace,widgets:[compact]}],activeId:workspace.id})).workspaces[0].widgets[0];
+ assert.equal(roundtrip.groupCollapsed,true);assert.equal(roundtrip.placement.height,104);assert.equal(roundtrip.groupExpandedPlacement.height,370);
+ const minimized=workspaces.minimizeWidgetInstance(compact,1200,800),minimizedRoundtrip=workspaces.parseState(JSON.stringify({...workspaces.createInitialState(),workspaces:[{...workspace,widgets:[minimized]}],activeId:workspace.id})).workspaces[0].widgets[0];
+ const restoredMinimized=workspaces.restoreWidgetInstance(minimizedRoundtrip,1200,800);
+ assert.equal(restoredMinimized.groupCollapsed,true);assert.equal(workspaces.constrainGroupCollapsedPlacement(restoredMinimized.placement,1200,800).height,104);
+ const count=workspaces.collectedWidgetCount({id:'g',name:'',shortcuts:[],widgets:[{id:'a',type:'notes',name:'Legacy',icon:'LE',kind:'shortcut'},{id:'b',type:'notes',name:'Collected',icon:'CO',kind:'collected',instance:{...group,type:'notes',id:'b'}}],expanded:false});
+ assert.equal(count,1);
+ const narrow=workspaces.toggleGroupCollapsed({...group,placement:{x:0,y:0,width:300,height:360}},1200,800);
+ assert.equal(narrow.placement.width,420);
+ const edge=workspaces.toggleGroupCollapsed({...group,placement:{x:1100,y:780,width:460,height:360}},1200,800);
+ assert.equal(edge.placement.x,720);assert.equal(edge.placement.y,676);
+});
+
 test('Group header editor saves on Enter or blur, cancels on Escape, and does not start a drag',()=>{
  const header=readFileSync(new URL('../src/GroupHeaderName.tsx',import.meta.url),'utf8');
  const group=readFileSync(new URL('../src/GroupWidget.tsx',import.meta.url),'utf8');
@@ -139,10 +163,13 @@ test('Group header editor saves on Enter or blur, cancels on Escape, and does no
 
 test('canvas widgets can target Group cards while ordinary tray buttons remain non-save targets',()=>{
  const canvas=readFileSync(new URL('../src/WorkspaceCanvas.tsx',import.meta.url),'utf8');
+ const styles=readFileSync(new URL('../src/canvas.css',import.meta.url),'utf8');
  assert.match(canvas,/data-group-drop-target=\{w\.type==='group'&&w\.groupId\?'canvas':undefined\}/);
  assert.match(canvas,/function canvasGroupTarget\(/);
  assert.match(canvas,/saveToGroup\(\{\.\.\.currentWidget,placement:g\.p\},canvasTarget,true\)/);
  assert.match(canvas,/trayDropDecision\(\{source:'widget',widgetType:g\.type,\.\.\.target\}\)/);
+ assert.match(canvas,/group-collapse-toggle/);assert.match(canvas,/collectedWidgetCount\(group\)/);
+ assert.match(canvas,/aria-expanded=\{!groupCollapsed\}/);assert.match(styles,/\.canvas-card\.group-collapsed::before/);assert.match(styles,/\.canvas-card\.group-collapsed \.widget-content/);
 });
 
 test('collecting native panels suspends and retains them without closing their windows',()=>{
