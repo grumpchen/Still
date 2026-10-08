@@ -8,6 +8,7 @@ export interface AppAttachment {hwnd:number;pid:number;capture?:boolean}
 export function appImageUrl(bytes:number[]):string{let binary='';for(let offset=0;offset<bytes.length;offset+=8192)binary+=String.fromCharCode(...bytes.slice(offset,offset+8192));return'data:image/png;base64,'+btoa(binary)}
 export interface AppPanelInfo {hwnd:number;pid:number;minWidth:number;minHeight:number;requiredWidth:number|null;requiredHeight:number|null;measured:boolean;probing:boolean;shown:boolean}
 const pending=new Map<string,Promise<unknown>>();
+const retainedForCollection=new Set<string>();
 function command<T>(id:string,name:string,args:Record<string,unknown>={}):Promise<T>{
  const task=(pending.get(id)??Promise.resolve()).catch(()=>undefined).then(()=>invoke<T>(name,{id,...args}));pending.set(id,task);
  const clear=()=>{if(pending.get(id)===task)pending.delete(id)};task.then(clear,clear);return task;
@@ -22,5 +23,9 @@ export const appPanel={
  prepare:(window:AppAttachment)=>invoke<DroppedResource>('app_picker_prepare',{hwnd:window.hwnd,pid:window.pid}),
  preview:async(window:AppAttachment)=>appImageUrl(await invoke<number[]>('app_picker_preview',{hwnd:window.hwnd,pid:window.pid})),
  release:(id:string)=>command<void>(id,'app_panel_release'),
+ suspendForCollection:async(id:string)=>{if(await command<boolean>(id,'app_panel_suspend'))retainedForCollection.add(id)},
+ isCollectionRetained:(id:string)=>retainedForCollection.has(id),
+ consumeCollectionRetention:(id:string)=>{const retained=retainedForCollection.has(id);retainedForCollection.delete(id);return retained},
+ resume:(id:string)=>command<AppPanelInfo>(id,'app_panel_resume'),
  subscribe:(callback:(event:{id:string;open:boolean;error?:string|null})=>void):Promise<UnlistenFn>=>listen<{id:string;open:boolean;error?:string|null}>('app-panel-state',event=>callback(event.payload)),
 };

@@ -1,0 +1,7 @@
+[[permission]]
+identifier = "allow-app-panel-suspend"
+description = "Allows suspending an attached app panel while its widget is collected into a Group."
+
+[permission.commands]
+allow = ["app_panel_suspend"]
+deny = []

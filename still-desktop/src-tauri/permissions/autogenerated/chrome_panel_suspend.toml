@@ -1,0 +1,7 @@
+[[permission]]
+identifier = "allow-chrome-panel-suspend"
+description = "Allows hiding and retaining a Chrome window while its widget is collected into a Group."
+
+[permission.commands]
+allow = ["chrome_panel_suspend"]
+deny = []

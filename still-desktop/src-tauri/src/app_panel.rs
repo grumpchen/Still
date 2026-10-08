@@ -356,6 +356,30 @@ fn release(app:&AppHandle,id:&str){if let Ok(mut s)=app.state::<AppPanelState>()
 pub fn shutdown(app:&AppHandle){let state=app.state::<AppPanelState>();if let Ok(mut s)=state.0.lock(){s.closed=true;s.pending.clear();for (_,mut entry) in s.items.drain(){restore(&mut entry);}};}
 
 #[tauri::command]
+pub async fn app_panel_suspend(app:AppHandle,webview:Webview,id:String)->Result<bool,String>{
+ crate::browser::authorize(&webview)?;instance(&id)?;
+ let state=app.state::<AppPanelState>();let mut panels=state.0.lock().map_err(|_|"App panels are unavailable")?;
+ let Some(hwnd)=panels.items.get(&id).filter(|entry|valid_window(entry)).map(|entry|entry.hwnd)else{return Ok(false)};
+ *panels.generation.entry(id.clone()).or_default()+=1;panels.pending.remove(&id);
+ if unsafe{GetForegroundWindow()==handle(hwnd)}{if let Ok(main)=owner(){unsafe{let _=SetForegroundWindow(main);}}}
+ if let Some(entry)=panels.items.get_mut(&id){
+  unsafe{let _=ShowWindow(handle(hwnd),SW_HIDE);}
+  entry.visible=false;entry.shown=false;entry.edge_hidden=false;entry.last=None;entry.revision=0;entry.fresh=false;
+ }
+ drop(panels);crate::native_panels::apply_order(&app);Ok(true)
+}
+
+#[tauri::command]
+pub async fn app_panel_resume(app:AppHandle,webview:Webview,id:String)->Result<Info,String>{
+ crate::browser::authorize(&webview)?;instance(&id)?;let main=owner()?;
+ let state=app.state::<AppPanelState>();let mut panels=state.0.lock().map_err(|_|"App panels are unavailable")?;
+ if !panels.items.get(&id).is_some_and(valid_window){panels.items.remove(&id);return Err("The collected app window has closed. Reattach it from Apps.".into())}
+ let entry=panels.items.get_mut(&id).ok_or("The collected app window is no longer available. Reattach it from Apps.")?;
+ entry.visible=false;entry.shown=false;entry.edge_hidden=false;entry.last=None;entry.revision=0;entry.fresh=false;
+ Ok(info(entry,main,false))
+}
+
+#[tauri::command]
 pub async fn app_panel_open(app:AppHandle,webview:Webview,id:String,source_id:String,bounds:Bounds,clip:Bounds,grip:Option<Bounds>,reuse_existing:Option<bool>)->Result<Info,String>{
  crate::browser::authorize(&webview)?;instance(&id)?;bounds.validate()?;clip.validate()?;if let Some(grip)=&grip{grip.validate()?}
  let path=app.state::<crate::dropped_files::AppGrants>().target(&source_id)?;

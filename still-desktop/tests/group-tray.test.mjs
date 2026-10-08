@@ -1,5 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import * as workspaces from '../src/domain/workspaces.ts';
 import {shortcut} from '../src/domain/webShortcuts.ts';
 
@@ -43,7 +44,7 @@ test('saving an open widget creates or appends a reusable group entry without ch
  assert.equal(created.groups.length,2);
  const newGroup=created.groups.at(-1);
  assert.equal(newGroup.expanded,true);assert.equal(newGroup.widgets.length,1);
- assert.deepEqual(newGroup.widgets[0],{id:newGroup.widgets[0].id,type:'notes',name:'Lab notes',icon:'LA'});
+ assert.deepEqual(newGroup.widgets[0],{id:newGroup.widgets[0].id,type:'notes',name:'Lab notes',icon:'LA',kind:'shortcut'});
  assert.equal(created.widgets.find(widget=>widget.id===source.id).text,'Keep these notes');
  assert.deepEqual(workspace.groups.at(-1).widgets,[]);
  const calculator=workspaces.createWidget('desmos');
@@ -68,6 +69,95 @@ test('renaming a group updates its instances and duplicate workspaces keep indep
  const state={...workspaces.createInitialState(),workspaces:[renamed,copy],activeId:renamed.id};
  const roundtrip=workspaces.parseState(JSON.stringify(state));assert.equal(roundtrip.workspaces[1].groups[0].name,'Other');
  assert.equal(roundtrip.workspaces[0].groups[0].name,'CHEM111');
+});
+
+test('collecting a canvas widget moves its full state and restores the same instance from a Group',()=>{
+ const workspace=workspaces.createWorkspace('Chemistry',['notes','group']);
+ const source=workspace.widgets.find(widget=>widget.type==='notes');source.id='notes-kept';source.title='Lab notes';source.text='Moles = mass / molar mass';source.placement={x:310,y:140,width:420,height:330};
+ const groupId=workspace.widgets.find(widget=>widget.type==='group').groupId;
+ assert.equal(typeof workspaces.collectWidgetIntoGroup,'function');
+ assert.equal(typeof workspaces.restoreCollectedWidget,'function');
+ const collected=workspaces.collectWidgetIntoGroup(workspace,source.id,groupId);
+ assert.equal(collected.widgets.some(widget=>widget.id===source.id),false);
+ assert.equal(collected.groups.find(group=>group.id===groupId).widgets[0].kind,'collected');
+ assert.equal(collected.groups.find(group=>group.id===groupId).widgets[0].instance.text,source.text);
+ assert.equal(collected.groups.find(group=>group.id===groupId).widgets[0].instance.placement.x,310);
+ const restored=workspaces.parseState(JSON.stringify({...workspaces.createInitialState(),workspaces:[collected],activeId:collected.id})).workspaces[0];
+ assert.equal(restored.groups.find(group=>group.id===groupId).widgets[0].instance.text,source.text);
+ const reopened=workspaces.restoreCollectedWidget(restored,source.id,1000,700);
+ const same=reopened.widgets.find(widget=>widget.id===source.id);
+ assert.equal(same.text,source.text);assert.equal(same.title,'Lab notes');
+ assert.equal(same.placement.x,310);assert.equal(reopened.groups.find(group=>group.id===groupId).widgets.length,0);
+ assert.equal(workspaces.collectedWidgetCount(reopened.groups.find(group=>group.id===groupId)),0);
+ assert.throws(()=>workspaces.restoreCollectedWidget(reopened,source.id,1000,700));
+});
+
+test('collected Apps retain safe relaunch configuration without saving transient window identity',()=>{
+ const workspace=workspaces.createWorkspace('Apps',['apps','group']),source=workspace.widgets.find(widget=>widget.type==='apps');
+ source.id='apps-kept';source.title='My app';source.appName='Editor';source.appKey='grant-123';source.appPanelOpen=true;
+ Object.assign(source,{hwnd:12345,pid:67890});
+ const collected=workspaces.collectWidgetIntoGroup(workspace,source.id,workspace.widgets.find(widget=>widget.type==='group').groupId);
+ const entry=collected.groups[0].widgets[0];
+ assert.equal(entry.instance.appKey,'grant-123');assert.equal(entry.instance.appName,'Editor');
+ assert.equal(entry.instance.appPanelOpen,false);assert.equal('hwnd' in entry.instance,false);assert.equal('pid' in entry.instance,false);
+ const restored=workspaces.parseState(JSON.stringify({...workspaces.createInitialState(),workspaces:[collected],activeId:collected.id})).workspaces[0];
+ const snapshot=restored.groups[0].widgets[0].instance;
+ assert.equal(snapshot.appKey,'grant-123');assert.equal('hwnd' in snapshot,false);assert.equal('pid' in snapshot,false);
+});
+
+test('collected widgets cannot be nested, duplicated, or silently removed with their Group',()=>{
+ const workspace=workspaces.createWorkspace('Chemistry',['notes','group']),source=workspace.widgets.find(widget=>widget.type==='notes'),groupWidget=workspace.widgets.find(widget=>widget.type==='group');
+ assert.throws(()=>workspaces.collectWidgetIntoGroup(workspace,groupWidget.id,groupWidget.groupId));
+ const collected=workspaces.collectWidgetIntoGroup(workspace,source.id,groupWidget.groupId);
+ assert.throws(()=>workspaces.collectWidgetIntoGroup(collected,source.id,groupWidget.groupId));
+ assert.throws(()=>workspaces.createWidgetFromGroupEntry(collected.groups[0].widgets[0],collected.widgets));
+ const corrupted=structuredClone(collected);corrupted.widgets.push({...source});
+ const repaired=workspaces.parseState(JSON.stringify({...workspaces.createInitialState(),workspaces:[corrupted],activeId:corrupted.id})).workspaces[0];
+ assert.equal(repaired.widgets.filter(widget=>widget.id===source.id).length,1);
+ assert.equal(repaired.groups[0].widgets.some(entry=>entry.id===source.id),false);
+});
+
+test('workspace duplication gives collected widgets independent instance identities',()=>{
+ const workspace=workspaces.createWorkspace('Chemistry',['notes','group']),source=workspace.widgets.find(widget=>widget.type==='notes'),groupWidget=workspace.widgets.find(widget=>widget.type==='group');
+ source.text='Keep this';const collected=workspaces.collectWidgetIntoGroup(workspace,source.id,groupWidget.groupId);
+ const copy=workspaces.duplicateWorkspace(collected,'Copy'),originalEntry=collected.groups[0].widgets[0],copyEntry=copy.groups[0].widgets[0];
+ assert.notEqual(copyEntry.id,originalEntry.id);assert.equal(copyEntry.instance.id,copyEntry.id);assert.equal(copyEntry.instance.text,'Keep this');
+ assert.notEqual(copy.groups[0].id,collected.groups[0].id);
+});
+
+test('Group header editor saves on Enter or blur, cancels on Escape, and does not start a drag',()=>{
+ const header=readFileSync(new URL('../src/GroupHeaderName.tsx',import.meta.url),'utf8');
+ const group=readFileSync(new URL('../src/GroupWidget.tsx',import.meta.url),'utf8');
+ const editor=readFileSync(new URL('../src/GroupEditor.tsx',import.meta.url),'utf8');
+ assert.match(header,/event\.key==='Enter'\)\{event\.preventDefault\(\);commit\(\)\}/);
+ assert.match(header,/event\.key==='Escape'\)\{event\.preventDefault\(\);cancel\(\)\}/);
+ assert.match(header,/onBlur=.*commit\(\)/);
+ assert.match(header,/onPointerDown=\{stopPointer\}/);
+ assert.match(group,/showNameField=\{false\}/);
+ assert.match(editor,/showNameField&&/);
+});
+
+test('canvas widgets can target Group cards while ordinary tray buttons remain non-save targets',()=>{
+ const canvas=readFileSync(new URL('../src/WorkspaceCanvas.tsx',import.meta.url),'utf8');
+ assert.match(canvas,/data-group-drop-target=\{w\.type==='group'&&w\.groupId\?'canvas':undefined\}/);
+ assert.match(canvas,/function canvasGroupTarget\(/);
+ assert.match(canvas,/saveToGroup\(\{\.\.\.currentWidget,placement:g\.p\},canvasTarget,true\)/);
+ assert.match(canvas,/trayDropDecision\(\{source:'widget',widgetType:g\.type,\.\.\.target\}\)/);
+});
+
+test('collecting native panels suspends and retains them without closing their windows',()=>{
+ const app=readFileSync(new URL('../src/App.tsx',import.meta.url),'utf8');
+ const apps=readFileSync(new URL('../src/AppsWidget.tsx',import.meta.url),'utf8');
+ const browser=readFileSync(new URL('../src/BrowserWidget.tsx',import.meta.url),'utf8');
+ const appNative=readFileSync(new URL('../src-tauri/src/app_panel.rs',import.meta.url),'utf8');
+ const chromeNative=readFileSync(new URL('../src-tauri/src/chrome_overlay.rs',import.meta.url),'utf8');
+ assert.match(app,/appPanel\.suspendForCollection\(widget\.id\)/);
+ assert.match(apps,/appPanel\.resume\(widget\.id\)/);
+ assert.match(apps,/isCollectionRetained\(widget\.id\)/);
+ assert.match(browser,/consumeCollectionRetention\(widget\.id\)/);
+ assert.match(appNative,/pub async fn app_panel_suspend[\s\S]*?ShowWindow\(handle\(hwnd\),SW_HIDE\)/);
+ assert.match(appNative,/pub async fn app_panel_resume[\s\S]*?Ok\(info\(entry,main,false\)\)/);
+ assert.match(chromeNative,/pub async fn chrome_panel_suspend[\s\S]*?ShowWindow\(window,SW_HIDE\)/);
 });
 
 test('a header-saved group name is normalized, updates linked cards, and survives a restart roundtrip',()=>{

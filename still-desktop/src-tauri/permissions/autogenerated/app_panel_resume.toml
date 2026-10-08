@@ -1,0 +1,7 @@
+[[permission]]
+identifier = "allow-app-panel-resume"
+description = "Allows resuming the same attached app window when its collected widget returns to the workspace."
+
+[permission.commands]
+allow = ["app_panel_resume"]
+deny = []

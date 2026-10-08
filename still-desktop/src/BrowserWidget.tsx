@@ -37,7 +37,7 @@ export default function BrowserWidget({widget,obscured,workspaceActive=true,lect
   stopScroll=observeCanvasScroll(viewport,value=>{scrolling=value;if(value){invalidate(true);if(frame){cancelAnimationFrame(frame);frame=0}dirty=true;const g=geometry(),hideRevision=revision;void chromePanel.present(widget.id,g.bounds,g.clip,g.occlusions,false,g.stackingRank,hideRevision,g.viewportRight).then(shown=>{if(!disposed&&hideRevision===revision)node.dataset.nativeVisible=String(shown)}).catch(()=>undefined)}else{dirty=false;schedule.current()}},120);
   const scroll=()=>schedule.current();window.addEventListener('resize',scroll);
   void chromePanel.subscribe(event=>{if(disposed||event.id!==widget.id)return;if(!event.open){opened=false;last='';setReady(false);node.dataset.nativeVisible='false';setError('Chrome was closed. Reopen it below.')}}).then(unlisten=>{if(disposed)unlisten();else{stop=unlisten;void launch.current()}}).catch(e=>{if(!disposed)setError(String(e))});
-  return()=>{disposed=true;invalidate();cancelAnimationFrame(frame);resize.disconnect();mutation.disconnect();window.removeEventListener('resize',scroll);stopScroll?.();stop?.();void chromePanel.close(widget.id).catch(()=>undefined)};
+  return()=>{disposed=true;invalidate();cancelAnimationFrame(frame);resize.disconnect();mutation.disconnect();window.removeEventListener('resize',scroll);stopScroll?.();stop?.();if(!chromePanel.consumeCollectionRetention(widget.id))void chromePanel.close(widget.id).catch(()=>undefined)};
  },[widget.id]);
  useEffect(()=>{schedule.current()},[workspaceActive,obscured,widget.placement,error]);
  return <div className="embedded-browser chrome-panel">

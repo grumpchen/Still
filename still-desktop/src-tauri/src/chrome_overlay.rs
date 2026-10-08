@@ -264,6 +264,21 @@ pub async fn chrome_panel_navigate(app:AppHandle,webview:Webview,id:String,url:S
 }
 #[tauri::command]
 pub async fn chrome_panel_close(app:AppHandle,webview:Webview,id:String)->Result<(),String>{crate::browser::authorize(&webview)?;close(&app,&id);crate::native_panels::apply_order(&app);Ok(())}
+#[tauri::command]
+pub async fn chrome_panel_suspend(app:AppHandle,webview:Webview,id:String)->Result<bool,String>{
+ crate::browser::authorize(&webview)?;instance(&id)?;let state=app.state::<ChromeState>();let mut items=state.0.lock().map_err(|_|"Chrome state unavailable")?;
+ let mut retained=false;
+ if let Some(item)=items.get_mut(&id){
+  let window=handle(item.hwnd);
+  if unsafe{IsWindow(Some(window)).as_bool()} {
+   if unsafe{GetForegroundWindow()==window}{if let Ok(main)=owner(&app){unsafe{let _=SetForegroundWindow(main);}}}
+   unsafe{let _=ShowWindow(window,SW_HIDE);}
+   item.visible=false;item.shown=false;item.edge_hidden=false;item.last=None;item.last_region=None;item.revision=0;
+   retained=true;
+  }else{items.remove(&id);if items.is_empty(){CHROME_PID.store(0,std::sync::atomic::Ordering::Relaxed);}}
+ }
+ drop(items);crate::native_panels::apply_order(&app);Ok(retained)
+}
 fn close(app:&AppHandle,id:&str){if let Ok(mut items)=app.state::<ChromeState>().0.lock(){if let Some(e)=items.remove(id){unsafe{
  SetWindowLongPtrW(handle(e.hwnd),GWLP_HWNDPARENT,0);if let Ok(main)=owner(app){let _=RemovePropW(handle(e.hwnd),PCWSTR(property(id,main).as_ptr()));}
  let _=ShowWindow(handle(e.hwnd),SW_SHOWNOACTIVATE);let _=PostMessageW(Some(handle(e.hwnd)),WM_CLOSE,WPARAM(0),LPARAM(0));

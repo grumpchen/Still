@@ -1,5 +1,6 @@
 import {TrayDragButton,trayFocusIntoView} from './TrayDragButton.tsx';
 import {Icon} from './widgets.tsx';
+import {widgetCatalog} from './domain/widgetCatalog.ts';
 import type {SavedGroup,GroupWidgetEntry} from './domain/workspaces.ts';
 import type {WebShortcut} from './domain/webShortcuts.ts';
 import type {GroupEditMode} from './GroupEditor.tsx';
@@ -11,7 +12,7 @@ export default function GroupTray({groups,update,openGroup,openLink,openWidget,e
   {group.expanded&&<section className={'tray-group-inline-contents '+(activeDropGroupId===group.id?'tray-save-target':'')} id={'tray-group-'+group.id} data-group-drop-target="existing" data-group-id={group.id} aria-label={(group.name||'Group')+' group items'}>
    <strong className="tray-group-inline-title">{group.name||'Group'}</strong>
    {group.shortcuts.map(item=><TrayDragButton key={item.id} dragPayload={{kind:'group-entry',groupId:group.id,id:item.id,entryKind:'link'}} onFocus={trayFocusIntoView} title={item.url} aria-label={'Open '+item.name+' from '+(group.name||'Group')} onClick={()=>openLink(item)}><span className="tray-entry-icon">{item.icon}</span>{item.name}</TrayDragButton>)}
-   {group.widgets.map(item=><TrayDragButton key={item.id} dragPayload={{kind:'group-entry',groupId:group.id,id:item.id,entryKind:'widget'}} onFocus={trayFocusIntoView} aria-label={'Add '+item.name+' from '+(group.name||'Group')} onClick={()=>openWidget(item)}>{item.iconData?<img className="tray-entry-image" src={item.iconData} alt=""/>:<span className="tray-entry-icon">{item.icon}</span>}{item.name}</TrayDragButton>)}
+   {group.widgets.map(item=><TrayDragButton key={item.id} dragPayload={{kind:'group-entry',groupId:group.id,id:item.id,entryKind:'widget'}} onFocus={trayFocusIntoView} aria-label={item.kind==='collected'?'Restore '+item.name+' from '+(group.name||'Group'):'Add '+item.name+' from '+(group.name||'Group')} onClick={()=>openWidget(item)}>{item.kind==='collected'?(item.instance?.appIconData?<img className="tray-entry-image" src={item.instance.appIconData} alt=""/>:<Icon name={widgetCatalog[item.type].icon}/>):item.iconData?<img className="tray-entry-image" src={item.iconData} alt=""/>:<span className="tray-entry-icon">{item.icon}</span>}{item.name}</TrayDragButton>)}
    <button className="tray-group-add" onFocus={trayFocusIntoView} onClick={()=>edit(group.id,'widget')}>+ Add widget</button><button className="tray-group-add" onFocus={trayFocusIntoView} onClick={()=>edit(group.id,'link')}>+ Add link</button>
    <button onFocus={trayFocusIntoView} onClick={()=>edit(group.id,undefined)} aria-label={'Edit '+(group.name||'Group')+' group'}>Edit</button><button onFocus={trayFocusIntoView} onClick={()=>openGroup(group.id)}>Open group</button><button onFocus={trayFocusIntoView} onClick={()=>remove(group.id)}>Remove group</button>
   </section>}

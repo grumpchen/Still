@@ -1,5 +1,6 @@
 import {useState} from 'react';
 import {widgetCatalog,widgetTypes} from './domain/widgetCatalog.ts';
+import {Icon} from './widgets.tsx';
 import {groupWidgetEntry,type SavedGroup,type GroupWidgetEntry} from './domain/workspaces.ts';
 import {shortcut,reorderShortcuts,type WebShortcut} from './domain/webShortcuts.ts';
 
@@ -35,9 +36,9 @@ export default function GroupEditor({group,update,openLink,openWidget,initialMod
      <button className="group-open" title={item.url} aria-label={'Open '+item.name+' as a new widget'} onClick={()=>openLink?.(item)}><span className="group-icon">{item.icon}</span><span>{item.name}<small>New Browser widget ↗</small></span></button>
      <div className="group-item-actions"><button aria-label={'Move '+item.name+' up'} disabled={index===0} onClick={()=>moveLink(item,-1)}>↑</button><button aria-label={'Move '+item.name+' down'} disabled={index===group.shortcuts.length-1} onClick={()=>moveLink(item,1)}>↓</button><button aria-label={'Edit '+item.name} onClick={()=>editLink(item)}>✎</button><button aria-label={'Remove '+item.name+' from group'} onClick={()=>update({shortcuts:group.shortcuts.filter(s=>s.id!==item.id)})}>×</button></div>
     </div>)}
-    {group.widgets.map((item,index)=><div className="group-item" key={item.id}>
-     <button className="group-open" aria-label={'Add '+item.name+' from group'} onClick={()=>openWidget?.(item)}><span className="group-icon">{item.icon}</span><span>{item.name}<small>New {widgetCatalog[item.type].name} widget</small></span></button>
-     <div className="group-item-actions"><button aria-label={'Move '+item.name+' up'} disabled={index===0} onClick={()=>moveWidget(index,-1)}>↑</button><button aria-label={'Move '+item.name+' down'} disabled={index===group.widgets.length-1} onClick={()=>moveWidget(index,1)}>↓</button><button aria-label={'Edit '+item.name} onClick={()=>editWidget(item)}>✎</button><button aria-label={'Remove '+item.name+' from group'} onClick={()=>update({widgets:group.widgets.filter(s=>s.id!==item.id)})}>×</button></div>
+    {group.widgets.map((item,index)=><div className={'group-item '+(item.kind==='collected'?'group-item-collected':'')} key={item.id}>
+     <button className="group-open" aria-label={item.kind==='collected'?'Restore '+item.name+' to workspace':'Add '+item.name+' from group'} onClick={()=>openWidget?.(item)}>{item.kind==='collected'?(item.instance?.appIconData?<img className="group-icon group-icon-image" src={item.instance.appIconData} alt=""/>:<span className="group-icon"><Icon name={widgetCatalog[item.type].icon}/></span>):<span className="group-icon">{item.icon}</span>}<span>{item.name}<small>{item.kind==='collected'?'Restore this widget':'New '+widgetCatalog[item.type].name+' widget'}</small></span></button>
+     <div className="group-item-actions"><button aria-label={'Move '+item.name+' up'} disabled={index===0} onClick={()=>moveWidget(index,-1)}>↑</button><button aria-label={'Move '+item.name+' down'} disabled={index===group.widgets.length-1} onClick={()=>moveWidget(index,1)}>↓</button>{item.kind!=='collected'&&<><button aria-label={'Edit '+item.name} onClick={()=>editWidget(item)}>✎</button><button aria-label={'Remove '+item.name+' from group'} onClick={()=>update({widgets:group.widgets.filter(s=>s.id!==item.id)})}>×</button></>}</div>
     </div>)}
     {!group.shortcuts.length&&!group.widgets.length&&<p className="group-empty">Save course links and widget types here, then add fresh instances from the tray whenever you need them.</p>}
    </div>

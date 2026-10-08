@@ -34,6 +34,7 @@ html.native-transparent .workspace-canvas{background-image:none}
 .canvas-card.widget-notes .card-body{display:flex;flex-direction:column;min-height:0}.canvas-card .note{min-height:60px;flex:1;resize:none;font-size:13px;padding:0}.canvas-card .note-status{padding:5px 16px 12px;flex-shrink:0;font-size:9px}.canvas-card .note-title{font-size:14px;margin-bottom:9px}
 .canvas-card .widget-resize{position:absolute;bottom:0;right:0;width:25px;height:25px;border:0;border-radius:8px 0 0 0!important;background:var(--surface);padding:0;display:grid;place-items:center;cursor:nwse-resize;touch-action:none;box-shadow:none;z-index:2;color:var(--muted);font-size:13px;opacity:.8}
 .canvas-card .widget-resize:hover{opacity:1;color:var(--accent)}.gesture-card{box-shadow:0 15px 45px #00190e40!important;outline:2px solid var(--accent)}.widget-gesture iframe{pointer-events:none}.widget-gesture{user-select:none}
+.canvas-card.group-drop-active{outline:2px solid var(--accent);outline-offset:3px;box-shadow:0 0 0 5px color-mix(in srgb,var(--accent) 16%,transparent),0 10px 32px #00190e35!important}
 .canvas-card .widget-controls .widget-resize-control{font-size:16px;cursor:nwse-resize}
 .canvas-card.widget-minimized{min-width:0;min-height:0;border-radius:12px;overflow:visible;box-shadow:0 3px 14px #14233224}.widget-minimized .widget-content,.widget-minimized .widget-resize{display:none!important}.widget-minimized-button{position:absolute;inset:0;width:100%;height:100%;display:flex;align-items:center;gap:8px;padding:5px 10px;border:1px solid var(--border);border-radius:12px;background:var(--surface);box-shadow:0 3px 14px #14233218;color:var(--text);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:left;cursor:grab;touch-action:none;user-select:none}.widget-minimized-button:active{cursor:grabbing}.widget-minimized-button svg{width:16px;height:16px;flex:none}.widget-minimized-button span{overflow:hidden;text-overflow:ellipsis}
 .canvas-status{display:flex;justify-content:space-between;gap:10px;font-size:9px;color:var(--muted);flex-shrink:0;padding:0 3px}
@@ -108,6 +109,7 @@ html.native-transparent .workspace-canvas{background-image:none}
 .group-item{padding:5px 0;border-bottom:1px solid var(--border)}
 .canvas-card .group-open{display:flex;align-items:center;gap:10px;width:100%;padding:8px;border:0;background:transparent;box-shadow:none;border-radius:9px;text-align:left;font-size:12px}
 .group-icon{display:grid;place-items:center;width:34px;height:34px;flex-shrink:0;border:1px solid var(--border);background:var(--tint);border-radius:9px;color:var(--accent);font-size:14px}
+.group-icon svg{width:18px;height:18px}.group-icon-image{object-fit:contain;padding:3px}
 .group-open>span:last-child{min-width:0;overflow-wrap:anywhere}.group-open small{display:block;font-size:9px;color:var(--muted);margin-top:4px}
 .group-item-actions{display:flex;gap:4px;justify-content:flex-end}.canvas-card .group-item-actions button{border:0;background:transparent;box-shadow:none;font-size:11px;padding:4px 7px}
 .group-empty{padding:12px 4px;color:var(--muted);font-size:12px;line-height:1.7}

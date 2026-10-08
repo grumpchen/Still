@@ -10,8 +10,9 @@ export {widgetTypes, type WidgetType} from './widgetCatalog.ts';
 export const DESMOS_URL = 'https://www.desmos.com/scientific';
 export interface Bookmark { id: string; name: string; url: string }
 export interface ScheduleEntry {id:string; day:number; time:string; title:string; location:string}
-export interface GroupWidgetEntry {id:string;type:Exclude<WidgetType,'group'>;name:string;icon:string;iconData?:string}
+export interface GroupWidgetEntry {id:string;type:Exclude<WidgetType,'group'>;name:string;icon:string;iconData?:string;kind?:'shortcut'|'collected';instance?:WidgetInstance}
 export interface SavedGroup {id:string;name:string;shortcuts:WebShortcut[];widgets:GroupWidgetEntry[];expanded:boolean}
+export function collectedWidgetCount(group:SavedGroup|undefined):number{return group?.widgets.filter(entry=>entry.kind==='collected').length??0}
 export interface WidgetInstance {
   id: string; type: WidgetType; span: 1 | 2 | 3; instanceNumber:number; title:string;
   text: string;
@@ -97,15 +98,16 @@ export function createWorkspace(name: string, types: WidgetType[]): Workspace {
   return { id: crypto.randomUUID(), name: workspaceName(name), widgets, groups, layout:'canvas', browserWidth:80, browserHeight:100 };
 }
 export function duplicateWorkspace(original: Workspace, name: string): Workspace {
-  const ids=new Map(original.groups.map(g=>[g.id,crypto.randomUUID()]));
-  return { ...original, id: crypto.randomUUID(), name: workspaceName(name),groups:original.groups.map(g=>({...structuredClone(g),id:ids.get(g.id)!})), widgets: original.widgets.map(widget => ({...structuredClone(widget),id:crypto.randomUUID(),groupId:widget.groupId?ids.get(widget.groupId)??null:null,end:null})) };
+  const ids=new Map(original.groups.map(g=>[g.id,crypto.randomUUID()])),collectedIds=new Map(original.groups.flatMap(g=>g.widgets.filter(entry=>entry.kind==='collected').map(entry=>[entry.id,crypto.randomUUID()] as const)));
+  const groups=original.groups.map(g=>({...structuredClone(g),id:ids.get(g.id)!,widgets:g.widgets.map(entry=>{if(entry.kind!=='collected'||!entry.instance)return structuredClone(entry);const id=collectedIds.get(entry.id)!;return{...structuredClone(entry),id,instance:{...structuredClone(entry.instance),id}}})}));
+  return { ...original, id: crypto.randomUUID(), name: workspaceName(name),groups, widgets: original.widgets.map(widget => ({...structuredClone(widget),id:crypto.randomUUID(),groupId:widget.groupId?ids.get(widget.groupId)??null:null,end:null})) };
 }
 export function transferWidgetInstance(source:Workspace,destination:Workspace,widgetId:string,canvasWidth:number,canvasHeight:number):{source:Workspace;destination:Workspace}|null{
  if(source.id===destination.id)return null;
  const widget=source.widgets.find(item=>item.id===widgetId);if(!widget)return null;
  let moved=widget.minimized?moveMinimizedWidgetInstance(widget,widget.placement,canvasWidth,canvasHeight):{...widget,placement:constrainPlacement(widget.type,widget.placement,canvasWidth,{},canvasHeight)},groups=destination.groups;
  const linked=widget.type==='group'&&widget.groupId?source.groups.find(group=>group.id===widget.groupId):undefined;
- if(linked){let id=linked.id;if(groups.some(group=>group.id===id))id=crypto.randomUUID();groups=[...groups,{...structuredClone(linked),id}];if(id!==widget.groupId)moved={...moved,groupId:id}}
+ if(linked){let id=linked.id;if(groups.some(group=>group.id===id))id=crypto.randomUUID();const collectedIds=new Map(linked.widgets.filter(entry=>entry.kind==='collected').map(entry=>[entry.id,crypto.randomUUID()]));groups=[...groups,{...structuredClone(linked),id,widgets:linked.widgets.map(entry=>{if(entry.kind!=='collected'||!entry.instance)return structuredClone(entry);const instanceId=collectedIds.get(entry.id)!;return{...structuredClone(entry),id:instanceId,instance:{...structuredClone(entry.instance),id:instanceId}}})}];if(id!==widget.groupId)moved={...moved,groupId:id}}
  return{source:{...source,widgets:source.widgets.filter(item=>item.id!==widgetId)},destination:{...destination,widgets:[...destination.widgets,moved],groups}};
 }
 export function nextInstanceNumber(type:WidgetType,widgets:WidgetInstance[]):number {return Math.max(0,...widgets.filter(w=>w.type===type).map(w=>w.instanceNumber))+1}
@@ -119,8 +121,9 @@ const GROUP_ICON_LIMIT=32*1024,GROUP_ICON_BUDGET=512*1024;
 export function checkedAppIconData(value:unknown):string|undefined {
  return typeof value==='string'&&value.length<=GROUP_ICON_LIMIT&&/^data:image\/png;base64,iVBORw0KGgo[A-Za-z0-9+/]*={0,2}$/.test(value)?value:undefined;
 }
+function groupEntryIconData(entry:GroupWidgetEntry):string|undefined{return entry.kind==='collected'?entry.instance?.appIconData:entry.iconData}
 export function groupIconBudget(groups:SavedGroup[],candidate?:GroupWidgetEntry):boolean {
- const total=groups.reduce((sum,group)=>sum+group.widgets.reduce((amount,item)=>amount+(item.iconData?.length??0),0),0)+(candidate?.iconData?.length??0);
+ const total=groups.reduce((sum,group)=>sum+group.widgets.reduce((amount,item)=>amount+(groupEntryIconData(item)?.length??0),0),0)+(candidate?groupEntryIconData(candidate)?.length??0:0);
  return total<=GROUP_ICON_BUDGET;
 }
 export function groupWidgetEntry(value:{id?:string;type:WidgetType;name?:string;icon?:string;iconData?:string}):GroupWidgetEntry {
@@ -128,7 +131,7 @@ export function groupWidgetEntry(value:{id?:string;type:WidgetType;name?:string;
  const name=value.name===undefined?widgetCatalog[value.type].name:value.name.trim();
  if(!name||name.length>60)throw new Error('Use a name from 1 to 60 characters.');
  const iconData=checkedAppIconData(value.iconData);
- return{id:value.id??crypto.randomUUID(),type:value.type,name,icon:(value.icon?.trim()||name.slice(0,2).toUpperCase()).slice(0,8),...(value.type==='apps'&&iconData?{iconData}:{})};
+ return{id:value.id??crypto.randomUUID(),type:value.type,name,icon:(value.icon?.trim()||name.slice(0,2).toUpperCase()).slice(0,8),kind:'shortcut',...(value.type==='apps'&&iconData?{iconData}:{})};
 }
 export function saveWidgetToGroup(workspace:Workspace,widget:WidgetInstance,groupId?:string):Workspace {
  let entry=groupWidgetEntry({type:widget.type,name:widget.title.trim()||widgetCatalog[widget.type].name,iconData:widget.type==='apps'?widget.appIconData:undefined});
@@ -142,13 +145,55 @@ export function saveWidgetToGroup(workspace:Workspace,widget:WidgetInstance,grou
  if(workspace.groups.length>=200)throw new Error('This workspace has reached its group limit.');
  return{...workspace,groups:[...workspace.groups,{id:crypto.randomUUID(),name:'',shortcuts:[],widgets:[entry],expanded:true}]};
 }
+export function collectWidgetIntoGroup(workspace:Workspace,widgetId:string,groupId?:string,originalPlacement?:Placement):Workspace {
+ const source=workspace.widgets.find(item=>item.id===widgetId);
+ if(!source)throw new Error('This widget is no longer on the workspace.');
+ if(source.type==='group')throw new Error('Groups cannot be collected inside another Group.');
+ if(workspace.groups.some(group=>group.widgets.some(item=>item.kind==='collected'&&item.id===widgetId)))throw new Error('This widget is already collected.');
+ const target=groupId?workspace.groups.find(item=>item.id===groupId):undefined;
+ if(groupId&&!target)throw new Error('This group is no longer available.');
+ if(target&&target.widgets.length>=200)throw new Error('This group has reached its widget limit.');
+ if(!target&&workspace.groups.length>=200)throw new Error('This workspace has reached its group limit.');
+ const snapshot=persistentWidgetSnapshot({...source,...(originalPlacement?{placement:placement(source.type,originalPlacement)}:{})});
+ let entry:GroupWidgetEntry={id:snapshot.id,type:snapshot.type as Exclude<WidgetType,'group'>,name:snapshot.title.trim()||widgetCatalog[snapshot.type].name,icon:widgetCatalog[snapshot.type].name.slice(0,2).toUpperCase(),kind:'collected',instance:snapshot};
+ if(!groupIconBudget(workspace.groups,entry)){const {appIconData:_ignored,...instance}=snapshot;entry={...entry,instance}}
+ const groups=target?updateSavedGroup(workspace,target.id,{widgets:[...target.widgets,entry],expanded:true}).groups:[...workspace.groups,{id:crypto.randomUUID(),name:'',shortcuts:[],widgets:[entry],expanded:true}];
+ return{...workspace,groups,widgets:workspace.widgets.filter(item=>item.id!==widgetId)};
+}
+export function restoreCollectedWidget(workspace:Workspace,entryId:string,canvasWidth=20000,canvasHeight=20000):Workspace {
+ const group=workspace.groups.find(item=>item.widgets.some(entry=>entry.id===entryId&&entry.kind==='collected'));
+ const entry=group?.widgets.find(item=>item.id===entryId&&item.kind==='collected');
+ if(!group||!entry?.instance)throw new Error('This collected widget is no longer available.');
+ if(workspace.widgets.some(item=>item.id===entry.id))throw new Error('This widget is already on the workspace.');
+ let restored=structuredClone(entry.instance);
+ if(restored.minimized)restored=moveMinimizedWidgetInstance(restored,{x:restored.placement.x,y:restored.placement.y},canvasWidth,canvasHeight);
+ else restored={...restored,placement:constrainPlacement(restored.type,restored.placement,canvasWidth,{width:restored.type==='apps'&&restored.appPanelOpen?restored.appMinWidth:undefined,height:restored.type==='apps'&&restored.appPanelOpen?restored.appMinHeight:undefined},canvasHeight)};
+ return{...workspace,widgets:[...workspace.widgets,restored],groups:workspace.groups.map(item=>item.id===group.id?{...item,widgets:item.widgets.filter(saved=>saved.id!==entryId)}:item)};
+}
 function parseGroupEntries(value:unknown):GroupWidgetEntry[]{
- if(!Array.isArray(value))return [];const ids=new Set<string>();let iconBytes=0;
+ if(!Array.isArray(value))return [];const ids=new Set<string>();
  return value.slice(0,200).flatMap(v=>{try{
   if(!v||typeof v.type!=='string'||(v.name!==undefined&&typeof v.name!=='string'))return [];
-  let item=groupWidgetEntry({id:typeof v.id==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(v.id)&&!ids.has(v.id)?v.id:undefined,type:v.type,name:v.name,icon:typeof v.icon==='string'?v.icon:undefined,iconData:typeof v.iconData==='string'?v.iconData:undefined});ids.add(item.id);
-  if(item.iconData){if(iconBytes+item.iconData.length>GROUP_ICON_BUDGET){const {iconData:_ignored,...fallback}=item;item=fallback}else iconBytes+=item.iconData.length}return[item];
+  if(v.kind==='collected'){
+   if(typeof v.id!=='string'||!/^[a-zA-Z0-9-]{1,80}$/.test(v.id)||ids.has(v.id))return [];
+   const instance=persistentWidgetSnapshot(v.instance);
+   if(instance.type==='group'||instance.id!==v.id||instance.type!==v.type)return [];
+   const name=typeof v.name==='string'?v.name.trim().slice(0,60):'';
+   const item:GroupWidgetEntry={id:instance.id,type:instance.type,name:name||instance.title||widgetCatalog[instance.type].name,icon:typeof v.icon==='string'?v.icon.slice(0,8):widgetCatalog[instance.type].name.slice(0,2).toUpperCase(),kind:'collected',instance};
+   ids.add(item.id);return[item];
+  }
+  if(v.kind!==undefined&&v.kind!=='shortcut')return [];
+  const item=groupWidgetEntry({id:typeof v.id==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(v.id)&&!ids.has(v.id)?v.id:undefined,type:v.type,name:v.name,icon:typeof v.icon==='string'?v.icon:undefined,iconData:typeof v.iconData==='string'?v.iconData:undefined});ids.add(item.id);return[item];
  }catch{return []}});
+}
+const PERSISTED_WIDGET_FIELDS:(keyof WidgetInstance)[]=['id','type','span','instanceNumber','title','text','remaining','end','url','bookmarks','homeVersion','folderName','folderKey','fileKey','fileName','fileKind','appKey','appName','appIconData','appPanelOpen','appReuseExisting','appMinWidth','appMinHeight','browserVersion','browserToolsExpanded','bookmarksExpanded','pageTitle','lectureRestore','placement','minimized','restorePlacement','shortcuts','schedule','groupId'];
+function persistentWidgetSnapshot(value:unknown):WidgetInstance {
+ if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('Invalid collected widget.');
+ const source=value as Record<string,unknown>,filtered=Object.fromEntries(PERSISTED_WIDGET_FIELDS.filter(key=>key in source).map(key=>[key,source[key]]));
+ const checked=checkedWidget(filtered);
+ // Open-app identity is held in native process state only; the collected
+ // snapshot keeps its safe app configuration but never auto-launches it later.
+ return checked.type==='apps'?{...checked,appPanelOpen:false}:checked;
 }
 function parseGroups(value:unknown):SavedGroup[]{
  if(!Array.isArray(value))return [];const ids=new Set<string>();
@@ -158,6 +203,7 @@ function parseGroups(value:unknown):SavedGroup[]{
  });
 }
 export function createWidgetFromGroupEntry(entry:GroupWidgetEntry,widgets:WidgetInstance[],at?:{x:number;y:number},width?:number):WidgetInstance {
+ if(entry.kind==='collected')throw new Error('Collected widgets must be restored as the same instance.');
  const checked=groupWidgetEntry(entry),widget=createWidget(checked.type);widget.title=checked.name;widget.instanceNumber=nextInstanceNumber(checked.type,widgets);if(checked.type==='apps')widget.appIconData=checked.iconData;
  widget.placement=at?placement(checked.type,{...widget.placement,...at}):nextPlacement(checked.type,widgets,width);return widget;
 }
@@ -217,7 +263,7 @@ function checkedWidget(value: unknown): WidgetInstance {
      appPanelOpen:checkedAppPanelOpen,appMinWidth,appMinHeight,
     appReuseExisting:!!checkedAppKey&&item.appReuseExisting===true,
     instanceNumber:typeof item.instanceNumber==='number'&&Number.isSafeInteger(item.instanceNumber)&&item.instanceNumber>0&&item.instanceNumber<1000000?item.instanceNumber:1,
-     placement:checkedPlacement,minimized,restorePlacement:minimized?restorePlacement:null,
+    placement:checkedPlacement,minimized,restorePlacement:minimized?restorePlacement:null,
     browserVersion:1,browserToolsExpanded:item.browserToolsExpanded===true,bookmarksExpanded:item.bookmarksExpanded===true,pageTitle:typeof item.pageTitle==='string'?item.pageTitle.slice(0,200):'',
     lectureRestore:item.type==='browser'&&item.lectureRestore&&typeof item.lectureRestore==='object'?placement('browser',item.lectureRestore):null,
     shortcuts:parseWebShortcuts(item.shortcuts,item.type==='browser'?parseWebShortcuts(item.bookmarks,defaults.shortcuts):[]),
@@ -242,8 +288,11 @@ export function parseState(text: string): WorkspaceState {
       for(const link of defaultWebShortcuts())if(!widget.shortcuts.some(s=>s.url===link.url))widget.shortcuts.push(link);
     }
     for (const widget of widgets) { if (widgetIds.has(widget.id)) throw new Error('Duplicate widget instance'); widgetIds.add(widget.id); }
-    const groups=parseGroups(workspace.groups);let iconBytes=0;
-    for(const group of groups)group.widgets=group.widgets.map(item=>{if(!item.iconData)return item;if(iconBytes+item.iconData.length>GROUP_ICON_BUDGET){const {iconData:_ignored,...fallback}=item;return fallback}iconBytes+=item.iconData.length;return item});
+    const groups=parseGroups(workspace.groups),collectedIds=new Set(widgets.map(item=>item.id));let iconBytes=0;
+    for(const group of groups){
+      group.widgets=group.widgets.filter(item=>{if(item.kind!=='collected')return true;if(collectedIds.has(item.id))return false;collectedIds.add(item.id);return true});
+      group.widgets=group.widgets.map(item=>{const iconData=groupEntryIconData(item);if(!iconData)return item;if(iconBytes+iconData.length>GROUP_ICON_BUDGET){if(item.kind==='collected'&&item.instance){const {appIconData:_ignored,...instance}=item.instance;return{...item,instance}}const {iconData:_ignored,...fallback}=item;return fallback}iconBytes+=iconData.length;return item});
+    }
     // Older Group cards become reusable tray collections, without changing their links or geometry.
     for(const widget of widgets)if(widget.type==='group'){
       if(!widget.groupId||!groups.some(g=>g.id===widget.groupId)){
