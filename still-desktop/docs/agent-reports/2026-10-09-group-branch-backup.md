@@ -24,4 +24,3 @@
 ## Handoff
 - Push only `agent/codex/group-improvements`; do not merge it to `main`.
 - Create the Apps UI cleanup worktree from the verified application source commit `8a5782836651a3530b98d05405e4ec91a0e74858` only after the remote backup is confirmed.
-
