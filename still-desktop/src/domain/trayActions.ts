@@ -5,9 +5,14 @@ export function upsertSavedPresets(existing:WidgetPreset[],items:WidgetPreset[])
  const presets=[...existing];
  for(const value of items){
   const item=widgetPreset(value);
-  // Same named configuration is an update; repeated drops do not add labels.
-  const index=presets.findIndex(p=>p.id===item.id||(p.type===item.type&&p.name===item.name));
-  if(index<0)presets.push(item);else presets[index]={...item,id:presets[index].id};
+  const fingerprint=(preset:WidgetPreset)=>JSON.stringify({...preset,id:'',name:''});
+  const index=presets.findIndex(p=>p.id===item.id);
+  if(index>=0){presets[index]=item;continue}
+  if(presets.some(p=>fingerprint(p)===fingerprint(item)))continue;
+  // Different contents with the same default title must not erase a saved note.
+  let name=item.name,number=2;
+  while(presets.some(p=>p.name===name)){const suffix=' '+number++;name=item.name.slice(0,60-suffix.length)+suffix;}
+  presets.push({...item,name});
  }
  return presets;
 }

@@ -26,7 +26,10 @@ test('Saved copies deduplicate, persist supported state and leave original place
  const restored=parseState(JSON.stringify(state));assert.equal(restored.presets[0].text,'Formula');
  const id=state.presets[0].id;note.text='Updated';
  state.presets=upsertSavedPresets(state.presets,[presetFromWidget(note)]);
- assert.equal(state.presets.length,1);assert.equal(state.presets[0].id,id);assert.equal(state.presets[0].text,'Updated');
+ assert.equal(state.presets.length,2);assert.equal(state.presets[0].id,id);assert.equal(state.presets[0].text,'Formula');
+ assert.equal(state.presets[1].text,'Updated');assert.equal(state.presets[1].name,'math120 2');
+ state.presets=upsertSavedPresets(state.presets,[{...state.presets[0],name:'Edited name'}]);
+ assert.equal(state.presets.length,2);assert.equal(state.presets[0].name,'Edited name');
 });
 
 test('exact canvas deletion retains other placements and Group contents through restart',async()=>{
