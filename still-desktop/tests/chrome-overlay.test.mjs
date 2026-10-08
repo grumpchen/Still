@@ -22,6 +22,18 @@ test('Chrome clip geometry retains partial viewport edges and masks only higher 
  assert.equal(geometry.viewportRight,400,'The native guard receives the viewport edge in logical client coordinates');
  assert.equal(chromeClipGeometry({left:0,top:0,right:100,bottom:100},{left:0,top:0,right:100,bottom:100},{left:0,top:0,right:100,bottom:100},[{left:0,top:0,right:100,bottom:100}],true,false).visible,false);
 });
+test('Chrome leaves the shared bottom-right resize grip uncovered by the native window',()=>{
+ const rect={left:100,top:80,right:700,bottom:580},viewport={left:0,top:0,right:900,bottom:700},grip={left:668,top:548,right:700,bottom:580};
+ const geometry=chromeClipGeometry(rect,viewport,rect,[],true,false,grip);
+ assert.equal(geometry.visible,true,'the corner cutout must not hide the rest of the Browser panel');
+ assert.deepEqual(geometry.occlusions,[{x:668,y:548,width:32,height:32}], 'the native HWND region must exclude the Still resize control');
+});
+test('the Browser resize grip remains reachable when the widget touches the viewport edges',()=>{
+ const edge={left:0,top:0,right:400,bottom:300},grip={left:368,top:268,right:400,bottom:300};
+ const geometry=chromeClipGeometry(edge,edge,edge,[],true,false,grip);
+ assert.equal(geometry.visible,true);
+ assert.deepEqual(geometry.occlusions,[{x:368,y:268,width:32,height:32}]);
+});
 test('Chrome remains hidden only when outside the viewport, workspace inactive, or obscured',()=>{
  const r={left:0,top:0,right:100,bottom:100},v={left:200,top:200,right:300,bottom:300};
  assert.equal(chromeClipGeometry(r,v,r,[],true,false).visible,false);

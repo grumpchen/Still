@@ -15,9 +15,9 @@ export default function BrowserWidget({widget,obscured,workspaceActive=true}:Wid
   const node=host.current!,viewport=node.closest('.canvas-viewport') as HTMLElement,canvas=node.closest('.workspace-canvas')!;
    function rectangle(){const r=node.getBoundingClientRect();return{x:r.x,y:r.y,width:Math.max(1,r.width),height:Math.max(1,r.height)}}
    function geometry(){
-    const r=node.getBoundingClientRect(),v=viewport.getBoundingClientRect(),content=node.closest('.widget-content')!.getBoundingClientRect(),card=node.closest('.canvas-card') as HTMLElement,level=Number(card.style.zIndex);
+    const r=node.getBoundingClientRect(),v=viewport.getBoundingClientRect(),content=node.closest('.widget-content')!.getBoundingClientRect(),card=node.closest('.canvas-card') as HTMLElement,level=Number(card.style.zIndex),grip=card.querySelector<HTMLElement>('.widget-resize')?.getBoundingClientRect()??null;
     const higher=Array.from(canvas.querySelectorAll<HTMLElement>('.canvas-card')).filter(other=>other!==card&&Number(other.style.zIndex)>level).map(other=>other.getBoundingClientRect());
-    return{...chromeClipGeometry(r,v,content,higher,current.current.workspaceActive,current.current.obscured),stackingRank:level};
+    return{...chromeClipGeometry(r,v,content,higher,current.current.workspaceActive,current.current.obscured,grip),stackingRank:level};
    }
    function invalidate(forceClear=false){revision++;if(forceClear||busy)last='';return revision}
    async function sync(){frame=0;if(disposed||!opened)return;if(scrolling||busy){dirty=true;return}busy=true;let requestRevision=revision;
