@@ -16,6 +16,13 @@ export function upsertSavedPresets(existing:WidgetPreset[],items:WidgetPreset[])
  }
  return presets;
 }
+export function renameSavedPreset(existing:WidgetPreset[],id:string,name:string):WidgetPreset[]{
+ return existing.map(item=>item.id===id?widgetPreset({...item,name} as WidgetPreset):item);
+}
+export function removeSavedPreset(existing:WidgetPreset[],id:string):WidgetPreset[]{
+ const next=existing.filter(item=>item.id!==id);
+ return next.length===existing.length?existing:next;
+}
 export function savedAppInUse(state:WorkspaceState,preset:WidgetPreset):boolean{
  if(preset.type!=='apps')return false;
  return state.workspaces.some(workspace=>[...workspace.widgets,...workspace.groups.flatMap(g=>g.widgets.flatMap(e=>e.kind==='collected'&&e.instance?[e.instance]:[]))].some(w=>w.type==='apps'&&w.appPanelOpen&&w.appKey===preset.appSourceId));

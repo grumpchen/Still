@@ -130,7 +130,11 @@ html.native-transparent .workspace-canvas{background-image:none}
 .liquid-glass .bookmark-item{background:rgb(255 255 255 / .16)}
 .widget-tray{flex-direction:column;align-items:stretch;gap:0}
 .tray-main-row{display:flex;align-items:center;gap:10px;min-height:0;flex-shrink:0;min-width:0}
-.tray-main-row .tray-items{flex:1}
+.tray-main-row .tray-items{flex:1;min-width:0}
+.tray-items .saved-plus{flex:0 0 34px;width:34px;height:34px;padding:6px}
+.saved-item-context-menu{position:fixed;z-index:10000;display:grid;min-width:144px;gap:4px;padding:5px;border:1px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text);box-shadow:0 8px 24px #10182035;backdrop-filter:blur(18px)}
+.saved-item-context-menu button{width:100%;text-align:left;padding:7px 10px;border:0;border-radius:8px;background:transparent;box-shadow:none;font:inherit;color:inherit;cursor:pointer}
+.saved-item-context-menu button:hover,.saved-item-context-menu button:focus-visible{background:var(--tint);outline:2px solid color-mix(in srgb,var(--accent) 55%,transparent);outline-offset:-2px}
 .tray-group-separator{align-self:stretch;flex-shrink:0;width:1px;background:var(--border);margin:3px 4px}
 .tray-items .tray-group-button{cursor:pointer;border-color:color-mix(in srgb,var(--accent) 28%,var(--border))}
 .tray-group-button small{font-size:9px;color:var(--muted);padding:2px 4px;background:var(--tint);border-radius:5px}
