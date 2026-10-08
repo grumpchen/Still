@@ -26,3 +26,13 @@ test('expanded and minimized Browser or Apps instances enter the same move-to-Gr
  assert.match(finish,/canvasTarget&&original\)\{void saveToGroup\(original,canvasTarget,true\);return\}/);
  assert.equal((canvas.match(/onPointerDown=\{e=>start\(e,w,'move'\)\}/g)||[]).length,2, 'expanded headers and minimized buttons both use the same drag handler');
 });
+
+test('native Apps collection requires a confirmed hide and persists only recovery intent',()=>{
+ const app=readFileSync(new URL('../src/App.tsx',import.meta.url),'utf8');
+ const apps=readFileSync(new URL('../src/AppsWidget.tsx',import.meta.url),'utf8');
+ const panel=readFileSync(new URL('../src/platform/appPanel.ts',import.meta.url),'utf8');
+ assert.match(app,/const suspended=await appPanel\.suspendForCollection\(widget\.id\);if\(widget\.appPanelOpen&&!suspended\)throw new Error/);
+ assert.match(panel,/suspendForCollection:async\(id:string\)=>\{const suspended=await command<boolean>\(id,'app_panel_suspend',\{forCollection:true\}\);if\(suspended\)retainedForCollection\.add\(id\);return suspended\}/);
+ assert.match(apps,/retainedOnMount\|\|widget\.appWasCollected/);
+ assert.match(apps,/current\.current\.update\(\{appPanelOpen:true,appWasCollected:false\}\)/);
+});

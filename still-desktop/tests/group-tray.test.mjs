@@ -100,9 +100,22 @@ test('collected Apps retain safe relaunch configuration without saving transient
  const entry=collected.groups[0].widgets[0];
  assert.equal(entry.instance.appKey,'grant-123');assert.equal(entry.instance.appName,'Editor');
  assert.equal(entry.instance.appPanelOpen,false);assert.equal('hwnd' in entry.instance,false);assert.equal('pid' in entry.instance,false);
+ assert.equal(entry.instance.appWasCollected,true,'the Group snapshot records recovery intent without HWND/PID');
  const restored=workspaces.parseState(JSON.stringify({...workspaces.createInitialState(),workspaces:[collected],activeId:collected.id})).workspaces[0];
  const snapshot=restored.groups[0].widgets[0].instance;
  assert.equal(snapshot.appKey,'grant-123');assert.equal('hwnd' in snapshot,false);assert.equal('pid' in snapshot,false);
+ assert.equal(snapshot.appWasCollected,true);
+});
+
+test('collected Ctrl+Shift Apps retain restart recovery intent without requiring an app shortcut',()=>{
+ const workspace=workspaces.createWorkspace('Apps',['apps','group']),source=workspace.widgets.find(widget=>widget.type==='apps');
+ source.id='capture-kept';source.title='Captured window';source.appName='Editor';source.appKey=null;source.appPanelOpen=true;
+ const collected=workspaces.collectWidgetIntoGroup(workspace,source.id,workspace.widgets.find(widget=>widget.type==='group').groupId);
+ const saved=collected.groups[0].widgets[0].instance;
+ assert.equal(saved.appWasCollected,true);assert.equal(saved.appPanelOpen,false);assert.equal(saved.appKey,null);
+ const reopened=workspaces.parseState(JSON.stringify({...workspaces.createInitialState(),workspaces:[collected],activeId:collected.id})).workspaces[0];
+ assert.equal(reopened.groups[0].widgets[0].instance.appWasCollected,true);
+ assert.equal('hwnd' in reopened.groups[0].widgets[0].instance,false);assert.equal('pid' in reopened.groups[0].widgets[0].instance,false);
 });
 
 test('collected widgets cannot be nested, duplicated, or silently removed with their Group',()=>{
@@ -228,6 +241,15 @@ test('collecting native panels suspends and retains them without closing their w
  assert.match(appNative,/pub async fn app_panel_suspend[\s\S]*?ShowWindow\(handle\(hwnd\),SW_HIDE\)/);
  assert.match(appNative,/pub async fn app_panel_resume[\s\S]*?Ok\(info\(entry,main,false\)\)/);
  assert.match(chromeNative,/pub async fn chrome_panel_suspend[\s\S]*?ShowWindow\(window,SW_HIDE\)/);
+});
+
+test('failed native hide prevents collecting an attached Apps widget and rollback retains the live attachment',()=>{
+ const app=readFileSync(new URL('../src/App.tsx',import.meta.url),'utf8');
+ const native=readFileSync(new URL('../src-tauri/src/app_panel.rs',import.meta.url),'utf8');
+ assert.match(app,/const suspended=await appPanel\.suspendForCollection\(widget\.id\);if\(widget\.appPanelOpen&&!suspended\)throw new Error/);
+ assert.match(app,/appPanel\.cancelCollection\(widget\.id\)/);
+ assert.match(native,/if for_collection==Some\(true\)\{unsafe\{SetPropW\([\s\S]*?ShowWindow\(handle\(hwnd\),SW_HIDE\)/);
+ assert.match(native,/if cancel_collection==Some\(true\)[\s\S]*?entry\.visible=visible[\s\S]*?place\(&app,&mut panels\)/);
 });
 
 test('a header-saved group name is normalized, updates linked cards, and survives a restart roundtrip',()=>{

@@ -31,9 +31,10 @@ static APP:OnceLock<AppHandle>=OnceLock::new();
 static OWNER:std::sync::atomic::AtomicUsize=std::sync::atomic::AtomicUsize::new(0);
 fn owner()->Result<HWND,String>{let h=OWNER.load(std::sync::atomic::Ordering::Relaxed);if h==0{Err("Still window is missing".into())}else{Ok(handle(h))}}
 fn marker()->Vec<u16>{wide("StillManagedAppPanel")}
+fn collection_marker(id:&str)->Vec<u16>{wide(&format!("StillCollectedAppPanel:{id}"))}
 type Physical=(i32,i32,i32,i32);
 struct Entry {
- hwnd:usize,pid:u32,source_id:String,bounds:Bounds,clip:Bounds,grip:Option<Bounds>,occlusions:Vec<Bounds>,viewport_right:Option<f64>,visible:bool,shown:bool,edge_hidden:bool,preserve_focus:bool,stacking_rank:i64,revision:u64,
+ hwnd:usize,pid:u32,source_id:String,bounds:Bounds,clip:Bounds,grip:Option<Bounds>,occlusions:Vec<Bounds>,viewport_right:Option<f64>,visible:bool,shown:bool,edge_hidden:bool,preserve_focus:bool,collection_marker:Option<String>,collection_was_visible:Option<bool>,stacking_rank:i64,revision:u64,
  resize_guard:Option<crate::native_resize::NativeResizeGuard>,original_owner:usize,original_placement:WINDOWPLACEMENT,original_region:usize,original_visible:bool,
  // CSS-pixel minima; measured is a fallback for apps which refuse SetWindowPos
  // without declaring a WM_GETMINMAXINFO minimum. Pending candidates are kept in
@@ -97,6 +98,14 @@ unsafe extern "system" fn enumerate(hwnd:HWND,param:LPARAM)->windows::core::BOOL
  windows::core::BOOL(1)
 }
 pub(crate) fn windows()->Vec<WindowInfo>{let mut items=Vec::new();unsafe{let _=EnumWindows(Some(enumerate),LPARAM(&mut items as *mut _ as isize));}items}
+fn collected_windows(id:&str)->Vec<WindowInfo>{
+ unsafe extern "system" fn collect(hwnd:HWND,param:LPARAM)->windows::core::BOOL{
+  let (property,items)=&mut *(param.0 as *mut (Vec<u16>,Vec<WindowInfo>));
+  if !GetPropW(hwnd,PCWSTR(property.as_ptr())).0.is_null(){let process=pid(hwnd);items.push(WindowInfo{hwnd:hwnd.0 as usize,pid:process,title:window_title(hwnd),executable:executable(process)});}
+  windows::core::BOOL(1)
+ }
+ let mut state=(collection_marker(id),Vec::new());unsafe{let _=EnumWindows(Some(collect),LPARAM(&mut state as *mut _ as isize));}state.1
+}
 pub(crate) fn managed_windows(app:&AppHandle)->Vec<(usize,u32)>{app.state::<AppPanelState>().0.lock().map(|s|s.items.values().filter(|e|valid_window(e)).map(|e|(e.hwnd,e.pid)).collect()).unwrap_or_default()}
 fn window_title(hwnd:HWND)->String{unsafe{let length=GetWindowTextLengthW(hwnd).max(0) as usize;let mut title=vec![0u16;length.min(4096)+1];GetWindowTextW(hwnd,&mut title);from_wide(&title)}}
 fn exact_window_identity(expected_hwnd:usize,expected_pid:u32,actual_hwnd:usize,actual_pid:u32)->bool{expected_hwnd!=0&&expected_hwnd==actual_hwnd&&expected_pid!=0&&expected_pid==actual_pid&&actual_pid!=std::process::id()}
@@ -183,7 +192,7 @@ fn attach(window:&WindowInfo,source_id:String,bounds:Bounds,clip:Bounds,grip:Opt
  GetWindowPlacement(hwnd,&mut original_placement).map_err(|e|e.to_string())?;
  let region=CreateRectRgn(0,0,0,0);let original_region=if GetWindowRgn(hwnd,region)!=RGN_ERROR{region.0 as usize}else{let _=DeleteObject(HGDIOBJ(region.0));0};
   let original_visible=IsWindowVisible(hwnd).as_bool();
-  let mut entry=Entry{hwnd:window.hwnd,pid:window.pid,source_id,bounds,clip,grip,occlusions:Vec::new(),viewport_right:None,visible:preserve_focus&&original_visible,shown:preserve_focus&&original_visible,edge_hidden:false,preserve_focus,stacking_rank:0,revision:0,resize_guard:None,original_owner,original_placement,original_region,original_visible,declared_width:None,declared_height:None,measured_width:None,measured_height:None,pending_width:None,pending_height:None,probing_width:false,probing_height:false,minimum_dpi:None,minimum_query_after:None,fresh:false,last:None,error:String::new()};
+  let mut entry=Entry{hwnd:window.hwnd,pid:window.pid,source_id,bounds,clip,grip,occlusions:Vec::new(),viewport_right:None,visible:preserve_focus&&original_visible,shown:preserve_focus&&original_visible,edge_hidden:false,preserve_focus,collection_marker:None,collection_was_visible:None,stacking_rank:0,revision:0,resize_guard:None,original_owner,original_placement,original_region,original_visible,declared_width:None,declared_height:None,measured_width:None,measured_height:None,pending_width:None,pending_height:None,probing_width:false,probing_height:false,minimum_dpi:None,minimum_query_after:None,fresh:false,last:None,error:String::new()};
  // Top-level ownership, never SetParent/WS_CHILD. Restore it before Still closes.
  SetWindowLongPtrW(hwnd,GWLP_HWNDPARENT,main.0 as isize);
  if GetWindow(hwnd,GW_OWNER).ok()!=Some(main){SetWindowLongPtrW(hwnd,GWLP_HWNDPARENT,original_owner as isize);return Err("The app could not be attached. Still and the app must run at the same Windows permission level.".into())}
@@ -201,6 +210,7 @@ fn restore(entry:&mut Entry){unsafe{
  let mut placement=entry.original_placement;if !entry.original_visible{placement.showCmd=SW_HIDE.0 as u32;}
  let _=SetWindowPlacement(hwnd,&placement);let _=ShowWindow(hwnd,if entry.original_visible{SW_SHOWNA}else{SW_HIDE});
 }}
+fn clear_collection_marker(entry:&mut Entry){if let Some(id)=entry.collection_marker.take(){unsafe{let _=RemovePropW(handle(entry.hwnd),PCWSTR(collection_marker(&id).as_ptr()));}}entry.collection_was_visible=None;}
 fn position(entry:&mut Entry,main:HWND,origin:POINT,scale:f64)->Result<bool,String>{unsafe{
  let hwnd=handle(entry.hwnd);let main_dpi=windows::Win32::UI::HiDpi::GetDpiForWindow(main).max(96);let target_dpi=windows::Win32::UI::HiDpi::GetDpiForWindow(hwnd).max(96);let dpi=(main_dpi,target_dpi);
  let zoomed=IsZoomed(hwnd).as_bool();let iconic=IsIconic(hwnd).as_bool();
@@ -354,31 +364,48 @@ pub fn install(app:&AppHandle)->Result<(),String>{
  OWNER.store(main.0 as usize,std::sync::atomic::Ordering::Relaxed);
  unsafe{for (a,b) in [(EVENT_SYSTEM_FOREGROUND,EVENT_SYSTEM_FOREGROUND),(EVENT_OBJECT_DESTROY,EVENT_OBJECT_LOCATIONCHANGE)]{if SetWinEventHook(a,b,None,Some(event),0,0,WINEVENT_OUTOFCONTEXT).0.is_null(){return Err("Unable to synchronize application panels".into())}}}Ok(())
 }
-fn release(app:&AppHandle,id:&str){if let Ok(mut s)=app.state::<AppPanelState>().0.lock(){*s.generation.entry(id.into()).or_default()+=1;s.pending.remove(id);if let Some(mut entry)=s.items.remove(id){restore(&mut entry);}}}
+fn release(app:&AppHandle,id:&str){if let Ok(mut s)=app.state::<AppPanelState>().0.lock(){*s.generation.entry(id.into()).or_default()+=1;s.pending.remove(id);if let Some(mut entry)=s.items.remove(id){clear_collection_marker(&mut entry);restore(&mut entry);}}}
 pub fn shutdown(app:&AppHandle){let state=app.state::<AppPanelState>();if let Ok(mut s)=state.0.lock(){s.closed=true;s.pending.clear();for (_,mut entry) in s.items.drain(){restore(&mut entry);}};}
 
 #[tauri::command]
-pub async fn app_panel_suspend(app:AppHandle,webview:Webview,id:String)->Result<bool,String>{
+pub async fn app_panel_suspend(app:AppHandle,webview:Webview,id:String,for_collection:Option<bool>)->Result<bool,String>{
  crate::browser::authorize(&webview)?;instance(&id)?;
  let state=app.state::<AppPanelState>();let mut panels=state.0.lock().map_err(|_|"App panels are unavailable")?;
  let Some(hwnd)=panels.items.get(&id).filter(|entry|valid_window(entry)).map(|entry|entry.hwnd)else{return Ok(false)};
  *panels.generation.entry(id.clone()).or_default()+=1;panels.pending.remove(&id);
  if unsafe{GetForegroundWindow()==handle(hwnd)}{if let Ok(main)=owner(){unsafe{let _=SetForegroundWindow(main);}}}
  if let Some(entry)=panels.items.get_mut(&id){
+  if for_collection==Some(true){unsafe{SetPropW(handle(hwnd),PCWSTR(collection_marker(&id).as_ptr()),Some(HANDLE(1usize as *mut _))).map_err(|error|error.to_string())?;}entry.collection_marker=Some(id.clone());entry.collection_was_visible=Some(entry.visible);}
   unsafe{let _=ShowWindow(handle(hwnd),SW_HIDE);}
+  if for_collection==Some(true)&&unsafe{IsWindowVisible(handle(hwnd)).as_bool()}{clear_collection_marker(entry);return Err("Windows did not hide the attached app safely. The widget remains on the workspace.".into())}
   entry.visible=false;entry.shown=false;entry.edge_hidden=false;entry.last=None;entry.revision=0;entry.fresh=false;
  }
  drop(panels);crate::native_panels::apply_order(&app);Ok(true)
 }
 
 #[tauri::command]
-pub async fn app_panel_resume(app:AppHandle,webview:Webview,id:String)->Result<Info,String>{
+pub async fn app_panel_resume(app:AppHandle,webview:Webview,id:String,cancel_collection:Option<bool>)->Result<Info,String>{
  crate::browser::authorize(&webview)?;instance(&id)?;let main=owner()?;
  let state=app.state::<AppPanelState>();let mut panels=state.0.lock().map_err(|_|"App panels are unavailable")?;
- if !panels.items.get(&id).is_some_and(valid_window){panels.items.remove(&id);return Err("The collected app window has closed. Reattach it from Apps.".into())}
- let entry=panels.items.get_mut(&id).ok_or("The collected app window is no longer available. Reattach it from Apps.")?;
- entry.visible=false;entry.shown=false;entry.edge_hidden=false;entry.last=None;entry.revision=0;entry.fresh=false;
- Ok(info(entry,main,false))
+ if panels.items.get(&id).is_some_and(valid_window){
+  if cancel_collection==Some(true){let entry=panels.items.get_mut(&id).unwrap();let visible=entry.collection_was_visible.unwrap_or(true);clear_collection_marker(entry);entry.visible=visible;entry.shown=false;entry.edge_hidden=false;entry.last=None;entry.revision=0;entry.fresh=false;place(&app,&mut panels);crate::native_panels::apply_order(&app);let entry=panels.items.get(&id).ok_or("The app window is no longer available. Reattach it from Apps.")?;return Ok(info(entry,main,false))}
+  let entry=panels.items.get_mut(&id).unwrap();clear_collection_marker(entry);entry.visible=false;entry.shown=false;entry.edge_hidden=false;entry.last=None;entry.revision=0;entry.fresh=false;
+  return Ok(info(entry,main,false))
+ }
+ if cancel_collection==Some(true){return Err("The collected app window could not be restored to its widget. Reattach it from Apps.".into())}
+ panels.items.remove(&id);
+ let mut candidates=collected_windows(&id).into_iter().filter(|candidate|{
+  let target=handle(candidate.hwnd);
+  unsafe{IsWindow(Some(target)).as_bool()&&pid(target)==candidate.pid&&candidate.pid!=std::process::id()&&GetAncestor(target,GA_ROOT)==target}
+ }).collect::<Vec<_>>();
+ if candidates.len()!=1{return Err(if candidates.is_empty(){"The collected app window is no longer available. It may have closed while Still was stopped. Use Attach open app to reconnect it.".into()}else{"More than one window matches this collected app. Use Attach open app to choose the correct window.".into()})}
+ let candidate=candidates.pop().unwrap();let owner_property=unsafe{GetPropW(handle(candidate.hwnd),PCWSTR(marker().as_ptr()))};
+ if !owner_property.0.is_null(){let previous_owner=handle(owner_property.0 as usize);if previous_owner!=main&&unsafe{IsWindow(Some(previous_owner)).as_bool()}{return Err("This app window is still managed by another Still window. Close that Still session before restoring it here.".into())}unsafe{let _=RemovePropW(handle(candidate.hwnd),PCWSTR(marker().as_ptr()));}}
+ if panels.items.values().any(|entry|entry.hwnd==candidate.hwnd&&entry.pid==candidate.pid){return Err("This app window is already attached to another widget in Still.".into())}
+ let initial=Bounds{x:0.,y:0.,width:640.,height:400.};let mut entry=attach(&candidate,String::new(),initial.clone(),initial,None,main,false)?;entry.collection_marker=Some(id.clone());
+ let information=info(&entry,main,false);let token=collection_marker(&id);let _=unsafe{RemovePropW(handle(candidate.hwnd),PCWSTR(token.as_ptr()))};entry.collection_marker=None;entry.collection_was_visible=None;
+ if let Some(mut replaced)=panels.items.insert(id,entry){restore(&mut replaced)}
+ Ok(information)
 }
 
 #[tauri::command]
@@ -567,7 +594,23 @@ pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
   assert!(reuse_candidate(&ambiguous,Some("C:\\Office\\WINWORD.EXE")).is_err_and(|error|error.contains("Several windows")));
  }
  struct Fixture(HWND);impl Fixture{fn new(title:&str)->Self{unsafe{let class=wide("STATIC");let title=wide(title);Self(CreateWindowExW(WINDOW_EX_STYLE(0),PCWSTR(class.as_ptr()),PCWSTR(title.as_ptr()),WS_OVERLAPPEDWINDOW,50,60,840,520,None,None,None,None).unwrap())}}}impl Drop for Fixture{fn drop(&mut self){unsafe{let _=DestroyWindow(self.0);}}}
-  unsafe extern "system" fn minimum_fixture_proc(hwnd:HWND,message:u32,wparam:windows::Win32::Foundation::WPARAM,lparam:LPARAM)->windows::Win32::Foundation::LRESULT{
+ #[test]fn collected_window_marker_is_scoped_to_widget_and_survives_release_without_saving_hwnd_or_pid(){unsafe{
+  let target=Fixture::new("Still collected app recovery fixture");let id="fixture-collected-app";
+  let token=collection_marker(id);let other=collection_marker("another-widget");
+  SetPropW(target.0,PCWSTR(token.as_ptr()),Some(HANDLE(1usize as *mut _))).unwrap();
+  SetPropW(target.0,PCWSTR(marker().as_ptr()),Some(HANDLE(2usize as *mut _))).unwrap();
+  let matches=collected_windows(id);assert_eq!(matches.iter().map(|item|item.hwnd).collect::<Vec<_>>(),[target.0.0 as usize]);
+  assert!(collected_windows("another-widget").is_empty(),"A sibling widget must not recover this app window");
+  assert!(GetPropW(target.0,PCWSTR(other.as_ptr())).0.is_null());
+  let mut entry=test_entry(target.0.0 as usize,&Bounds{x:0.,y:0.,width:640.,height:400.});entry.original_visible=true;entry.collection_marker=Some(id.into());
+  restore(&mut entry);
+  assert!(IsWindowVisible(target.0).as_bool(),"Still shutdown leaves the external process visible on the desktop");
+  assert!(GetPropW(target.0,PCWSTR(marker().as_ptr())).0.is_null(),"Release restores ordinary ownership");
+  assert!(!GetPropW(target.0,PCWSTR(token.as_ptr())).0.is_null(),"The collected association remains available after Still shuts down");
+  clear_collection_marker(&mut entry);
+  assert!(GetPropW(target.0,PCWSTR(token.as_ptr())).0.is_null(),"Restoring the Group entry consumes its transient OS association");
+ }}
+ unsafe extern "system" fn minimum_fixture_proc(hwnd:HWND,message:u32,wparam:windows::Win32::Foundation::WPARAM,lparam:LPARAM)->windows::Win32::Foundation::LRESULT{
    if message==WM_GETMINMAXINFO{let minimum=&mut *(lparam.0 as *mut MINMAXINFO);minimum.ptMinTrackSize=POINT{x:900,y:600};return windows::Win32::Foundation::LRESULT(0)}
    if message==WM_WINDOWPOSCHANGING{let position=&mut *(lparam.0 as *mut WINDOWPOS);if position.cx<900{position.cx=900}if position.cy<600{position.cy=600};return windows::Win32::Foundation::LRESULT(0)}
    DefWindowProcW(hwnd,message,wparam,lparam)
@@ -587,7 +630,7 @@ pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
    drop(target);assert!(UnregisterClassW(PCWSTR(class.as_ptr()),Some(instance)).is_ok());
   }}
  // A fresh Entry wired to a fixture window, with the PHYSICAL floor storage.
-  fn test_entry(hwnd:usize,bounds:&Bounds)->Entry{Entry{hwnd,pid:std::process::id(),source_id:"test-app".into(),bounds:bounds.clone(),clip:bounds.clone(),grip:None,occlusions:Vec::new(),viewport_right:None,visible:true,shown:true,edge_hidden:false,preserve_focus:false,stacking_rank:0,revision:0,resize_guard:None,original_owner:0,original_placement:WINDOWPLACEMENT{length:std::mem::size_of::<WINDOWPLACEMENT>() as u32,..Default::default()},original_region:0,original_visible:false,declared_width:None,declared_height:None,measured_width:None,measured_height:None,pending_width:None,pending_height:None,probing_width:false,probing_height:false,minimum_dpi:None,minimum_query_after:None,fresh:false,last:None,error:String::new()}}
+  fn test_entry(hwnd:usize,bounds:&Bounds)->Entry{Entry{hwnd,pid:std::process::id(),source_id:"test-app".into(),bounds:bounds.clone(),clip:bounds.clone(),grip:None,occlusions:Vec::new(),viewport_right:None,visible:true,shown:true,edge_hidden:false,preserve_focus:false,collection_marker:None,collection_was_visible:None,stacking_rank:0,revision:0,resize_guard:None,original_owner:0,original_placement:WINDOWPLACEMENT{length:std::mem::size_of::<WINDOWPLACEMENT>() as u32,..Default::default()},original_region:0,original_visible:false,declared_width:None,declared_height:None,measured_width:None,measured_height:None,pending_width:None,pending_height:None,probing_width:false,probing_height:false,minimum_dpi:None,minimum_query_after:None,fresh:false,last:None,error:String::new()}}
  unsafe fn class_window(class:&[u16],proc:unsafe extern "system" fn(HWND,u32,windows::Win32::Foundation::WPARAM,LPARAM)->windows::Win32::Foundation::LRESULT,title:&str)->(HWND,windows::Win32::Foundation::HINSTANCE){
   let instance=windows::Win32::Foundation::HINSTANCE(windows::Win32::System::LibraryLoader::GetModuleHandleW(None).unwrap().0);
   let definition=WNDCLASSW{lpfnWndProc:Some(proc),hInstance:instance,lpszClassName:PCWSTR(class.as_ptr()),..Default::default()};assert_ne!(RegisterClassW(&definition),0);

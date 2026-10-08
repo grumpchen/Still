@@ -6,7 +6,7 @@ import {appPanelFit,appPanelGeometry} from './domain/appPanel.ts';
 import {constrainPlacement} from './domain/layout.ts';
 import {observeCanvasScroll} from './platform/canvasScroll.ts';
 
-export default function AppsWidget({widget,update,notify,obscured,workspaceActive=true,appAttachment,appAttachmentHandled}:WidgetProps){
+export default function AppsWidget({widget,update,notify,obscured,workspaceActive=true,appAttachment,appAttachmentHandled,pickApp}:WidgetProps){
  const host=useRef<HTMLDivElement>(null),picker=useRef<HTMLInputElement>(null),current=useRef({widget,update,notify,obscured,workspaceActive,appAttachment,appAttachmentHandled});current.current={widget,update,notify,obscured,workspaceActive,appAttachment,appAttachmentHandled};
  const [busy,setBusy]=useState(false),[ready,setReady]=useState(false),[opening,setOpening]=useState(false),[error,setError]=useState('');
  const [collectionResumed,setCollectionResumed]=useState(false);
@@ -15,7 +15,7 @@ export default function AppsWidget({widget,update,notify,obscured,workspaceActiv
  async function choose(){setError('');if(!localApps.native){picker.current?.click();return}setBusy(true);try{const app=await localApps.choose();if(app)selected(app)}catch(e){setError(String(e))}finally{setBusy(false)}}
  useEffect(()=>{
   setReady(false);setOpening(false);if(!appPanel.available)return;
-  const retainedOnMount=appPanel.consumeCollectionRetention(widget.id);setCollectionResumed(retainedOnMount);
+  const retainedOnMount=appPanel.consumeCollectionRetention(widget.id),shouldResumeCollection=retainedOnMount||widget.appWasCollected===true;setCollectionResumed(shouldResumeCollection);
   let disposed=false,frame=0,opened=false,launching=false,presenting=false,dirty=false,scrolling=false,last='',revision=0,stop:(()=>void)|undefined,stopScroll:(()=>void)|undefined;
   const node=host.current!,viewport=node.closest('.canvas-viewport') as HTMLElement,canvas=node.closest('.workspace-canvas')!;
   function geometry(){const content=node.closest('.widget-content')!.getBoundingClientRect(),v=viewport.getBoundingClientRect(),card=node.closest('.canvas-card') as HTMLElement,level=Number(card.style.zIndex),grip=card.querySelector<HTMLElement>('.widget-resize')?.getBoundingClientRect()??null;const clipped={left:Math.max(v.left,content.left),top:Math.max(v.top,content.top),right:Math.min(v.right,content.right),bottom:Math.min(v.bottom,content.bottom),width:0,height:0};const higher=Array.from(canvas.querySelectorAll<HTMLElement>('.canvas-card')).filter(other=>other!==card&&Number(other.style.zIndex)>level).map(other=>other.getBoundingClientRect());return{...appPanelGeometry(node.getBoundingClientRect(),clipped,current.current.workspaceActive,current.current.obscured,grip,higher,v.right),stackingRank:level}}
@@ -39,20 +39,20 @@ export default function AppsWidget({widget,update,notify,obscured,workspaceActiv
   };
   resume.current=async()=>{
    if(disposed||opened||launching)return;launching=true;setOpening(true);setError('');
-   try{const info=await appPanel.resume(widget.id);if(disposed)return;opened=true;last='';setCollectionResumed(true);setReady(true);fit(info);schedule.current()}
+   try{const info=await appPanel.resume(widget.id);if(disposed)return;opened=true;last='';setCollectionResumed(true);setReady(true);current.current.update({appPanelOpen:true,appWasCollected:false});fit(info);schedule.current()}
    catch(reason){if(!disposed){setCollectionResumed(false);setError(String(reason))}}finally{launching=false;if(!disposed)setOpening(false)}
   };
   attach.current=async(window:AppAttachment)=>{
    const c=current.current;if(disposed||launching||opened||!c.workspaceActive||c.obscured)return;launching=true;setOpening(true);setError('');
-   try{const g=geometry(),info=await appPanel.attach(widget.id,window,g.bounds,g.clip,g.grip);if(disposed)return;opened=true;last='';setReady(true);current.current.update({appPanelOpen:true});fit(info);schedule.current()}
+   try{const g=geometry(),info=await appPanel.attach(widget.id,window,g.bounds,g.clip,g.grip);if(disposed)return;opened=true;last='';setReady(true);current.current.update({appPanelOpen:true,appWasCollected:false});fit(info);schedule.current()}
    catch(reason){if(!disposed){const message=String(reason);setError(message);current.current.update({appPanelOpen:false});if(window.capture)current.current.notify('Window attachment failed: '+message)}}finally{launching=false;c.appAttachmentHandled?.();if(!disposed)setOpening(false)}
   };
-  detach.current=async()=>{if(!opened&&!launching)return;opened=false;last='';setCollectionResumed(false);node.dataset.nativeVisible='false';try{await appPanel.release(widget.id);if(!disposed){setReady(false);setError('')}}catch(reason){if(!disposed)setError(String(reason))}};
+  detach.current=async()=>{if(!opened&&!launching)return;opened=false;last='';setCollectionResumed(false);node.dataset.nativeVisible='false';try{await appPanel.release(widget.id);if(!disposed){setReady(false);setError('');current.current.update({appWasCollected:false})}}catch(reason){if(!disposed)setError(String(reason))}};
   const resize=new ResizeObserver(schedule.current);resize.observe(node);resize.observe(viewport);
   const mutation=new MutationObserver(schedule.current);mutation.observe(canvas,{subtree:true,attributes:true,attributeFilter:['style','class'],childList:true});
   stopScroll=observeCanvasScroll(viewport,value=>{scrolling=value;if(value){invalidate(true);if(frame){cancelAnimationFrame(frame);frame=0}dirty=true;const g=geometry(),hideRevision=revision;void appPanel.present(widget.id,g.bounds,g.clip,g.grip,g.occlusions??[],false,g.stackingRank,hideRevision,g.viewportRight).then(info=>{if(!disposed&&hideRevision===revision)node.dataset.nativeVisible=String(info.shown)}).catch(()=>undefined)}else{dirty=false;schedule.current()}});
   const scroll=()=>schedule.current();window.addEventListener('resize',scroll);
-  void appPanel.subscribe(event=>{if(disposed||event.id!==widget.id)return;if(!event.open){opened=false;last='';setReady(false);setCollectionResumed(false);node.dataset.nativeVisible='false';current.current.update({appPanelOpen:false});setError('The app was closed. Open it in the panel again.')}else if(event.error!==undefined)setError(event.error??'')}).then(unlisten=>{if(disposed)unlisten();else{stop=unlisten;const c=current.current;if(retainedOnMount)void resume.current();else if(c.appAttachment)void attach.current(c.appAttachment);else if(c.widget.appPanelOpen&&c.workspaceActive)void launch.current()}}).catch(reason=>{if(!disposed)setError(String(reason))});
+  void appPanel.subscribe(event=>{if(disposed||event.id!==widget.id)return;if(!event.open){opened=false;last='';setReady(false);setCollectionResumed(false);node.dataset.nativeVisible='false';current.current.update({appPanelOpen:false,appWasCollected:false});setError('The app was closed. Open it in the panel again.')}else if(event.error!==undefined)setError(event.error??'')}).then(unlisten=>{if(disposed)unlisten();else{stop=unlisten;const c=current.current;if(shouldResumeCollection)void resume.current();else if(c.appAttachment)void attach.current(c.appAttachment);else if(c.widget.appPanelOpen&&c.workspaceActive)void launch.current()}}).catch(reason=>{if(!disposed)setError(String(reason))});
   return()=>{disposed=true;invalidate();cancelAnimationFrame(frame);resize.disconnect();mutation.disconnect();window.removeEventListener('resize',scroll);stopScroll?.();stop?.();if(!appPanel.isCollectionRetained(widget.id))void appPanel.release(widget.id).catch(()=>undefined)};
  },[widget.id,widget.appKey]);
  useEffect(()=>{schedule.current();if(appAttachment&&workspaceActive&&!obscured)void attach.current(appAttachment);else if(widget.appPanelOpen&&workspaceActive&&!obscured)void launch.current();else if(!widget.appPanelOpen&&!collectionResumed)void detach.current()},[appAttachment,widget.appPanelOpen,workspaceActive,obscured,widget.placement,collectionResumed]);
@@ -62,6 +62,7 @@ export default function AppsWidget({widget,update,notify,obscured,workspaceActiv
   <div ref={host} className="app-panel-host" data-native-app-id={appPanel.available&&ready?widget.id:undefined}>
    <div className="app-panel-placeholder"><span className="document-type-symbol type-app"><Icon name="apps"/></span><h2>{opening?'Opening app in panel…':ready?widget.appName+' · attached':widget.appName||'Your desktop apps'}</h2>
     <p>{!widget.appKey?'Use Ctrl+Shift-click or the header control to attach an open app, or choose an app shortcut.':!appPanel.available?'The Windows version positions the real app window inside this panel.':ready?'The app follows this widget. Move it inside the workspace if its right edge crosses the boundary.':'Open the real app inside this widget, with its normal tools and documents.'}</p>
+    {!ready&&widget.appWasCollected&&<button disabled={opening||busy} onClick={()=>pickApp?.()}>Reattach open app…</button>}
     {!ready&&<button disabled={opening||busy} onClick={()=>void choose()}>{widget.appKey?'Change app…':'Choose app…'}</button>}
     {widget.appKey&&!ready&&<button className="primary" disabled={opening||busy||!appPanel.available} onClick={()=>{update({appPanelOpen:true});void launch.current()}}>{opening?'Opening…':'Open in panel'}</button>}
    </div>

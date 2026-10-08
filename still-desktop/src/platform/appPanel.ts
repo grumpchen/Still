@@ -23,10 +23,11 @@ export const appPanel={
  prepare:(window:AppAttachment)=>invoke<DroppedResource>('app_picker_prepare',{hwnd:window.hwnd,pid:window.pid}),
  preview:async(window:AppAttachment)=>appImageUrl(await invoke<number[]>('app_picker_preview',{hwnd:window.hwnd,pid:window.pid})),
  release:(id:string)=>command<void>(id,'app_panel_release'),
- suspendForCollection:async(id:string)=>{if(await command<boolean>(id,'app_panel_suspend'))retainedForCollection.add(id)},
+ suspendForCollection:async(id:string)=>{const suspended=await command<boolean>(id,'app_panel_suspend',{forCollection:true});if(suspended)retainedForCollection.add(id);return suspended},
  isCollectionRetained:(id:string)=>retainedForCollection.has(id),
  consumeCollectionRetention:(id:string)=>{const retained=retainedForCollection.has(id);retainedForCollection.delete(id);return retained},
  resume:(id:string)=>command<AppPanelInfo>(id,'app_panel_resume'),
+ cancelCollection:(id:string)=>{retainedForCollection.delete(id);return command<AppPanelInfo>(id,'app_panel_resume',{cancelCollection:true})},
  subscribe:(callback:(event:{id:string;open:boolean;error?:string|null})=>void):Promise<UnlistenFn>=>listen<{id:string;open:boolean;error?:string|null}>('app-panel-state',event=>callback(event.payload)),
  suspendForDrag:(id:string)=>command<boolean>(id,'app_panel_suspend'),
 };

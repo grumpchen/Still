@@ -23,7 +23,7 @@ export interface WidgetInstance {
   id: string; type: WidgetType; span: 1 | 2 | 3; instanceNumber:number; title:string;
   text: string;
   remaining: number; end: number | null; url: string; bookmarks: Bookmark[];
-   homeVersion?: number; folderName?: string;folderKey:string|null;fileKey:string|null;fileName?:string;fileKind?:FileKind;appKey:string|null;appName?:string;appIconData?:string;appPanelOpen:boolean;appReuseExisting:boolean;appMinWidth?:number;appMinHeight?:number;
+   homeVersion?: number; folderName?: string;folderKey:string|null;fileKey:string|null;fileName?:string;fileKind?:FileKind;appKey:string|null;appName?:string;appIconData?:string;appPanelOpen:boolean;appWasCollected?:boolean;appReuseExisting:boolean;appMinWidth?:number;appMinHeight?:number;
   browserVersion:1; browserToolsExpanded:boolean; bookmarksExpanded:boolean; pageTitle:string; lectureRestore:Placement|null;
   placement:Placement; minimized:boolean; restorePlacement:Placement|null; groupCollapsed:boolean;groupExpandedPlacement:Placement|null;shortcuts:WebShortcut[]; schedule:ScheduleEntry[]; groupId:string|null;
 }
@@ -208,14 +208,14 @@ function parseGroupEntries(value:unknown):GroupWidgetEntry[]{
   const item=groupWidgetEntry({id:typeof v.id==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(v.id)&&!ids.has(v.id)?v.id:undefined,type:v.type,name:v.name,icon:typeof v.icon==='string'?v.icon:undefined,iconData:typeof v.iconData==='string'?v.iconData:undefined});ids.add(item.id);return[item];
  }catch{return []}});
 }
-const PERSISTED_WIDGET_FIELDS:(keyof WidgetInstance)[]=['id','type','span','instanceNumber','title','text','remaining','end','url','bookmarks','homeVersion','folderName','folderKey','fileKey','fileName','fileKind','appKey','appName','appIconData','appPanelOpen','appReuseExisting','appMinWidth','appMinHeight','browserVersion','browserToolsExpanded','bookmarksExpanded','pageTitle','lectureRestore','placement','minimized','restorePlacement','shortcuts','schedule','groupId'];
+const PERSISTED_WIDGET_FIELDS:(keyof WidgetInstance)[]=['id','type','span','instanceNumber','title','text','remaining','end','url','bookmarks','homeVersion','folderName','folderKey','fileKey','fileName','fileKind','appKey','appName','appIconData','appPanelOpen','appWasCollected','appReuseExisting','appMinWidth','appMinHeight','browserVersion','browserToolsExpanded','bookmarksExpanded','pageTitle','lectureRestore','placement','minimized','restorePlacement','shortcuts','schedule','groupId'];
 function persistentWidgetSnapshot(value:unknown):WidgetInstance {
  if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('Invalid collected widget.');
  const source=value as Record<string,unknown>,filtered=Object.fromEntries(PERSISTED_WIDGET_FIELDS.filter(key=>key in source).map(key=>[key,source[key]]));
  const checked=checkedWidget(filtered);
  // Open-app identity is held in native process state only; the collected
  // snapshot keeps its safe app configuration but never auto-launches it later.
- return checked.type==='apps'?{...checked,appPanelOpen:false}:checked;
+ return checked.type==='apps'?{...checked,appPanelOpen:false,appWasCollected:source.appPanelOpen===true||source.appWasCollected===true}:checked;
 }
 function parseGroups(value:unknown):SavedGroup[]{
  if(!Array.isArray(value))return [];const ids=new Set<string>();
@@ -284,7 +284,7 @@ function checkedWidget(value: unknown): WidgetInstance {
     fileKey:checkedFileKey,fileName:checkedFileKey&&fileName(item.fileName)?item.fileName:undefined,fileKind:checkedFileKey&&fileKind(item.fileKind)?item.fileKind:undefined,
     appKey:checkedAppKey,
     appName:item.type==='apps'&&fileName(item.appName)?item.appName:undefined,appIconData:item.type==='apps'?checkedAppIconData(item.appIconData):undefined,
-     appPanelOpen:checkedAppPanelOpen,appMinWidth,appMinHeight,
+    appPanelOpen:checkedAppPanelOpen,...(item.type==='apps'&&item.appWasCollected===true?{appWasCollected:true}:{}),appMinWidth,appMinHeight,
     appReuseExisting:!!checkedAppKey&&item.appReuseExisting===true,
     instanceNumber:typeof item.instanceNumber==='number'&&Number.isSafeInteger(item.instanceNumber)&&item.instanceNumber>0&&item.instanceNumber<1000000?item.instanceNumber:1,
     placement:checkedPlacement,minimized,restorePlacement:minimized?restorePlacement:null,groupCollapsed,groupExpandedPlacement,
