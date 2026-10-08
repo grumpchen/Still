@@ -13,6 +13,12 @@ export interface ScheduleEntry {id:string; day:number; time:string; title:string
 export interface GroupWidgetEntry {id:string;type:Exclude<WidgetType,'group'>;name:string;icon:string;iconData?:string;kind?:'shortcut'|'collected';instance?:WidgetInstance}
 export interface SavedGroup {id:string;name:string;shortcuts:WebShortcut[];widgets:GroupWidgetEntry[];expanded:boolean}
 export function collectedWidgetCount(group:SavedGroup|undefined):number{return group?.widgets.filter(entry=>entry.kind==='collected').length??0}
+export function savedGroupHasContents(group:SavedGroup|undefined):boolean{return !!group&&(group.shortcuts.length>0||group.widgets.length>0)}
+/** Delete a Group collection and its canvas cards as one state transition. */
+export function deleteSavedGroup(workspace:Workspace,id:string):Workspace{
+ if(!workspace.groups.some(group=>group.id===id))return workspace;
+ return{...workspace,groups:workspace.groups.filter(group=>group.id!==id),widgets:workspace.widgets.filter(widget=>widget.groupId!==id)};
+}
 export interface WidgetInstance {
   id: string; type: WidgetType; span: 1 | 2 | 3; instanceNumber:number; title:string;
   text: string;

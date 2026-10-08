@@ -268,6 +268,8 @@ pub async fn chrome_panel_navigate(app:AppHandle,webview:Webview,id:String,url:S
 #[tauri::command]
 pub async fn chrome_panel_close(app:AppHandle,webview:Webview,id:String)->Result<(),String>{crate::browser::authorize(&webview)?;close(&app,&id);crate::native_panels::apply_order(&app);Ok(())}
 #[tauri::command]
+pub async fn chrome_panel_release(app:AppHandle,webview:Webview,id:String)->Result<(),String>{crate::browser::authorize(&webview)?;release(&app,&id);crate::native_panels::apply_order(&app);Ok(())}
+#[tauri::command]
 pub async fn chrome_panel_suspend(app:AppHandle,webview:Webview,id:String)->Result<bool,String>{
  crate::browser::authorize(&webview)?;instance(&id)?;let state=app.state::<ChromeState>();let mut items=state.0.lock().map_err(|_|"Chrome state unavailable")?;
  let mut retained=false;
@@ -285,6 +287,12 @@ pub async fn chrome_panel_suspend(app:AppHandle,webview:Webview,id:String)->Resu
 fn close(app:&AppHandle,id:&str){if let Ok(mut items)=app.state::<ChromeState>().0.lock(){if let Some(mut e)=items.remove(id){e.resize_guard.restore();unsafe{
  SetWindowLongPtrW(handle(e.hwnd),GWLP_HWNDPARENT,0);if let Ok(main)=owner(app){let _=RemovePropW(handle(e.hwnd),PCWSTR(property(id,main).as_ptr()));}
  let _=ShowWindow(handle(e.hwnd),SW_SHOWNOACTIVATE);let _=PostMessageW(Some(handle(e.hwnd)),WM_CLOSE,WPARAM(0),LPARAM(0));
+}}if items.is_empty(){CHROME_PID.store(0,std::sync::atomic::Ordering::Relaxed);}}}
+fn release(app:&AppHandle,id:&str){if let Ok(mut items)=app.state::<ChromeState>().0.lock(){if let Some(mut e)=items.remove(id){e.resize_guard.restore();unsafe{
+  // Keep the transient recovery marker so undo/reopen can reclaim this same
+  // Chrome HWND instead of launching a duplicate browser window.
+  SetWindowLongPtrW(handle(e.hwnd),GWLP_HWNDPARENT,0);
+ let _=ShowWindow(handle(e.hwnd),SW_SHOWNOACTIVATE);
 }}if items.is_empty(){CHROME_PID.store(0,std::sync::atomic::Ordering::Relaxed);}}}
 pub fn shutdown(app:&AppHandle){let ids=app.state::<ChromeState>().0.lock().map(|s|s.keys().cloned().collect::<Vec<_>>()).unwrap_or_default();for id in ids{close(app,&id)}CHROME_PID.store(0,std::sync::atomic::Ordering::Relaxed);}
 

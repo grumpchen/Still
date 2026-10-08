@@ -117,6 +117,44 @@ test('collected widgets cannot be nested, duplicated, or silently removed with t
  assert.equal(repaired.groups[0].widgets.some(entry=>entry.id===source.id),false);
 });
 
+test('deleting a saved Group removes its collected state and its canvas cards without touching other Groups',async()=>{
+ const workspace=workspaces.createWorkspace('Chemistry',['notes','group','group']);
+ const [notes,firstCard,secondCard]=workspace.widgets;const [first,second]=workspace.groups;
+ notes.id='delete-notes';notes.text='Do not orphan this data';first.id=firstCard.groupId;second.id=secondCard.groupId;
+ const populated=workspaces.collectWidgetIntoGroup(workspace,notes.id,first.id);
+ assert.equal(typeof workspaces.savedGroupHasContents,'function');
+ assert.equal(typeof workspaces.deleteSavedGroup,'function');
+ assert.equal(workspaces.savedGroupHasContents(populated.groups[0]),true);
+ const deleted=workspaces.deleteSavedGroup(populated,first.id);
+ assert.equal(deleted.groups.some(group=>group.id===first.id),false);
+ assert.equal(deleted.widgets.some(widget=>widget.groupId===first.id),false);
+ assert.equal(deleted.groups.some(group=>group.id===second.id),true);
+ assert.equal(workspaces.savedGroupHasContents(second),false);
+ const persisted=workspaces.parseState(JSON.stringify({...workspaces.createInitialState(),workspaces:[deleted],activeId:deleted.id})).workspaces[0];
+ assert.equal(persisted.groups.some(group=>group.id===first.id),false);
+ assert.equal(persisted.groups[0].widgets.length,0);
+ const {deleteCanvasWidget}=await import('../src/domain/trayActions.ts');
+ const cardOnly=deleteCanvasWidget({...workspaces.createInitialState(),workspaces:[populated],activeId:populated.id},populated.id,firstCard.id).workspaces[0];
+ assert.equal(cardOnly.groups.some(group=>group.id===first.id),true);
+ assert.equal(cardOnly.groups.find(group=>group.id===first.id).widgets[0].instance.text,'Do not orphan this data');
+});
+
+test('Group deletion uses one confirm path and releases collected native panels without closing external apps',()=>{
+ const app=readFileSync(new URL('../src/App.tsx',import.meta.url),'utf8');
+ const chrome=readFileSync(new URL('../src/platform/chromePanel.ts',import.meta.url),'utf8');
+ const native=readFileSync(new URL('../src-tauri/src/chrome_overlay.rs',import.meta.url),'utf8');
+ assert.match(app,/function removeGroup\([\s\S]*?savedGroupHasContents\(group\)[\s\S]*?performRemoval\(target\)/);
+ assert.match(app,/Delete All/);assert.match(app,/Cancel/);
+ assert.match(app,/deleteSavedGroup\(w,target\.id\)/);
+ assert.match(app,/entry\.type==='browser'&&chromePanel\.available\?chromePanel\.release\(entry\.id\)/);
+ assert.match(app,/entry\.type==='apps'&&appPanel\.available\?appPanel\.release\(entry\.id\)/);
+ assert.match(chrome,/release:\(id:string\)=>\{retainedForCollection\.delete\(id\);return command<void>\(id,'chrome_panel_release'\)\}/);
+ assert.match(native,/pub async fn chrome_panel_release[\s\S]*?release\(&app,&id\)/);
+ const release=native.slice(native.indexOf('pub async fn chrome_panel_release'),native.indexOf('pub async fn chrome_panel_suspend'));
+ assert.doesNotMatch(release,/WM_CLOSE|PostMessageW|RemovePropW/);
+ assert.match(native,/fn release\(app:&AppHandle,id:&str\)[\s\S]*?e\.resize_guard\.restore\(\)/);
+});
+
 test('workspace duplication gives collected widgets independent instance identities',()=>{
  const workspace=workspaces.createWorkspace('Chemistry',['notes','group']),source=workspace.widgets.find(widget=>widget.type==='notes'),groupWidget=workspace.widgets.find(widget=>widget.type==='group');
  source.text='Keep this';const collected=workspaces.collectWidgetIntoGroup(workspace,source.id,groupWidget.groupId);

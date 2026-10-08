@@ -14,6 +14,7 @@ export const chromePanel={
  present:(id:string,bounds:BrowserBounds,clip:OverlayBounds,occlusions:OverlayBounds[],visible:boolean,stackingRank:number,revision:number,viewportRight:number)=>command<boolean>(id,'chrome_panel_present',{bounds,clip,occlusions,visible,stackingRank,revision,viewportRight}),
  navigate:(id:string,url:string)=>command<void>(id,'chrome_panel_navigate',{url}),
  close:(id:string)=>command<void>(id,'chrome_panel_close'),
+ release:(id:string)=>{retainedForCollection.delete(id);return command<void>(id,'chrome_panel_release')},
  suspendForCollection:async(id:string)=>{if(await command<boolean>(id,'chrome_panel_suspend'))retainedForCollection.add(id)},
  consumeCollectionRetention:(id:string)=>{const retained=retainedForCollection.has(id);retainedForCollection.delete(id);return retained},
  subscribe:(callback:(event:{id:string;open:boolean;error?:string|null})=>void):Promise<UnlistenFn>=>listen<{id:string;open:boolean;error?:string|null}>('chrome-state',event=>callback(event.payload)),

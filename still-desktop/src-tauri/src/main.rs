@@ -40,7 +40,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             chrome::chrome_open, capture::widget_capture, capture::widget_export,
-            chrome_overlay::chrome_panel_open,chrome_overlay::chrome_panel_present,chrome_overlay::chrome_panel_navigate,chrome_overlay::chrome_panel_close,chrome_overlay::chrome_panel_suspend,
+            chrome_overlay::chrome_panel_open,chrome_overlay::chrome_panel_present,chrome_overlay::chrome_panel_navigate,chrome_overlay::chrome_panel_close,chrome_overlay::chrome_panel_release,chrome_overlay::chrome_panel_suspend,
             browser::browser_open, browser::browser_bounds, browser::browser_visible,
             browser::browser_navigate, browser::browser_current, browser::browser_action, browser::browser_close,
             files::files_choose, files::files_list, files::files_open,files::files_reuse,
