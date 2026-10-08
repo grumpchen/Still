@@ -92,11 +92,14 @@ export default function WorkspaceCanvas({workspaceId,transferWidget,setWorkspace
      gesture.current=null;setActive(null);setOverTray(false);setSaveTarget(null);setCanvasGroupDropId(null);setWorkspaceDropTarget(null);
      const workspaceRow=document.elementFromPoint(e.clientX,e.clientY)?.closest<HTMLElement>('[data-workspace-drop-target]'),destination=workspaceRow?.dataset.workspaceDropTarget;
      if(!cancel&&g.mode==='move'&&destination&&destination!==workspaceId&&distance>4){transferWidget(workspaceId,g.id,destination);return}
-    if(!cancel&&g.mode==='move'&&distance>4&&canvasTarget&&currentWidget){void saveToGroup({...currentWidget,placement:g.p},canvasTarget,true);return}
+    const original=currentWidget?(currentWidget.minimized?moveMinimizedWidgetInstance(currentWidget,{x:g.p.x,y:g.p.y},extent,height):{...currentWidget,placement:g.p}):undefined;
+    if(!cancel&&g.mode==='move'&&distance>4&&canvasTarget&&original){void saveToGroup(original,canvasTarget,true);return}
     const target=trayTarget(e.clientX,e.clientY),action=trayDropDecision({source:'widget',widgetType:g.type,...target});
-    if(!cancel&&currentWidget?.minimized&&target.insideTray&&action==='none'){const restored=moveMinimizedWidgetInstance(currentWidget,{x:g.p.x,y:g.p.y},extent,height);update(g.id,{placement:restored.placement,restorePlacement:restored.restorePlacement});return}
-    if(cancel)update(g.id,{placement:g.p});else if(g.mode==='move'&&Math.hypot(e.clientX-g.startX,e.clientY-g.startY)>4&&target.insideTray){
-     if(action==='remove'){update(g.id,{placement:g.p});remove(g.id,true)}else{update(g.id,{placement:g.p});const w=widgets.find(w=>w.id===g.id);try{if(action==='save'&&w)savePresets([presetFromWidget(w)],true);if((action==='create-group'||action==='save-group')&&w){const groupId=target.groupTarget?.kind==='existing'?target.groupTarget.groupId:undefined;saveToGroup(w,groupId,true)}}catch(error){notify(String((error as Error).message??error))}}
+    if(cancel){if(original)update(g.id,{placement:original.placement,restorePlacement:original.restorePlacement})}
+    else if(g.mode==='move'&&distance>4&&target.insideTray){
+     if(original)update(g.id,{placement:original.placement,restorePlacement:original.restorePlacement});
+     if(action==='remove')remove(g.id,true);
+     else try{if(action==='save'&&original)savePresets([presetFromWidget(original)],true);if((action==='create-group'||action==='save-group')&&original){const groupId=target.groupTarget?.kind==='existing'?target.groupTarget.groupId:undefined;saveToGroup(original,groupId,true)}}catch(error){notify(String((error as Error).message??error))}
     }else bringToFront(g.id);
   }
   function key(e:KeyboardEvent<HTMLElement>,w:WidgetInstance,mode:'move'|'resize'){
