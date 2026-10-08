@@ -3,7 +3,7 @@ fn main() {
         tauri_build::Attributes::new().app_manifest(
             tauri_build::AppManifest::new().commands(&[
                 "chrome_open", "widget_capture", "widget_export",
-                "chrome_panel_open", "chrome_panel_present", "chrome_panel_navigate", "chrome_panel_close",
+                "chrome_panel_open", "chrome_panel_present", "chrome_panel_navigate", "chrome_panel_close", "chrome_panel_release",
                 "browser_open", "browser_bounds", "browser_visible", "browser_navigate", "browser_current", "browser_action", "browser_close",
                 "files_choose", "files_list", "files_open", "files_reuse",
                 "document_open", "document_choose",

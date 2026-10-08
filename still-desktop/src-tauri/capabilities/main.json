@@ -6,7 +6,7 @@
     "core:event:allow-listen", "core:event:allow-unlisten",
     "core:window:allow-is-fullscreen", "core:window:allow-set-fullscreen",
     "allow-chrome-open", "allow-widget-capture", "allow-widget-export",
-    "allow-chrome-panel-open", "allow-chrome-panel-present", "allow-chrome-panel-navigate", "allow-chrome-panel-close", "allow-chrome-panel-suspend",
+    "allow-chrome-panel-open", "allow-chrome-panel-present", "allow-chrome-panel-navigate", "allow-chrome-panel-close", "allow-chrome-panel-release", "allow-chrome-panel-suspend",
     "allow-browser-open", "allow-browser-bounds", "allow-browser-visible", "allow-browser-navigate", "allow-browser-current", "allow-browser-action", "allow-browser-close",
     "allow-files-choose", "allow-files-list", "allow-files-open", "allow-files-reuse", "allow-document-open", "allow-document-choose",
     "allow-app-open", "allow-app-choose", "allow-app-panel-open", "allow-app-panel-windows", "allow-app-panel-attach", "allow-app-panel-present", "allow-app-panel-release", "allow-app-panel-suspend", "allow-app-panel-resume",

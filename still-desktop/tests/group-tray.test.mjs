@@ -143,6 +143,8 @@ test('Group deletion uses one confirm path and releases collected native panels 
  const app=readFileSync(new URL('../src/App.tsx',import.meta.url),'utf8');
  const chrome=readFileSync(new URL('../src/platform/chromePanel.ts',import.meta.url),'utf8');
  const native=readFileSync(new URL('../src-tauri/src/chrome_overlay.rs',import.meta.url),'utf8');
+ const manifest=readFileSync(new URL('../src-tauri/build.rs',import.meta.url),'utf8');
+ const capability=readFileSync(new URL('../src-tauri/capabilities/main.json',import.meta.url),'utf8');
  assert.match(app,/function removeGroup\([\s\S]*?savedGroupHasContents\(group\)[\s\S]*?performRemoval\(target\)/);
  assert.match(app,/Delete All/);assert.match(app,/Cancel/);
  assert.match(app,/deleteSavedGroup\(w,target\.id\)/);
@@ -150,6 +152,7 @@ test('Group deletion uses one confirm path and releases collected native panels 
  assert.match(app,/entry\.type==='apps'&&appPanel\.available\?appPanel\.release\(entry\.id\)/);
  assert.match(chrome,/release:\(id:string\)=>\{retainedForCollection\.delete\(id\);return command<void>\(id,'chrome_panel_release'\)\}/);
  assert.match(native,/pub async fn chrome_panel_release[\s\S]*?release\(&app,&id\)/);
+ assert.match(manifest,/"chrome_panel_release"/);assert.match(capability,/"allow-chrome-panel-release"/);
  const release=native.slice(native.indexOf('pub async fn chrome_panel_release'),native.indexOf('pub async fn chrome_panel_suspend'));
  assert.doesNotMatch(release,/WM_CLOSE|PostMessageW|RemovePropW/);
  assert.match(native,/fn release\(app:&AppHandle,id:&str\)[\s\S]*?e\.resize_guard\.restore\(\)/);
