@@ -183,6 +183,10 @@ export function updateSavedGroup(workspace:Workspace,id:string,patch:Partial<Omi
  if(!group)return workspace;
  return{...workspace,groups,widgets:workspace.widgets.map(w=>w.type==='group'&&w.groupId===id?{...w,title:group.name,shortcuts:structuredClone(group.shortcuts)}:w)};
 }
+export function saveGroupName(workspace:Workspace,id:string,value:string):Workspace {
+ if(typeof value!=='string'||value.length>60)throw new Error('Use a group name up to 60 characters long.');
+ return updateSavedGroup(workspace,id,{name:value.trim()});
+}
 export function createInitialState(): WorkspaceState {
   const workspaces = [createWorkspace('Study',['browser','desmos','notes','focus']), createWorkspace('Design',['notes','ai','files']), createWorkspace('Daily',['notes','focus']), createWorkspace('Minimal',['desmos','notes'])];
   return { version:4,activeId:workspaces[0].id,workspaces,sidebarCollapsed:false,presets:[],theme:'light',density:'comfortable',background:'solid',shortcuts:defaultShortcuts(),appearance:'liquid-glass',glass:defaultGlass() };

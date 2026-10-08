@@ -4,9 +4,9 @@ import {groupWidgetEntry,type SavedGroup,type GroupWidgetEntry} from './domain/w
 import {shortcut,reorderShortcuts,type WebShortcut} from './domain/webShortcuts.ts';
 
 export type GroupEditMode='link'|'widget'|undefined;
-interface Props {group:SavedGroup;update:(patch:Partial<Omit<SavedGroup,'id'>>)=>void;openLink?:(link:WebShortcut)=>void;openWidget?:(entry:GroupWidgetEntry)=>void;initialMode?:GroupEditMode}
+interface Props {group:SavedGroup;update:(patch:Partial<Omit<SavedGroup,'id'>>)=>void;openLink?:(link:WebShortcut)=>void;openWidget?:(entry:GroupWidgetEntry)=>void;initialMode?:GroupEditMode;showNameField?:boolean}
 const emptyLink=():WebShortcut=>({id:crypto.randomUUID(),name:'',url:'',icon:''});
-export default function GroupEditor({group,update,openLink,openWidget,initialMode}:Props){
+export default function GroupEditor({group,update,openLink,openWidget,initialMode,showNameField=true}:Props){
  const [link,setLink]=useState<WebShortcut|null>(()=>initialMode==='link'?emptyLink():null);
  const [entry,setEntry]=useState<GroupWidgetEntry|null>(()=>initialMode==='widget'?groupWidgetEntry({type:'notes'}):null);
  const [error,setError]=useState('');
@@ -21,7 +21,7 @@ export default function GroupEditor({group,update,openLink,openWidget,initialMod
  function moveLink(item:WebShortcut,direction:number){const index=group.shortcuts.findIndex(s=>s.id===item.id),other=group.shortcuts[index+direction];if(other)update({shortcuts:direction<0?reorderShortcuts(group.shortcuts,item.id,other.id):reorderShortcuts(group.shortcuts,other.id,item.id)})}
  function moveWidget(index:number,direction:number){const items=[...group.widgets],next=index+direction;if(next<0||next>=items.length)return;[items[index],items[next]]=[items[next],items[index]];update({widgets:items})}
  return <div className="group-widget">
-  <label className="group-name">Group name<input aria-label="Group name" placeholder="e.g. CHEM111" maxLength={60} value={group.name} onChange={e=>update({name:e.target.value})}/></label>
+  {showNameField&&<label className="group-name">Group name<input aria-label="Group name" placeholder="e.g. CHEM111" maxLength={60} value={group.name} onChange={e=>update({name:e.target.value})}/></label>}
   {link||entry?<form className="shortcut-form" onSubmit={e=>{e.preventDefault();save()}}>
    {entry&&<label>Widget type<select aria-label="Group widget type" value={entry.type} onChange={e=>setEntry(groupWidgetEntry({id:entry.id,type:e.target.value as GroupWidgetEntry['type']}))}>{widgetTypes.filter(t=>t!=='group').map(t=><option value={t} key={t}>{widgetCatalog[t].name}</option>)}</select></label>}
    <label>Name<input autoFocus aria-label={link?'Resource name':'Group widget name'} required maxLength={60} value={(link??entry)!.name} onChange={e=>link?setLink({...link,name:e.target.value}):setEntry({...entry!,name:e.target.value})}/></label>

@@ -70,6 +70,19 @@ test('renaming a group updates its instances and duplicate workspaces keep indep
  assert.equal(roundtrip.workspaces[0].groups[0].name,'CHEM111');
 });
 
+test('a header-saved group name is normalized, updates linked cards, and survives a restart roundtrip',()=>{
+ const workspace=workspaces.createWorkspace('Chemistry',['group']);
+ const id=workspace.groups[0].id;
+ assert.equal(typeof workspaces.saveGroupName,'function');
+ const renamed=workspaces.saveGroupName(workspace,id,'  CHEM111  ');
+ assert.equal(renamed.groups[0].name,'CHEM111');
+ assert.equal(renamed.widgets[0].title,'CHEM111');
+ const restored=workspaces.parseState(JSON.stringify({...workspaces.createInitialState(),workspaces:[renamed],activeId:renamed.id}));
+ assert.equal(restored.workspaces[0].groups[0].name,'CHEM111');
+ assert.equal(restored.workspaces[0].widgets[0].title,'CHEM111');
+ assert.throws(()=>workspaces.saveGroupName(workspace,id,'x'.repeat(61)));
+});
+
 test('invalid group entries are discarded while valid groups and old notes survive migration',()=>{
  const workspace=workspaces.createWorkspace('Chemistry',['notes','group']);assert.equal(workspace.groups?.length,1);
  workspace.widgets[0].text='Keep my notes';
