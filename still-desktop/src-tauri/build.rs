@@ -9,6 +9,7 @@ fn main() {
                 "document_open", "document_choose",
                 "app_open", "app_choose",
                 "app_panel_open", "app_panel_windows", "app_panel_attach", "app_panel_present", "app_panel_release",
+                "app_capture_enable",
                 "app_picker_windows", "app_picker_prepare", "app_picker_preview",
                 "shortcuts_configure",
             ]),

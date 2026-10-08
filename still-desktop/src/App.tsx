@@ -16,6 +16,7 @@ import AppWindowPicker from './AppWindowPicker.tsx';
 import {managedAppWidget,type AppWindowChoice} from './domain/appPicker.ts';
 import type {DroppedResource} from './platform/resourceDrop.ts';
 import {appPanel,type AppAttachment} from './platform/appPanel.ts';
+import {appCapture} from './platform/appCapture.ts';
 import {getCurrentWindow} from '@tauri-apps/api/window';
 import {isTauri} from '@tauri-apps/api/core';
 const KEY='still-workspace-v2';
@@ -41,6 +42,7 @@ export default function App(){
   const [presetDraft,setPresetDraft]=useState<{type:PresetType;preset?:WidgetPreset}|null>(null);
   const [appTarget,setAppTarget]=useState<{workspaceId:string;widgetId?:string;at?:{x:number;y:number};width?:number}|null>(null);
   const [appAttachments,setAppAttachments]=useState<Record<string,AppAttachment>>({});
+  const captureInFlight=useRef(new Set<string>()),captureState=useRef(state);captureState.current=state;
   const visited=useRef(new Set<string>());visited.current.add(state.activeId);
   function notify(value:string){setMessage(value)}
   useEffect(()=>{if(!message)return;const timeout=setTimeout(()=>setMessage(''),4500);return()=>clearTimeout(timeout)},[message]);
@@ -108,7 +110,26 @@ export default function App(){
     setState(s=>({...s,presets:preset?[...s.presets,preset]:s.presets,workspaces:s.workspaces.map(w=>w.id!==owner.id?w:{...w,widgets:existing?w.widgets.map(i=>i.id===widget.id?boundNewWidget(widget,w.widgets,target.width):i):[...w.widgets,boundNewWidget(widget,w.widgets,target.width)]})}));
     setModal(null);setAppTarget(null);notify(widget.title+(window?' is attaching.':' is opening in its panel.')+(save?' Saved in Apps.':''));
   }
-  function finishAppAttachment(id:string,attachment:AppAttachment){setAppAttachments(current=>{if(current[id]?.hwnd!==attachment.hwnd||current[id]?.pid!==attachment.pid)return current;const next={...current};delete next[id];return next})}
+  function finishAppAttachment(id:string,attachment:AppAttachment){if(attachment.capture)captureInFlight.current.delete(`${attachment.hwnd}:${attachment.pid}`);setAppAttachments(current=>{if(current[id]?.hwnd!==attachment.hwnd||current[id]?.pid!==attachment.pid)return current;const next={...current};delete next[id];return next})}
+  useEffect(()=>{if(!appCapture.available)return;let disposed=false,unlisten:(()=>void)|undefined;
+    const onCapture=(result:import('./platform/appCapture.ts').AppCaptureResult)=>{
+      if(disposed)return;
+      if(result.kind==='failure'){notify(`Capture ${result.stage} failed: ${result.message}`);return}
+      const key=`${result.hwnd}:${result.pid}`;if(captureInFlight.current.has(key))return;
+      captureInFlight.current.add(key);
+      const snapshot=captureState.current,owner=snapshot.workspaces.find(item=>item.id===snapshot.activeId);
+      if(!owner){captureInFlight.current.delete(key);notify('The clicked app could not be attached because its workspace is unavailable.');return}
+      try{
+        const title=result.title.trim().slice(0,60)||'Attached app';
+        const widget=boundNewWidget(managedAppWidget({sourceId:null,name:title},title,owner.widgets),owner.widgets);
+        undo.current=snapshot;
+        setState(current=>({...current,workspaces:current.workspaces.map(item=>item.id===owner.id?{...item,widgets:[...item.widgets,widget]}:item)}));
+        setAppAttachments(current=>({...current,[widget.id]:{hwnd:result.hwnd,pid:result.pid,capture:true}}));
+      }catch(error){captureInFlight.current.delete(key);notify('Capture widget could not be created: '+String(error))}
+    };
+    void appCapture.subscribe(onCapture).then(stop=>{if(disposed){stop();return}unlisten=stop;return appCapture.enable()}).catch(error=>notify('Global capture could not start: '+String(error)));
+    return()=>{disposed=true;unlisten?.()};
+  },[]);
   function saveAppWidget(id:string){const widget=state.workspaces.flatMap(w=>w.widgets).find(w=>w.id===id);if(!widget)return;try{savePresets([presetFromWidget({...widget,title:widget.title.trim()||widget.appName||'App'})])}catch(reason){notify(String(reason))}}
   function openDropped(workspaceId:string,items:WidgetPreset[],at:{x:number;y:number},width:number){
     const checked=items.map(widgetPreset);if(!checked.length)return;undo.current=state;

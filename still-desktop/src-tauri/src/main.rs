@@ -3,6 +3,7 @@ mod browser;
 mod files;
 mod dropped_files;
 mod shortcuts;
+mod app_capture;
 mod chrome;
 mod capture;
 #[cfg(windows)] mod chrome_overlay;
@@ -29,8 +30,9 @@ fn main() {
                 app_panel::install(app.handle())?;
                 if let Some(window)=app.get_window("main") {let handle=app.handle().clone();window.on_window_event(move |event|{
                     match event {tauri::WindowEvent::Moved(_)|tauri::WindowEvent::Resized(_)|tauri::WindowEvent::ScaleFactorChanged{..}|tauri::WindowEvent::Focused(_)=>{native_panels::refresh_all(&handle)},
-                    tauri::WindowEvent::CloseRequested{..}=>{app_panel::shutdown(&handle);chrome_overlay::shutdown(&handle)},_=>{}}
+                    tauri::WindowEvent::CloseRequested{..}=>{app_capture::shutdown();app_panel::shutdown(&handle);chrome_overlay::shutdown(&handle)},_=>{}}
                 });}
+                if let Err(error)=app_capture::install(app.handle()) { eprintln!("Global app capture could not start: {error}"); }
             }
             if let Some(view)=app.get_webview("main") {let handle=app.handle().clone();tauri::async_runtime::spawn(async move {if let Err(error)=shortcuts::attach(handle,&view).await {eprintln!("Workspace shortcut adapter: {error}");}});}
             Ok(())
@@ -44,6 +46,7 @@ fn main() {
             dropped_files::document_open, dropped_files::document_choose,
             dropped_files::app_open, dropped_files::app_choose,
             app_panel::app_panel_open,app_panel::app_panel_windows,app_panel::app_panel_attach,app_panel::app_panel_present,app_panel::app_panel_release,
+            app_capture::app_capture_enable,
             app_picker::app_picker_windows,app_picker::app_picker_prepare,app_picker::app_picker_preview,
             shortcuts::shortcuts_configure,
         ])

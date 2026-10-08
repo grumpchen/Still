@@ -1,4 +1,5 @@
-import {checkedAppIconData,createWidgetFromPreset,type WidgetInstance} from './workspaces.ts';
+import {checkedAppIconData,createWidget,createWidgetFromPreset,nextInstanceNumber,type WidgetInstance} from './workspaces.ts';
+import {nextPlacement,placement} from './layout.ts';
 export interface AppWindowChoice {hwnd:number;pid:number;appName:string;title:string;attached:boolean;minimized:boolean;icon?:number[]}
 export function appIconData(bytes:unknown):string|undefined {
  if(!Array.isArray(bytes)||bytes.length<8||bytes.length>24_000||bytes.some(value=>!Number.isInteger(value)||value<0||value>255))return undefined;
@@ -15,6 +16,12 @@ export function refreshedAppSelection(current:AppWindowChoice|null,windows:AppWi
  return windows.find(window=>window.hwnd===current.hwnd&&window.pid===current.pid&&!window.attached)??null;
 }
 export function managedAppWidget(source:{sourceId:string|null;name:string},name:string,widgets:WidgetInstance[],at?:{x:number;y:number},width?:number,reuseExisting=false,icon?:number[]|string):WidgetInstance{
+ if(source.sourceId===null){
+  const displayName=(source.name.trim()||name.trim()||'Attached app').slice(0,60),widget=createWidget('apps');
+  widget.title=(name.trim()||displayName).slice(0,60);widget.appName=displayName;widget.appPanelOpen=true;
+  widget.instanceNumber=nextInstanceNumber('apps',widgets);widget.placement=at?placement('apps',{...widget.placement,...at}):nextPlacement('apps',widgets,width);
+  return widget;
+ }
  const widget=createWidgetFromPreset({id:crypto.randomUUID(),type:'apps',name:name.trim()||source.name.slice(0,60),appSourceId:source.sourceId??'',appName:source.name},widgets,at,width);
  return{...widget,appPanelOpen:true,appReuseExisting:reuseExisting,appIconData:typeof icon==='string'?checkedAppIconData(icon):appIconData(icon)};
 }

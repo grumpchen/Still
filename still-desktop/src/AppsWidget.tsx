@@ -7,7 +7,7 @@ import {constrainPlacement} from './domain/layout.ts';
 import {observeCanvasScroll} from './platform/canvasScroll.ts';
 
 export default function AppsWidget({widget,update,notify,obscured,workspaceActive=true,pickApp,saveApp,appAttachment,appAttachmentHandled}:WidgetProps){
- const host=useRef<HTMLDivElement>(null),picker=useRef<HTMLInputElement>(null),current=useRef({widget,update,obscured,workspaceActive,appAttachment,appAttachmentHandled});current.current={widget,update,obscured,workspaceActive,appAttachment,appAttachmentHandled};
+ const host=useRef<HTMLDivElement>(null),picker=useRef<HTMLInputElement>(null),current=useRef({widget,update,notify,obscured,workspaceActive,appAttachment,appAttachmentHandled});current.current={widget,update,notify,obscured,workspaceActive,appAttachment,appAttachmentHandled};
  const [busy,setBusy]=useState(false),[ready,setReady]=useState(false),[opening,setOpening]=useState(false),[error,setError]=useState('');
  const schedule=useRef<()=>void>(()=>{}),launch=useRef<()=>Promise<void>>(async()=>{}),detach=useRef<()=>Promise<void>>(async()=>{}),attach=useRef<(window:AppAttachment)=>Promise<void>>(async()=>{});
   function selected(app:DroppedResource){if(app.kind!=='app'||!app.sourceId)throw new Error('Choose an app shortcut or application.');update({appKey:app.sourceId,appName:app.name,title:widget.title.trim()||app.name.slice(0,60),appPanelOpen:false,appReuseExisting:false,appMinWidth:undefined,appMinHeight:undefined});setError('')}
@@ -38,7 +38,7 @@ export default function AppsWidget({widget,update,notify,obscured,workspaceActiv
   attach.current=async(window:AppAttachment)=>{
    const c=current.current;if(disposed||launching||opened||!c.workspaceActive||c.obscured)return;launching=true;setOpening(true);setError('');
    try{const g=geometry(),info=await appPanel.attach(widget.id,window,g.bounds,g.clip,g.grip);if(disposed)return;opened=true;last='';setReady(true);current.current.update({appPanelOpen:true});fit(info);schedule.current()}
-   catch(reason){if(!disposed){setError(String(reason));current.current.update({appPanelOpen:false})}}finally{launching=false;c.appAttachmentHandled?.();if(!disposed)setOpening(false)}
+   catch(reason){if(!disposed){const message=String(reason);setError(message);current.current.update({appPanelOpen:false});if(window.capture)current.current.notify('Window attachment failed: '+message)}}finally{launching=false;c.appAttachmentHandled?.();if(!disposed)setOpening(false)}
   };
   detach.current=async()=>{if(!opened&&!launching)return;opened=false;last='';node.dataset.nativeVisible='false';try{await appPanel.release(widget.id);if(!disposed){setReady(false);setError('')}}catch(reason){if(!disposed)setError(String(reason))}};
   const resize=new ResizeObserver(schedule.current);resize.observe(node);resize.observe(viewport);

@@ -33,7 +33,7 @@ fn owner()->Result<HWND,String>{let h=OWNER.load(std::sync::atomic::Ordering::Re
 fn marker()->Vec<u16>{wide("StillManagedAppPanel")}
 type Physical=(i32,i32,i32,i32);
 struct Entry {
- hwnd:usize,pid:u32,source_id:String,bounds:Bounds,clip:Bounds,grip:Option<Bounds>,occlusions:Vec<Bounds>,viewport_right:Option<f64>,visible:bool,shown:bool,edge_hidden:bool,stacking_rank:i64,revision:u64,
+ hwnd:usize,pid:u32,source_id:String,bounds:Bounds,clip:Bounds,grip:Option<Bounds>,occlusions:Vec<Bounds>,viewport_right:Option<f64>,visible:bool,shown:bool,edge_hidden:bool,preserve_focus:bool,stacking_rank:i64,revision:u64,
  original_owner:usize,original_placement:WINDOWPLACEMENT,original_region:usize,original_visible:bool,
  // CSS-pixel minima; measured is a fallback for apps which refuse SetWindowPos
  // without declaring a WM_GETMINMAXINFO minimum. Pending candidates are kept in
@@ -44,7 +44,7 @@ struct Entry {
  last:Option<(Physical,Physical,Physical,Option<Physical>,Vec<Physical>)>,error:String,
 }
 impl Drop for Entry{fn drop(&mut self){if self.original_region!=0{unsafe{let _=DeleteObject(HGDIOBJ(self.original_region as *mut _));}}}}
-#[derive(Default)]struct Panels {items:HashMap<String,Entry>,pending:HashMap<String,Launch>,running:HashSet<String>,generation:HashMap<String,u64>,closed:bool}
+#[derive(Default)]struct Panels {items:HashMap<String,Entry>,pending:HashMap<String,Launch>,running:HashSet<String>,attaching:HashSet<(usize,u32)>,generation:HashMap<String,u64>,closed:bool}
 #[derive(Default)]pub struct AppPanelState(Mutex<Panels>);
 #[derive(Serialize)]#[serde(rename_all="camelCase")]pub struct Info{hwnd:usize,pid:u32,min_width:f64,min_height:f64,required_width:Option<f64>,required_height:Option<f64>,measured:bool,probing:bool,shown:bool}
 fn maximum(a:Option<f64>,b:Option<f64>)->Option<f64>{match(a,b){(Some(a),Some(b))=>Some(a.max(b)),(Some(v),None)|(None,Some(v))=>Some(v),(None,None)=>None}}
@@ -98,6 +98,30 @@ unsafe extern "system" fn enumerate(hwnd:HWND,param:LPARAM)->windows::core::BOOL
 }
 pub(crate) fn windows()->Vec<WindowInfo>{let mut items=Vec::new();unsafe{let _=EnumWindows(Some(enumerate),LPARAM(&mut items as *mut _ as isize));}items}
 pub(crate) fn managed_windows(app:&AppHandle)->Vec<(usize,u32)>{app.state::<AppPanelState>().0.lock().map(|s|s.items.values().filter(|e|valid_window(e)).map(|e|(e.hwnd,e.pid)).collect()).unwrap_or_default()}
+fn window_title(hwnd:HWND)->String{unsafe{let length=GetWindowTextLengthW(hwnd).max(0) as usize;let mut title=vec![0u16;length.min(4096)+1];GetWindowTextW(hwnd,&mut title);from_wide(&title)}}
+fn exact_window_identity(expected_hwnd:usize,expected_pid:u32,actual_hwnd:usize,actual_pid:u32)->bool{expected_hwnd!=0&&expected_hwnd==actual_hwnd&&expected_pid!=0&&expected_pid==actual_pid&&actual_pid!=std::process::id()}
+fn direct_candidate(hwnd:usize,expected_pid:u32)->Result<WindowInfo,String>{unsafe{
+ let target=handle(hwnd);if !IsWindow(Some(target)).as_bool(){return Err("The clicked window closed before it could be attached. Try again.".into())}
+ if !exact_window_identity(hwnd,expected_pid,target.0 as usize,pid(target)){return Err("The clicked window changed before attachment. Hold Ctrl+Shift and click it again.".into())}
+ if GetAncestor(target,GA_ROOT)!=target{return Err("The clicked app window is no longer a top-level window. Try again.".into())}
+ if !GetPropW(target,PCWSTR(marker().as_ptr())).0.is_null(){return Err("This window is already attached in Still.".into())}
+ Ok(WindowInfo{hwnd,pid:expected_pid,title:window_title(target),executable:None})
+}}
+fn target_claimed(panels:&Panels,hwnd:usize,pid:u32)->bool{panels.items.values().any(|entry|entry.hwnd==hwnd&&entry.pid==pid)||panels.attaching.contains(&(hwnd,pid))}
+fn reserve_target(panels:&mut Panels,hwnd:usize,pid:u32)->Result<(),String>{if target_claimed(panels,hwnd,pid){Err("This window is already attached or attaching in Still.".into())}else{panels.attaching.insert((hwnd,pid));Ok(())}}
+pub(crate) fn capture_candidate(app:&AppHandle,hwnd:usize,expected_pid:u32)->Result<Option<String>,String>{unsafe{
+ let target=handle(hwnd);if !IsWindow(Some(target)).as_bool(){return Err("The clicked window closed before it could be attached. Try again.".into())}
+ if pid(target)!=expected_pid||expected_pid==0{return Err("The clicked window changed before attachment. Hold Ctrl+Shift and click it again.".into())}
+ if expected_pid==std::process::id(){return Ok(None)}
+ if GetAncestor(target,GA_ROOT)!=target{return Err("The clicked app window is no longer a top-level window. Try again.".into())}
+ if !GetPropW(target,PCWSTR(marker().as_ptr())).0.is_null(){return Ok(None)}
+ let mut class=[0u16;256];let class_len=GetClassNameW(target,&mut class).max(0) as usize;let class=String::from_utf16_lossy(&class[..class_len.min(class.len())]);
+ if ["Progman","WorkerW","Shell_TrayWnd","#32768"].contains(&class.as_str())||class.to_ascii_lowercase().contains("splash")||GetWindowLongPtrW(target,GWL_EXSTYLE)&WS_EX_TOOLWINDOW.0 as isize!=0{return Ok(None)}
+  }
+  if crate::chrome_overlay::managed_windows(app).contains(&(hwnd,expected_pid)){return Ok(None)}
+ let state=app.state::<AppPanelState>();let panels=state.0.lock().map_err(|_|"App panels are unavailable")?;if target_claimed(&panels,hwnd,expected_pid){return Ok(None)}drop(panels);
+ direct_candidate(hwnd,expected_pid).map(|candidate|Some(candidate.title))
+}
 pub(crate) fn expected_executable(path:&Path)->Option<String>{let _com=Com::initialize();if path.extension().is_some_and(|e|e.eq_ignore_ascii_case("lnk")){shortcut_target(path).map(|v|v.0.to_string_lossy().into_owned())}else{Some(path.to_string_lossy().into_owned())}}
 pub(crate) fn matches_executable(window:&WindowInfo,expected:&str)->bool{window.executable.as_ref().is_some_and(|exe|same_path(exe,expected))}
 fn reuse_candidate<'a>(windows:&'a [WindowInfo],expected:Option<&str>)->Result<Option<&'a WindowInfo>,String>{
@@ -151,19 +175,20 @@ fn foreground_in(items:&HashMap<String,Entry>,front:HWND)->bool{
 pub fn is_managed_foreground(app:&AppHandle,hwnd:HWND)->bool{app.state::<AppPanelState>().0.try_lock().map(|s|foreground_in(&s.items,hwnd)).unwrap_or(false)}
 fn parent_context(items:&HashMap<String,Entry>,main:HWND,app:&AppHandle)->bool{let front=unsafe{GetForegroundWindow()};front.0.is_null()||pid(front)==std::process::id()||foreground_in(items,front)||crate::chrome_overlay::is_managed_foreground(app,front)||front==main}
 
-fn attach(window:&WindowInfo,source_id:String,bounds:Bounds,clip:Bounds,grip:Option<Bounds>,main:HWND)->Result<Entry,String>{unsafe{
+fn attach(window:&WindowInfo,source_id:String,bounds:Bounds,clip:Bounds,grip:Option<Bounds>,main:HWND,preserve_focus:bool)->Result<Entry,String>{unsafe{
  let hwnd=handle(window.hwnd);
  if !IsWindow(Some(hwnd)).as_bool()||pid(hwnd)!=window.pid||window.pid==std::process::id()||!GetPropW(hwnd,PCWSTR(marker().as_ptr())).0.is_null(){return Err("This window is no longer available for attachment.".into())}
  let original_owner=GetWindowLongPtrW(hwnd,GWLP_HWNDPARENT) as usize;
  let mut original_placement=WINDOWPLACEMENT{length:std::mem::size_of::<WINDOWPLACEMENT>() as u32,..Default::default()};
  GetWindowPlacement(hwnd,&mut original_placement).map_err(|e|e.to_string())?;
  let region=CreateRectRgn(0,0,0,0);let original_region=if GetWindowRgn(hwnd,region)!=RGN_ERROR{region.0 as usize}else{let _=DeleteObject(HGDIOBJ(region.0));0};
- let mut entry=Entry{hwnd:window.hwnd,pid:window.pid,source_id,bounds,clip,grip,occlusions:Vec::new(),viewport_right:None,visible:false,shown:false,edge_hidden:false,stacking_rank:0,revision:0,original_owner,original_placement,original_region,original_visible:IsWindowVisible(hwnd).as_bool(),declared_width:None,declared_height:None,measured_width:None,measured_height:None,pending_width:None,pending_height:None,probing_width:false,probing_height:false,minimum_dpi:None,minimum_query_after:None,fresh:false,last:None,error:String::new()};
+  let original_visible=IsWindowVisible(hwnd).as_bool();
+  let mut entry=Entry{hwnd:window.hwnd,pid:window.pid,source_id,bounds,clip,grip,occlusions:Vec::new(),viewport_right:None,visible:preserve_focus&&original_visible,shown:preserve_focus&&original_visible,edge_hidden:false,preserve_focus,stacking_rank:0,revision:0,original_owner,original_placement,original_region,original_visible,declared_width:None,declared_height:None,measured_width:None,measured_height:None,pending_width:None,pending_height:None,probing_width:false,probing_height:false,minimum_dpi:None,minimum_query_after:None,fresh:false,last:None,error:String::new()};
  // Top-level ownership, never SetParent/WS_CHILD. Restore it before Still closes.
  SetWindowLongPtrW(hwnd,GWLP_HWNDPARENT,main.0 as isize);
  if GetWindow(hwnd,GW_OWNER).ok()!=Some(main){SetWindowLongPtrW(hwnd,GWLP_HWNDPARENT,original_owner as isize);return Err("The app could not be attached. Still and the app must run at the same Windows permission level.".into())}
  if let Err(error)=SetPropW(hwnd,PCWSTR(marker().as_ptr()),Some(HANDLE(main.0))){restore(&mut entry);return Err(error.to_string())}
- let _=ShowWindow(hwnd,SW_HIDE);
+ if !preserve_focus{let _=ShowWindow(hwnd,SW_HIDE);}
  Ok(entry)
 }}
 fn restore(entry:&mut Entry){unsafe{
@@ -179,7 +204,7 @@ fn position(entry:&mut Entry,main:HWND,origin:POINT,scale:f64)->Result<bool,Stri
  let zoomed=IsZoomed(hwnd).as_bool();let iconic=IsIconic(hwnd).as_bool();
  // Restore a maximized target before sampling its size. If the managed app had
  // focus, return it to Still immediately after restoration.
- if zoomed||iconic{let foreground=GetForegroundWindow();let return_focus=if foreground==hwnd||belongs(foreground,entry.hwnd,entry.pid){main}else{foreground};if entry.shown{let _=ShowWindow(hwnd,SW_HIDE);entry.shown=false;}let _=ShowWindow(hwnd,if zoomed{SW_RESTORE}else{SW_SHOWNOACTIVATE});let _=ShowWindow(hwnd,SW_HIDE);if !return_focus.0.is_null(){let _=SetForegroundWindow(return_focus);}}
+  if zoomed||iconic{let foreground=GetForegroundWindow();let return_focus=if entry.preserve_focus{HWND::default()}else if foreground==hwnd||belongs(foreground,entry.hwnd,entry.pid){main}else{foreground};if entry.shown&&!entry.preserve_focus{let _=ShowWindow(hwnd,SW_HIDE);entry.shown=false;}let _=ShowWindow(hwnd,if zoomed{SW_RESTORE}else{SW_SHOWNOACTIVATE});if !entry.preserve_focus{let _=ShowWindow(hwnd,SW_HIDE);}if !return_focus.0.is_null(){let _=SetForegroundWindow(return_focus);}}
  let was_shown=entry.shown;
  let wanted=entry.bounds.screen(origin,scale);let clip=entry.clip.screen(origin,scale);let grip=entry.grip.as_ref().map(|bounds|bounds.screen(origin,scale));let occlusions=entry.occlusions.iter().map(|bounds|bounds.screen(origin,scale)).collect::<Vec<_>>();let actual=rect(hwnd)?;
  let desired_css=(wanted.2 as f64/scale,wanted.3 as f64/scale);
@@ -213,7 +238,7 @@ fn position(entry:&mut Entry,main:HWND,origin:POINT,scale:f64)->Result<bool,Stri
  let declared_clamped=requested.2>wanted.2||requested.3>wanted.3;fresh|=declared_clamped;
   let same_layout=entry.last==Some((wanted,clip,actual,grip,occlusions.clone()));
   if entry.shown&&!zoomed&&!iconic&&!query_due&&!entry.probing_width&&!entry.probing_height&&entry.pending_width.is_none()&&entry.pending_height.is_none()&&same_layout{return Ok(fresh)}
-  if entry.shown&&!same_layout{let _=ShowWindow(hwnd,SW_HIDE);entry.shown=false;}
+  if entry.shown&&!entry.preserve_focus&&!same_layout{let _=ShowWindow(hwnd,SW_HIDE);entry.shown=false;}
   let positioned=if entry.shown{SetWindowPos(hwnd,None,wanted.0,wanted.1,requested.2,requested.3,SWP_NOACTIVATE|SWP_NOOWNERZORDER|SWP_NOZORDER)}else{SetWindowPos(hwnd,Some(HWND_TOP),wanted.0,wanted.1,requested.2,requested.3,SWP_NOACTIVATE|SWP_NOOWNERZORDER)};
   positioned.map_err(|e|e.to_string())?;
  let actual=rect(hwnd)?;let (refused_w,refused_h)=required_size(requested,actual);
@@ -353,7 +378,7 @@ pub async fn app_panel_open(app:AppHandle,webview:Webview,id:String,source_id:St
    loop{
     let claimed={let s=state.0.lock().map_err(|_|"App panels are unavailable")?;if s.closed||s.generation.get(&id)!=Some(&epoch){return Err("App attachment was cancelled.".into())}s.items.values().map(|e|e.hwnd).collect::<Vec<_>>()};
     let choices=windows();if let Some(candidate)=select_window(&launch,&choices,&claimed){
-      let mut entry=attach(candidate,source_id.clone(),bounds.clone(),clip.clone(),grip.clone(),main)?;
+      let mut entry=attach(candidate,source_id.clone(),bounds.clone(),clip.clone(),grip.clone(),main,false)?;
      let mut origin=POINT::default();if !unsafe{ClientToScreen(main,&mut origin).as_bool()}{restore(&mut entry);return Err("Still window is unavailable".into())}
      let scale=unsafe{windows::Win32::UI::HiDpi::GetDpiForWindow(main)}.max(96) as f64/96.;
      let measured=match position(&mut entry,main,origin,scale){Ok(measured)=>measured,Err(error)=>{restore(&mut entry);return Err(error)}};
@@ -371,19 +396,32 @@ pub async fn app_panel_open(app:AppHandle,webview:Webview,id:String,source_id:St
 #[tauri::command]
 pub async fn app_panel_windows(app:AppHandle,webview:Webview)->Result<Vec<WindowInfo>,String>{crate::browser::authorize(&webview)?;let _=app;tauri::async_runtime::spawn_blocking(windows).await.map_err(|e|e.to_string())}
 #[tauri::command]
-pub async fn app_panel_attach(app:AppHandle,webview:Webview,id:String,hwnd:usize,pid:u32,bounds:Bounds,clip:Bounds,grip:Option<Bounds>)->Result<Info,String>{
+pub async fn app_panel_attach(app:AppHandle,webview:Webview,id:String,hwnd:usize,pid:u32,bounds:Bounds,clip:Bounds,grip:Option<Bounds>,preserve_focus:Option<bool>)->Result<Info,String>{
  crate::browser::authorize(&webview)?;instance(&id)?;bounds.validate()?;clip.validate()?;if let Some(grip)=&grip{grip.validate()?}
+ let preserve_focus=preserve_focus.unwrap_or(false);
  tauri::async_runtime::spawn_blocking(move||{
-  let main=owner()?;let choices=windows();let candidate=choices.iter().find(|w|w.hwnd==hwnd&&w.pid==pid).ok_or("This window is no longer available. Refresh the app list.")?;
-  let mut entry=attach(candidate,String::new(),bounds,clip,grip,main)?;let mut origin=POINT::default();if !unsafe{ClientToScreen(main,&mut origin).as_bool()}{restore(&mut entry);return Err("Still window is unavailable".into())}
-  let scale=unsafe{windows::Win32::UI::HiDpi::GetDpiForWindow(main)}.max(96) as f64/96.;let measured=match position(&mut entry,main,origin,scale){Ok(measured)=>measured,Err(e)=>{restore(&mut entry);return Err(e)}};
-  let information=info(&entry,main,measured);let state=app.state::<AppPanelState>();let mut s=state.0.lock().map_err(|_|"App panels unavailable")?;
-  if s.closed{restore(&mut entry);return Err("Still is closing".into())}*s.generation.entry(id.clone()).or_default()+=1;s.pending.remove(&id);
-  if let Some(mut old)=s.items.insert(id.clone(),entry){restore(&mut old)}
-  // An explicit picker selection returns focus to Still after releasing any old panel.
-  // This also lets the next presentation show the selected app in Still's foreground context.
-  drop(s);unsafe{let _=SetForegroundWindow(main);}
-  let _=app.emit_to("main","app-panel-state",serde_json::json!({"id":id,"open":true}));Ok(information)
+  let state=app.state::<AppPanelState>();
+  {let mut panels=state.0.lock().map_err(|_|"App panels unavailable")?;reserve_target(&mut panels,hwnd,pid)?;}
+  let result=(||{
+   let main=owner()?;
+   let candidate=if preserve_focus{direct_candidate(hwnd,pid)?}else{windows().into_iter().find(|w|w.hwnd==hwnd&&w.pid==pid).ok_or("This window is no longer available. Refresh the app list.")?};
+   let mut entry=attach(&candidate,String::new(),bounds,clip,grip,main,preserve_focus)?;
+   let mut origin=POINT::default();if !unsafe{ClientToScreen(main,&mut origin).as_bool()}{restore(&mut entry);return Err("Still window is unavailable".into())}
+   let scale=unsafe{windows::Win32::UI::HiDpi::GetDpiForWindow(main)}.max(96) as f64/96.;let measured=match position(&mut entry,main,origin,scale){Ok(measured)=>measured,Err(e)=>{restore(&mut entry);return Err(e)}};
+   let information=info(&entry,main,measured);let mut panels=state.0.lock().map_err(|_|"App panels unavailable")?;
+   if panels.closed{restore(&mut entry);return Err("Still is closing".into())}
+   // The reservation also prevents concurrent capture/picker requests from
+   // attaching this HWND to two widgets while geometry is being applied.
+   if panels.items.values().any(|existing|existing.hwnd==hwnd&&existing.pid==pid){restore(&mut entry);return Err("This window is already attached in Still.".into())}
+   *panels.generation.entry(id.clone()).or_default()+=1;panels.pending.remove(&id);
+   if let Some(mut old)=panels.items.insert(id.clone(),entry){restore(&mut old)}
+   drop(panels);
+   if !preserve_focus{unsafe{let _=SetForegroundWindow(main);}}
+   let _=app.emit_to("main","app-panel-state",serde_json::json!({"id":id,"open":true}));Ok(information)
+  })();
+  if let Ok(mut panels)=state.0.lock(){panels.attaching.remove(&(hwnd,pid));}
+  if preserve_focus{match &result{Ok(_)=>eprintln!("[capture] stage=attach outcome=attached hwnd={hwnd} pid={pid}"),Err(error)=>eprintln!("[capture] stage=attach outcome=failed hwnd={hwnd} pid={pid}: {error}")}}
+  result
  }).await.map_err(|e|e.to_string())?
 }
 #[tauri::command]
@@ -393,9 +431,9 @@ pub async fn app_panel_present(app:AppHandle,webview:Webview,id:String,bounds:Bo
  let entry=s.items.get_mut(&id).ok_or("The app was closed. Reopen it below.")?;
  if !valid_window(entry){s.items.remove(&id);return Err("The app was closed. Reopen it below.".into())}
  if crate::native_panels::snapshot_is_stale(entry.revision,revision){let main=owner()?;return Ok(info(entry,main,entry.fresh))}
- if !visible&&belongs(unsafe{GetForegroundWindow()},entry.hwnd,entry.pid){if let Ok(main)=owner(){unsafe{let _=SetForegroundWindow(main);}}}
+  if !visible&&!entry.preserve_focus&&belongs(unsafe{GetForegroundWindow()},entry.hwnd,entry.pid){if let Ok(main)=owner(){unsafe{let _=SetForegroundWindow(main);}}}
  let changed=entry.bounds!=bounds||entry.clip!=clip||entry.grip!=grip||entry.occlusions!=occlusions||entry.viewport_right!=Some(viewport_right);
- if changed&&entry.shown{unsafe{let _=ShowWindow(handle(entry.hwnd),SW_HIDE);}entry.shown=false;entry.last=None;}
+ if changed&&entry.shown&&!entry.preserve_focus{unsafe{let _=ShowWindow(handle(entry.hwnd),SW_HIDE);}entry.shown=false;entry.last=None;}
  entry.bounds=bounds;entry.clip=clip;entry.grip=grip;entry.occlusions=occlusions;entry.viewport_right=Some(viewport_right);entry.visible=visible;entry.stacking_rank=stacking_rank;entry.revision=revision;
  place(&app,&mut s);
  let main=owner()?;let entry=s.items.get(&id).ok_or("The app was closed. Reopen it below.")?;let result=info(entry,main,entry.fresh);drop(s);crate::native_panels::apply_order(&app);Ok(result)
@@ -425,6 +463,23 @@ pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
 
 #[cfg(test)]mod tests{
  use super::*;
+ #[test]fn direct_capture_identity_requires_the_same_live_external_hwnd_and_pid(){
+  let current=std::process::id();
+  assert!(exact_window_identity(42,7,42,7));
+  assert!(!exact_window_identity(42,7,43,7),"A reused or changed HWND must not pass exact-target validation");
+  assert!(!exact_window_identity(42,7,42,8),"A reused HWND owned by another process must not pass validation");
+  assert!(!exact_window_identity(42,current,42,current),"Still's own process must never be captured");
+  assert!(!exact_window_identity(0,7,0,7));
+ }
+ #[test]fn direct_capture_reserves_an_hwnd_pid_pair_to_prevent_duplicate_widgets(){
+  let mut panels=Panels::default();
+  reserve_target(&mut panels,42,7).unwrap();
+  assert!(target_claimed(&panels,42,7));
+  assert!(reserve_target(&mut panels,42,7).is_err());
+  assert!(reserve_target(&mut panels,42,8).is_ok(),"A different PID is a different exact window identity");
+  panels.attaching.remove(&(42,7));
+  assert!(!target_claimed(&panels,42,7));
+ }
   #[test]fn app_geometry_accepts_scrolled_panel_coordinates_and_applies_dpi_without_losing_monitor_origin(){
    let b=Bounds{x:-20.,y:210.,width:800.,height:500.};assert!(b.validate().is_ok());
    assert_eq!(b.screen(POINT{x:-1920,y:45},1.5),(-1950,360,1200,750));
@@ -506,7 +561,7 @@ pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
    drop(target);assert!(UnregisterClassW(PCWSTR(class.as_ptr()),Some(instance)).is_ok());
   }}
  // A fresh Entry wired to a fixture window, with the PHYSICAL floor storage.
-  fn test_entry(hwnd:usize,bounds:&Bounds)->Entry{Entry{hwnd,pid:std::process::id(),source_id:"test-app".into(),bounds:bounds.clone(),clip:bounds.clone(),grip:None,occlusions:Vec::new(),viewport_right:None,visible:true,shown:true,edge_hidden:false,stacking_rank:0,revision:0,original_owner:0,original_placement:WINDOWPLACEMENT{length:std::mem::size_of::<WINDOWPLACEMENT>() as u32,..Default::default()},original_region:0,original_visible:false,declared_width:None,declared_height:None,measured_width:None,measured_height:None,pending_width:None,pending_height:None,probing_width:false,probing_height:false,minimum_dpi:None,minimum_query_after:None,fresh:false,last:None,error:String::new()}}
+  fn test_entry(hwnd:usize,bounds:&Bounds)->Entry{Entry{hwnd,pid:std::process::id(),source_id:"test-app".into(),bounds:bounds.clone(),clip:bounds.clone(),grip:None,occlusions:Vec::new(),viewport_right:None,visible:true,shown:true,edge_hidden:false,preserve_focus:false,stacking_rank:0,revision:0,original_owner:0,original_placement:WINDOWPLACEMENT{length:std::mem::size_of::<WINDOWPLACEMENT>() as u32,..Default::default()},original_region:0,original_visible:false,declared_width:None,declared_height:None,measured_width:None,measured_height:None,pending_width:None,pending_height:None,probing_width:false,probing_height:false,minimum_dpi:None,minimum_query_after:None,fresh:false,last:None,error:String::new()}}
  unsafe fn class_window(class:&[u16],proc:unsafe extern "system" fn(HWND,u32,windows::Win32::Foundation::WPARAM,LPARAM)->windows::Win32::Foundation::LRESULT,title:&str)->(HWND,windows::Win32::Foundation::HINSTANCE){
   let instance=windows::Win32::Foundation::HINSTANCE(windows::Win32::System::LibraryLoader::GetModuleHandleW(None).unwrap().0);
   let definition=WNDCLASSW{lpfnWndProc:Some(proc),hInstance:instance,lpszClassName:PCWSTR(class.as_ptr()),..Default::default()};assert_ne!(RegisterClassW(&definition),0);

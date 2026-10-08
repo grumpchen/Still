@@ -46,3 +46,12 @@ test('saved Apps presets retain only validated PNG data URLs when reopened',()=>
  assert.equal(widget.appIconData,icon);
  assert.equal(managedAppWidget({sourceId:'app-word',name:'Word'},'Chem notes',[],undefined,undefined,true,'data:image/svg+xml;base64,AA==').appIconData,undefined);
 });
+
+test('a captured external window creates a source-free transient Apps widget without persisting HWND/PID',()=>{
+ const widget=managedAppWidget({sourceId:null,name:'Lecture window'},'Lecture window',[]);
+ assert.equal(widget.type,'apps');assert.equal(widget.appKey,null);assert.equal(widget.appPanelOpen,true);assert.equal(widget.appReuseExisting,false);
+ const state=createInitialState();state.workspaces[0].widgets.push(widget);
+ const saved=JSON.stringify(state);assert.ok(!saved.includes('"hwnd"'));assert.ok(!saved.includes('"pid"'));
+ const restored=parseState(saved).workspaces[0].widgets.at(-1);
+ assert.equal(restored.appKey,null);assert.equal(restored.appPanelOpen,false,'a transient native handle must not be restored after restart');
+});
