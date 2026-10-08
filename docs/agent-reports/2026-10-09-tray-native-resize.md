@@ -21,7 +21,7 @@
 - Full frontend suite: 124 passed, 2 known baseline failures out of 126. Failures are selected app icon bytes and the 150% canvas-height expectation (`full-frontend-tests.txt`).
 - Full native suite: 47 passed, 2 known baseline failures, 1 ignored real Chrome GUI smoke test (`full-native-tests.txt`). The failures are `c1_a_maximized_first_sample_never_becomes_the_floor` and `c2_a_persistently_clamping_app_keeps_its_floor_until_a_real_probe_is_accepted`.
 - Native resize guard fixture passed. It covers blocked native edge hit-testing, programmatic physical sizing at 100/125/150/200%, original style restoration, foreground preservation, and fixed-size windows. The Apps native fixture also passed, covering guard/restore, clipping and resize-grip behavior, and leaving the window alive (`native-resize-tests.txt`, `full-native-tests.txt`).
-- `corepack pnpm tauri build --no-bundle --config still-desktop/src-tauri/target/tray-native-resize/tauri-test-config.json` passed. This ran the production `pnpm build` from current source and completed the Windows release build.
+- From working directory `still-desktop`, `corepack pnpm tauri build --no-bundle --config src-tauri/target/tray-native-resize/tauri-test-config.json` passed. This ran the production `pnpm build` from current source and completed the Windows release build.
 - `cargo check` passed (`native-check.txt`).
 - The full frontend and native suites retain the two baseline failures above; no unrelated fixes were made.
 
@@ -29,6 +29,7 @@
 - Live Windows acceptance is still needed for tray drop/cancel/delete and group-confirmation flows, attached Apps detach/release behavior, and Still's corner resizing across Windows display scales. The hidden Win32 fixture covers native edge hit testing and programmatic sizing; it does not establish live Chrome/custom-app appearance.
 - Chrome/custom-app white residue and app-specific style rewrites remain unproven. No clipping or movement redesign was included.
 - Manual acceptance should confirm Trash cancellation/outside drops do not delete, deleting a card keeps its saved collection, collected library entries cannot be deleted, Apps release without closing the application, and native edge drags do not resize managed windows.
+
 
 
 
