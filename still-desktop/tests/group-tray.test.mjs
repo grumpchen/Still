@@ -248,8 +248,8 @@ test('failed native hide prevents collecting an attached Apps widget and rollbac
  const native=readFileSync(new URL('../src-tauri/src/app_panel.rs',import.meta.url),'utf8');
  assert.match(app,/const suspended=await appPanel\.suspendForCollection\(widget\.id\);if\(widget\.appPanelOpen&&!suspended\)throw new Error/);
  assert.match(app,/appPanel\.cancelCollection\(widget\.id\)/);
- assert.match(native,/if for_collection==Some\(true\)\{unsafe\{SetPropW\([\s\S]*?ShowWindow\(handle\(hwnd\),SW_HIDE\)/);
- assert.match(native,/if cancel_collection==Some\(true\)[\s\S]*?entry\.visible=visible[\s\S]*?place\(&app,&mut panels\)/);
+ assert.match(native,/fn mark_collected\([\s\S]*?SetPropW\([\s\S]*?ShowWindow\(hwnd,SW_HIDE\)/);
+ assert.match(native,/if cancel_collection==Some\(true\)\{prepare_collection_resume\([\s\S]*?place\(&app,&mut panels\)/);
 });
 
 test('a header-saved group name is normalized, updates linked cards, and survives a restart roundtrip',()=>{

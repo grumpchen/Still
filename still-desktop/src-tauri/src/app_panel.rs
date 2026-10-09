@@ -211,6 +211,33 @@ fn restore(entry:&mut Entry){unsafe{
  let _=SetWindowPlacement(hwnd,&placement);let _=ShowWindow(hwnd,if entry.original_visible{SW_SHOWNA}else{SW_HIDE});
 }}
 fn clear_collection_marker(entry:&mut Entry){if let Some(id)=entry.collection_marker.take(){unsafe{let _=RemovePropW(handle(entry.hwnd),PCWSTR(collection_marker(&id).as_ptr()));}}entry.collection_was_visible=None;}
+fn protect_collected_window(entry:&mut Entry)->Result<bool,String>{
+ if entry.collection_marker.is_none(){return Ok(false)}
+ let hwnd=handle(entry.hwnd);
+ if !valid_window(entry){return Err("The collected app window is no longer available. Use Attach open app to reconnect it.".into())}
+ unsafe{if IsWindowVisible(hwnd).as_bool(){let _=ShowWindow(hwnd,SW_HIDE);}}
+ if unsafe{IsWindowVisible(hwnd).as_bool()}{entry.shown=true;return Err("Windows could not keep the collected app window hidden. The widget remains saved in its Group.".into())}
+ entry.visible=false;entry.shown=false;entry.edge_hidden=false;entry.last=None;entry.fresh=false;
+ Ok(true)
+}
+fn mark_collected(entry:&mut Entry,id:&str)->Result<(),String>{
+ let hwnd=handle(entry.hwnd);
+ if !valid_window(entry){return Err("The attached app window is no longer available. The widget remains on the workspace.".into())}
+ if entry.collection_marker.as_deref()!=Some(id){
+  unsafe{SetPropW(hwnd,PCWSTR(collection_marker(id).as_ptr()),Some(HANDLE(1usize as *mut _))).map_err(|error|error.to_string())?;}
+  entry.collection_marker=Some(id.to_owned());entry.collection_was_visible=Some(entry.visible);
+ }
+ match protect_collected_window(entry){
+  Ok(true)=>Ok(()),
+  Ok(false)=>{clear_collection_marker(entry);Err("The app window could not be marked as collected. The widget remains on the workspace.".into())},
+  Err(error)=>{clear_collection_marker(entry);entry.shown=unsafe{IsWindowVisible(hwnd).as_bool()};Err(error)}
+ }
+}
+fn prepare_collection_resume(entry:&mut Entry,cancel:bool){
+ let restore_visibility=entry.collection_was_visible.unwrap_or(true);
+ clear_collection_marker(entry);
+ entry.visible=if cancel{restore_visibility}else{false};entry.shown=false;entry.edge_hidden=false;entry.last=None;entry.revision=0;entry.fresh=false;
+}
 fn position(entry:&mut Entry,main:HWND,origin:POINT,scale:f64)->Result<bool,String>{unsafe{
  let hwnd=handle(entry.hwnd);let main_dpi=windows::Win32::UI::HiDpi::GetDpiForWindow(main).max(96);let target_dpi=windows::Win32::UI::HiDpi::GetDpiForWindow(hwnd).max(96);let dpi=(main_dpi,target_dpi);
  let zoomed=IsZoomed(hwnd).as_bool();let iconic=IsIconic(hwnd).as_bool();
@@ -318,6 +345,11 @@ fn place(app:&AppHandle,panels:&mut Panels){
  let scale=unsafe{windows::Win32::UI::HiDpi::GetDpiForWindow(main)}.max(96) as f64/96.;
  let parent=unsafe{IsWindowVisible(main).as_bool()&&!IsIconic(main).as_bool()}&&parent_context(&panels.items,main,app);
  for (id,entry) in panels.items.iter_mut(){if !valid_window(entry){continue}
+  match protect_collected_window(entry){
+   Ok(true)=>continue,
+   Ok(false)=>{},
+   Err(error)=>{entry.fresh=false;if entry.error!=error{entry.error=error.clone();let _=app.emit_to("main","app-panel-state",serde_json::json!({"id":id,"open":true,"error":error}));}continue}
+  }
   let hwnd=handle(entry.hwnd);
   if !entry.visible||!parent{
    if entry.shown{unsafe{let _=ShowWindow(hwnd,SW_HIDE);}}
@@ -374,11 +406,9 @@ pub async fn app_panel_suspend(app:AppHandle,webview:Webview,id:String,for_colle
  let Some(hwnd)=panels.items.get(&id).filter(|entry|valid_window(entry)).map(|entry|entry.hwnd)else{return Ok(false)};
  *panels.generation.entry(id.clone()).or_default()+=1;panels.pending.remove(&id);
  if unsafe{GetForegroundWindow()==handle(hwnd)}{if let Ok(main)=owner(){unsafe{let _=SetForegroundWindow(main);}}}
- if let Some(entry)=panels.items.get_mut(&id){
-  if for_collection==Some(true){unsafe{SetPropW(handle(hwnd),PCWSTR(collection_marker(&id).as_ptr()),Some(HANDLE(1usize as *mut _))).map_err(|error|error.to_string())?;}entry.collection_marker=Some(id.clone());entry.collection_was_visible=Some(entry.visible);}
-  unsafe{let _=ShowWindow(handle(hwnd),SW_HIDE);}
-  if for_collection==Some(true)&&unsafe{IsWindowVisible(handle(hwnd)).as_bool()}{clear_collection_marker(entry);return Err("Windows did not hide the attached app safely. The widget remains on the workspace.".into())}
-  entry.visible=false;entry.shown=false;entry.edge_hidden=false;entry.last=None;entry.revision=0;entry.fresh=false;
+  if let Some(entry)=panels.items.get_mut(&id){
+  if for_collection==Some(true){mark_collected(entry,&id)?;}
+  else{unsafe{let _=ShowWindow(handle(hwnd),SW_HIDE);}entry.visible=false;entry.shown=false;entry.edge_hidden=false;entry.last=None;entry.revision=0;entry.fresh=false;}
  }
  drop(panels);crate::native_panels::apply_order(&app);Ok(true)
 }
@@ -388,9 +418,9 @@ pub async fn app_panel_resume(app:AppHandle,webview:Webview,id:String,cancel_col
  crate::browser::authorize(&webview)?;instance(&id)?;let main=owner()?;
  let state=app.state::<AppPanelState>();let mut panels=state.0.lock().map_err(|_|"App panels are unavailable")?;
  if panels.items.get(&id).is_some_and(valid_window){
-  if cancel_collection==Some(true){let entry=panels.items.get_mut(&id).unwrap();let visible=entry.collection_was_visible.unwrap_or(true);clear_collection_marker(entry);entry.visible=visible;entry.shown=false;entry.edge_hidden=false;entry.last=None;entry.revision=0;entry.fresh=false;place(&app,&mut panels);crate::native_panels::apply_order(&app);let entry=panels.items.get(&id).ok_or("The app window is no longer available. Reattach it from Apps.")?;return Ok(info(entry,main,false))}
-  let entry=panels.items.get_mut(&id).unwrap();clear_collection_marker(entry);entry.visible=false;entry.shown=false;entry.edge_hidden=false;entry.last=None;entry.revision=0;entry.fresh=false;
-  return Ok(info(entry,main,false))
+  if cancel_collection==Some(true){prepare_collection_resume(panels.items.get_mut(&id).unwrap(),true);place(&app,&mut panels);crate::native_panels::apply_order(&app);let entry=panels.items.get(&id).ok_or("The app window is no longer available. Reattach it from Apps.")?;return Ok(info(entry,main,false))}
+  prepare_collection_resume(panels.items.get_mut(&id).unwrap(),false);
+  let entry=panels.items.get(&id).ok_or("The app window is no longer available. Reattach it from Apps.")?;return Ok(info(entry,main,false))
  }
  if cancel_collection==Some(true){return Err("The collected app window could not be restored to its widget. Reattach it from Apps.".into())}
  panels.items.remove(&id);
@@ -481,8 +511,9 @@ pub async fn app_panel_attach(app:AppHandle,webview:Webview,id:String,hwnd:usize
 pub async fn app_panel_present(app:AppHandle,webview:Webview,id:String,bounds:Bounds,clip:Bounds,grip:Option<Bounds>,occlusions:Vec<Bounds>,viewport_right:f64,visible:bool,stacking_rank:i64,revision:u64)->Result<Info,String>{
  crate::browser::authorize(&webview)?;instance(&id)?;bounds.validate()?;clip.validate()?;if !viewport_right.is_finite()||!(-20000.0..=40000.0).contains(&viewport_right){return Err("Invalid Apps viewport edge".into())}if let Some(grip)=&grip{grip.validate()?}if occlusions.len()>256{return Err("Too many overlapping workspace widgets".into())}for item in &occlusions{item.validate()?}
  let state=app.state::<AppPanelState>();let mut s=state.0.lock().map_err(|_|"App panels unavailable")?;
- let entry=s.items.get_mut(&id).ok_or("The app was closed. Reopen it below.")?;
- if !valid_window(entry){s.items.remove(&id);return Err("The app was closed. Reopen it below.".into())}
+  let entry=s.items.get_mut(&id).ok_or("The app was closed. Reopen it below.")?;
+  if !valid_window(entry){s.items.remove(&id);return Err("The app was closed. Reopen it below.".into())}
+ if protect_collected_window(entry)?{let main=owner()?;return Ok(info(entry,main,false))}
  if crate::native_panels::snapshot_is_stale(entry.revision,revision){let main=owner()?;return Ok(info(entry,main,entry.fresh))}
   if !visible&&!entry.preserve_focus&&belongs(unsafe{GetForegroundWindow()},entry.hwnd,entry.pid){if let Ok(main)=owner(){unsafe{let _=SetForegroundWindow(main);}}}
  let changed=entry.bounds!=bounds||entry.clip!=clip||entry.grip!=grip||entry.occlusions!=occlusions||entry.viewport_right!=Some(viewport_right);
@@ -594,7 +625,7 @@ pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
   assert!(reuse_candidate(&ambiguous,Some("C:\\Office\\WINWORD.EXE")).is_err_and(|error|error.contains("Several windows")));
  }
  struct Fixture(HWND);impl Fixture{fn new(title:&str)->Self{unsafe{let class=wide("STATIC");let title=wide(title);Self(CreateWindowExW(WINDOW_EX_STYLE(0),PCWSTR(class.as_ptr()),PCWSTR(title.as_ptr()),WS_OVERLAPPEDWINDOW,50,60,840,520,None,None,None,None).unwrap())}}}impl Drop for Fixture{fn drop(&mut self){unsafe{let _=DestroyWindow(self.0);}}}
- #[test]fn collected_window_marker_is_scoped_to_widget_and_survives_release_without_saving_hwnd_or_pid(){unsafe{
+  #[test]fn collected_window_marker_is_scoped_to_widget_and_survives_release_without_saving_hwnd_or_pid(){unsafe{
   let target=Fixture::new("Still collected app recovery fixture");let id="fixture-collected-app";
   let token=collection_marker(id);let other=collection_marker("another-widget");
   SetPropW(target.0,PCWSTR(token.as_ptr()),Some(HANDLE(1usize as *mut _))).unwrap();
@@ -608,8 +639,45 @@ pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
   assert!(GetPropW(target.0,PCWSTR(marker().as_ptr())).0.is_null(),"Release restores ordinary ownership");
   assert!(!GetPropW(target.0,PCWSTR(token.as_ptr())).0.is_null(),"The collected association remains available after Still shuts down");
   clear_collection_marker(&mut entry);
-  assert!(GetPropW(target.0,PCWSTR(token.as_ptr())).0.is_null(),"Restoring the Group entry consumes its transient OS association");
- }}
+   assert!(GetPropW(target.0,PCWSTR(token.as_ptr())).0.is_null(),"Restoring the Group entry consumes its transient OS association");
+  }}
+  #[test]fn collected_app_stays_hidden_through_late_present_and_restores_same_window(){unsafe{
+   let target=Fixture::new("Still collected app visibility fixture");let id="fixture-collected-visibility";
+   let _=ShowWindow(target.0,SW_SHOWNOACTIVATE);assert!(IsWindowVisible(target.0).as_bool());
+   let bounds=Bounds{x:0.,y:0.,width:640.,height:400.};let mut entry=test_entry(target.0.0 as usize,&bounds);entry.revision=73;entry.pid=pid(target.0);entry.original_visible=true;
+   let expected_hwnd=entry.hwnd;let expected_pid=entry.pid;
+   mark_collected(&mut entry,id).unwrap();
+   assert!(!IsWindowVisible(target.0).as_bool(),"Collection must hide the exact native window");
+   assert!(!GetPropW(target.0,PCWSTR(collection_marker(id).as_ptr())).0.is_null(),"The same per-widget marker remains available for recovery");
+   assert_eq!(entry.revision,73,"Collection must not reset the monotonic revision");
+
+   // Simulate a late visible presentation arriving after the collection hide.
+   let _=ShowWindow(target.0,SW_SHOWNOACTIVATE);assert!(IsWindowVisible(target.0).as_bool());
+   for _revision in [1,73,74]{assert!(protect_collected_window(&mut entry).unwrap(),"Collection rejects stale, equal and newer snapshots");assert!(!IsWindowVisible(target.0).as_bool(),"The late presentation path must actively hide the HWND");assert!(!entry.visible);assert_eq!(entry.revision,73);assert_eq!(entry.bounds,bounds,"A late snapshot must not overwrite collected geometry");let _=ShowWindow(target.0,SW_SHOWNOACTIVATE);}
+
+   // Layout/foreground refresh shares this same native visibility guard.
+   let _=ShowWindow(target.0,SW_SHOWNOACTIVATE);assert!(protect_collected_window(&mut entry).unwrap());
+   assert!(!IsWindowVisible(target.0).as_bool());
+
+   prepare_collection_resume(&mut entry,false);
+   assert!(GetPropW(target.0,PCWSTR(collection_marker(id).as_ptr())).0.is_null(),"Explicit Group reopen releases collection ownership");
+   assert!(!IsWindowVisible(target.0).as_bool(),"Restore waits for a fresh visible presentation");
+   entry.visible=true;entry.revision=1;
+   assert!(IsWindow(Some(target.0)).as_bool());let _=ShowWindow(target.0,SW_SHOWNOACTIVATE);
+   assert!(IsWindowVisible(target.0).as_bool());
+   assert!(valid_window(&entry));assert_eq!((entry.hwnd,entry.pid),(expected_hwnd,expected_pid),"Restoration keeps the original HWND/PID");
+   for _ in 0..2{mark_collected(&mut entry,id).unwrap();assert!(!IsWindowVisible(target.0).as_bool());prepare_collection_resume(&mut entry,false);entry.visible=true;let _=ShowWindow(target.0,SW_SHOWNOACTIVATE);assert!(IsWindowVisible(target.0).as_bool());}
+   assert!(IsWindow(Some(target.0)).as_bool(),"Collection and restoration must not close the app window");
+  }}
+  #[test]fn cancelled_collection_restores_original_visibility_without_losing_the_widget(){unsafe{
+   let target=Fixture::new("Still cancelled collection visibility fixture");let _=ShowWindow(target.0,SW_SHOWNOACTIVATE);
+   let bounds=Bounds{x:0.,y:0.,width:640.,height:400.};let mut entry=test_entry(target.0.0 as usize,&bounds);entry.pid=pid(target.0);entry.original_visible=true;
+   mark_collected(&mut entry,"fixture-cancelled-collection").unwrap();assert!(!IsWindowVisible(target.0).as_bool());
+   prepare_collection_resume(&mut entry,true);
+   assert!(entry.visible,"Cancellation restores the prior widget visibility");
+   let _=ShowWindow(target.0,SW_SHOWNOACTIVATE);assert!(IsWindowVisible(target.0).as_bool());
+   assert!(IsWindow(Some(target.0)).as_bool());
+  }}
  unsafe extern "system" fn minimum_fixture_proc(hwnd:HWND,message:u32,wparam:windows::Win32::Foundation::WPARAM,lparam:LPARAM)->windows::Win32::Foundation::LRESULT{
    if message==WM_GETMINMAXINFO{let minimum=&mut *(lparam.0 as *mut MINMAXINFO);minimum.ptMinTrackSize=POINT{x:900,y:600};return windows::Win32::Foundation::LRESULT(0)}
    if message==WM_WINDOWPOSCHANGING{let position=&mut *(lparam.0 as *mut WINDOWPOS);if position.cx<900{position.cx=900}if position.cy<600{position.cy=600};return windows::Win32::Foundation::LRESULT(0)}
