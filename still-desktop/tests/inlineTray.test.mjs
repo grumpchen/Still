@@ -25,6 +25,31 @@ test('Saved + follows all saved items in the scrolling row while Edit and Trash 
  assert.match(canvas,/const savedTarget=[^\n]*closest\('\.tray-items'\)/);
 });
 
+test('new saved shortcuts scroll into view immediately before Saved +',()=>{
+ assert.match(canvas,/previousPresetIds/);
+ assert.match(canvas,/presets\.some\(preset=>!previousPresetIds\.current\.has\(preset\.id\)\)/);
+ assert.match(canvas,/scrollLeft\s*=\s*items\.scrollWidth/);
+ assert.match(canvas,/ref=\{trayItems\}/);
+ const row=canvas.slice(canvas.indexOf('<div className="tray-main-row">'),canvas.indexOf('<span id="widget-tray-help"'));
+ assert.ok(row.indexOf('<PresetTray')<row.indexOf('data-saved-target'));
+});
+
+test('Quiet Minimal paints an opaque canvas in the transparent Tauri window',()=>{
+ const styles=readFileSync(new URL('../src/styles.css',import.meta.url),'utf8');
+ assert.match(styles,/html\.native-transparent body:not\(\.liquid-glass\) \.canvas-app\{background:var\(--canvas\)\}/);
+});
+
+test('Group card close requires confirmation and removes only the floating card',()=>{
+ const app=readFileSync(new URL('../src/App.tsx',import.meta.url),'utf8');
+ const canvas=readFileSync(new URL('../src/WorkspaceCanvas.tsx',import.meta.url),'utf8');
+ assert.match(canvas,/aria-label=\{'Remove '\+title\}/);
+ const removal=app.slice(app.indexOf('function removeWidget('),app.indexOf('function addWidget('));
+ assert.match(removal,/kind:'widget' as const/);
+ assert.match(removal,/if\(widget\.type==='group'\)\{setPendingRemoval\(target\);setModal\('delete'\)\}else performRemoval\(target\)/);
+ assert.match(app,/Remove this Group card from the workspace\? Its collected widgets remain in the saved Group/);
+ assert.match(app,/target\.kind==='widget'\?deleteCanvasWidget/);
+});
+
 test('saved Widget, App and Group buttons expose Rename and Delete context actions',()=>{
  assert.match(presets,/onContextMenu/);
  assert.match(groups,/onContextMenu/);

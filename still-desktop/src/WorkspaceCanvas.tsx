@@ -22,13 +22,21 @@ interface Props {workspaceId:string;transferWidget:(sourceWorkspaceId:string,wid
 type Gesture={id:string;type:WidgetType;mode:'move'|'resize';startX:number;startY:number;p:Placement;scrollX:number;scrollY:number};
 type SaveCue={kind:'saved'}|{kind:'widget';type:WidgetType}|{kind:'group-create'}|{kind:'group';id:string};
 export default function WorkspaceCanvas({workspaceId,transferWidget,setWorkspaceDropTarget,openAppsDialog,editTray,presets,openPreset,editPreset,removePreset,renamePreset,renameGroup,savePresets,openDropped,widgets,groups,updateGroup,saveToGroup,openGroup,editGroup,removeGroup,openGroupWidget,update,add,remove,begin,bringToFront,notify,obscured,workspaceActive=true,openResource,pickApp,saveApp,appAttachments,appAttachmentHandled}:Props&DropProps&AppPickerProps){
-  const viewport=useRef<HTMLDivElement>(null),tray=useRef<HTMLDivElement>(null),gesture=useRef<Gesture|null>(null);
+  const viewport=useRef<HTMLDivElement>(null),tray=useRef<HTMLDivElement>(null),trayItems=useRef<HTMLDivElement>(null),gesture=useRef<Gesture|null>(null);
+  const previousPresetIds=useRef(new Set(presets.map(preset=>preset.id)));
   const [active,setActive]=useState<string|null>(null),[trayDragging,setTrayDragging]=useState(false),[overTray,setOverTray]=useState(false),[overCanvas,setOverCanvas]=useState(false),[busy,setBusy]=useState<string|null>(null);
   const [viewportWidth,setViewportWidth]=useState(0),[viewportHeight,setViewportHeight]=useState(0);
   const overviewViewportRef=useRef<SVGRectElement>(null);
   const [saveTarget,setSaveTarget]=useState<SaveCue|null>(null),[canvasGroupDropId,setCanvasGroupDropId]=useState<string|null>(null),[externalDragging,setExternalDragging]=useState(false),[trayGhost,setTrayGhost]=useState<TrayDragPosition|null>(null);
   const [savedMenu,setSavedMenu]=useState<SavedItemMenuTarget|null>(null);
   const closeSavedMenu=useCallback(()=>setSavedMenu(null),[]);
+  useEffect(()=>{
+   const added=presets.some(preset=>!previousPresetIds.current.has(preset.id));
+   previousPresetIds.current=new Set(presets.map(preset=>preset.id));
+   if(!added)return;
+   const frame=requestAnimationFrame(()=>{const items=trayItems.current;if(items)items.scrollLeft=items.scrollWidth});
+   return()=>cancelAnimationFrame(frame);
+  },[presets]);
   function openSavedContextMenu(event:ReactMouseEvent<HTMLButtonElement>,kind:SavedItemMenuTarget['kind'],id:string){event.preventDefault();event.stopPropagation();setSavedMenu({kind,id,x:event.clientX,y:event.clientY})}
   const externalEntries=useRef<DroppedResource[]>([]),nativeHandler=useRef<(event:ResourceDropEvent)=>void>(()=>{});
   function contains(rect:DOMRect,x:number,y:number){return x>=rect.left&&x<=rect.right&&y>=rect.top&&y<=rect.bottom}
@@ -167,7 +175,7 @@ export default function WorkspaceCanvas({workspaceId,transferWidget,setWorkspace
     <div ref={tray} role="group" className={`widget-tray ${overTray?'tray-remove':''} ${saveTarget?'tray-saving':''}`} aria-label="Widget tray" aria-describedby="widget-tray-help">
      <div className="tray-main-row">
       <span className="tray-status" role="status">{overTray?'Release on Trash to remove':saveTarget?.kind==='saved'?'Release on Saved + to copy':saveTarget?'Release on Group to collect':''}</span>
-      <div className="tray-items">
+      <div className="tray-items" ref={trayItems}>
        <TrayDragButton className={'tray-widget-button '+(saveTarget?.kind==='group-create'?'tray-save-target':'')} dragPayload={{kind:'type',type:'group'}} data-group-drop-target="create" aria-label="Create Group" title="Click to create Group · drop a widget to collect into a new Group" onClick={()=>trayTypeClick('group')}><Icon name="group"/><span>Group</span></TrayDragButton>
        <GroupTray groups={groups} update={updateGroup} openGroup={id=>openGroup(id,visibleOrigin(),extent)} openLink={link=>openResource(link,visibleOrigin())} openWidget={entry=>openGroupWidget(entry,visibleOrigin(),extent)} edit={editGroup} remove={removeGroup} onContextMenu={(event,id)=>openSavedContextMenu(event,'group',id)} activeDropGroupId={saveTarget?.kind==='group'?saveTarget.id:null}/>
        <PresetTray presets={presets} add={preset=>openPreset(preset,visibleOrigin(),extent)} onContextMenu={(event,id)=>openSavedContextMenu(event,'preset',id)}/>
