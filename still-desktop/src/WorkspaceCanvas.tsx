@@ -34,7 +34,7 @@ export default function WorkspaceCanvas({workspaceId,transferWidget,setWorkspace
    const added=presets.some(preset=>!previousPresetIds.current.has(preset.id));
    previousPresetIds.current=new Set(presets.map(preset=>preset.id));
    if(!added)return;
-   const frame=requestAnimationFrame(()=>{const items=trayItems.current;if(items)items.scrollLeft=items.scrollWidth});
+   const frame=requestAnimationFrame(()=>{const items=trayItems.current;if(items)items.scrollLeft=Math.max(0,items.scrollWidth-items.clientWidth)});
    return()=>cancelAnimationFrame(frame);
   },[presets]);
   function openSavedContextMenu(event:ReactMouseEvent<HTMLButtonElement>,kind:SavedItemMenuTarget['kind'],id:string){event.preventDefault();event.stopPropagation();setSavedMenu({kind,id,x:event.clientX,y:event.clientY})}

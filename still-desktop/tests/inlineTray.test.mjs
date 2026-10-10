@@ -28,7 +28,7 @@ test('Saved + follows all saved items in the scrolling row while Edit and Trash 
 test('new saved shortcuts scroll into view immediately before Saved +',()=>{
  assert.match(canvas,/previousPresetIds/);
  assert.match(canvas,/presets\.some\(preset=>!previousPresetIds\.current\.has\(preset\.id\)\)/);
- assert.match(canvas,/scrollLeft\s*=\s*items\.scrollWidth/);
+ assert.match(canvas,/scrollLeft\s*=\s*Math\.max\(0,items\.scrollWidth-items\.clientWidth\)/);
  assert.match(canvas,/ref=\{trayItems\}/);
  const row=canvas.slice(canvas.indexOf('<div className="tray-main-row">'),canvas.indexOf('<span id="widget-tray-help"'));
  assert.ok(row.indexOf('<PresetTray')<row.indexOf('data-saved-target'));
