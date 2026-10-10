@@ -46,9 +46,16 @@ test('a native refusal probe does not reapply the stale minimum while the window
  const widget=createWidget('apps');widget.placement={x:20,y:40,width:320,height:240};widget.appMinWidth=602;widget.appMinHeight=500;
  assert.deepEqual(appPanelFit(widget,{minWidth:900,minHeight:700,requiredWidth:null,requiredHeight:null,measured:true,probing:true},2,100),{});
  });
-test('app panels keep their full coordinates and clip only the visible area instead of going blank on overlap',()=>{
- const result=appPanelGeometry(rect(140,200,800,500),rect(170,180,1000,620),true,false);
- assert.equal(result.visible,true);
+test('Apps hides only its native content under a higher card and restores it when clear',()=>{
+ const panel=rect(140,200,800,500),content=rect(170,250,1000,550),higherContent=rect(300,300,100,100);
+ const covered=appPanelGeometry(panel,content,true,false,null,[higherContent]);
+ assert.equal(covered.visible,false,'a higher card covering native app content hides the whole attached HWND');
+ const headerOnly=appPanelGeometry(panel,content,true,false,null,[rect(200,200,120,40)]);
+ assert.equal(headerOnly.visible,true,'overlap outside the native content area does not hide the app');
+ const edgeTouch=appPanelGeometry(panel,content,true,false,null,[rect(970,250,100,100)]);
+ assert.equal(edgeTouch.visible,true,'zero-area edge touching does not hide the app');
+ assert.equal(appPanelGeometry(panel,content,true,false).visible,true,'moving the higher card clear restores the same attached HWND');
+ const result=appPanelGeometry(panel,rect(170,180,1000,620),true,false);
  assert.deepEqual(result.bounds,{x:140,y:200,width:800,height:500});
  assert.deepEqual(result.clip,{x:170,y:200,width:770,height:500});
  assert.equal(appPanelGeometry(rect(140,200,800,500),rect(170,180,1000,620),false,false).visible,false);

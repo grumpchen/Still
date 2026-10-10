@@ -25,5 +25,5 @@ export function appPanelGeometry(rect:PanelRect,viewport:PanelRect,active:boolea
  // a zero-sized grip rejects the native presentation before it can hide the app.
  const grip=resizeGrip&&resizeGrip.width>=1&&resizeGrip.height>=1?{x:resizeGrip.left,y:resizeGrip.top,width:resizeGrip.width,height:resizeGrip.height}:null;
   const occlusions=covered.flatMap(item=>{const x=Math.max(left,item.left),y=Math.max(top,item.top),right=Math.min(left+width,item.right),bottom=Math.min(top+height,item.bottom);return right>x&&bottom>y?[{x,y,width:right-x,height:bottom-y}]:[]});
-  return{bounds:{x:rect.left,y:rect.top,width:Math.max(1,rect.width),height:Math.max(1,rect.height)},clip:{x:left,y:top,width:Math.max(1,width),height:Math.max(1,height)},grip,...(occlusions.length?{occlusions}:{}),visible:active&&!obscured&&width>1&&height>1,viewportRight};
+  return{bounds:{x:rect.left,y:rect.top,width:Math.max(1,rect.width),height:Math.max(1,rect.height)},clip:{x:left,y:top,width:Math.max(1,width),height:Math.max(1,height)},grip,...(occlusions.length?{occlusions}:{}),visible:active&&!obscured&&width>1&&height>1&&occlusions.length===0,viewportRight};
 }
