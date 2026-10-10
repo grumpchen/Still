@@ -70,6 +70,14 @@ fn selected_from(windows:Vec<crate::app_panel::WindowInfo>,hwnd:usize,pid:u32)->
 fn selected(hwnd:usize,pid:u32)->Result<crate::app_panel::WindowInfo,String>{
  selected_from(crate::app_panel::windows(),hwnd,pid)
 }
+fn selected_for_prepare_from(unmanaged:Vec<crate::app_panel::WindowInfo>,managed:Vec<crate::app_panel::WindowInfo>,hwnd:usize,pid:u32)->Result<crate::app_panel::WindowInfo,String>{
+ if let Some(window)=managed.into_iter().find(|window|window.hwnd==hwnd&&window.pid==pid&&window_matches(hwnd,pid)){return Ok(window)}
+ selected_from(unmanaged,hwnd,pid)
+}
+fn selected_for_prepare(app:&AppHandle,hwnd:usize,pid:u32)->Result<crate::app_panel::WindowInfo,String>{
+ let managed=crate::app_panel::managed_windows(app).into_iter().map(|(hwnd,pid)|crate::app_panel::WindowInfo{hwnd,pid,title:title(handle(hwnd)),executable:crate::app_panel::executable(pid)}).collect();
+ selected_for_prepare_from(crate::app_panel::windows(),managed,hwnd,pid)
+}
 #[tauri::command]
 pub async fn app_picker_windows(app:AppHandle,webview:Webview,source_id:Option<String>)->Result<Vec<PickerWindow>,String>{
  crate::browser::authorize(&webview)?;tauri::async_runtime::spawn_blocking(move||choices(&app,source_id.as_deref())).await.map_err(|e|e.to_string())?
@@ -77,7 +85,7 @@ pub async fn app_picker_windows(app:AppHandle,webview:Webview,source_id:Option<S
 #[tauri::command]
 pub async fn app_picker_prepare(app:AppHandle,webview:Webview,hwnd:usize,pid:u32)->Result<crate::dropped_files::DropEntry,String>{
  crate::browser::authorize(&webview)?;
- tauri::async_runtime::spawn_blocking(move||{let window=selected(hwnd,pid)?;let path=window.executable.ok_or("Windows could not identify this app's executable. It may run at a different permission level.")?;
+ tauri::async_runtime::spawn_blocking(move||{let window=selected_for_prepare(&app,hwnd,pid)?;let path=window.executable.ok_or("Windows could not identify this app's executable. It may run at a different permission level.")?;
   let state=app.state::<crate::dropped_files::AppGrants>();let mut entry=state.register(&crate::dropped_files::source_id()?,Path::new(&path))?;
   entry.name=version_name(&path).unwrap_or_else(||clean_name(&Path::new(&path).file_stem().unwrap_or_default().to_string_lossy()));
   state.persist(&app.path().app_data_dir().map_err(|e|e.to_string())?)?;Ok(entry)
@@ -125,5 +133,11 @@ pub async fn app_picker_preview(webview:Webview,hwnd:usize,pid:u32)->Result<Vec<
   assert_eq!(selected_from(vec![other,stale,exact],id,process).unwrap().title,"Selected document");
   let _=DestroyWindow(hwnd);let gone=WindowInfo{hwnd:id,pid:process,title:"Closed document".into(),executable:None};
   assert!(selected_from(vec![gone],id,process).is_err());
+ }}
+ #[test]fn preparation_accepts_an_exact_already_managed_window_for_quick_save(){unsafe{
+  let class=wide("STATIC");let caption=wide("Still managed picker fixture");let hwnd=CreateWindowExW(WINDOW_EX_STYLE(0),PCWSTR(class.as_ptr()),PCWSTR(caption.as_ptr()),WS_OVERLAPPEDWINDOW,0,0,640,400,None,None,None,None).unwrap();
+  let id=hwnd.0 as usize;let process=std::process::id();let other=WindowInfo{hwnd:id+1,pid:process,title:"Other document".into(),executable:Some("other.exe".into())};let managed=WindowInfo{hwnd:id,pid:process,title:"Attached Chrome".into(),executable:Some("chrome.exe".into())};
+  let selected=selected_for_prepare_from(vec![],vec![other,managed],id,process).unwrap();assert_eq!(selected.executable.as_deref(),Some("chrome.exe"));
+  let _=DestroyWindow(hwnd);assert!(selected_for_prepare_from(vec![],vec![WindowInfo{hwnd:id,pid:process,title:"Closed".into(),executable:Some("chrome.exe".into())}],id,process).is_err());
  }}
 }

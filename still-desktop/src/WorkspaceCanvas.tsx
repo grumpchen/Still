@@ -23,6 +23,7 @@ type Gesture={id:string;type:WidgetType;mode:'move'|'resize';startX:number;start
 type SaveCue={kind:'saved'}|{kind:'widget';type:WidgetType}|{kind:'group-create'}|{kind:'group';id:string};
 export default function WorkspaceCanvas({workspaceId,transferWidget,setWorkspaceDropTarget,openAppsDialog,editTray,presets,openPreset,editPreset,removePreset,renamePreset,renameGroup,savePresets,openDropped,widgets,groups,updateGroup,saveToGroup,openGroup,editGroup,removeGroup,openGroupWidget,update,add,remove,begin,bringToFront,notify,obscured,workspaceActive=true,openResource,pickApp,saveApp,appAttachments,appAttachmentHandled}:Props&DropProps&AppPickerProps){
   const viewport=useRef<HTMLDivElement>(null),tray=useRef<HTMLDivElement>(null),trayItems=useRef<HTMLDivElement>(null),gesture=useRef<Gesture|null>(null);
+  const preparedAppSources=useRef(new Map<string,{appKey:string;appName:string}>());
   const previousPresetIds=useRef(new Set(presets.map(preset=>preset.id)));
   const [active,setActive]=useState<string|null>(null),[trayDragging,setTrayDragging]=useState(false),[overTray,setOverTray]=useState(false),[overCanvas,setOverCanvas]=useState(false),[busy,setBusy]=useState<string|null>(null);
   const [viewportWidth,setViewportWidth]=useState(0),[viewportHeight,setViewportHeight]=useState(0);
@@ -118,7 +119,8 @@ export default function WorkspaceCanvas({workspaceId,transferWidget,setWorkspace
     else if(g.mode==='move'&&distance>4&&target.insideTray){
      if(original)update(g.id,{placement:original.placement,restorePlacement:original.restorePlacement});
      if(action==='remove')remove(g.id,true);
-     else try{if(action==='save'&&original)savePresets([presetFromWidget(original)],true);if((action==='create-group'||action==='save-group')&&original){const groupId=target.groupTarget?.kind==='existing'?target.groupTarget.groupId:undefined;saveToGroup(original,groupId,true)}}catch(error){notify(String((error as Error).message??error))}
+     else if(action==='save'&&original)void saveWidgetToTray(original).catch(error=>notify(String((error as Error).message??error)));
+     else try{if((action==='create-group'||action==='save-group')&&original){const groupId=target.groupTarget?.kind==='existing'?target.groupTarget.groupId:undefined;saveToGroup(original,groupId,true)}}catch(error){notify(String((error as Error).message??error))}
     }else bringToFront(g.id);
   }
   function key(e:KeyboardEvent<HTMLElement>,w:WidgetInstance,mode:'move'|'resize'){
@@ -129,6 +131,18 @@ export default function WorkspaceCanvas({workspaceId,transferWidget,setWorkspace
   function minimize(w:WidgetInstance){update(w.id,minimizeWidgetInstance(w,extent,height));bringToFront(w.id)}
   function restore(w:WidgetInstance){update(w.id,restoreWidgetInstance(w,extent,height));bringToFront(w.id)}
   function toggleGroup(w:WidgetInstance){update(w.id,toggleGroupCollapsed(w,extent,height))}
+  async function saveWidgetToTray(widget:WidgetInstance){
+    let reusable=widget;
+    if(widget.type==='apps'&&!widget.appKey){
+      let source=preparedAppSources.current.get(widget.id);
+      if(!source){const attachment=appAttachments[widget.id]??await appPanel.identity(widget.id);if(!attachment)throw new Error('Attach an application shortcut before saving this Apps widget.');
+        const shortcut=await appPanel.prepare(attachment);if(shortcut.kind!=='app'||!shortcut.sourceId)throw new Error('Windows could not create a reusable shortcut for this app.');
+        source={appKey:shortcut.sourceId,appName:shortcut.name};preparedAppSources.current.set(widget.id,source);
+      }
+      reusable={...widget,...source};
+    }
+    savePresets([presetFromWidget(reusable)],true);
+  }
   async function snapshot(id:string,download=false){if(busy)return;setBusy(id);
     try{
       // Raise the chosen card before the native crop so overlapping cards cannot

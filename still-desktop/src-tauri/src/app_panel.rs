@@ -48,6 +48,7 @@ impl Drop for Entry{fn drop(&mut self){if self.original_region!=0{unsafe{let _=D
 #[derive(Default)]struct Panels {items:HashMap<String,Entry>,pending:HashMap<String,Launch>,running:HashSet<String>,attaching:HashSet<(usize,u32)>,generation:HashMap<String,u64>,closed:bool}
 #[derive(Default)]pub struct AppPanelState(Mutex<Panels>);
 #[derive(Serialize)]#[serde(rename_all="camelCase")]pub struct Info{hwnd:usize,pid:u32,min_width:f64,min_height:f64,required_width:Option<f64>,required_height:Option<f64>,measured:bool,probing:bool,shown:bool}
+#[derive(Serialize)]#[serde(rename_all="camelCase")]pub struct AttachmentIdentity{pub hwnd:usize,pub pid:u32}
 fn maximum(a:Option<f64>,b:Option<f64>)->Option<f64>{match(a,b){(Some(a),Some(b))=>Some(a.max(b)),(Some(v),None)|(None,Some(v))=>Some(v),(None,None)=>None}}
 fn info(entry:&Entry,main:HWND,measured:bool)->Info{info_at(entry,unsafe{windows::Win32::UI::HiDpi::GetDpiForWindow(main)}.max(96) as f64/96.,measured)}
 fn info_at(entry:&Entry,scale:f64,measured:bool)->Info{
@@ -177,6 +178,7 @@ fn launch(path:&Path,before:Vec<usize>)->Result<Launch,String>{
  Ok(Launch{pid:process,executable:expected,before})
 }
 fn valid_window(entry:&Entry)->bool{(unsafe{IsWindow(Some(handle(entry.hwnd))).as_bool()})&&pid(handle(entry.hwnd))==entry.pid}
+fn attachment_identity(entry:Option<&Entry>)->Option<AttachmentIdentity>{entry.filter(|entry|valid_window(entry)).map(|entry|AttachmentIdentity{hwnd:entry.hwnd,pid:entry.pid})}
 fn belongs(mut window:HWND,hwnd:usize,process:u32)->bool{for _ in 0..12{if window.0 as usize==hwnd&&pid(window)==process{return true}window=unsafe{GetWindow(window,GW_OWNER)}.unwrap_or_default();if window.0.is_null(){break}}false}
 fn foreground_in(items:&HashMap<String,Entry>,front:HWND)->bool{
  items.values().any(|e|belongs(front,e.hwnd,e.pid))
@@ -479,6 +481,13 @@ pub async fn app_panel_open(app:AppHandle,webview:Webview,id:String,source_id:St
 #[tauri::command]
 pub async fn app_panel_windows(app:AppHandle,webview:Webview)->Result<Vec<WindowInfo>,String>{crate::browser::authorize(&webview)?;let _=app;tauri::async_runtime::spawn_blocking(windows).await.map_err(|e|e.to_string())}
 #[tauri::command]
+pub async fn app_panel_identity(app:AppHandle,webview:Webview,id:String)->Result<Option<AttachmentIdentity>,String>{
+ crate::browser::authorize(&webview)?;instance(&id)?;
+ tauri::async_runtime::spawn_blocking(move||{let state=app.state::<AppPanelState>();let panels=state.0.lock().map_err(|_|"App panels are unavailable")?;
+  Ok(attachment_identity(panels.items.get(&id)))
+ }).await.map_err(|e|e.to_string())?
+}
+#[tauri::command]
 pub async fn app_panel_attach(app:AppHandle,webview:Webview,id:String,hwnd:usize,pid:u32,bounds:Bounds,clip:Bounds,grip:Option<Bounds>,preserve_focus:Option<bool>)->Result<Info,String>{
  crate::browser::authorize(&webview)?;instance(&id)?;bounds.validate()?;clip.validate()?;if let Some(grip)=&grip{grip.validate()?}
  let preserve_focus=preserve_focus.unwrap_or(false);
@@ -625,6 +634,11 @@ pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
   assert!(reuse_candidate(&ambiguous,Some("C:\\Office\\WINWORD.EXE")).is_err_and(|error|error.contains("Several windows")));
  }
  struct Fixture(HWND);impl Fixture{fn new(title:&str)->Self{unsafe{let class=wide("STATIC");let title=wide(title);Self(CreateWindowExW(WINDOW_EX_STYLE(0),PCWSTR(class.as_ptr()),PCWSTR(title.as_ptr()),WS_OVERLAPPEDWINDOW,50,60,840,520,None,None,None,None).unwrap())}}}impl Drop for Fixture{fn drop(&mut self){unsafe{let _=DestroyWindow(self.0);}}}
+ #[test]fn app_widget_identity_exposes_only_a_live_attached_hwnd_and_pid(){
+  let fixture=Fixture::new("Still app identity fixture");let id=fixture.0.0 as usize;let process=pid(fixture.0);let bounds=Bounds{x:0.,y:0.,width:640.,height:400.};let mut entry=test_entry(id,&bounds);entry.pid=process;
+  assert_eq!(attachment_identity(Some(&entry)).map(|identity|(identity.hwnd,identity.pid)),Some((id,process)));
+  drop(fixture);assert!(attachment_identity(Some(&entry)).is_none(),"A closed app cannot be turned into a new saved shortcut");
+ }
   #[test]fn collected_window_marker_is_scoped_to_widget_and_survives_release_without_saving_hwnd_or_pid(){unsafe{
   let target=Fixture::new("Still collected app recovery fixture");let id="fixture-collected-app";
   let token=collection_marker(id);let other=collection_marker("another-widget");

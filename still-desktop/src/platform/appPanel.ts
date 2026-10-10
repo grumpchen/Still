@@ -19,6 +19,7 @@ export const appPanel={
  present:(id:string,bounds:PanelBounds,clip:PanelBounds,grip:PanelBounds|null,occlusions:PanelBounds[],visible:boolean,stackingRank:number,revision:number,viewportRight:number)=>command<AppPanelInfo>(id,'app_panel_present',{bounds,clip,grip,occlusions,visible,stackingRank,revision,viewportRight}),
  attach:(id:string,window:AppAttachment,bounds:PanelBounds,clip:PanelBounds,grip:PanelBounds|null)=>command<AppPanelInfo>(id,'app_panel_attach',{hwnd:window.hwnd,pid:window.pid,bounds,clip,grip,preserveFocus:window.capture===true}),
  windows:()=>invoke<AppWindow[]>('app_panel_windows'),
+ identity:(id:string)=>invoke<AppAttachment|null>('app_panel_identity',{id}),
  choices:(sourceId?:string)=>invoke<AppWindowChoice[]>('app_picker_windows',{sourceId:sourceId??null}),
  prepare:(window:AppAttachment)=>invoke<DroppedResource>('app_picker_prepare',{hwnd:window.hwnd,pid:window.pid}),
  preview:async(window:AppAttachment)=>appImageUrl(await invoke<number[]>('app_picker_preview',{hwnd:window.hwnd,pid:window.pid})),
