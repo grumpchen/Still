@@ -39,13 +39,15 @@ test('Quiet Minimal paints an opaque canvas in the transparent Tauri window',()=
  assert.match(styles,/html\.native-transparent body:not\(\.liquid-glass\) \.canvas-app\{background:var\(--canvas\)\}/);
 });
 
-test('Group card close requires confirmation and removes only the floating card',()=>{
+test('Group card close removes the floating card immediately and preserves the saved Group',()=>{
  const app=readFileSync(new URL('../src/App.tsx',import.meta.url),'utf8');
  const canvas=readFileSync(new URL('../src/WorkspaceCanvas.tsx',import.meta.url),'utf8');
  assert.match(canvas,/aria-label=\{'Remove '\+title\}/);
+ assert.match(canvas,/onClick=\{e=>\{e\.stopPropagation\(\);remove\(w\.id\)\}\}>×<\/button>/);
  const removal=app.slice(app.indexOf('function removeWidget('),app.indexOf('function addWidget('));
  assert.match(removal,/kind:'widget' as const/);
- assert.match(removal,/if\(widget\.type==='group'\)\{setPendingRemoval\(target\);setModal\('delete'\)\}else performRemoval\(target\)/);
+ assert.match(removal,/performRemoval\(target\)/);
+ assert.doesNotMatch(removal,/setPendingRemoval|setModal\('delete'\)/);
  assert.match(app,/Remove this Group card from the workspace\? Its collected widgets remain in the saved Group/);
  assert.match(app,/target\.kind==='widget'\?deleteCanvasWidget/);
 });

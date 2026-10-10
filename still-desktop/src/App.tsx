@@ -101,7 +101,7 @@ export default function App(){
   function removeWidget(id:string,preserveUndo=false){
     const current=captureState.current,owner=current.workspaces.find(w=>w.widgets.some(widget=>widget.id===id)),widget=owner?.widgets.find(w=>w.id===id);if(!owner||!widget)return;
     const target={workspaceId:owner.id,id,kind:'widget' as const,preserveUndo,name:widget.title||'Group'};
-    if(widget.type==='group'){setPendingRemoval(target);setModal('delete')}else performRemoval(target);
+    performRemoval(target);
   }
   function addWidget(type:WidgetType,at?:{x:number;y:number},width?:number){const viewportWidth=width??document.querySelector<HTMLElement>('.workspace-surface:not([hidden]) .canvas-viewport')?.clientWidth??1000;undo.current=state;setState(s=>({...s,workspaces:s.workspaces.map(w=>{if(w.id!==s.activeId)return w;const widget=createWidget(type);widget.instanceNumber=nextInstanceNumber(type,w.widgets);widget.placement=at?placement(type,{...widget.placement,...at}):nextPlacement(type,w.widgets,width??canvasExtent(viewportWidth,w.widgets));const bounded=boundNewWidget(widget,w.widgets,width);if(type==='group'){const id=crypto.randomUUID();bounded.groupId=id;return{...w,groups:[...w.groups,{id,name:'',shortcuts:[],widgets:[],expanded:false}],widgets:[...w.widgets,bounded]}}return {...w,widgets:[...w.widgets,bounded]}})}));setModal(null);notify(widgetRegistry[type].name+' added')}
   function changeGroup(workspaceId:string,id:string,patch:Partial<Omit<SavedGroup,'id'>>){setState(s=>({...s,workspaces:s.workspaces.map(w=>w.id===workspaceId?(patch.name!==undefined?saveGroupName(w,id,patch.name):updateSavedGroup(w,id,patch)):w)}))}
