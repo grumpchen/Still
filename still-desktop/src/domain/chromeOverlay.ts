@@ -7,19 +7,6 @@ function intersection(a:OverlayRect,b:OverlayRect):OverlayRect|null{
  return right>left&&bottom>top?{left,top,right,bottom}:null;
 }
 function bounds(rect:OverlayRect):OverlayBounds{return{x:rect.left,y:rect.top,width:Math.max(1,rect.right-rect.left),height:Math.max(1,rect.bottom-rect.top)}}
-function hasUncoveredArea(base:OverlayRect,covers:OverlayRect[]):boolean{
- const clipped=covers.flatMap(item=>{const overlap=intersection(base,item);return overlap?[overlap]:[]});
- const edges=[base.left,base.right,...clipped.flatMap(item=>[item.left,item.right])].sort((a,b)=>a-b);
- for(let i=0;i<edges.length-1;i++){
-  if(edges[i+1]<=edges[i])continue;
-  const x=(edges[i]+edges[i+1])/2,intervals=clipped.filter(item=>x>=item.left&&x<item.right).map(item=>[item.top,item.bottom] as const).sort((a,b)=>a[0]-b[0]);
-  let covered=base.top;
-  for(const [top,bottom] of intervals){if(top>covered)return true;covered=Math.max(covered,bottom);if(covered>=base.bottom)break}
-  if(covered<base.bottom)return true;
- }
- return false;
-}
-
 /** Geometry for a top-level Chrome window and its viewport/overlap clipping region. */
 export function chromeClipGeometry(rect:OverlayRect,viewport:OverlayRect,content:OverlayRect,higher:OverlayRect[],active:boolean,obscured:boolean,resizeGrip:OverlayRect|null=null):ChromeClipGeometry{
  const visibleRect=intersection(intersection(rect,viewport)??{left:0,top:0,right:0,bottom:0},content);
@@ -29,7 +16,10 @@ export function chromeClipGeometry(rect:OverlayRect,viewport:OverlayRect,content
  const clippedHigher=higher.flatMap(item=>{const overlap=visibleRect&&intersection(visibleRect,item);return overlap?[overlap]:[]}),clippedGrip=resizeGrip&&visibleRect?intersection(visibleRect,resizeGrip):null,tooMany=clippedHigher.length>256;
  // Keep a native cutout for the grip even at the occlusion limit.
  const occlusionRects=[...clippedHigher.slice(0,clippedGrip?255:256),...(clippedGrip?[clippedGrip]:[])],occlusions=occlusionRects.map(bounds);
- return{bounds:{x:rect.left,y:rect.top,width:Math.max(1,rect.right-rect.left),height:Math.max(1,rect.bottom-rect.top)},clip,occlusions,visible:!!visibleRect&&!tooMany&&hasUncoveredArea(visibleRect,occlusionRects)&&active&&!obscured,viewportRight:viewport.right};
+ // A higher card occludes the attached native window as a whole. Its Still
+ // card remains rendered above the WebView, and clearing the overlap restores
+ // this same HWND through the normal present path.
+ return{bounds:{x:rect.left,y:rect.top,width:Math.max(1,rect.right-rect.left),height:Math.max(1,rect.bottom-rect.top)},clip,occlusions,visible:!!visibleRect&&!tooMany&&clippedHigher.length===0&&active&&!obscured,viewportRight:viewport.right};
 }
 
 /** Used by visibility tests; partial viewport intersections are now supported. */

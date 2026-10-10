@@ -13,12 +13,14 @@ test('Still-Chrome visibility requires an active, clear, non-empty viewport inte
  assert.equal(overlayVisible({...r,right:1250},v,true,false,false),true);
  assert.equal(overlayVisible({...r,left:1300},v,true,false,false),false);
 });
-test('Chrome clip geometry retains partial viewport edges and masks only higher widgets',()=>{
+test('Chrome clip geometry retains viewport clipping and hides under any higher-card content overlap',()=>{
  const geometry=chromeClipGeometry({left:-30,top:100,right:470,bottom:500},{left:0,top:0,right:400,bottom:300},{left:0,top:80,right:400,bottom:500},[{left:180,top:150,right:280,bottom:250}],true,false);
  assert.deepEqual(geometry.bounds,{x:-30,y:100,width:500,height:400});
  assert.deepEqual(geometry.clip,{x:0,y:100,width:400,height:200});
  assert.deepEqual(geometry.occlusions,[{x:180,y:150,width:100,height:100}]);
- assert.equal(geometry.visible,true);
+ assert.equal(geometry.visible,false,'a positive overlap hides the lower native Chrome window even when content remains uncovered');
+ const touching=chromeClipGeometry({left:0,top:150,right:100,bottom:250},{left:0,top:0,right:400,bottom:300},{left:0,top:150,right:400,bottom:500},[{left:0,top:100,right:100,bottom:150}],true,false);
+ assert.equal(touching.visible,true,'edge touching has no positive-area overlap');
  assert.equal(geometry.viewportRight,400,'The native guard receives the viewport edge in logical client coordinates');
  assert.equal(chromeClipGeometry({left:0,top:0,right:100,bottom:100},{left:0,top:0,right:100,bottom:100},{left:0,top:0,right:100,bottom:100},[{left:0,top:0,right:100,bottom:100}],true,false).visible,false);
 });
