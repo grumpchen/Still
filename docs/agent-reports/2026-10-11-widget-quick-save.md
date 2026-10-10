@@ -17,6 +17,7 @@
 - `node --test tests/quick-save-drop.test.mjs tests/inlineTray.test.mjs tests/group-tray.test.mjs tests/tray-cleanup.test.mjs` — 37 passed.
 - `npm run check` — passed.
 - `npm run build` — passed.
+- `pnpm tauri build` — frontend build passed, but replacing the existing release executable failed with Windows `Access is denied` for `src-tauri/target/release/still-desktop.exe`.
 
 ## Handoff
-- Source changes are ready for the task branch push. Windows GUI acceptance was not performed.
+- Source changes are pushed to the task branch. The existing release executable could not be refreshed because Windows denied access to the output file; no executable was launched. Windows GUI acceptance was not performed.
