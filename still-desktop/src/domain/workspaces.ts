@@ -310,9 +310,9 @@ function checkedWidget(value: unknown): WidgetInstance {
   const defaults = createWidget(item.type as WidgetType);
   const checkedFileKey=item.type==='files'&&typeof item.fileKey==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(item.fileKey)?item.fileKey:null;
   const checkedAppKey=item.type==='apps'&&typeof item.appKey==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(item.appKey)?item.appKey:null;
-  // An open native HWND belongs to the current Still process. Persist its app
-  // configuration, but require an explicit open after a full Still restart.
-  const checkedAppPanelOpen=false;
+  // HWND ownership is process-local, but this flag is durable open intent. The
+  // Apps widget resolves that intent by reusing or launching its saved shortcut.
+  const checkedAppPanelOpen=!!checkedAppKey&&item.appPanelOpen===true;
   const checkedAppMinSize=(size:unknown,minimum:number):number|undefined=>item.type==='apps'&&checkedAppKey&&typeof size==='number'&&Number.isFinite(size)&&size>=minimum&&size<=3000?Math.ceil(size):undefined;
   const appMinWidth=checkedAppMinSize(item.appMinWidth,widgetCatalog.apps.minWidth),appMinHeight=checkedAppMinSize(item.appMinHeight,widgetCatalog.apps.minHeight);
   const restorePlacement=item.minimized===true?checkedRestorePlacement(item.type as WidgetType,item.restorePlacement):null;

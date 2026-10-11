@@ -79,18 +79,20 @@ test('Apps native content hides when it crosses the left workspace edge and retu
  assert.equal(appPanelGeometry(rect(100,120,620,450),rect(100,120,620,450),true,false,null,[],viewport.right,viewport.left).visible,true);
  assert.equal(appPanelGeometry(rect(500,120,620,450),rect(500,120,500,450),true,false,null,[],viewport.right,viewport.left).visible,false,'the matching right edge also hides native content');
 });
-test('native app minimum size persists while restart clears its transient open state',()=>{
+test('native app launch intent and minimum size survive restart when a shortcut is saved',()=>{
  const state=createInitialState(),app=createWidget('apps');app.appKey='codex';app.appPanelOpen=true;app.appMinWidth=640;app.appMinHeight=460;state.workspaces[0].widgets.push(app);
- const restored=parseState(JSON.stringify(state)).workspaces[0].widgets.at(-1);assert.equal(restored.appMinWidth,640);assert.equal(restored.appMinHeight,460);assert.equal(restored.appPanelOpen,false);
- assert.equal(restored.placement.width,360);assert.equal(restored.placement.height,280);
- app.appPanelOpen=false;const detached=parseState(JSON.stringify(state)).workspaces[0].widgets.at(-1);assert.equal(detached.placement.width,360);assert.equal(detached.placement.height,280);
+ const restored=parseState(JSON.stringify(state)).workspaces[0].widgets.at(-1);assert.equal(restored.appMinWidth,640);assert.equal(restored.appMinHeight,460);assert.equal(restored.appPanelOpen,true);
+ assert.equal(restored.placement.width,640);assert.equal(restored.placement.height,460,'an automatically reopened app keeps its saved native minimum');
+ app.appPanelOpen=false;const detached=parseState(JSON.stringify(state)).workspaces[0].widgets.at(-1);assert.equal(detached.appPanelOpen,false);assert.equal(detached.placement.width,360);assert.equal(detached.placement.height,280);
  app.appMinWidth=NaN;app.appMinHeight=-10;
  const invalid=parseState(JSON.stringify(state)).workspaces[0].widgets.at(-1);assert.equal(invalid.appMinWidth,undefined);assert.equal(invalid.appMinHeight,undefined);
 });
-test('Apps widgets stay saved but native apps do not relaunch when Still reopens',()=>{
+test('Apps widgets with saved shortcuts preserve open intent while unsaved attachments require reattachment',()=>{
  const state=createInitialState(),app=createWidget('apps');assert.equal(app.appPanelOpen,false);
  app.appKey='app-word';app.appName='Word';app.appPanelOpen=true;state.workspaces[0].widgets.push(app);
- const reopened=parseState(JSON.stringify(state)).workspaces[0].widgets.at(-1);assert.equal(reopened.appPanelOpen,false);assert.equal(reopened.appKey,'app-word');assert.equal(reopened.appName,'Word');
+ const reopened=parseState(JSON.stringify(state)).workspaces[0].widgets.at(-1);assert.equal(reopened.appPanelOpen,true);assert.equal(reopened.appKey,'app-word');assert.equal(reopened.appName,'Word');
+ const attachedWithoutShortcut=createWidget('apps');attachedWithoutShortcut.appName='Attached window';attachedWithoutShortcut.appPanelOpen=true;state.workspaces[0].widgets.push(attachedWithoutShortcut);
+ assert.equal(parseState(JSON.stringify(state)).workspaces[0].widgets.at(-1).appPanelOpen,false);
  const old=structuredClone(state);delete old.workspaces[0].widgets.at(-1).appPanelOpen;
  assert.equal(parseState(JSON.stringify(old)).workspaces[0].widgets.at(-1).appPanelOpen,false);
  const fresh=createWidgetFromPreset({id:'word-preset',type:'apps',name:'Word',appSourceId:'app-word',appName:'Word'},[]);
