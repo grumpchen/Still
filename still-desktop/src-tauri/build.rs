@@ -2,6 +2,7 @@ fn main() {
     tauri_build::try_build(
         tauri_build::Attributes::new().app_manifest(
             tauri_build::AppManifest::new().commands(&[
+                "assistant_configured", "assistant_set_key", "assistant_chat", "assistant_key_setup",
                 "chrome_open", "widget_capture", "widget_export",
                 "chrome_panel_open", "chrome_panel_present", "chrome_panel_navigate", "chrome_panel_close",
                 "browser_open", "browser_bounds", "browser_visible", "browser_navigate", "browser_current", "browser_action", "browser_close",

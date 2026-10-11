@@ -6,6 +6,8 @@ mod shortcuts;
 mod app_capture;
 mod chrome;
 mod capture;
+mod assistant;
+mod assistant_protocol;
 #[cfg(windows)] mod chrome_overlay;
 #[cfg(windows)] mod app_panel;
 #[cfg(windows)] mod native_panels;
@@ -19,6 +21,7 @@ fn main() {
             if let tauri::WindowEvent::DragDrop(event) = event { dropped_files::handle_event(window, event); }
         })
         .setup(|app| {
+            app.manage(assistant::AssistantState::from_environment());
             app.manage(files::FolderRoots::load(app.handle())); app.manage(shortcuts::ShortcutState::default());
             app.manage(dropped_files::DocumentGrants::load(app.handle()));
             app.manage(dropped_files::AppGrants::load(app.handle()));
@@ -38,6 +41,7 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            assistant::assistant_configured, assistant::assistant_set_key, assistant::assistant_chat, assistant::assistant_key_setup,
             chrome::chrome_open, capture::widget_capture, capture::widget_export,
             chrome_overlay::chrome_panel_open,chrome_overlay::chrome_panel_present,chrome_overlay::chrome_panel_navigate,chrome_overlay::chrome_panel_close,
             browser::browser_open, browser::browser_bounds, browser::browser_visible,
