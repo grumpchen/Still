@@ -9,13 +9,13 @@ import {observeCanvasScroll} from './platform/canvasScroll.ts';
 
 export default function AppsWidget({widget,update,notify,obscured,workspaceActive=true,appAttachment,appAttachmentHandled,pickApp}:WidgetProps){
  const host=useRef<HTMLDivElement>(null),picker=useRef<HTMLInputElement>(null),current=useRef({widget,update,notify,obscured,workspaceActive,appAttachment,appAttachmentHandled});current.current={widget,update,notify,obscured,workspaceActive,appAttachment,appAttachmentHandled};
- const [busy,setBusy]=useState(false),[ready,setReady]=useState(false),[opening,setOpening]=useState(false),[error,setError]=useState('');
+ const [busy,setBusy]=useState(false),[ready,setReady]=useState(false),[opening,setOpening]=useState(false),[relaunchFailed,setRelaunchFailed]=useState(false),[error,setError]=useState('');
  const [collectionResumed,setCollectionResumed]=useState(false);
  const schedule=useRef<()=>void>(()=>{}),launch=useRef<()=>Promise<void>>(async()=>{}),resume=useRef<()=>Promise<void>>(async()=>{}),detach=useRef<()=>Promise<void>>(async()=>{}),attach=useRef<(window:AppAttachment)=>Promise<void>>(async()=>{});
-  function selected(app:DroppedResource){if(app.kind!=='app'||!app.sourceId)throw new Error('Choose an app shortcut or application.');update({appKey:app.sourceId,appName:app.name,title:widget.title.trim()||app.name.slice(0,60),appPanelOpen:false,appReuseExisting:false,appMinWidth:undefined,appMinHeight:undefined});setError('')}
+  function selected(app:DroppedResource){if(app.kind!=='app'||!app.sourceId)throw new Error('Choose an app shortcut or application.');update({appKey:app.sourceId,appName:app.name,title:widget.title.trim()||app.name.slice(0,60),appPanelOpen:false,appReuseExisting:false,appMinWidth:undefined,appMinHeight:undefined});setRelaunchFailed(false);setError('')}
  async function choose(){setError('');if(!localApps.native){picker.current?.click();return}setBusy(true);try{const app=await localApps.choose();if(app)selected(app)}catch(e){setError(String(e))}finally{setBusy(false)}}
  useEffect(()=>{
-  setReady(false);setOpening(false);if(!appPanel.available)return;
+  setReady(false);setOpening(false);setRelaunchFailed(false);if(!appPanel.available)return;
   const retainedOnMount=appPanel.consumeCollectionRetention(widget.id),shouldResumeCollection=retainedOnMount||widget.appWasCollected===true;setCollectionResumed(shouldResumeCollection);
   let disposed=false,frame=0,opened=false,launching=false,presenting=false,dirty=false,scrolling=false,last='',revision=0,stop:(()=>void)|undefined,stopScroll:(()=>void)|undefined;
   const node=host.current!,viewport=node.closest('.canvas-viewport') as HTMLElement,canvas=node.closest('.workspace-canvas')!;
@@ -34,18 +34,18 @@ export default function AppsWidget({widget,update,notify,obscured,workspaceActiv
   schedule.current=()=>{if(disposed)return;invalidate();if(!frame)frame=requestAnimationFrame(()=>void sync())};
   launch.current=async()=>{
    const c=current.current;if(disposed||opened||launching||c.appAttachment||!c.widget.appKey||!c.workspaceActive||c.obscured)return;
-   launching=true;setOpening(true);setError('');
+   launching=true;setOpening(true);setRelaunchFailed(false);setError('');
    try{const g=geometry(),info=await appPanel.open(widget.id,c.widget.appKey,g.bounds,g.clip,g.grip,c.widget.appReuseExisting);if(disposed)return;opened=true;last='';setReady(true);fit(info);schedule.current()}
-   catch(reason){if(!disposed)setError(String(reason))}finally{launching=false;if(!disposed)setOpening(false)}
+   catch(reason){if(!disposed){setError(String(reason));setRelaunchFailed(true);current.current.update({appPanelOpen:false})}}finally{launching=false;if(!disposed)setOpening(false)}
   };
   resume.current=async()=>{
    if(disposed||opened||launching)return;launching=true;setOpening(true);setError('');
-   try{const info=await appPanel.resume(widget.id);if(disposed)return;opened=true;last='';setCollectionResumed(true);setReady(true);current.current.update({appPanelOpen:true,appWasCollected:false});fit(info);schedule.current()}
+   try{const info=await appPanel.resume(widget.id);if(disposed)return;opened=true;last='';setCollectionResumed(true);setReady(true);setRelaunchFailed(false);current.current.update({appPanelOpen:true,appWasCollected:false});fit(info);schedule.current()}
    catch(reason){if(!disposed){setCollectionResumed(false);setError(String(reason))}}finally{launching=false;if(!disposed)setOpening(false)}
   };
   attach.current=async(window:AppAttachment)=>{
    const c=current.current;if(disposed||launching||opened||!c.workspaceActive||c.obscured)return;launching=true;setOpening(true);setError('');
-   try{const g=geometry(),info=await appPanel.attach(widget.id,window,g.bounds,g.clip,g.grip);if(disposed)return;opened=true;last='';setReady(true);current.current.update({appPanelOpen:true,appWasCollected:false});fit(info);schedule.current()}
+   try{const g=geometry(),info=await appPanel.attach(widget.id,window,g.bounds,g.clip,g.grip);if(disposed)return;opened=true;last='';setReady(true);setRelaunchFailed(false);current.current.update({appPanelOpen:true,appWasCollected:false});fit(info);schedule.current()}
    catch(reason){if(!disposed){const message=String(reason);setError(message);current.current.update({appPanelOpen:false});if(window.capture)current.current.notify('Window attachment failed: '+message)}}finally{launching=false;c.appAttachmentHandled?.();if(!disposed)setOpening(false)}
   };
   detach.current=async()=>{if(!opened&&!launching)return;opened=false;last='';setCollectionResumed(false);node.dataset.nativeVisible='false';try{await appPanel.release(widget.id);if(!disposed){setReady(false);setError('');current.current.update({appWasCollected:false})}}catch(reason){if(!disposed)setError(String(reason))}};
@@ -53,7 +53,7 @@ export default function AppsWidget({widget,update,notify,obscured,workspaceActiv
   const mutation=new MutationObserver(schedule.current);mutation.observe(canvas,{subtree:true,attributes:true,attributeFilter:['style','class'],childList:true});
   stopScroll=observeCanvasScroll(viewport,value=>{scrolling=value;if(value){invalidate(true);if(frame){cancelAnimationFrame(frame);frame=0}dirty=true;const g=geometry(),hideRevision=revision;void appPanel.present(widget.id,g.bounds,g.clip,g.grip,g.occlusions??[],false,g.stackingRank,hideRevision,g.viewportRight).then(info=>{if(!disposed&&hideRevision===revision)node.dataset.nativeVisible=String(info.shown)}).catch(()=>undefined)}else{dirty=false;schedule.current()}});
   const scroll=()=>schedule.current();window.addEventListener('resize',scroll);
-  void appPanel.subscribe(event=>{if(disposed||event.id!==widget.id)return;if(!event.open){opened=false;last='';setReady(false);setCollectionResumed(false);node.dataset.nativeVisible='false';current.current.update({appPanelOpen:false,appWasCollected:false});setError('The app was closed. Open it in the panel again.')}else if(event.error!==undefined)setError(event.error??'')}).then(unlisten=>{if(disposed)unlisten();else{stop=unlisten;const c=current.current;if(shouldResumeCollection)void resume.current();else if(c.appAttachment)void attach.current(c.appAttachment);else if(c.widget.appPanelOpen&&c.workspaceActive)void launch.current()}}).catch(reason=>{if(!disposed)setError(String(reason))});
+  void appPanel.subscribe(event=>{if(disposed||event.id!==widget.id)return;if(!event.open){opened=false;last='';setReady(false);setCollectionResumed(false);setRelaunchFailed(false);node.dataset.nativeVisible='false';current.current.update({appPanelOpen:false,appWasCollected:false});setError('The app was closed. Open it in the panel again.')}else if(event.error!==undefined)setError(event.error??'')}).then(unlisten=>{if(disposed)unlisten();else{stop=unlisten;const c=current.current;if(shouldResumeCollection)void resume.current();else if(c.appAttachment)void attach.current(c.appAttachment);else if(c.widget.appPanelOpen&&c.workspaceActive)void launch.current()}}).catch(reason=>{if(!disposed)setError(String(reason))});
   return()=>{disposed=true;invalidate();cancelAnimationFrame(frame);resize.disconnect();mutation.disconnect();window.removeEventListener('resize',scroll);stopScroll?.();stop?.();if(!appPanel.isCollectionRetained(widget.id))void appPanel.release(widget.id).catch(()=>undefined)};
  },[widget.id,widget.appKey]);
  useEffect(()=>{schedule.current();if(appAttachment&&workspaceActive&&!obscured)void attach.current(appAttachment);else if(widget.appPanelOpen&&workspaceActive&&!obscured)void launch.current();else if(!widget.appPanelOpen&&!collectionResumed)void detach.current()},[appAttachment,widget.appPanelOpen,workspaceActive,obscured,widget.placement,collectionResumed]);
@@ -65,7 +65,7 @@ export default function AppsWidget({widget,update,notify,obscured,workspaceActiv
     <p>{!widget.appKey?'Use Ctrl+Shift-click or the header control to attach an open app, or choose an app shortcut.':!appPanel.available?'The Windows version positions the real app window inside this panel.':ready?'The app follows this widget. Move it inside the workspace if its right edge crosses the boundary.':'Open the real app inside this widget, with its normal tools and documents.'}</p>
     {!ready&&(widget.appWasCollected||(!widget.appKey&&widget.appName))&&<button disabled={opening||busy} onClick={()=>pickApp?.()}>Reattach open app…</button>}
     {!ready&&<button disabled={opening||busy} onClick={()=>void choose()}>{widget.appKey?'Change app…':'Choose app…'}</button>}
-    {widget.appKey&&!ready&&<button className="primary" aria-label={'Reopen '+widget.appName+' in widget'} disabled={opening||busy||!appPanel.available} onClick={()=>{update({appPanelOpen:true});void launch.current()}}>{opening?'Opening…':'Reopen app in widget'}</button>}
+    {widget.appKey&&!ready&&!opening&&!widget.appPanelOpen&&<button className={'primary'+(relaunchFailed?' app-panel-relaunch-failed':'')} aria-invalid={relaunchFailed||undefined} aria-label={'Reopen '+widget.appName+' in widget'} disabled={busy||!appPanel.available} onClick={()=>{update({appPanelOpen:true});void launch.current()}}>{relaunchFailed?'Retry opening app':'Reopen app in widget'}</button>}
    </div>
   </div>
  </div>;

@@ -1,6 +1,7 @@
 import {after,test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createElement,act} from 'react';
+import {flushSync} from 'react-dom';
 import {createRoot} from 'react-dom/client';
 import {JSDOM} from 'jsdom';
 import {mockIPC,clearMocks} from '@tauri-apps/api/mocks';
@@ -30,13 +31,13 @@ test('rendered AppsWidgets hide only lower native content under a higher card an
    if(this.classList.contains('widget-content')||this.classList.contains('app-panel-host'))return id==='app-b'?rect(appBRect.left,appBRect.top+50,appBRect.width,appBRect.height-50):rect(appARect.left,appARect.top+50,appARect.width,appARect.height-50);
    return rect(0,0,0,0);
   };
+  ({default:AppsWidget}=await vite.ssrLoadModule('/src/AppsWidget.tsx'));
   mockIPC((command,args)=>{
    calls.push({command,args});
    if(command==='app_panel_open')return{hwnd:args.id==='app-a'?451:452,pid:args.id==='app-a'?902:903,minWidth:0,minHeight:0,requiredWidth:null,requiredHeight:null,measured:false,probing:false,shown:true};
    if(command==='app_panel_present')return{hwnd:args.id==='app-a'?451:452,pid:args.id==='app-a'?902:903,minWidth:0,minHeight:0,requiredWidth:null,requiredHeight:null,measured:false,probing:false,shown:args.visible};
    return null;
   },{shouldMockEvents:true});
-  ({default:AppsWidget}=await vite.ssrLoadModule('/src/AppsWidget.tsx'));
   rootA=createRoot(window.document.querySelector('#root-a'));rootB=createRoot(window.document.querySelector('#root-b'));
   await act(async()=>{rootA.render(app('app-a'));rootB.render(app('app-b'))});
   const presentations=id=>calls.filter(call=>call.command==='app_panel_present'&&call.args.id===id);
@@ -69,14 +70,51 @@ test('a saved Apps widget shows a reopen action and launches its app inside the 
  try{
   const {window}=dom;setGlobal('window',window);setGlobal('document',window.document);setGlobal('navigator',window.navigator);setGlobal('HTMLElement',window.HTMLElement);setGlobal('Element',window.Element);setGlobal('Node',window.Node);setGlobal('MutationObserver',window.MutationObserver);setGlobal('ResizeObserver',class{observe(){}disconnect(){}});setGlobal('requestAnimationFrame',callback=>setTimeout(()=>callback(Date.now()),0));setGlobal('cancelAnimationFrame',clearTimeout);setGlobal('getComputedStyle',window.getComputedStyle.bind(window));setGlobal('isTauri',true);setGlobal('IS_REACT_ACT_ENVIRONMENT',true);
   window.HTMLElement.prototype.getBoundingClientRect=function(){return rect(100,100,this.classList.contains('widget-content')?620:620,this.classList.contains('widget-content')?450:500)};
-  mockIPC((command,args)=>{calls.push({command,args});if(command==='app_panel_open')return{hwnd:451,pid:902,minWidth:0,minHeight:0,requiredWidth:null,requiredHeight:null,measured:false,probing:false,shown:true};if(command==='app_panel_present')return{hwnd:451,pid:902,minWidth:0,minHeight:0,requiredWidth:null,requiredHeight:null,measured:false,probing:false,shown:args.visible};return null},{shouldMockEvents:true});
   ({default:AppsWidget}=await vite.ssrLoadModule('/src/AppsWidget.tsx'));
+  mockIPC((command,args)=>{calls.push({command,args});if(command==='app_panel_open')return{hwnd:451,pid:902,minWidth:0,minHeight:0,requiredWidth:null,requiredHeight:null,measured:false,probing:false,shown:true};if(command==='app_panel_present')return{hwnd:451,pid:902,minWidth:0,minHeight:0,requiredWidth:null,requiredHeight:null,measured:false,probing:false,shown:args.visible};return null},{shouldMockEvents:true});
   root=createRoot(window.document.querySelector('#root'));await act(async()=>root.render(app('app-reopen',{open:false,update:patch=>updates.push(patch)})));
   const reopen=window.document.querySelector('[aria-label="Reopen Test app in widget"]');assert.ok(reopen,'the closed saved app has an explicit reopen button');assert.equal(reopen.textContent,'Reopen app in widget');
-  await act(async()=>reopen.dispatchEvent(new window.MouseEvent('click',{bubbles:true})));
-  await waitFor(()=>calls.some(call=>call.command==='app_panel_open'));
+  await act(async()=>{reopen.dispatchEvent(new window.MouseEvent('click',{bubbles:true}));await waitFor(()=>calls.some(call=>call.command==='app_panel_open'))});
   assert.ok(updates.some(patch=>patch.appPanelOpen===true),'clicking reopen sets the widget open state');
   assert.equal(calls.filter(call=>call.command==='app_panel_open').length,1,'the existing app source opens through this widget');
+ }finally{
+  if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();
+  for(const [key,descriptor]of oldGlobals){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}
+ }
+});
+
+test('an already-open Apps widget does not show a relaunch action while its native attachment is being recovered',async()=>{
+ const dom=new JSDOM('<div class="workspace-canvas"><div class="canvas-viewport"><div class="canvas-card" style="z-index:1"><div class="widget-content"><div id="root"></div><div class="widget-resize"></div></div></div></div></div>',{url:'http://localhost',pretendToBeVisual:true});
+ const oldGlobals=new Map();
+ for(const key of ['window','document','navigator','HTMLElement','Element','Node','MutationObserver','ResizeObserver','requestAnimationFrame','cancelAnimationFrame','getComputedStyle','isTauri','IS_REACT_ACT_ENVIRONMENT'])oldGlobals.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
+ let root;const calls=[];
+ try{
+  const {window}=dom;setGlobal('window',window);setGlobal('document',window.document);setGlobal('navigator',window.navigator);setGlobal('HTMLElement',window.HTMLElement);setGlobal('Element',window.Element);setGlobal('Node',window.Node);setGlobal('MutationObserver',window.MutationObserver);setGlobal('ResizeObserver',class{observe(){}disconnect(){}});setGlobal('requestAnimationFrame',callback=>setTimeout(()=>callback(Date.now()),0));setGlobal('cancelAnimationFrame',clearTimeout);setGlobal('getComputedStyle',window.getComputedStyle.bind(window));setGlobal('isTauri',true);setGlobal('IS_REACT_ACT_ENVIRONMENT',true);
+  window.HTMLElement.prototype.getBoundingClientRect=function(){return rect(100,100,620,500)};
+  mockIPC((command,args)=>{calls.push({command,args});if(command==='app_panel_open')return{hwnd:451,pid:902,minWidth:0,minHeight:0,requiredWidth:null,requiredHeight:null,measured:false,probing:false,shown:true};if(command==='app_panel_present')return{hwnd:451,pid:902,minWidth:0,minHeight:0,requiredWidth:null,requiredHeight:null,measured:false,probing:false,shown:args.visible};return null},{shouldMockEvents:true});
+  root=createRoot(window.document.querySelector('#root'));await act(async()=>{flushSync(()=>root.render(app('app-recovering',{open:true})));assert.equal(window.document.querySelector('[aria-label="Reopen Test app in widget"]'),null,'the saved open state suppresses a false relaunch action during native recovery');await waitFor(()=>calls.some(call=>call.command==='app_panel_present'))});
+ }finally{
+  if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();
+  for(const [key,descriptor]of oldGlobals){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}
+ }
+});
+
+test('a failed app relaunch clears stale open state and leaves a red retry button',async()=>{
+ const dom=new JSDOM('<div class="workspace-canvas"><div class="canvas-viewport"><div class="canvas-card" style="z-index:1"><div class="widget-content"><div id="root"></div><div class="widget-resize"></div></div></div></div></div>',{url:'http://localhost',pretendToBeVisual:true});
+ const oldGlobals=new Map();
+ for(const key of ['window','document','navigator','HTMLElement','Element','Node','MutationObserver','ResizeObserver','requestAnimationFrame','cancelAnimationFrame','getComputedStyle','isTauri','IS_REACT_ACT_ENVIRONMENT'])oldGlobals.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
+ const calls=[],updates=[];let root,open=false;
+ try{
+  const {window}=dom;setGlobal('window',window);setGlobal('document',window.document);setGlobal('navigator',window.navigator);setGlobal('HTMLElement',window.HTMLElement);setGlobal('Element',window.Element);setGlobal('Node',window.Node);setGlobal('MutationObserver',window.MutationObserver);setGlobal('ResizeObserver',class{observe(){}disconnect(){}});setGlobal('requestAnimationFrame',callback=>setTimeout(()=>callback(Date.now()),0));setGlobal('cancelAnimationFrame',clearTimeout);setGlobal('getComputedStyle',window.getComputedStyle.bind(window));setGlobal('isTauri',true);setGlobal('IS_REACT_ACT_ENVIRONMENT',true);
+  window.HTMLElement.prototype.getBoundingClientRect=function(){return rect(100,100,620,500)};
+  ({default:AppsWidget}=await vite.ssrLoadModule('/src/AppsWidget.tsx'));
+  mockIPC((command,args)=>{calls.push({command,args});if(command==='app_panel_open')throw new Error('launch failed');return null},{shouldMockEvents:true});
+  const update=patch=>{updates.push(patch);if(patch.appPanelOpen!==undefined)open=patch.appPanelOpen;if(root)root.render(app('app-failed',{open,update}))};
+  root=createRoot(window.document.querySelector('#root'));await act(async()=>{root.render(app('app-failed',{open,update}));await new Promise(resolve=>setTimeout(resolve,0))});
+  const reopen=window.document.querySelector('[aria-label="Reopen Test app in widget"]');assert.ok(reopen);await act(async()=>{reopen.dispatchEvent(new window.MouseEvent('click',{bubbles:true}));await waitFor(()=>calls.some(call=>call.command==='app_panel_open'))});
+  await act(async()=>waitFor(()=>updates.some(patch=>patch.appPanelOpen===false)&&window.document.querySelector('.app-panel-relaunch-failed')));
+  assert.ok(calls.some(call=>call.command==='app_panel_open'));
+  assert.equal(window.document.querySelector('[aria-label="Reopen Test app in widget"]').getAttribute('aria-invalid'),'true','the failed retry is clearly marked and remains available');
  }finally{
   if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();
   for(const [key,descriptor]of oldGlobals){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}
