@@ -18,16 +18,16 @@ test('rendered AppsWidgets hide only lower native content under a higher card an
  const dom=new JSDOM('<div class="workspace-canvas"><div class="canvas-viewport" data-test="viewport"><div class="canvas-card" data-test="app-a" style="z-index:1"><div class="widget-content"><div id="root-a"></div><div class="widget-resize"></div></div></div><div class="canvas-card" data-test="app-b" style="z-index:2"><div class="widget-content"><div id="root-b"></div><div class="widget-resize"></div></div></div></div></div>',{url:'http://localhost',pretendToBeVisual:true});
  const oldGlobals=new Map();
  for(const key of ['window','document','navigator','HTMLElement','Element','Node','MutationObserver','ResizeObserver','requestAnimationFrame','cancelAnimationFrame','getComputedStyle','isTauri','IS_REACT_ACT_ENVIRONMENT'])oldGlobals.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
- const calls=[];let rootA,rootB,appBRect=rect(300,220,620,500);
+ const calls=[];let rootA,rootB,appARect=rect(100,100,620,500),appBRect=rect(300,220,620,500);
  try{
   const {window}=dom;setGlobal('window',window);setGlobal('document',window.document);setGlobal('navigator',window.navigator);setGlobal('HTMLElement',window.HTMLElement);setGlobal('Element',window.Element);setGlobal('Node',window.Node);setGlobal('MutationObserver',window.MutationObserver);setGlobal('ResizeObserver',class{observe(){}disconnect(){}});setGlobal('requestAnimationFrame',callback=>setTimeout(()=>callback(Date.now()),0));setGlobal('cancelAnimationFrame',clearTimeout);setGlobal('getComputedStyle',window.getComputedStyle.bind(window));setGlobal('isTauri',true);setGlobal('IS_REACT_ACT_ENVIRONMENT',true);
   window.HTMLElement.prototype.getBoundingClientRect=function(){
-   if(this.dataset.test==='viewport')return rect(0,0,1000,700);
+   if(this.dataset.test==='viewport')return rect(100,0,900,700);
    const card=this.closest('.canvas-card'),id=card?.dataset.test;
-   if(this.dataset.test==='app-a')return rect(100,100,620,500);
+   if(this.dataset.test==='app-a')return appARect;
    if(this.dataset.test==='app-b')return appBRect;
-   if(this.classList.contains('widget-resize'))return id==='app-b'?rect(appBRect.right-32,appBRect.bottom-32,32,32):rect(688,568,32,32);
-   if(this.classList.contains('widget-content')||this.classList.contains('app-panel-host'))return id==='app-b'?rect(appBRect.left,appBRect.top+50,appBRect.width,appBRect.height-50):rect(100,150,620,450);
+   if(this.classList.contains('widget-resize'))return id==='app-b'?rect(appBRect.right-32,appBRect.bottom-32,32,32):rect(appARect.right-32,appARect.bottom-32,32,32);
+   if(this.classList.contains('widget-content')||this.classList.contains('app-panel-host'))return id==='app-b'?rect(appBRect.left,appBRect.top+50,appBRect.width,appBRect.height-50):rect(appARect.left,appARect.top+50,appARect.width,appARect.height-50);
    return rect(0,0,0,0);
   };
   mockIPC((command,args)=>{
@@ -47,6 +47,11 @@ test('rendered AppsWidgets hide only lower native content under a higher card an
   assert.equal(await moveHigher(rect(100,100,160,40)),true,'overlap with the lower card header does not hide native content');
   assert.equal(await moveHigher(rect(300,220,620,500)),false,'overlap with lower native content hides that HWND');
   assert.equal(await moveHigher(rect(740,100,620,500)),true,'moving the higher card clear shows the same attached HWND');
+  const moveLower=async(next)=>{const previous=presentations('app-a').length;appARect=next;const lower=window.document.querySelector('[data-test="app-a"]');lower.style.left=String(next.left)+'px';lower.style.setProperty('--test-revision',String(previous));await waitFor(()=>presentations('app-a').length>previous);return presentations('app-a').at(-1).args.visible};
+  assert.equal(await moveLower(rect(80,100,620,500)),false,'native app pixels hide when the content crosses the sidebar edge');
+  assert.equal(await moveLower(rect(100,100,620,500)),true,'native app pixels reappear when the content clears the sidebar edge');
+  assert.equal(await moveLower(rect(500,100,620,500)),false,'native app pixels hide when the content crosses the opposite viewport edge');
+  assert.equal(await moveLower(rect(100,100,620,500)),true,'native app pixels reappear when both horizontal edges are clear');
   assert.deepEqual(calls.filter(call=>call.command==='app_panel_open').map(call=>call.args.id).sort(),['app-a','app-b'],'visibility changes do not attach another window');
   assert.equal(calls.filter(call=>call.command==='app_panel_release').length,0,'visibility changes do not release either attached window');
  }finally{

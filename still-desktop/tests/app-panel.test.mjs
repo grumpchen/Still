@@ -73,6 +73,12 @@ test('Apps native edge uses the workspace viewport rather than the narrower widg
  assert.equal(result.clip.x,300);assert.equal(result.clip.width,500);
  assert.equal(result.viewportRight,1200);
 });
+test('Apps native content hides when it crosses the left workspace edge and returns when clear',()=>{
+ const viewport=rect(100,0,900,700);
+ assert.equal(appPanelGeometry(rect(80,120,620,450),rect(100,120,600,450),true,false,null,[],viewport.right,viewport.left).visible,false);
+ assert.equal(appPanelGeometry(rect(100,120,620,450),rect(100,120,620,450),true,false,null,[],viewport.right,viewport.left).visible,true);
+ assert.equal(appPanelGeometry(rect(500,120,620,450),rect(500,120,500,450),true,false,null,[],viewport.right,viewport.left).visible,false,'the matching right edge also hides native content');
+});
 test('native app minimum size persists while restart clears its transient open state',()=>{
  const state=createInitialState(),app=createWidget('apps');app.appKey='codex';app.appPanelOpen=true;app.appMinWidth=640;app.appMinHeight=460;state.workspaces[0].widgets.push(app);
  const restored=parseState(JSON.stringify(state)).workspaces[0].widgets.at(-1);assert.equal(restored.appMinWidth,640);assert.equal(restored.appMinHeight,460);assert.equal(restored.appPanelOpen,false);
