@@ -5,14 +5,17 @@ import type {WidgetRelaunchMode} from './domain/widgetRelaunch.ts';
 interface Props{
  appShutdownBehavior:AppShutdownBehavior;
  saveAppShortcutsOnAttach:boolean;
+ showAppAttachAction:boolean;
+ showAppDetachAction:boolean;
+ showAppSaveAction:boolean;
  widgetRelaunchMode:WidgetRelaunchMode;
  widgetRelaunchColors:Partial<Record<WidgetTagColor,WidgetRelaunchMode>>;
- update:(patch:{appShutdownBehavior?:AppShutdownBehavior;saveAppShortcutsOnAttach?:boolean;widgetRelaunchMode?:WidgetRelaunchMode})=>void;
+ update:(patch:{appShutdownBehavior?:AppShutdownBehavior;saveAppShortcutsOnAttach?:boolean;widgetRelaunchMode?:WidgetRelaunchMode;showAppAttachAction?:boolean;showAppDetachAction?:boolean;showAppSaveAction?:boolean})=>void;
  setRelaunchColor:(color:WidgetTagColor,mode:WidgetRelaunchMode|null)=>void;
  applyRelaunchModeToAll:()=>void;
 }
 
-export default function GeneralSettings({appShutdownBehavior,saveAppShortcutsOnAttach,widgetRelaunchMode,widgetRelaunchColors,update,setRelaunchColor,applyRelaunchModeToAll}:Props){
+export default function GeneralSettings({appShutdownBehavior,saveAppShortcutsOnAttach,showAppAttachAction,showAppDetachAction,showAppSaveAction,widgetRelaunchMode,widgetRelaunchColors,update,setRelaunchColor,applyRelaunchModeToAll}:Props){
  return <section className="settings-page general-settings" role="tabpanel" id="settings-general" aria-labelledby="settings-tab-general">
   <h3>General settings</h3>
   <label className="settings-row"><span>When Still closes</span><select aria-label="When Still closes" value={appShutdownBehavior} onChange={event=>update({appShutdownBehavior:event.target.value as AppShutdownBehavior})}>
@@ -23,6 +26,8 @@ export default function GeneralSettings({appShutdownBehavior,saveAppShortcutsOnA
   <p className="notice">Closing sends each app a normal Windows close request, so its own save prompts can appear.</p>
   <label className="settings-row general-settings-toggle"><span>Save an Apps shortcut automatically when attaching</span><input aria-label="Save an Apps shortcut automatically when attaching" type="checkbox" checked={saveAppShortcutsOnAttach} onChange={event=>update({saveAppShortcutsOnAttach:event.target.checked})}/></label>
   <p className="notice">The Attach Open App checkbox can still change this choice for one app.</p>
+  <h4>Apps widget buttons</h4>
+  {([{key:'showAppAttachAction',label:'Show Attach button',checked:showAppAttachAction},{key:'showAppDetachAction',label:'Show Detach button',checked:showAppDetachAction},{key:'showAppSaveAction',label:'Show Save to tray button',checked:showAppSaveAction}] as const).map(action=><label key={action.key} className="settings-row general-settings-toggle"><span>{action.label}</span><input type="checkbox" aria-label={action.label} checked={action.checked} onChange={event=>update({[action.key]:event.target.checked})}/></label>)}
   <h3>Widget Relaunch</h3>
   <label className="settings-row"><span>When Still starts</span><select aria-label="Widget relaunch mode" value={widgetRelaunchMode} onChange={event=>update({widgetRelaunchMode:event.target.value as WidgetRelaunchMode})}><option value="automatic">Automatically relaunch widgets</option><option value="manual">Wait for manual relaunch</option></select></label>
   <button type="button" aria-label="Apply widget relaunch mode to all" onClick={applyRelaunchModeToAll}>Apply to All</button>

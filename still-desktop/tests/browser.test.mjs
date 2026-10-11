@@ -20,7 +20,7 @@ test('launcher links migrate once into independent browser bookmarks without res
   web.bookmarks=[{id:'google',name:'Google',url:'https://www.google.com/'}];
   web.shortcuts=[{id:'course',name:'My course',url:'https://example.com/lectures',icon:'ENG'}];
   const restored=parseState(JSON.stringify(state)),browser=restored.workspaces[0].widgets[0];
-  assert.equal(restored.version,5);assert.ok(browser.bookmarks.some(b=>b.id==='course'&&b.name==='My course'));
+  assert.equal(restored.version,6);assert.ok(browser.bookmarks.some(b=>b.id==='course'&&b.name==='My course'));
   assert.equal(browser.id,web.id);assert.deepEqual(browser.placement,web.placement);
   browser.bookmarks=[];browser.bookmarksExpanded=true;
   assert.deepEqual(parseState(JSON.stringify(restored)).workspaces[0].widgets[0].bookmarks,[]);

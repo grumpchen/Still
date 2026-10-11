@@ -34,9 +34,13 @@ test('new saved shortcuts scroll into view immediately before Saved +',()=>{
  assert.ok(row.indexOf('<PresetTray')<row.indexOf('data-saved-target'));
 });
 
-test('Quiet Minimal paints an opaque canvas in the transparent Tauri window',()=>{
+test('Quiet Minimal keeps the tray visible while offering transparent and opaque canvas choices',()=>{
  const styles=readFileSync(new URL('../src/styles.css',import.meta.url),'utf8');
- assert.match(styles,/html\.native-transparent body:not\(\.liquid-glass\) \.canvas-app\{background:var\(--canvas\)\}/);
+ assert.match(styles,/html\.native-transparent body:not\(\.liquid-glass\):not\(\.transparent-background\) \.canvas-app\{background:var\(--canvas\)\}/);
+ assert.match(styles,/body\.transparent-background \.canvas-app[^}]*background:transparent/);
+ assert.match(styles,/html\.native-transparent \.liquid-glass::after\{display:none\}/);
+ assert.doesNotMatch(styles,/html\.native-transparent \.liquid-glass::before[^}]*display:none/);
+ assert.match(css,/\.widget-tray\{[^}]*background:var\(--surface\)[^}]*box-shadow/);
 });
 
 test('Group card close removes the floating card immediately and preserves the saved Group',()=>{

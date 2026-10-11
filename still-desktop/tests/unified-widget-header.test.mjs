@@ -13,13 +13,14 @@ test('Apps and Browser content begins below the shared header without a secondar
  assert.match(browser,/browser-host/);
 });
 
-test('shared widget header keeps Apps attachment and detach plus Browser Lecture actions accessible',()=>{
+test('shared widget header keeps configurable Apps actions and Browser Lecture actions accessible',()=>{
  const canvas=source('../src/WorkspaceCanvas.tsx');
- const apps=source('../src/AppsWidget.tsx');
- assert.match(canvas,/aria-label=\{'Attach open app to '\+title\}/);
- assert.match(canvas,/aria-label=\{'Detach app from '\+title\}/);
+ assert.match(canvas,/w\.type==='apps'&&showAppAttachAction&&<button[^>]*aria-label=\{'Attach open app to '\+title\}/);
+ assert.match(canvas,/w\.type==='apps'&&showAppDetachAction&&w\.appPanelOpen&&<button[^>]*aria-label=\{'Detach app from '\+title\}/);
+ assert.match(canvas,/w\.type==='apps'&&showAppSaveAction&&w\.appKey&&<button[^>]*aria-label=\{'Save '\+title\+' to tray'\}/);
+ assert.match(canvas,/showAppAttachAction=false,showAppDetachAction=false,showAppSaveAction=false/,'all Apps header actions default to hidden');
  assert.match(canvas,/w\.type==='browser'&&<button[\s\S]*?lecture\(w\)/);
- assert.match(canvas,/w\.type==='apps'&&w\.appKey&&<button[\s\S]*?saveApp\(w\.id\)/);
+ const apps=source('../src/AppsWidget.tsx');
  assert.match(apps,/onClick=\{\(\)=>void choose\(\)\}/,'app selection remains available in its empty state');
  assert.match(apps,/widget\.appKey\?'Change app…':'Choose app…'/,'changing or choosing an app remains available without restoring a secondary toolbar');
  assert.match(apps,/widget\.appKey&&!ready&&!opening&&!widget\.appPanelOpen&&<button className=\{'primary'/,'saved apps expose a clear action to reopen only when native recovery is not already underway');

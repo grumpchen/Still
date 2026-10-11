@@ -241,7 +241,7 @@ dialog:has(.app-picker)>.dialog-head{flex:0 0 auto}
 .app-picker-save{display:flex;align-items:center;gap:6px;font-size:11px;white-space:nowrap;padding-bottom:9px}
 @media(max-width:560px){.app-picker-toolbar{flex-wrap:wrap}.app-picker-toolbar input{flex-basis:100%}.app-picker-options{align-items:stretch;flex-direction:column;gap:8px}.app-picker-save{padding:0}.app-picker-row-main{flex-wrap:wrap}.app-picker-row-status{padding-left:44px}}
 /* Phase 2: a single compact tray with independent fixed copy/edit/delete targets. */
-.widget-tray{border-radius:26px;padding:7px 10px;min-height:46px}
+.widget-tray{border-radius:26px;padding:7px 10px;min-height:46px;background:var(--surface);border:1px solid var(--border);box-shadow:0 2px 10px #14233212}
 .tray-main-row{gap:6px}
 .tray-main-row .tray-items{min-width:0;gap:6px}
 .tray-widget-button,.tray-group-button,.preset-tray-entry,.preset-tray .preset-open{border-radius:18px!important}

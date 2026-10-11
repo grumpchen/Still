@@ -8,6 +8,7 @@ import {placement, nextPlacement,constrainPlacement,type Placement} from './layo
 import {defaultWebShortcuts, parseWebShortcuts, shortcut, type WebShortcut} from './webShortcuts.ts';
 import {parseBookmarks} from './bookmarks.ts';
 import {widgetPreset,parsePresets,fileKind,fileName,type FileKind,type WidgetPreset} from './presets.ts';
+import {type ScreenshotPluginMode} from './screenshotPlugin.ts';
 export {widgetTypes, type WidgetType} from './widgetCatalog.ts';
 export const DESMOS_URL = 'https://www.desmos.com/scientific';
 export interface Bookmark { id: string; name: string; url: string }
@@ -40,12 +41,14 @@ export function browserSize(value: unknown, fallback: number, maximum: number): 
   return typeof value==='number'&&Number.isFinite(value)?Math.min(maximum,Math.max(50,Math.round(value))):fallback;
 }
 export interface WorkspaceState {
-  version: 5; activeId: string; workspaces: Workspace[]; sidebarCollapsed:boolean;sidebarPlugins:SidebarPlugin[];presets:WidgetPreset[];
-  theme: 'light' | 'dark'; density: 'comfortable' | 'compact'; background: 'solid' | 'dots';
+  version: 6; activeId: string; workspaces: Workspace[]; sidebarCollapsed:boolean;sidebarPlugins:SidebarPlugin[];presets:WidgetPreset[];
+  theme: 'light' | 'dark'; density: 'comfortable' | 'compact'; background: 'solid' | 'dots' | 'transparent';
   shortcuts: WorkspaceShortcuts;
   appearance: Appearance; glass: GlassSettings;
   saveAppShortcutsOnAttach:boolean;appShutdownBehavior:AppShutdownBehavior;
+  showAppAttachAction:boolean;showAppDetachAction:boolean;showAppSaveAction:boolean;
   widgetRelaunchMode:WidgetRelaunchMode;widgetRelaunchPluginStatus:WidgetRelaunchPluginStatus;widgetRelaunchColors:Partial<Record<WidgetTagColor,WidgetRelaunchMode>>;
+  screenshotPluginMode:ScreenshotPluginMode;screenshotPluginColors:WidgetTagColor[];
 }
 export function createWidget(type: WidgetType): WidgetInstance {
   return { id: crypto.randomUUID(), type, instanceNumber:1, title:'', tagColor:null, relaunchOverride:'follow',pluginControls:type==='tagStatus'?['widget-relaunch.tag-colors']:[], span: type === 'browser' ? 3 : type === 'ai' ? 2 : 1,
@@ -292,7 +295,7 @@ export function saveGroupName(workspace:Workspace,id:string,value:string):Worksp
 }
 export function createInitialState(): WorkspaceState {
   const workspaces = [createWorkspace('Study',['browser','desmos','notes','focus']), createWorkspace('Design',['notes','ai','files']), createWorkspace('Daily',['notes','focus']), createWorkspace('Minimal',['desmos','notes'])];
-  return { version:5,activeId:workspaces[0].id,workspaces,sidebarCollapsed:false,sidebarPlugins:[],presets:[],theme:'light',density:'comfortable',background:'solid',shortcuts:defaultShortcuts(),appearance:'liquid-glass',glass:defaultGlass(),saveAppShortcutsOnAttach:true,appShutdownBehavior:'leaveOpen',widgetRelaunchMode:'automatic',widgetRelaunchPluginStatus:'enabled',widgetRelaunchColors:{} };
+  return { version:6,activeId:workspaces[0].id,workspaces,sidebarCollapsed:false,sidebarPlugins:[],presets:[],theme:'light',density:'comfortable',background:'solid',shortcuts:defaultShortcuts(),appearance:'liquid-glass',glass:defaultGlass(),saveAppShortcutsOnAttach:true,appShutdownBehavior:'leaveOpen',showAppAttachAction:false,showAppDetachAction:false,showAppSaveAction:false,widgetRelaunchMode:'automatic',widgetRelaunchPluginStatus:'enabled',widgetRelaunchColors:{},screenshotPluginMode:'global',screenshotPluginColors:[] };
 }
 function parseSidebarPlugins(value:unknown):SidebarPlugin[]{
  if(!Array.isArray(value))return[];
@@ -304,6 +307,8 @@ function parseWidgetRelaunchColors(value:unknown):Partial<Record<WidgetTagColor,
  if(!value||typeof value!=='object'||Array.isArray(value))return{};
  return Object.fromEntries(widgetTagColors.flatMap(color=>{const mode=(value as Record<string,unknown>)[color];return mode==='automatic'||mode==='manual'?[[color,mode]]:[]})) as Partial<Record<WidgetTagColor,WidgetRelaunchMode>>;
 }
+function parseScreenshotPluginMode(value:unknown):ScreenshotPluginMode{return value==='tag-colors'||value==='off'?value:'global'}
+function parseScreenshotPluginColors(value:unknown):WidgetTagColor[]{return Array.isArray(value)?[...new Set(value.filter((color):color is WidgetTagColor=>widgetTagColors.includes(color as WidgetTagColor)))]:[]}
 function checkedWidget(value: unknown): WidgetInstance {
   const item = value as Partial<WidgetInstance>;
   if (!item || typeof item.id !== 'string' || !/^[a-zA-Z0-9-]{1,80}$/.test(item.id) || !widgetTypes.includes(item.type as WidgetType)) throw new Error('Invalid widget');
@@ -348,7 +353,7 @@ function checkedWidget(value: unknown): WidgetInstance {
 }
 export function parseState(text: string): WorkspaceState {
   const value = JSON.parse(text) as Omit<WorkspaceState,'version'> & {version:number};
-  if (!value || ![2,3,4,5].includes(value.version) || !Array.isArray(value.workspaces) || !value.workspaces.length) throw new Error('Unsupported workspace data');
+  if (!value || ![2,3,4,5,6].includes(value.version) || !Array.isArray(value.workspaces) || !value.workspaces.length) throw new Error('Unsupported workspace data');
   const ids = new Set<string>();
   const widgetIds = new Set<string>();
   const workspaces = value.workspaces.map(workspace=>{
@@ -376,7 +381,7 @@ export function parseState(text: string): WorkspaceState {
     return {id:workspace.id,name:workspaceName(workspace.name),widgets,groups,layout:'canvas',browserWidth:browserSize(workspace.browserWidth,80,95),browserHeight:browserSize(workspace.browserHeight,100,100)} as Workspace;
   });
   if (!ids.has(value.activeId)) throw new Error('Missing active workspace');
-  return {version:5,activeId:value.activeId,workspaces,sidebarCollapsed:value.sidebarCollapsed===true,sidebarPlugins:parseSidebarPlugins(value.sidebarPlugins),presets:parsePresets(value.presets),theme:value.theme==='dark'?'dark':'light',density:value.density==='compact'?'compact':'comfortable',background:value.background==='dots'?'dots':'solid',shortcuts:parseShortcuts(value.shortcuts),appearance:value.appearance==='minimal'?'minimal':'liquid-glass',glass:parseGlass(value.glass),saveAppShortcutsOnAttach:value.saveAppShortcutsOnAttach!==false,appShutdownBehavior:parseAppShutdownBehavior(value.appShutdownBehavior),widgetRelaunchMode:parseWidgetRelaunchMode(value.widgetRelaunchMode),widgetRelaunchPluginStatus:parseWidgetRelaunchPluginStatus(value.widgetRelaunchPluginStatus),widgetRelaunchColors:parseWidgetRelaunchColors(value.widgetRelaunchColors)};
+  return {version:6,activeId:value.activeId,workspaces,sidebarCollapsed:value.sidebarCollapsed===true,sidebarPlugins:parseSidebarPlugins(value.sidebarPlugins),presets:parsePresets(value.presets),theme:value.theme==='dark'?'dark':'light',density:value.density==='compact'?'compact':'comfortable',background:value.background==='dots'?'dots':value.background==='transparent'?'transparent':'solid',shortcuts:parseShortcuts(value.shortcuts),appearance:value.appearance==='minimal'?'minimal':'liquid-glass',glass:parseGlass(value.glass),saveAppShortcutsOnAttach:value.saveAppShortcutsOnAttach!==false,appShutdownBehavior:parseAppShutdownBehavior(value.appShutdownBehavior),showAppAttachAction:value.showAppAttachAction===true,showAppDetachAction:value.showAppDetachAction===true,showAppSaveAction:value.showAppSaveAction===true,widgetRelaunchMode:parseWidgetRelaunchMode(value.widgetRelaunchMode),widgetRelaunchPluginStatus:parseWidgetRelaunchPluginStatus(value.widgetRelaunchPluginStatus),widgetRelaunchColors:parseWidgetRelaunchColors(value.widgetRelaunchColors),screenshotPluginMode:parseScreenshotPluginMode(value.screenshotPluginMode),screenshotPluginColors:parseScreenshotPluginColors(value.screenshotPluginColors)};
 }
 export function migratePreview(value: unknown): WorkspaceState {
   const legacy = value as {active:string;theme:string;density:string;background:string;workspaces:Record<string,Array<Record<string,unknown>>>};

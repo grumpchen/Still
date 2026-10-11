@@ -7,20 +7,31 @@ const app=readFileSync(new URL('../src/App.tsx',import.meta.url),'utf8');
 const general=readFileSync(new URL('../src/GeneralSettings.tsx',import.meta.url),'utf8');
 const picker=readFileSync(new URL('../src/AppWindowPicker.tsx',import.meta.url),'utf8');
 const native=readFileSync(new URL('../src-tauri/src/app_panel.rs',import.meta.url),'utf8');
+const appearance=readFileSync(new URL('../src/AppearanceSettings.tsx',import.meta.url),'utf8');
 
 test('app behavior settings default to automatic shortcut saving and preserve the existing leave-open shutdown behavior',()=>{
  const state=createInitialState();
  assert.equal(state.saveAppShortcutsOnAttach,true);
  assert.equal(state.appShutdownBehavior,'leaveOpen');
+ assert.equal(state.showAppAttachAction,false);
+ assert.equal(state.showAppDetachAction,false);
+ assert.equal(state.showAppSaveAction,false);
+ assert.equal(state.screenshotPluginMode,'global');
+ assert.deepEqual(state.screenshotPluginColors,[]);
 });
 
 test('app behavior settings persist and invalid shutdown values safely fall back',()=>{
  const state=createInitialState();
  state.saveAppShortcutsOnAttach=false;
  state.appShutdownBehavior='minimize';
+ state.showAppAttachAction=true;state.showAppDetachAction=true;state.showAppSaveAction=true;state.screenshotPluginMode='tag-colors';state.screenshotPluginColors=['red','blue'];state.background='transparent';
  let restored=parseState(JSON.stringify(state));
  assert.equal(restored.saveAppShortcutsOnAttach,false);
  assert.equal(restored.appShutdownBehavior,'minimize');
+ assert.equal(restored.showAppAttachAction,true);assert.equal(restored.showAppDetachAction,true);assert.equal(restored.showAppSaveAction,true);
+ assert.equal(restored.screenshotPluginMode,'tag-colors');assert.deepEqual(restored.screenshotPluginColors,['red','blue']);assert.equal(restored.background,'transparent');
+ state.screenshotPluginMode='invalid';state.screenshotPluginColors=['invalid','red','red'];restored=parseState(JSON.stringify(state));
+ assert.equal(restored.screenshotPluginMode,'global');assert.deepEqual(restored.screenshotPluginColors,['red']);
  state.appShutdownBehavior='invalid';
  restored=parseState(JSON.stringify(state));
  assert.equal(restored.appShutdownBehavior,'leaveOpen');
@@ -33,6 +44,13 @@ test('General settings expose the three app shutdown choices and auto-save prefe
  assert.match(general,/value="close"[\s\S]*?Close attached app windows/);
  assert.match(general,/value="leaveOpen"[\s\S]*?Leave attached apps open/);
  assert.match(general,/Save an Apps shortcut automatically when attaching/);
+ for(const action of ['Attach','Detach','Save to tray'])assert.match(general,new RegExp('Show '+action+' button'));
+});
+
+test('Appearance settings offer transparent and solid backgrounds and the existing leaf-photo glass material',()=>{
+ assert.match(appearance,/option value="solid">Solid/);assert.match(appearance,/option value="transparent">Transparent/);
+ assert.match(appearance,/Liquid Glass · your leaf photo/);
+ assert.match(appearance,/option value="leaf-photo">Leaf photo · Liquid Glass/);
 });
 
 test('the attach picker initializes its existing save checkbox from the General preference',()=>{

@@ -13,7 +13,7 @@ export const widgetPluginCatalog:BuiltInWidgetPluginDefinition[]=[{
   {id:'widget-relaunch.global-mode',pluginId:'widget-relaunch',label:'Global relaunch mode',kind:'relaunch-global-mode'},
   {id:'widget-relaunch.tag-colors',pluginId:'widget-relaunch',label:'Tag color controls',kind:'relaunch-tag-colors'},
  ]
-}];
+},{id:'screenshot',name:'Screenshot',description:'Copy workspace widget screenshots; choose global or tag-color availability in Settings.',controls:[]}];
 export function availableStatusControls(status:WidgetRelaunchPluginStatus):WidgetPluginControlDefinition[]{
  return status==='enabled'?widgetPluginCatalog.flatMap(plugin=>plugin.controls):[];
 }
