@@ -3,6 +3,10 @@
 html.native-transparent,html.native-transparent body,html.native-transparent #root{background:transparent!important}
 html.native-transparent .liquid-glass{background:transparent}
 html.native-transparent .liquid-glass::after{display:none}
+body.liquid-glass.transparent-background{background:transparent}
+body.liquid-glass.transparent-background::before,body.liquid-glass.transparent-background::after{display:none}
+body.transparent-background .canvas-viewport{background:transparent}
+body.transparent-background .workspace-canvas{background-image:none}
 html.native-transparent body:not(.liquid-glass):not(.transparent-background) .canvas-app{background:var(--canvas)}
 html.native-transparent body.transparent-background .canvas-app,html.native-transparent body.transparent-background .workspace-surface,html.native-transparent body.transparent-background .canvas-viewport{background:transparent}
 html.native-transparent body.transparent-background .workspace-canvas{background-image:none}

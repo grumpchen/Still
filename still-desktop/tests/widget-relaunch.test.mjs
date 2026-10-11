@@ -47,11 +47,27 @@ async function setup(widgets,{identity={hwnd:451,pid:902},startupDeferredIds=new
   const [current,setCurrent]=useState(state);currentState=current;
   const [deferred,setDeferred]=useState(startupDeferredIds);
   const update=(id,patch)=>setCurrent(value=>({...value,workspaces:value.workspaces.map(workspace=>({...workspace,widgets:workspace.widgets.map(item=>item.id===id?{...item,...patch}:item)}))}));
-  return createElement(WorkspaceCanvas,{workspaceId:current.workspaces[0].id,transferWidget(){},setWorkspaceDropTarget(){},openAppsDialog(){},editTray(){},presets:current.presets,savePresets(){},openPreset(){},editPreset(){},removePreset(){},renamePreset(){},renameGroup(){},widgets:current.workspaces[0].widgets,groups:[],updateGroup(){},saveToGroup(){},openGroup(){},editGroup(){},removeGroup(){},openGroupWidget(){},update,add(){},remove(){},begin(){},bringToFront(){},notify(){},obscured:false,openResource(){},openDropped(){},pickApp(){},saveApp(){},appAttachments:{},appAttachmentHandled(){},startupDeferredIds:deferred,startupRelaunch:id=>setDeferred(value=>new Set([...value].filter(item=>item!==id))),screenshotPluginMode:current.screenshotPluginMode,screenshotPluginColors:current.screenshotPluginColors,setScreenshotMode:mode=>setCurrent(value=>({...value,screenshotPluginMode:mode})),setScreenshotColor:(color,enabled)=>setCurrent(value=>({...value,screenshotPluginColors:enabled?[...new Set([...value.screenshotPluginColors,color])]:value.screenshotPluginColors.filter(item=>item!==color)})),showAppAttachAction,showAppDetachAction,showAppSaveAction});
+  return createElement(WorkspaceCanvas,{workspaceId:current.workspaces[0].id,transferWidget(){},setWorkspaceDropTarget(){},openAppsDialog(){},editTray(){},presets:current.presets,savePresets(){},openPreset(){},editPreset(){},removePreset(){},renamePreset(){},renameGroup(){},widgets:current.workspaces[0].widgets,groups:[],updateGroup(){},saveToGroup(){},openGroup(){},editGroup(){},removeGroup(){},openGroupWidget(){},update,add(){},remove(){},begin(){},bringToFront(){},notify(){},obscured:false,openResource(){},openDropped(){},pickApp(){},saveApp(){},appAttachments:{},appAttachmentHandled(){},startupDeferredIds:deferred,startupRelaunch:id=>setDeferred(value=>new Set([...value].filter(item=>item!==id))),widgetRelaunchColors:current.widgetRelaunchColors,setRelaunchColor:(color,mode)=>setCurrent(value=>{const colors={...value.widgetRelaunchColors};if(mode)colors[color]=mode;else delete colors[color];return{...value,widgetRelaunchColors:colors}}),screenshotPluginMode:current.screenshotPluginMode,screenshotPluginColors:current.screenshotPluginColors,setScreenshotMode:mode=>setCurrent(value=>({...value,screenshotPluginMode:mode})),setScreenshotColor:(color,enabled)=>setCurrent(value=>({...value,screenshotPluginColors:enabled?[...new Set([...value.screenshotPluginColors,color])]:value.screenshotPluginColors.filter(item=>item!==color)})),showAppAttachAction,showAppDetachAction,showAppSaveAction});
  }
  root=createRoot(window.document.querySelector('#root'));
  await act(async()=>root.render(createElement(Host)));
  return{dom,window,calls,get currentState(){return currentState},root,cleanup:async()=>{if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();for(const [key,descriptor]of oldGlobals){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}}};
+}
+
+async function setupStatusCard(widget,{screenshotPluginMode='global',screenshotPluginColors=[]}={}){
+ const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true}),oldGlobals=new Map(),{window}=dom;
+ for(const key of ['window','document','navigator','HTMLElement','Element','Node','IS_REACT_ACT_ENVIRONMENT'])oldGlobals.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
+ setGlobal('window',window);setGlobal('document',window.document);setGlobal('navigator',window.navigator);setGlobal('HTMLElement',window.HTMLElement);setGlobal('Element',window.Element);setGlobal('Node',window.Node);setGlobal('IS_REACT_ACT_ENVIRONMENT',true);
+ const {default:TagColorStatusWidget}=await vite.ssrLoadModule('/src/TagColorStatusWidget.tsx');
+ let currentWidget,currentState,root;
+ function Host(){
+  const [current,setCurrent]=useState(widget),[settings,setSettings]=useState({relaunchPluginStatus:'enabled',globalMode:'automatic',colors:{},screenshotPluginMode,screenshotPluginColors});
+  currentWidget=current;currentState={widget:current,...settings};
+  const setColorMode=(color,mode)=>setSettings(value=>{const colors={...value.colors};if(mode)colors[color]=mode;else delete colors[color];return{...value,colors}});
+  return createElement(TagColorStatusWidget,{widget:current,update:patch=>setCurrent(value=>({...value,...patch})),widgetPluginContext:{relaunchPluginStatus:settings.relaunchPluginStatus,globalMode:settings.globalMode,colors:settings.colors,setGlobalMode:mode=>setSettings(value=>({...value,globalMode:mode})),setColorMode,screenshotMode:settings.screenshotPluginMode,screenshotColors:settings.screenshotPluginColors,setScreenshotMode:mode=>setSettings(value=>({...value,screenshotPluginMode:mode})),setScreenshotColor:(color,enabled)=>setSettings(value=>({...value,screenshotPluginColors:enabled?[...new Set([...value.screenshotPluginColors,color])]:value.screenshotPluginColors.filter(item=>item!==color)}))}});
+ }
+ root=createRoot(window.document.querySelector('#root'));await act(async()=>root.render(createElement(Host)));
+ return{dom,window,get currentWidget(){return currentWidget},get currentState(){return currentState},root,cleanup:async()=>{if(root)await act(async()=>root.unmount());dom.window.close();for(const [key,descriptor]of oldGlobals){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}}};
 }
 
 test('Apps header actions are hidden by default and can be enabled individually',async()=>{
@@ -121,22 +137,36 @@ test('manual startup delays Browser native Chrome creation until the user relaun
 
 test('Tag Color Status stacks controls from multiple registered widget plugins',async()=>{
  const status=createWidget('tagStatus');status.id='status-card';status.title='Launch status';
- const app=await setup([status]);
+ const app=await setupStatusCard(status);
  try{
   await act(async()=>app.window.document.querySelector('[aria-label="Customize status controls"]').dispatchEvent(new app.window.MouseEvent('click',{bubbles:true})));
   const global=app.window.document.querySelector('input[type=checkbox]');assert.ok(global);assert.equal(global.checked,false,'global mode is an optional plugin control');
   await act(async()=>global.dispatchEvent(new app.window.MouseEvent('click',{bubbles:true})));
   const screenshotControl=app.window.document.querySelector('[aria-label="Show Screenshot settings"]');assert.ok(screenshotControl,'the registered Screenshot plugin adds a selectable status-card control');
   await act(async()=>screenshotControl.dispatchEvent(new app.window.MouseEvent('click',{bubbles:true})));
-  assert.deepEqual(app.currentState.workspaces[0].widgets[0].pluginControls,['widget-relaunch.tag-colors','widget-relaunch.global-mode','screenshot.settings']);
+  assert.deepEqual(app.currentWidget.pluginControls,['widget-relaunch.tag-colors','widget-relaunch.global-mode','screenshot.settings']);
   assert.ok(app.window.document.querySelector('[aria-label="Status card global relaunch mode"]'));
+  const allGlobal=app.window.document.querySelector('[aria-label="All tag colors follow global mode"]');assert.ok(allGlobal);assert.equal(allGlobal.checked,true,'all colors follow global by default');
+  await act(async()=>allGlobal.dispatchEvent(new app.window.MouseEvent('click',{bubbles:true})));
+  assert.equal(app.window.document.querySelector('[aria-label="All tag colors follow global mode"]').checked,false,'turning the switch off exposes color-specific rules');
+  const addColor=app.window.document.querySelector('[aria-label="Add tag color relaunch setting"]');assert.ok(addColor);
+  addColor.value='red';await act(async()=>addColor.dispatchEvent(new app.window.Event('change',{bubbles:true})));
+  let redMode=app.window.document.querySelector('[aria-label="Status card red relaunch mode"]');assert.ok(redMode,'selected color settings stack as separate rows');
+  redMode.value='manual';await act(async()=>redMode.dispatchEvent(new app.window.Event('change',{bubbles:true})));
+  assert.equal(app.window.document.querySelector('[aria-label="All tag colors follow global mode"]').checked,false,'a color-specific choice turns off the all-global switch');
+  const addSecondColor=app.window.document.querySelector('[aria-label="Add tag color relaunch setting"]');addSecondColor.value='purple';await act(async()=>addSecondColor.dispatchEvent(new app.window.Event('change',{bubbles:true})));
   assert.ok(app.window.document.querySelector('[aria-label="Status card red relaunch mode"]'));
+  assert.ok(app.window.document.querySelector('[aria-label="Status card purple relaunch mode"]'));
+  assert.match(app.window.document.querySelector('.tag-status-summary')?.textContent??'',/Manual: Red/);
   assert.ok(app.window.document.querySelector('[aria-label="Status card screenshot scope"]'),'the Screenshot settings appear alongside relaunch controls');
   const scope=app.window.document.querySelector('[aria-label="Status card screenshot scope"]');scope.value='tag-colors';
   await act(async()=>scope.dispatchEvent(new app.window.Event('change',{bubbles:true})));
   const red=app.window.document.querySelector('[aria-label="Status card red screenshot color"]');assert.ok(red);
   await act(async()=>red.dispatchEvent(new app.window.MouseEvent('click',{bubbles:true})));
   assert.equal(app.currentState.screenshotPluginMode,'tag-colors');assert.deepEqual(app.currentState.screenshotPluginColors,['red']);
+  const globalSwitch=app.window.document.querySelector('[aria-label="All tag colors follow global mode"]');await act(async()=>globalSwitch.dispatchEvent(new app.window.MouseEvent('click',{bubbles:true})));
+  assert.equal(app.window.document.querySelector('[aria-label="All tag colors follow global mode"]').checked,true,'turning global mode back on removes stacked per-color overrides');
+  assert.equal(app.window.document.querySelector('[aria-label="Status card red relaunch mode"]'),null);
  }finally{await app.cleanup()}
 });
 
@@ -147,11 +177,11 @@ test('Tag Color Status automatically exposes and stacks controls from a newly re
  const status=createWidget('tagStatus');status.id='extensible-status-card';
  let app;
  try{
-  app=await setup([status]);
+  app=await setupStatusCard(status);
   await act(async()=>app.window.document.querySelector('[aria-label="Customize status controls"]').dispatchEvent(new app.window.MouseEvent('click',{bubbles:true})));
   const choice=app.window.document.querySelector('[aria-label="Show Example status"]');assert.ok(choice,'new plugin controls automatically appear in the status-card customizer');
   await act(async()=>choice.dispatchEvent(new app.window.MouseEvent('click',{bubbles:true})));
-  assert.deepEqual(app.currentState.workspaces[0].widgets[0].pluginControls,['widget-relaunch.tag-colors','example-plugin.status']);
+  assert.deepEqual(app.currentWidget.pluginControls,['widget-relaunch.tag-colors','example-plugin.status']);
   assert.equal(app.window.document.querySelector('[aria-label="Example plugin status"]')?.textContent,'Ready','the plugin-provided renderer is stacked into the status card');
  }finally{if(app)await app.cleanup();widgetPluginCatalog.splice(widgetPluginCatalog.indexOf(examplePlugin),1)}
 });

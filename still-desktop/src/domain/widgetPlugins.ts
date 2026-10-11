@@ -1,7 +1,7 @@
 import type {ComponentType} from 'react';
 import type {WidgetRelaunchMode,WidgetRelaunchPluginStatus} from './widgetRelaunch.ts';
 import type {ScreenshotPluginMode} from './screenshotPlugin.ts';
-import type {WidgetTagColor} from './workspaces.ts';
+import type {WidgetInstance,WidgetTagColor} from './workspaces.ts';
 import {RelaunchGlobalModeControl,RelaunchTagColorsControl,ScreenshotSettingsControl} from '../WidgetPluginStatusControls.tsx';
 
 export interface WidgetPluginContext{
@@ -15,7 +15,7 @@ export interface WidgetPluginContext{
  setScreenshotMode:(mode:ScreenshotPluginMode)=>void;
  setScreenshotColor:(color:WidgetTagColor,enabled:boolean)=>void;
 }
-export interface WidgetPluginControlProps{context?:WidgetPluginContext}
+export interface WidgetPluginControlProps{context?:WidgetPluginContext;widget:WidgetInstance;update:(patch:Partial<WidgetInstance>)=>void}
 export interface WidgetPluginControlDefinition{
  id:string;
  pluginId:string;

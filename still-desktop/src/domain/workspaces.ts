@@ -9,14 +9,14 @@ import {defaultWebShortcuts, parseWebShortcuts, shortcut, type WebShortcut} from
 import {parseBookmarks} from './bookmarks.ts';
 import {widgetPreset,parsePresets,fileKind,fileName,type FileKind,type WidgetPreset} from './presets.ts';
 import {type ScreenshotPluginMode} from './screenshotPlugin.ts';
+import {widgetTagColors,type WidgetTagColor} from './widgetTags.ts';
 export {widgetTypes, type WidgetType} from './widgetCatalog.ts';
+export {widgetTagColors,type WidgetTagColor} from './widgetTags.ts';
 export const DESMOS_URL = 'https://www.desmos.com/scientific';
 export interface Bookmark { id: string; name: string; url: string }
 export interface ScheduleEntry {id:string; day:number; time:string; title:string; location:string}
 export interface GroupWidgetEntry {id:string;type:Exclude<WidgetType,'group'>;name:string;icon:string;iconData?:string;kind?:'shortcut'|'collected';instance?:WidgetInstance}
 export interface SavedGroup {id:string;name:string;shortcuts:WebShortcut[];widgets:GroupWidgetEntry[];expanded:boolean}
-export const widgetTagColors=['red','orange','yellow','green','blue','purple','gray'] as const;
-export type WidgetTagColor=typeof widgetTagColors[number];
 export function collectedWidgetCount(group:SavedGroup|undefined):number{return group?.widgets.filter(entry=>entry.kind==='collected').length??0}
 export function savedGroupHasContents(group:SavedGroup|undefined):boolean{return !!group&&(group.shortcuts.length>0||group.widgets.length>0)}
 /** Delete a Group collection and its canvas cards as one state transition. */

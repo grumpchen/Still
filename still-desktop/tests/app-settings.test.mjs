@@ -9,6 +9,7 @@ const general=readFileSync(new URL('../src/GeneralSettings.tsx',import.meta.url)
 const picker=readFileSync(new URL('../src/AppWindowPicker.tsx',import.meta.url),'utf8');
 const native=readFileSync(new URL('../src-tauri/src/app_panel.rs',import.meta.url),'utf8');
 const appearance=readFileSync(new URL('../src/AppearanceSettings.tsx',import.meta.url),'utf8');
+const styles=readFileSync(new URL('../src/styles.css',import.meta.url),'utf8');
 
 test('app behavior settings default to automatic shortcut saving and preserve the existing leave-open shutdown behavior',()=>{
  const state=createInitialState();
@@ -55,6 +56,7 @@ test('Appearance settings offer transparent and solid backgrounds and the existi
  assert.deepEqual(backgroundSettingsUpdate('transparent'),{background:'transparent'},'changing background preserves the current appearance');
  assert.equal(backgroundSettingsValue('liquid-glass','transparent'),'transparent','transparent remains selectable while Liquid Glass is active');
  assert.deepEqual(backgroundSettingsUpdate('leaf-photo'),{appearance:'liquid-glass',background:'solid'});
+ assert.match(styles,/body\.liquid-glass\.transparent-background::before[\s\S]*?display:\s*none/,'transparent Liquid Glass must hide its fixed leaf wallpaper layer');
 });
 
 test('the attach picker initializes its existing save checkbox from the General preference',()=>{
