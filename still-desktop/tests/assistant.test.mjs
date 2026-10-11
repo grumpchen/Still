@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createWidget,createWorkspace} from '../src/domain/workspaces.ts';
-import {widgetContext,layoutContext,layoutFingerprint,parseAssistantReply,validateLayout,applyLayoutPlan} from '../src/domain/assistant.ts';
+import {assistantKeyError,widgetContext,layoutContext,layoutFingerprint,parseAssistantReply,validateLayout,applyLayoutPlan} from '../src/domain/assistant.ts';
 
 function fixture(){
   const workspace=createWorkspace('Study',[]),note=createWidget('notes'),timer=createWidget('focus');
@@ -46,4 +46,9 @@ test('model responses are parsed without trusting arbitrary fields or geometry',
   assert.throws(()=>parseAssistantReply({reply:'',layout:[]}));
   assert.throws(()=>parseAssistantReply({reply:'Hello',layout:[{id:'a',x:0.1,y:0,width:100,height:100}]}));
   assert.throws(()=>parseAssistantReply({reply:'Hello',layout:[null]}));
+});
+test('Gemini key setup shows the verification reason instead of masking it',()=>{
+  assert.equal(assistantKeyError(new Error('Gemini could not authorize this key. Check it in Google AI Studio and reconnect.')),'Gemini could not authorize this key. Check it in Google AI Studio and reconnect.');
+  assert.equal(assistantKeyError('Google Gemini is temporarily unavailable.'),'Google Gemini is temporarily unavailable.');
+  assert.equal(assistantKeyError({unexpected:true}),'Could not verify the Gemini API key.');
 });

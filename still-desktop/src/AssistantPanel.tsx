@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import type {Workspace} from './domain/workspaces.ts';
-import {applyLayoutPlan,DEFAULT_MODEL,HISTORY_LIMIT,layoutContext,layoutFingerprint,validateLayout,widgetContext,widgetLabel,type AssistantMode,type ChatMessage,type LayoutPlan} from './domain/assistant.ts';
+import {applyLayoutPlan,assistantKeyError,DEFAULT_MODEL,HISTORY_LIMIT,layoutContext,layoutFingerprint,validateLayout,widgetContext,widgetLabel,type AssistantMode,type ChatMessage,type LayoutPlan} from './domain/assistant.ts';
 import {geminiAssistant,widgetImage} from './platform/assistant.ts';
 import {Icon} from './widgets.tsx';
 import './assistant.css';
@@ -17,7 +17,7 @@ export default function AssistantPanel({workspace,open,close,dimensions,apply,un
   useEffect(()=>{if(selected&&!workspace.widgets.some(w=>w.id===selected)){setSelected('');setScreenshot(false)}},[workspace.widgets,selected]);
   async function connect(){
     setError('');
-    try{await geminiAssistant.setKey(key);if(!alive.current)return;setKey('');setConfigured(true);setSettings(false)}catch{if(alive.current)setError('Could not connect that key. Use a Gemini API key from Google AI Studio.')}
+    try{await geminiAssistant.setKey(key);if(!alive.current)return;setKey('');setConfigured(true);setSettings(false)}catch(reason){if(alive.current)setError(assistantKeyError(reason))}
   }
   async function disconnect(){
     try{await geminiAssistant.setKey('');if(alive.current){setKey('');setConfigured(false);setSettings(true)}}catch{if(alive.current)setError('Could not clear the session key.')}
