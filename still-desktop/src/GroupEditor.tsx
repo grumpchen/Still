@@ -1,6 +1,6 @@
 import {useState} from 'react';
 import {widgetCatalog,widgetTypes} from './domain/widgetCatalog.ts';
-import {Icon} from './widgets.tsx';
+import {Icon} from './Icon.tsx';
 import {groupWidgetEntry,type SavedGroup,type GroupWidgetEntry} from './domain/workspaces.ts';
 import {shortcut,reorderShortcuts,type WebShortcut} from './domain/webShortcuts.ts';
 

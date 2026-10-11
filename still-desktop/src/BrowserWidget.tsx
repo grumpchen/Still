@@ -1,5 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
-import {Icon,type WidgetProps} from './widgets.tsx';
+import {Icon} from './Icon.tsx';
+import type {WidgetProps} from './widgets.tsx';
 import {chromeClipGeometry} from './domain/chromeOverlay.ts';
 import {chromePanel} from './platform/chromePanel.ts';
 import {chromeLauncher} from './platform/chrome.ts';

@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 4318 --strictPort",
     "check": "tsc --noEmit",
-    "test": "node --test tests/*.test.mjs",
+    "test": "node --test --test-concurrency=1 tests/*.test.mjs",
     "build": "tsc --noEmit && vite build",
     "tauri": "tauri",
     "publish-preview": "node scripts/publish-preview.mjs"

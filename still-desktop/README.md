@@ -49,4 +49,4 @@ The isolated web preview verified both tray/card picker entry points, search and
 
 Design and acceptance steps: docs/plans/2026-10-05-open-app-picker.md and docs/plans/2026-10-05-managed-app-panels.md. The current release is `../ver0.18.exe`; its preview is `../ver0.18-app-picker-preview.png`. The original source archive is retained at `../archive/source-archives/still-desktop-source.zip`. Historical executables and preview proofs remain available under `../archive/`.
 
-Development: Tauri 2 + React + TypeScript. Build with pnpm test, pnpm check, pnpm tauri build --no-bundle, and cargo test --offline --release --manifest-path src-tauri/Cargo.toml.
+Development: Tauri 2 + React + TypeScript. Run frontend tests serially (`pnpm test`) because visual-rendering tests share a Vite port. Run the Windows native fixture suite serially (`cargo test --offline -- --test-threads=1`) because it creates and manipulates desktop windows. Type-check and build with `pnpm check` and `pnpm build`. See [the current architecture note](docs/architecture/current.md) for module ownership, plugin limits, persistence, and DPI verification scope.

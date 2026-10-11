@@ -1,6 +1,7 @@
 import {useCallback,useEffect,useRef,useState,type PointerEvent,type KeyboardEvent,type DragEvent,type MouseEvent as ReactMouseEvent} from 'react';
 import {createPortal} from 'react-dom';
-import {Icon,widgetRegistry} from './widgets.tsx';
+import {Icon} from './Icon.tsx';
+import {widgetRegistry} from './widgets.tsx';
 import {widgetTypes,widgetTagColors,type WidgetInstance,type WidgetType,type SavedGroup,type GroupWidgetEntry,minimizeWidgetInstance,moveMinimizedWidgetInstance,restoreWidgetInstance,toggleGroupCollapsed,collectedWidgetCount,constrainGroupCollapsedPlacement} from './domain/workspaces.ts';
 import {placement,translate,resize,type Placement,canvasExtent,canvasHeight,constrainPlacement} from './domain/layout.ts';
 import {captureWidget,downloadCapture} from './platform/capture.ts';

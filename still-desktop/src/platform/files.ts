@@ -26,6 +26,7 @@ export const localFiles={
     const map=new Map(files.map(f=>{const path=f.webkitRelativePath||f.name;return [path.includes('/')?path.slice(path.indexOf('/')+1):path,f] as const}));
     selected.set(id,{rootName,files:map});return this.browserList(id,'');
   },
+  release(id:string):void{selected.delete(id)},
   browserList(id:string,location:string):FolderListing{
     const folder=selected.get(id);if(!folder)throw new Error('Choose a folder to get started.');
     return {rootName:folder.rootName,location,entries:folderEntries([...folder.files].map(([path,file])=>({path,size:file.size})),location),truncated:false};

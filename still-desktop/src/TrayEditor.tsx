@@ -1,4 +1,5 @@
-import {Icon,widgetRegistry} from './widgets.tsx';
+import {Icon} from './Icon.tsx';
+import {widgetRegistry} from './widgets.tsx';
 import {widgetTypes,type SavedGroup,type WidgetInstance,type WidgetType} from './domain/workspaces.ts';
 import type {WidgetPreset,PresetType} from './domain/presets.ts';
 import type {GroupEditMode} from './GroupEditor.tsx';

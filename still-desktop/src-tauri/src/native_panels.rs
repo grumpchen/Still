@@ -106,7 +106,7 @@ mod edge_tests {
 
     #[test]
     fn right_edge_guard_uses_physical_pixels_at_common_dpi_scales() {
-        for scale in [1.0, 1.5, 2.0] {
+        for scale in [1.0, 1.25, 1.5, 1.75, 2.0, 3.0] {
             let origin = 137;
             let logical_right = 1000.0;
             let edge = viewport_right_screen(origin, logical_right, scale).unwrap();

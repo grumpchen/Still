@@ -1,5 +1,5 @@
 import {useEffect,useRef,useState} from 'react';
-import {Icon} from './widgets.tsx';
+import {Icon} from './Icon.tsx';
 import {appImageUrl,appPanel} from './platform/appPanel.ts';
 import {filterAppWindows,refreshedAppSelection,type AppWindowChoice} from './domain/appPicker.ts';
 import {localApps,type DroppedResource} from './platform/resourceDrop.ts';

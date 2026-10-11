@@ -36,6 +36,7 @@ export const resourceDrop={
 export const localDocuments={
  native:isTauri(),
  choose:()=>invoke<DroppedResource|null>('document_choose',{}),
+ retain(sourceIds:ReadonlySet<string>):void{for(const id of documents.keys())if(!sourceIds.has(id))documents.delete(id)},
  async open(sourceId:string):Promise<void>{
   if(this.native)return invoke('document_open',{sourceId});
   const file=documents.get(sourceId);if(!file)throw new Error('Select this file again to reconnect it in the preview.');

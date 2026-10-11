@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createBrowserFromGroup,createWidgetFromPreset,createWidgetFromGroupEntry,openSavedGroup,updateSavedGroup,saveGroupName,collectWidgetIntoGroup,restoreCollectedWidget,transferWidgetInstance,deleteSavedGroup,savedGroupHasContents,stackWorkspaceWidgets, createInitialState, nextInstanceNumber, createWidget, createWorkspace, duplicateWorkspace, migratePreview, parseState, workspaceName, toggleSidebarCollapsed, sidebarToggleLabel, widgetTypes, checkedAppIconData, type WorkspaceState, type WidgetType, type WidgetInstance,type SavedGroup,type GroupWidgetEntry,type SidebarPlugin } from './domain/workspaces.ts';
-import { Icon, widgetRegistry } from './widgets.tsx';
+import { Icon } from './Icon.tsx';
+import { widgetRegistry } from './widgets.tsx';
 import {chromeLauncher} from './platform/chrome.ts';
 import {chromePanel} from './platform/chromePanel.ts';
 import WorkspaceCanvas from './WorkspaceCanvas.tsx';
@@ -17,7 +18,7 @@ import {upsertSavedPresets,renameSavedPreset,removeSavedPreset,savedAppInUse,del
 import {presetFromWidget,widgetPreset,type WidgetPreset,type PresetType} from './domain/presets.ts';
 import AppWindowPicker from './AppWindowPicker.tsx';
 import {managedAppWidget,type AppWindowChoice} from './domain/appPicker.ts';
-import type {DroppedResource} from './platform/resourceDrop.ts';
+import {localDocuments,type DroppedResource} from './platform/resourceDrop.ts';
 import {appPanel,type AppAttachment} from './platform/appPanel.ts';
 import {appCapture} from './platform/appCapture.ts';
 import {getCurrentWindow} from '@tauri-apps/api/window';
@@ -59,6 +60,15 @@ export default function App(){
     document.body.style.setProperty('--wallpaper-blur',state.glass.blur+'px');
     document.body.style.setProperty('--wallpaper-saturation',String(state.glass.saturation/100));
     document.body.style.setProperty('--glass-alpha',String(state.glass.opacity/100));
+    const retainedDocuments=new Set<string>();
+    for(const snapshot of [state,undo.current])if(snapshot){
+      for(const workspace of snapshot.workspaces){
+        for(const widget of workspace.widgets)if(widget.fileKey)retainedDocuments.add(widget.fileKey);
+        for(const group of workspace.groups)for(const entry of group.widgets)if(entry.kind==='collected'&&entry.instance?.fileKey)retainedDocuments.add(entry.instance.fileKey);
+      }
+      for(const preset of snapshot.presets)if(preset.type==='files'&&preset.resourceKind==='document')retainedDocuments.add(preset.fileSourceId);
+    }
+    localDocuments.retain(retainedDocuments);
     try{localStorage.setItem(KEY,JSON.stringify(state));setStorage('Saved on this device')}catch{setStorage('Could not save — changes remain in this session')}
   },[state]);
   function switchWorkspace(id:string){setState(s=>({...s,activeId:id}));setArrange(false);}

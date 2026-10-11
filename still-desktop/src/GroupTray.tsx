@@ -1,5 +1,5 @@
 import {TrayDragButton,trayFocusIntoView} from './TrayDragButton.tsx';
-import {Icon} from './widgets.tsx';
+import {Icon} from './Icon.tsx';
 import {widgetCatalog} from './domain/widgetCatalog.ts';
 import type {SavedGroup,GroupWidgetEntry} from './domain/workspaces.ts';
 import type {WebShortcut} from './domain/webShortcuts.ts';

@@ -1,5 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
-import {Icon,type WidgetProps} from './widgets.tsx';
+import {Icon} from './Icon.tsx';
+import type {WidgetProps} from './widgets.tsx';
 import {localApps,previewFileDrop,type DroppedResource} from './platform/resourceDrop.ts';
 import {appPanel,type AppAttachment,type AppPanelInfo} from './platform/appPanel.ts';
 import {appPanelFit,appPanelGeometry} from './domain/appPanel.ts';

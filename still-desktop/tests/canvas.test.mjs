@@ -25,10 +25,10 @@ test('the canvas stays within a 150% viewport bound regardless of saved placemen
   assert.equal(canvasExtent(1000,[]),1500);
   assert.equal(canvasExtent(200,[]),300);
 });
-test('canvas height stays within a 150% viewport bound regardless of saved placements',()=>{
-  assert.equal(canvasHeight(700,[]),1050);
-  assert.equal(canvasHeight(600,[{placement:{x:0,y:920,width:300,height:240}}]),900);
-  assert.equal(canvasHeight(900,[{placement:{x:0,y:0,width:240,height:340}}]),1350);
+test('the canvas remains fixed to the viewport height regardless of saved placements',()=>{
+  assert.equal(canvasHeight(700,[]),700);
+  assert.equal(canvasHeight(600,[{placement:{x:0,y:920,width:300,height:240}}]),600);
+  assert.equal(canvasHeight(900,[{placement:{x:0,y:0,width:240,height:340}}]),900);
 });
 test('constrainPlacement keeps move and resize within horizontal bounds',()=>{
   const moved=constrainPlacement('notes',{x:1200,y:240,width:400,height:340},1300);

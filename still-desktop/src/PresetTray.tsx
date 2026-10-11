@@ -1,4 +1,5 @@
-import {Icon,widgetRegistry} from './widgets.tsx';
+import {Icon} from './Icon.tsx';
+import {widgetRegistry} from './widgets.tsx';
 import {TrayDragButton,trayFocusIntoView} from './TrayDragButton.tsx';
 import type {WidgetPreset,PresetType} from './domain/presets.ts';
 interface Props {presets:WidgetPreset[];add:(preset:WidgetPreset)=>void;onContextMenu:(event:React.MouseEvent<HTMLButtonElement>,id:string)=>void}

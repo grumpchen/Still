@@ -713,6 +713,12 @@ pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
   }}
  // A fresh Entry wired to a fixture window, with the PHYSICAL floor storage.
   fn test_entry(hwnd:usize,bounds:&Bounds)->Entry{Entry{hwnd,pid:std::process::id(),source_id:"test-app".into(),bounds:bounds.clone(),clip:bounds.clone(),grip:None,occlusions:Vec::new(),viewport_right:None,visible:true,shown:true,edge_hidden:false,preserve_focus:false,collection_marker:None,collection_was_visible:None,stacking_rank:0,revision:0,resize_guard:None,original_owner:0,original_placement:WINDOWPLACEMENT{length:std::mem::size_of::<WINDOWPLACEMENT>() as u32,..Default::default()},original_region:0,original_visible:false,declared_width:None,declared_height:None,measured_width:None,measured_height:None,pending_width:None,pending_height:None,probing_width:false,probing_height:false,minimum_dpi:None,minimum_query_after:None,fresh:false,last:None,error:String::new()}}
+ unsafe fn present_test_position(entry:&mut Entry,main:HWND,origin:POINT,scale:f64)->Result<bool,String>{
+  let hwnd=handle(entry.hwnd);entry.shown=true;let _=ShowWindow(hwnd,SW_SHOWNOACTIVATE);
+  let result=position(entry,main,origin,scale)?;
+  if entry.visible{let _=ShowWindow(hwnd,SW_SHOWNOACTIVATE);entry.shown=true;}
+  Ok(result)
+ }
  unsafe fn class_window(class:&[u16],proc:unsafe extern "system" fn(HWND,u32,windows::Win32::Foundation::WPARAM,LPARAM)->windows::Win32::Foundation::LRESULT,title:&str)->(HWND,windows::Win32::Foundation::HINSTANCE){
   let instance=windows::Win32::Foundation::HINSTANCE(windows::Win32::System::LibraryLoader::GetModuleHandleW(None).unwrap().0);
   let definition=WNDCLASSW{lpfnWndProc:Some(proc),hInstance:instance,lpszClassName:PCWSTR(class.as_ptr()),..Default::default()};assert_ne!(RegisterClassW(&definition),0);
@@ -744,7 +750,9 @@ pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
    assert!(!IsZoomed(hwnd).as_bool(),"position() must restore a maximized window before sampling");
    assert_eq!(entry.declared_width,None,"This fixture does not declare a WM minimum");
    assert_eq!(entry.measured_width,None,"One post-restore refusal is only a pending sample");
-   position(&mut entry,main.0,POINT{x:0,y:0},1.5).unwrap();
+   present_test_position(&mut entry,main.0,POINT{x:0,y:0},1.5).unwrap();
+   assert_eq!(entry.pending_width,Some(900),"The first post-restore sample remains pending");
+   present_test_position(&mut entry,main.0,POINT{x:0,y:0},1.5).unwrap();
    assert_eq!((entry.measured_width,entry.measured_height),(Some(600.),Some(400.)));
    let size=rect(hwnd).unwrap();assert_eq!((size.2,size.3),(900,600));
    let reported=info_at(&entry,1.5,measured);
@@ -766,15 +774,16 @@ pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
    C2_ACCEPT_SMALLER.store(false,std::sync::atomic::Ordering::Relaxed);
    let class=wide("StillC2DecreaseFixture");let (hwnd,instance)=class_window(&class,c2_clamping_proc,"Still C2 fixture");
    let target=Fixture(hwnd);let main=Fixture::new("Still C2 owner");
+   let _=ShowWindow(hwnd,SW_SHOWNOACTIVATE);
    let bounds=Bounds{x:0.,y:0.,width:200.,height:134.};let mut entry=test_entry(hwnd.0 as usize,&bounds);
    position(&mut entry,main.0,POINT{x:0,y:0},1.5).unwrap();
    assert_eq!(entry.pending_width,Some(900),"A first refusal only arms the two-pass confirmation");assert_eq!(entry.measured_width,None);
-   position(&mut entry,main.0,POINT{x:0,y:0},1.5).unwrap();
+   present_test_position(&mut entry,main.0,POINT{x:0,y:0},1.5).unwrap();
    assert_eq!((entry.measured_width,entry.measured_height),(Some(600.),Some(400.)),"A second identical refusal confirms the CSS floor");
-   for _ in 0..6{position(&mut entry,main.0,POINT{x:0,y:0},1.5).unwrap();}
+   for _ in 0..6{present_test_position(&mut entry,main.0,POINT{x:0,y:0},1.5).unwrap();}
    assert_eq!((entry.measured_width,entry.measured_height),(Some(600.),Some(400.)),"A still-enforcing app must not oscillate by clearing its floor when it accepts that same floor");
    C2_ACCEPT_SMALLER.store(true,std::sync::atomic::Ordering::Relaxed);
-   position(&mut entry,main.0,POINT{x:0,y:0},1.5).unwrap();
+   present_test_position(&mut entry,main.0,POINT{x:0,y:0},1.5).unwrap();
    assert_eq!((entry.measured_width,entry.measured_height),(None,None),"A real probe accepted below the old floor clears the measured fallback");
    let size=rect(hwnd).unwrap();assert_eq!((size.2,size.3),(300,201),"The accepted smaller size is preserved");
    drop(target);assert!(UnregisterClassW(PCWSTR(class.as_ptr()),Some(instance)).is_ok());
@@ -796,7 +805,8 @@ pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
     drop(target);assert!(UnregisterClassW(PCWSTR(class.as_ptr()),Some(instance)).is_ok());
   }}
   #[test]fn c5_target_physical_tracking_minimum_converts_to_css_using_target_dpi(){
-   assert_eq!(physical_to_css(900,144),Some(600.));assert_eq!(physical_to_css(1200,192),Some(600.));assert_eq!(physical_to_css(0,144),None);
+   assert_eq!(physical_to_css(900,144),Some(600.));assert_eq!(physical_to_css(1200,192),Some(600.));
+   assert_eq!(physical_to_css(750,120),Some(600.));assert_eq!(physical_to_css(1050,168),Some(600.));assert_eq!(physical_to_css(1800,288),Some(600.));assert_eq!(physical_to_css(0,144),None);
    let bounds=Bounds{x:0.,y:0.,width:400.,height:250.};let mut entry=test_entry(0,&bounds);entry.declared_width=Some(600.);entry.declared_height=Some(400.);
    assert_eq!(info_at(&entry,1.0,true).required_width,Some(600.));assert_eq!(info_at(&entry,2.0,true).required_width,Some(600.));
   }
