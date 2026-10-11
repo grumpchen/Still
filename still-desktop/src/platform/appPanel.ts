@@ -3,6 +3,7 @@ import {listen,type UnlistenFn} from '@tauri-apps/api/event';
 import type {PanelBounds} from '../domain/appPanel.ts';
 import type {AppWindowChoice} from '../domain/appPicker.ts';
 import type {DroppedResource} from './resourceDrop.ts';
+import type {AppShutdownBehavior} from '../domain/appSettings.ts';
 export interface AppWindow {hwnd:number;pid:number;title:string}
 export interface AppAttachment {hwnd:number;pid:number;capture?:boolean}
 export function appImageUrl(bytes:number[]):string{let binary='';for(let offset=0;offset<bytes.length;offset+=8192)binary+=String.fromCharCode(...bytes.slice(offset,offset+8192));return'data:image/png;base64,'+btoa(binary)}
@@ -24,6 +25,7 @@ export const appPanel={
  prepare:(window:AppAttachment)=>invoke<DroppedResource>('app_picker_prepare',{hwnd:window.hwnd,pid:window.pid}),
  preview:async(window:AppAttachment)=>appImageUrl(await invoke<number[]>('app_picker_preview',{hwnd:window.hwnd,pid:window.pid})),
  release:(id:string)=>command<void>(id,'app_panel_release'),
+ configureShutdown:(behavior:AppShutdownBehavior)=>invoke<void>('app_panel_configure_shutdown',{behavior}),
  suspendForCollection:async(id:string)=>{const suspended=await command<boolean>(id,'app_panel_suspend',{forCollection:true});if(suspended)retainedForCollection.add(id);return suspended},
  isCollectionRetained:(id:string)=>retainedForCollection.has(id),
  consumeCollectionRetention:(id:string)=>{const retained=retainedForCollection.has(id);retainedForCollection.delete(id);return retained},

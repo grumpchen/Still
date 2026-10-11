@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-app-panel-configure-shutdown"
+description = "Enables the app_panel_configure_shutdown command without any pre-configured scope."
+commands.allow = ["app_panel_configure_shutdown"]
+
+[[permission]]
+identifier = "deny-app-panel-configure-shutdown"
+description = "Denies the app_panel_configure_shutdown command without any pre-configured scope."
+commands.deny = ["app_panel_configure_shutdown"]

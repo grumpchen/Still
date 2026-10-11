@@ -1,6 +1,7 @@
 import { AKO_URL, GOOGLE_URL, normalizeUrl } from './browser.ts';
 import { defaultShortcuts, parseShortcuts, type WorkspaceShortcuts } from './shortcuts.ts';
 import { defaultGlass, parseGlass, type Appearance, type GlassSettings } from './appearance.ts';
+import {parseAppShutdownBehavior,type AppShutdownBehavior} from './appSettings.ts';
 import {widgetCatalog,widgetTypes, type WidgetType} from './widgetCatalog.ts';
 import {placement, nextPlacement,constrainPlacement,type Placement} from './layout.ts';
 import {defaultWebShortcuts, parseWebShortcuts, shortcut, type WebShortcut} from './webShortcuts.ts';
@@ -40,6 +41,7 @@ export interface WorkspaceState {
   theme: 'light' | 'dark'; density: 'comfortable' | 'compact'; background: 'solid' | 'dots';
   shortcuts: WorkspaceShortcuts;
   appearance: Appearance; glass: GlassSettings;
+  saveAppShortcutsOnAttach:boolean;appShutdownBehavior:AppShutdownBehavior;
 }
 export function createWidget(type: WidgetType): WidgetInstance {
   return { id: crypto.randomUUID(), type, instanceNumber:1, title:'', tagColor:null, span: type === 'browser' ? 3 : type === 'ai' ? 2 : 1,
@@ -285,7 +287,7 @@ export function saveGroupName(workspace:Workspace,id:string,value:string):Worksp
 }
 export function createInitialState(): WorkspaceState {
   const workspaces = [createWorkspace('Study',['browser','desmos','notes','focus']), createWorkspace('Design',['notes','ai','files']), createWorkspace('Daily',['notes','focus']), createWorkspace('Minimal',['desmos','notes'])];
-  return { version:4,activeId:workspaces[0].id,workspaces,sidebarCollapsed:false,sidebarPlugins:[],presets:[],theme:'light',density:'comfortable',background:'solid',shortcuts:defaultShortcuts(),appearance:'liquid-glass',glass:defaultGlass() };
+  return { version:4,activeId:workspaces[0].id,workspaces,sidebarCollapsed:false,sidebarPlugins:[],presets:[],theme:'light',density:'comfortable',background:'solid',shortcuts:defaultShortcuts(),appearance:'liquid-glass',glass:defaultGlass(),saveAppShortcutsOnAttach:true,appShutdownBehavior:'leaveOpen' };
 }
 function parseSidebarPlugins(value:unknown):SidebarPlugin[]{
  if(!Array.isArray(value))return[];
@@ -361,7 +363,7 @@ export function parseState(text: string): WorkspaceState {
     return {id:workspace.id,name:workspaceName(workspace.name),widgets,groups,layout:'canvas',browserWidth:browserSize(workspace.browserWidth,80,95),browserHeight:browserSize(workspace.browserHeight,100,100)} as Workspace;
   });
   if (!ids.has(value.activeId)) throw new Error('Missing active workspace');
-  return {version:4,activeId:value.activeId,workspaces,sidebarCollapsed:value.sidebarCollapsed===true,sidebarPlugins:parseSidebarPlugins(value.sidebarPlugins),presets:parsePresets(value.presets),theme:value.theme==='dark'?'dark':'light',density:value.density==='compact'?'compact':'comfortable',background:value.background==='dots'?'dots':'solid',shortcuts:parseShortcuts(value.shortcuts),appearance:value.appearance==='minimal'?'minimal':'liquid-glass',glass:parseGlass(value.glass)};
+  return {version:4,activeId:value.activeId,workspaces,sidebarCollapsed:value.sidebarCollapsed===true,sidebarPlugins:parseSidebarPlugins(value.sidebarPlugins),presets:parsePresets(value.presets),theme:value.theme==='dark'?'dark':'light',density:value.density==='compact'?'compact':'comfortable',background:value.background==='dots'?'dots':'solid',shortcuts:parseShortcuts(value.shortcuts),appearance:value.appearance==='minimal'?'minimal':'liquid-glass',glass:parseGlass(value.glass),saveAppShortcutsOnAttach:value.saveAppShortcutsOnAttach!==false,appShutdownBehavior:parseAppShutdownBehavior(value.appShutdownBehavior)};
 }
 export function migratePreview(value: unknown): WorkspaceState {
   const legacy = value as {active:string;theme:string;density:string;background:string;workspaces:Record<string,Array<Record<string,unknown>>>};

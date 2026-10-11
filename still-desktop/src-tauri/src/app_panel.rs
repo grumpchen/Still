@@ -3,6 +3,13 @@ use std::{collections::{HashMap,HashSet},path::{Path,PathBuf},sync::{Mutex,OnceL
 use tauri::{AppHandle,Emitter,Manager,Webview};
 use windows::{core::{Interface,PCWSTR,PWSTR},Win32::{Foundation::{CloseHandle,HANDLE,HWND,LPARAM,POINT,RECT},Graphics::Gdi::*,System::{Com::*,Threading::*},UI::{Shell::*,WindowsAndMessaging::*,Accessibility::{SetWinEventHook,HWINEVENTHOOK}}}};
 
+#[derive(Clone,Copy,Debug,Default,Deserialize,PartialEq)]
+#[serde(rename_all="camelCase")]
+pub enum AppShutdownBehavior{Minimize,Close,#[default]LeaveOpen}
+#[derive(Clone,Copy,Debug,Eq,PartialEq)]
+enum ShutdownAction{Minimize,Close,LeaveOpen}
+fn shutdown_action(behavior:AppShutdownBehavior)->ShutdownAction{match behavior{AppShutdownBehavior::Minimize=>ShutdownAction::Minimize,AppShutdownBehavior::Close=>ShutdownAction::Close,AppShutdownBehavior::LeaveOpen=>ShutdownAction::LeaveOpen}}
+
 #[derive(Clone,Debug,Deserialize,PartialEq)]
 pub struct Bounds {pub x:f64,pub y:f64,pub width:f64,pub height:f64}
 impl Bounds {
@@ -45,7 +52,7 @@ struct Entry {
  last:Option<(Physical,Physical,Physical,Option<Physical>,Vec<Physical>)>,error:String,
 }
 impl Drop for Entry{fn drop(&mut self){if self.original_region!=0{unsafe{let _=DeleteObject(HGDIOBJ(self.original_region as *mut _));}}}}
-#[derive(Default)]struct Panels {items:HashMap<String,Entry>,pending:HashMap<String,Launch>,running:HashSet<String>,attaching:HashSet<(usize,u32)>,generation:HashMap<String,u64>,closed:bool}
+#[derive(Default)]struct Panels {items:HashMap<String,Entry>,pending:HashMap<String,Launch>,running:HashSet<String>,attaching:HashSet<(usize,u32)>,generation:HashMap<String,u64>,closed:bool,shutdown_behavior:AppShutdownBehavior}
 #[derive(Default)]pub struct AppPanelState(Mutex<Panels>);
 #[derive(Serialize)]#[serde(rename_all="camelCase")]pub struct Info{hwnd:usize,pid:u32,min_width:f64,min_height:f64,required_width:Option<f64>,required_height:Option<f64>,measured:bool,probing:bool,shown:bool}
 #[derive(Serialize)]#[serde(rename_all="camelCase")]pub struct AttachmentIdentity{pub hwnd:usize,pub pid:u32}
@@ -211,6 +218,14 @@ fn restore(entry:&mut Entry){unsafe{
  if SetWindowRgn(hwnd,saved,true)!=0{entry.original_region=0;}
  let mut placement=entry.original_placement;if !entry.original_visible{placement.showCmd=SW_HIDE.0 as u32;}
  let _=SetWindowPlacement(hwnd,&placement);let _=ShowWindow(hwnd,if entry.original_visible{SW_SHOWNA}else{SW_HIDE});
+}}
+fn apply_shutdown_action(hwnd:HWND,action:ShutdownAction){unsafe{
+ if !IsWindow(Some(hwnd)).as_bool(){return}
+ match action{
+  ShutdownAction::Minimize=>{let _=ShowWindow(hwnd,SW_MINIMIZE);}
+  ShutdownAction::Close=>{let _=PostMessageW(Some(hwnd),WM_CLOSE,windows::Win32::Foundation::WPARAM(0),LPARAM(0));}
+  ShutdownAction::LeaveOpen=>{}
+ }
 }}
 fn clear_collection_marker(entry:&mut Entry){if let Some(id)=entry.collection_marker.take(){unsafe{let _=RemovePropW(handle(entry.hwnd),PCWSTR(collection_marker(&id).as_ptr()));}}entry.collection_was_visible=None;}
 fn protect_collected_window(entry:&mut Entry)->Result<bool,String>{
@@ -399,7 +414,14 @@ pub fn install(app:&AppHandle)->Result<(),String>{
  unsafe{for (a,b) in [(EVENT_SYSTEM_FOREGROUND,EVENT_SYSTEM_FOREGROUND),(EVENT_OBJECT_DESTROY,EVENT_OBJECT_LOCATIONCHANGE)]{if SetWinEventHook(a,b,None,Some(event),0,0,WINEVENT_OUTOFCONTEXT).0.is_null(){return Err("Unable to synchronize application panels".into())}}}Ok(())
 }
 fn release(app:&AppHandle,id:&str){if let Ok(mut s)=app.state::<AppPanelState>().0.lock(){*s.generation.entry(id.into()).or_default()+=1;s.pending.remove(id);if let Some(mut entry)=s.items.remove(id){clear_collection_marker(&mut entry);restore(&mut entry);}}}
-pub fn shutdown(app:&AppHandle){let state=app.state::<AppPanelState>();if let Ok(mut s)=state.0.lock(){s.closed=true;s.pending.clear();for (_,mut entry) in s.items.drain(){restore(&mut entry);}};}
+pub fn shutdown(app:&AppHandle){let state=app.state::<AppPanelState>();if let Ok(mut s)=state.0.lock(){s.closed=true;s.pending.clear();let action=shutdown_action(s.shutdown_behavior);for (_,mut entry) in s.items.drain(){clear_collection_marker(&mut entry);let hwnd=handle(entry.hwnd);restore(&mut entry);apply_shutdown_action(hwnd,action);}};}
+
+#[tauri::command]
+pub async fn app_panel_configure_shutdown(app:AppHandle,webview:Webview,behavior:AppShutdownBehavior)->Result<(),String>{
+ crate::browser::authorize(&webview)?;
+ let state=app.state::<AppPanelState>();let mut panels=state.0.lock().map_err(|_|"App panels are unavailable")?;
+ panels.shutdown_behavior=behavior;Ok(())
+}
 
 #[tauri::command]
 pub async fn app_panel_suspend(app:AppHandle,webview:Webview,id:String,for_collection:Option<bool>)->Result<bool,String>{
@@ -556,6 +578,22 @@ pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
 
 #[cfg(test)]mod tests{
  use super::*;
+ #[test]fn shutdown_settings_map_to_safe_window_actions(){
+  assert_eq!(AppShutdownBehavior::default(),AppShutdownBehavior::LeaveOpen);
+  assert_eq!(shutdown_action(AppShutdownBehavior::Minimize),ShutdownAction::Minimize);
+  assert_eq!(shutdown_action(AppShutdownBehavior::Close),ShutdownAction::Close);
+  assert_eq!(shutdown_action(AppShutdownBehavior::LeaveOpen),ShutdownAction::LeaveOpen);
+ }
+ #[test]fn minimize_shutdown_action_minimizes_the_attached_window(){unsafe{
+  let target=Fixture::new("Still shutdown minimize fixture");let _=ShowWindow(target.0,SW_SHOWNOACTIVATE);
+  apply_shutdown_action(target.0,shutdown_action(AppShutdownBehavior::Minimize));
+  assert!(IsIconic(target.0).as_bool());
+ }}
+ #[test]fn leave_open_shutdown_action_does_not_change_the_attached_window(){unsafe{
+  let target=Fixture::new("Still shutdown leave-open fixture");let _=ShowWindow(target.0,SW_SHOWNOACTIVATE);
+  apply_shutdown_action(target.0,shutdown_action(AppShutdownBehavior::LeaveOpen));
+  assert!(IsWindowVisible(target.0).as_bool());assert!(!IsIconic(target.0).as_bool());
+ }}
  #[test]fn direct_capture_identity_requires_the_same_live_external_hwnd_and_pid(){
   let current=std::process::id();
   assert!(exact_window_identity(42,7,42,7));

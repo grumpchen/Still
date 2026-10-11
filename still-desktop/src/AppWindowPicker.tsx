@@ -4,9 +4,9 @@ import {appImageUrl,appPanel} from './platform/appPanel.ts';
 import {filterAppWindows,refreshedAppSelection,type AppWindowChoice} from './domain/appPicker.ts';
 import {localApps,type DroppedResource} from './platform/resourceDrop.ts';
 
-interface Props {sourceId?:string;attach:(window:AppWindowChoice,source:DroppedResource,name:string,save:boolean)=>void;open:(source:DroppedResource,name:string,save:boolean)=>void;close:()=>void}
-export default function AppWindowPicker({sourceId,attach,open,close}:Props){
- const [windows,setWindows]=useState<AppWindowChoice[]>([]),[query,setQuery]=useState(''),[selected,setSelected]=useState<AppWindowChoice|null>(null),[name,setName]=useState(''),[save,setSave]=useState(false),[busy,setBusy]=useState(false),[loading,setLoading]=useState(false),[error,setError]=useState('');
+interface Props {sourceId?:string;saveAppShortcutsOnAttach:boolean;attach:(window:AppWindowChoice,source:DroppedResource,name:string,save:boolean)=>void;open:(source:DroppedResource,name:string,save:boolean)=>void;close:()=>void}
+export default function AppWindowPicker({sourceId,saveAppShortcutsOnAttach,attach,open,close}:Props){
+ const [windows,setWindows]=useState<AppWindowChoice[]>([]),[query,setQuery]=useState(''),[selected,setSelected]=useState<AppWindowChoice|null>(null),[name,setName]=useState(''),[save,setSave]=useState(saveAppShortcutsOnAttach),[busy,setBusy]=useState(false),[loading,setLoading]=useState(false),[error,setError]=useState('');
  const mounted=useRef(true),generation=useRef(0);useEffect(()=>{mounted.current=true;void refresh();return()=>{mounted.current=false;generation.current++}},[sourceId]);
  async function refresh(){if(!appPanel.available)return;const ticket=++generation.current;setLoading(true);setError('');try{const items=await appPanel.choices(sourceId);if(!mounted.current||ticket!==generation.current)return;setWindows(items);setSelected(current=>refreshedAppSelection(current,items))}catch(reason){if(mounted.current&&ticket===generation.current)setError(String(reason))}finally{if(mounted.current&&ticket===generation.current)setLoading(false)}}
  function choose(window:AppWindowChoice){if(window.attached||busy)return;setSelected(window);setName(window.appName.slice(0,60));setError('')}

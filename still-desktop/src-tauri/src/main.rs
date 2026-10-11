@@ -46,7 +46,7 @@ fn main() {
             files::files_choose, files::files_list, files::files_open,files::files_reuse,
             dropped_files::document_open, dropped_files::document_choose,
             dropped_files::app_open, dropped_files::app_choose,
-            app_panel::app_panel_open,app_panel::app_panel_windows,app_panel::app_panel_identity,app_panel::app_panel_attach,app_panel::app_panel_present,app_panel::app_panel_release,app_panel::app_panel_suspend,app_panel::app_panel_resume,
+            app_panel::app_panel_open,app_panel::app_panel_windows,app_panel::app_panel_identity,app_panel::app_panel_attach,app_panel::app_panel_present,app_panel::app_panel_release,app_panel::app_panel_suspend,app_panel::app_panel_resume,app_panel::app_panel_configure_shutdown,
             app_capture::app_capture_enable,
             app_picker::app_picker_windows,app_picker::app_picker_prepare,app_picker::app_picker_preview,
             shortcuts::shortcuts_configure,
