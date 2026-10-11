@@ -73,18 +73,18 @@ test('Apps native edge uses the workspace viewport rather than the narrower widg
  assert.equal(result.clip.x,300);assert.equal(result.clip.width,500);
  assert.equal(result.viewportRight,1200);
 });
-test('native app minimum size persists with its Apps widget and invalid limits are discarded',()=>{
+test('native app minimum size persists while restart clears its transient open state',()=>{
  const state=createInitialState(),app=createWidget('apps');app.appKey='codex';app.appPanelOpen=true;app.appMinWidth=640;app.appMinHeight=460;state.workspaces[0].widgets.push(app);
- const restored=parseState(JSON.stringify(state)).workspaces[0].widgets.at(-1);assert.equal(restored.appMinWidth,640);assert.equal(restored.appMinHeight,460);
- assert.equal(restored.placement.width,640);assert.equal(restored.placement.height,460);
+ const restored=parseState(JSON.stringify(state)).workspaces[0].widgets.at(-1);assert.equal(restored.appMinWidth,640);assert.equal(restored.appMinHeight,460);assert.equal(restored.appPanelOpen,false);
+ assert.equal(restored.placement.width,360);assert.equal(restored.placement.height,280);
  app.appPanelOpen=false;const detached=parseState(JSON.stringify(state)).workspaces[0].widgets.at(-1);assert.equal(detached.placement.width,360);assert.equal(detached.placement.height,280);
  app.appMinWidth=NaN;app.appMinHeight=-10;
  const invalid=parseState(JSON.stringify(state)).workspaces[0].widgets.at(-1);assert.equal(invalid.appMinWidth,undefined);assert.equal(invalid.appMinHeight,undefined);
 });
-test('Apps remember an open panel across reopening while older launchers and fresh presets remain closed',()=>{
+test('Apps widgets stay saved but native apps do not relaunch when Still reopens',()=>{
  const state=createInitialState(),app=createWidget('apps');assert.equal(app.appPanelOpen,false);
  app.appKey='app-word';app.appName='Word';app.appPanelOpen=true;state.workspaces[0].widgets.push(app);
- assert.equal(parseState(JSON.stringify(state)).workspaces[0].widgets.at(-1).appPanelOpen,true);
+ const reopened=parseState(JSON.stringify(state)).workspaces[0].widgets.at(-1);assert.equal(reopened.appPanelOpen,false);assert.equal(reopened.appKey,'app-word');assert.equal(reopened.appName,'Word');
  const old=structuredClone(state);delete old.workspaces[0].widgets.at(-1).appPanelOpen;
  assert.equal(parseState(JSON.stringify(old)).workspaces[0].widgets.at(-1).appPanelOpen,false);
  const fresh=createWidgetFromPreset({id:'word-preset',type:'apps',name:'Word',appSourceId:'app-word',appName:'Word'},[]);

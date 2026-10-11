@@ -1,6 +1,7 @@
 import {useCallback,useEffect,useRef,useState,type PointerEvent,type KeyboardEvent,type DragEvent,type MouseEvent as ReactMouseEvent} from 'react';
+import {createPortal} from 'react-dom';
 import {Icon,widgetRegistry} from './widgets.tsx';
-import {widgetTypes,type WidgetInstance,type WidgetType,type SavedGroup,type GroupWidgetEntry,minimizeWidgetInstance,moveMinimizedWidgetInstance,restoreWidgetInstance,toggleGroupCollapsed,collectedWidgetCount,constrainGroupCollapsedPlacement} from './domain/workspaces.ts';
+import {widgetTypes,widgetTagColors,type WidgetInstance,type WidgetType,type SavedGroup,type GroupWidgetEntry,minimizeWidgetInstance,moveMinimizedWidgetInstance,restoreWidgetInstance,toggleGroupCollapsed,collectedWidgetCount,constrainGroupCollapsedPlacement} from './domain/workspaces.ts';
 import {placement,translate,resize,type Placement,canvasExtent,canvasHeight,constrainPlacement} from './domain/layout.ts';
 import {captureWidget,downloadCapture} from './platform/capture.ts';
 import {toggleLecture} from './domain/lecture.ts';
@@ -25,12 +26,25 @@ export default function WorkspaceCanvas({workspaceId,transferWidget,setWorkspace
   const viewport=useRef<HTMLDivElement>(null),tray=useRef<HTMLDivElement>(null),trayItems=useRef<HTMLDivElement>(null),gesture=useRef<Gesture|null>(null);
   const preparedAppSources=useRef(new Map<string,{appKey:string;appName:string}>());
   const previousPresetIds=useRef(new Set(presets.map(preset=>preset.id)));
-  const [active,setActive]=useState<string|null>(null),[trayDragging,setTrayDragging]=useState(false),[overTray,setOverTray]=useState(false),[overCanvas,setOverCanvas]=useState(false),[busy,setBusy]=useState<string|null>(null);
+  const [active,setActive]=useState<string|null>(null),[trayDragging,setTrayDragging]=useState(false),[overTray,setOverTray]=useState(false),[overCanvas,setOverCanvas]=useState(false),[busy,setBusy]=useState<string|null>(null),[tagPicker,setTagPicker]=useState<{id:string;top:number;right:number}|null>(null),[pluginPicker,setPluginPicker]=useState<{id:string;top:number;right:number}|null>(null);
   const [viewportWidth,setViewportWidth]=useState(0),[viewportHeight,setViewportHeight]=useState(0);
   const overviewViewportRef=useRef<SVGRectElement>(null);
   const [saveTarget,setSaveTarget]=useState<SaveCue|null>(null),[canvasGroupDropId,setCanvasGroupDropId]=useState<string|null>(null),[externalDragging,setExternalDragging]=useState(false),[trayGhost,setTrayGhost]=useState<TrayDragPosition|null>(null);
   const [savedMenu,setSavedMenu]=useState<SavedItemMenuTarget|null>(null);
   const closeSavedMenu=useCallback(()=>setSavedMenu(null),[]);
+  function popupPosition(rect:DOMRect,width:number){return{top:Math.max(4,rect.top-40),right:Math.max(4,Math.min(window.innerWidth-rect.right,window.innerWidth-width-4))}}
+  const popupKind=tagPicker?'tag':pluginPicker?'plugin':null,popupWidgetId=tagPicker?.id??pluginPicker?.id;
+  useEffect(()=>{
+   if(!popupKind||!popupWidgetId)return;
+   const card=document.querySelector<HTMLElement>(`[data-widget-id="${popupWidgetId}"]`),anchor=card?.querySelector<HTMLElement>(popupKind==='tag'?'.widget-active-tag':'.widget-customize-control');
+   if(!card||!anchor)return;
+   const width=popupKind==='tag'?238:190;
+   const reposition=()=>{const position=popupPosition(anchor.getBoundingClientRect(),width);if(popupKind==='tag')setTagPicker(current=>current?.id!==popupWidgetId||current.top===position.top&&current.right===position.right?current:{id:popupWidgetId,...position});else setPluginPicker(current=>current?.id!==popupWidgetId||current.top===position.top&&current.right===position.right?current:{id:popupWidgetId,...position})};
+   const mutations=new MutationObserver(reposition),sizes=new ResizeObserver(reposition),viewport=card.closest('.canvas-viewport');
+   mutations.observe(card,{attributes:true,attributeFilter:['style']});sizes.observe(card);sizes.observe(anchor);if(viewport)sizes.observe(viewport);
+   window.addEventListener('resize',reposition);window.addEventListener('scroll',reposition,true);reposition();
+   return()=>{mutations.disconnect();sizes.disconnect();window.removeEventListener('resize',reposition);window.removeEventListener('scroll',reposition,true)};
+  },[popupKind,popupWidgetId]);
   useEffect(()=>{
    const added=presets.some(preset=>!previousPresetIds.current.has(preset.id));
    previousPresetIds.current=new Set(presets.map(preset=>preset.id));
@@ -210,6 +224,17 @@ export default function WorkspaceCanvas({workspaceId,transferWidget,setWorkspace
             {w.type==='group'&&w.groupId?<><GroupHeaderName name={group?.name??''} displayName={group?.name||title} save={name=>updateGroup(w.groupId!,{name})}/><small className="group-widget-count" aria-label={`${collectedWidgetCount(group)} collected widgets`} title={`${collectedWidgetCount(group)} collected widgets`}>{collectedWidgetCount(group)}</small></>:w.type==='apps'?<GroupHeaderName name={w.title||w.appName||''} displayName={w.title||w.appName||title} save={name=>update(w.id,{title:name})} label="App widget name" tooltip="Click to rename app widget"/>:<span className="widget-title">{title}</span>}
             {w.type==='files'&&(w.fileKey||w.folderName)&&<small className="resource-badge">{w.fileKey?w.fileKind?.toUpperCase()??'File':'Folder'}</small>}
             <div className="widget-controls" data-capture-ignore>
+              <div className="widget-tag-picker">
+                {w.tagColor&&<button type="button" className="widget-active-tag" data-tag-color={w.tagColor} aria-label={'Change '+w.tagColor+' tag color'} title={'Click to change or remove '+w.tagColor+' tag'} aria-haspopup="menu" aria-expanded={tagPicker?.id===w.id} onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();const position=popupPosition(e.currentTarget.getBoundingClientRect(),238);setPluginPicker(null);setTagPicker(current=>current?.id===w.id?null:{id:w.id,...position})}}><span className="widget-tag-dot"/></button>}
+                <button type="button" className="widget-customize-control" aria-label={'Add widget add-on to '+title} aria-haspopup="menu" aria-expanded={pluginPicker?.id===w.id} title="Add widget add-on" onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();const position=popupPosition(e.currentTarget.getBoundingClientRect(),190);setTagPicker(null);setPluginPicker(current=>current?.id===w.id?null:{id:w.id,...position})}}>+</button>
+                {pluginPicker?.id===w.id&&createPortal(<div className="widget-plugin-menu" style={{position:'fixed',top:pluginPicker.top,right:pluginPicker.right}} role="menu" aria-label={'Widget add-ons for '+title}>
+                  <button type="button" className="widget-plugin-choice" role="menuitemcheckbox" aria-label="Add Color tag plugin" aria-checked={!!w.tagColor} disabled={!!w.tagColor} onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();update(w.id,{tagColor:'blue'});setPluginPicker(null)}}><span className="widget-plugin-dot" aria-hidden="true"/><span>Color tag</span><small>{w.tagColor?'Added':'Add'}</small></button>
+                </div>,document.body)}
+                {tagPicker?.id===w.id&&createPortal(<div className="widget-tag-palette" style={{position:'fixed',top:tagPicker.top,right:tagPicker.right}} role="menu" aria-label={'Color tag for '+title}>
+                  {widgetTagColors.map(color=><button key={color} type="button" role="menuitemradio" aria-label={'Set '+color+' tag color'} aria-checked={w.tagColor===color} className="widget-tag-choice" data-tag-color={color} title={color[0].toUpperCase()+color.slice(1)} onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();update(w.id,{tagColor:color});setTagPicker(null)}}><span className="widget-tag-dot"/></button>)}
+                  <button type="button" role="menuitemradio" aria-label="Remove color tag" aria-checked={!w.tagColor} className="widget-tag-choice widget-tag-none" onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();update(w.id,{tagColor:null});setTagPicker(null)}}>×</button>
+                </div>,document.body)}
+              </div>
               {w.type==='browser'&&<button className="widget-header-action browser-lecture-action" data-capture-ignore aria-label={w.lectureRestore?'Restore Browser size':'Set Browser to Lecture size'} title={w.lectureRestore?'Restore previous size':'Use 80% Lecture size'} aria-pressed={!!w.lectureRestore} onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();lecture(w)}}>{w.lectureRestore?'↶':'80%'}</button>}
               {w.type==='apps'&&<button data-capture-ignore aria-label={'Attach open app to '+title} title="Attach an open app" onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();pickApp(w.id,visibleOrigin(),extent)}}>↗</button>}
               {w.type==='apps'&&w.appKey&&<button data-capture-ignore aria-label={'Save '+title+' to tray'} title="Save app to tray" onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();saveApp(w.id)}}>↓</button>}

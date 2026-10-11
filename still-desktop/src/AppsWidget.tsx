@@ -62,9 +62,9 @@ export default function AppsWidget({widget,update,notify,obscured,workspaceActiv
   <div ref={host} className="app-panel-host" data-native-app-id={appPanel.available&&ready?widget.id:undefined}>
    <div className="app-panel-placeholder"><span className="document-type-symbol type-app"><Icon name="apps"/></span><h2>{opening?'Opening app in panel…':ready?widget.appName+' · attached':widget.appName||'Your desktop apps'}</h2>
     <p>{!widget.appKey?'Use Ctrl+Shift-click or the header control to attach an open app, or choose an app shortcut.':!appPanel.available?'The Windows version positions the real app window inside this panel.':ready?'The app follows this widget. Move it inside the workspace if its right edge crosses the boundary.':'Open the real app inside this widget, with its normal tools and documents.'}</p>
-    {!ready&&widget.appWasCollected&&<button disabled={opening||busy} onClick={()=>pickApp?.()}>Reattach open app…</button>}
+    {!ready&&(widget.appWasCollected||(!widget.appKey&&widget.appName))&&<button disabled={opening||busy} onClick={()=>pickApp?.()}>Reattach open app…</button>}
     {!ready&&<button disabled={opening||busy} onClick={()=>void choose()}>{widget.appKey?'Change app…':'Choose app…'}</button>}
-    {widget.appKey&&!ready&&<button className="primary" disabled={opening||busy||!appPanel.available} onClick={()=>{update({appPanelOpen:true});void launch.current()}}>{opening?'Opening…':'Open in panel'}</button>}
+    {widget.appKey&&!ready&&<button className="primary" aria-label={'Reopen '+widget.appName+' in widget'} disabled={opening||busy||!appPanel.available} onClick={()=>{update({appPanelOpen:true});void launch.current()}}>{opening?'Opening…':'Reopen app in widget'}</button>}
    </div>
   </div>
  </div>;

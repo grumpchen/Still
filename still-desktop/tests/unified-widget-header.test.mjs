@@ -22,6 +22,8 @@ test('shared widget header keeps Apps attachment and detach plus Browser Lecture
  assert.match(canvas,/w\.type==='apps'&&w\.appKey&&<button[\s\S]*?saveApp\(w\.id\)/);
  assert.match(apps,/onClick=\{\(\)=>void choose\(\)\}/,'app selection remains available in its empty state');
  assert.match(apps,/widget\.appKey\?'Change app…':'Choose app…'/,'changing or choosing an app remains available without restoring a secondary toolbar');
+ assert.match(apps,/widget\.appKey&&!ready&&<button className="primary"[\s\S]*?Reopen app in widget/,'saved apps expose a clear action to reopen inside their widget');
+ assert.match(apps,/!ready&&\(widget\.appWasCollected\|\|\(!widget\.appKey&&widget\.appName\)\)&&<button[\s\S]*?Reattach open app…/,'attached windows can be reselected after a Still restart');
 });
 
 test('Apps omits its PNG and header resize controls while keeping the standard corner resize handle',()=>{
