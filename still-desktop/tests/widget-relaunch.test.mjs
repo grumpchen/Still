@@ -41,13 +41,13 @@ async function setup(widgets,{identity={hwnd:451,pid:902},startupDeferredIds=new
   return null;
  },{shouldMockEvents:true});
  const {default:WorkspaceCanvas}=await vite.ssrLoadModule('/src/WorkspaceCanvas.tsx');
- const state=createInitialState();state.workspaces[0].widgets=widgets;
+ const state=createInitialState();state.workspaces[0].widgets=widgets;state.screenshotPluginMode=screenshotPluginMode;state.screenshotPluginColors=screenshotPluginColors;
  let currentState,root;
  function Host(){
   const [current,setCurrent]=useState(state);currentState=current;
   const [deferred,setDeferred]=useState(startupDeferredIds);
   const update=(id,patch)=>setCurrent(value=>({...value,workspaces:value.workspaces.map(workspace=>({...workspace,widgets:workspace.widgets.map(item=>item.id===id?{...item,...patch}:item)}))}));
-  return createElement(WorkspaceCanvas,{workspaceId:current.workspaces[0].id,transferWidget(){},setWorkspaceDropTarget(){},openAppsDialog(){},editTray(){},presets:current.presets,savePresets(){},openPreset(){},editPreset(){},removePreset(){},renamePreset(){},renameGroup(){},widgets:current.workspaces[0].widgets,groups:[],updateGroup(){},saveToGroup(){},openGroup(){},editGroup(){},removeGroup(){},openGroupWidget(){},update,add(){},remove(){},begin(){},bringToFront(){},notify(){},obscured:false,openResource(){},openDropped(){},pickApp(){},saveApp(){},appAttachments:{},appAttachmentHandled(){},startupDeferredIds:deferred,startupRelaunch:id=>setDeferred(value=>new Set([...value].filter(item=>item!==id))),screenshotPluginMode,screenshotPluginColors,showAppAttachAction,showAppDetachAction,showAppSaveAction});
+  return createElement(WorkspaceCanvas,{workspaceId:current.workspaces[0].id,transferWidget(){},setWorkspaceDropTarget(){},openAppsDialog(){},editTray(){},presets:current.presets,savePresets(){},openPreset(){},editPreset(){},removePreset(){},renamePreset(){},renameGroup(){},widgets:current.workspaces[0].widgets,groups:[],updateGroup(){},saveToGroup(){},openGroup(){},editGroup(){},removeGroup(){},openGroupWidget(){},update,add(){},remove(){},begin(){},bringToFront(){},notify(){},obscured:false,openResource(){},openDropped(){},pickApp(){},saveApp(){},appAttachments:{},appAttachmentHandled(){},startupDeferredIds:deferred,startupRelaunch:id=>setDeferred(value=>new Set([...value].filter(item=>item!==id))),screenshotPluginMode:current.screenshotPluginMode,screenshotPluginColors:current.screenshotPluginColors,setScreenshotMode:mode=>setCurrent(value=>({...value,screenshotPluginMode:mode})),setScreenshotColor:(color,enabled)=>setCurrent(value=>({...value,screenshotPluginColors:enabled?[...new Set([...value.screenshotPluginColors,color])]:value.screenshotPluginColors.filter(item=>item!==color)})),showAppAttachAction,showAppDetachAction,showAppSaveAction});
  }
  root=createRoot(window.document.querySelector('#root'));
  await act(async()=>root.render(createElement(Host)));
@@ -119,17 +119,41 @@ test('manual startup delays Browser native Chrome creation until the user relaun
  }finally{await app.cleanup()}
 });
 
-test('Tag Color Status lets users combine global and tag-color widget plugin controls',async()=>{
+test('Tag Color Status stacks controls from multiple registered widget plugins',async()=>{
  const status=createWidget('tagStatus');status.id='status-card';status.title='Launch status';
  const app=await setup([status]);
  try{
   await act(async()=>app.window.document.querySelector('[aria-label="Customize status controls"]').dispatchEvent(new app.window.MouseEvent('click',{bubbles:true})));
   const global=app.window.document.querySelector('input[type=checkbox]');assert.ok(global);assert.equal(global.checked,false,'global mode is an optional plugin control');
   await act(async()=>global.dispatchEvent(new app.window.MouseEvent('click',{bubbles:true})));
-  assert.deepEqual(app.currentState.workspaces[0].widgets[0].pluginControls,['widget-relaunch.tag-colors','widget-relaunch.global-mode']);
+  const screenshotControl=app.window.document.querySelector('[aria-label="Show Screenshot settings"]');assert.ok(screenshotControl,'the registered Screenshot plugin adds a selectable status-card control');
+  await act(async()=>screenshotControl.dispatchEvent(new app.window.MouseEvent('click',{bubbles:true})));
+  assert.deepEqual(app.currentState.workspaces[0].widgets[0].pluginControls,['widget-relaunch.tag-colors','widget-relaunch.global-mode','screenshot.settings']);
   assert.ok(app.window.document.querySelector('[aria-label="Status card global relaunch mode"]'));
   assert.ok(app.window.document.querySelector('[aria-label="Status card red relaunch mode"]'));
+  assert.ok(app.window.document.querySelector('[aria-label="Status card screenshot scope"]'),'the Screenshot settings appear alongside relaunch controls');
+  const scope=app.window.document.querySelector('[aria-label="Status card screenshot scope"]');scope.value='tag-colors';
+  await act(async()=>scope.dispatchEvent(new app.window.Event('change',{bubbles:true})));
+  const red=app.window.document.querySelector('[aria-label="Status card red screenshot color"]');assert.ok(red);
+  await act(async()=>red.dispatchEvent(new app.window.MouseEvent('click',{bubbles:true})));
+  assert.equal(app.currentState.screenshotPluginMode,'tag-colors');assert.deepEqual(app.currentState.screenshotPluginColors,['red']);
  }finally{await app.cleanup()}
+});
+
+test('Tag Color Status automatically exposes and stacks controls from a newly registered widget plugin',async()=>{
+ const {widgetPluginCatalog}=await vite.ssrLoadModule('/src/domain/widgetPlugins.ts');
+ const examplePlugin={id:'example-plugin',name:'Example plugin',description:'test extension point',controls:[{id:'example-plugin.status',pluginId:'example-plugin',label:'Example status',available:()=>true,StatusControl:()=>createElement('output',{'aria-label':'Example plugin status'},'Ready')}]};
+ widgetPluginCatalog.push(examplePlugin);
+ const status=createWidget('tagStatus');status.id='extensible-status-card';
+ let app;
+ try{
+  app=await setup([status]);
+  await act(async()=>app.window.document.querySelector('[aria-label="Customize status controls"]').dispatchEvent(new app.window.MouseEvent('click',{bubbles:true})));
+  const choice=app.window.document.querySelector('[aria-label="Show Example status"]');assert.ok(choice,'new plugin controls automatically appear in the status-card customizer');
+  await act(async()=>choice.dispatchEvent(new app.window.MouseEvent('click',{bubbles:true})));
+  assert.deepEqual(app.currentState.workspaces[0].widgets[0].pluginControls,['widget-relaunch.tag-colors','example-plugin.status']);
+  assert.equal(app.window.document.querySelector('[aria-label="Example plugin status"]')?.textContent,'Ready','the plugin-provided renderer is stacked into the status card');
+ }finally{if(app)await app.cleanup();widgetPluginCatalog.splice(widgetPluginCatalog.indexOf(examplePlugin),1)}
 });
 
 test('Relaunch re-presents an Apps widget without detaching or launching a second HWND',async()=>{

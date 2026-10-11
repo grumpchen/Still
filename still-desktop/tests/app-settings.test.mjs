@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createInitialState,parseState} from '../src/domain/workspaces.ts';
+import {backgroundSettingsUpdate,backgroundSettingsValue} from '../src/domain/appearance.ts';
 
 const app=readFileSync(new URL('../src/App.tsx',import.meta.url),'utf8');
 const general=readFileSync(new URL('../src/GeneralSettings.tsx',import.meta.url),'utf8');
@@ -51,6 +52,9 @@ test('Appearance settings offer transparent and solid backgrounds and the existi
  assert.match(appearance,/option value="solid">Solid/);assert.match(appearance,/option value="transparent">Transparent/);
  assert.match(appearance,/Liquid Glass · your leaf photo/);
  assert.match(appearance,/option value="leaf-photo">Leaf photo · Liquid Glass/);
+ assert.deepEqual(backgroundSettingsUpdate('transparent'),{background:'transparent'},'changing background preserves the current appearance');
+ assert.equal(backgroundSettingsValue('liquid-glass','transparent'),'transparent','transparent remains selectable while Liquid Glass is active');
+ assert.deepEqual(backgroundSettingsUpdate('leaf-photo'),{appearance:'liquid-glass',background:'solid'});
 });
 
 test('the attach picker initializes its existing save checkbox from the General preference',()=>{

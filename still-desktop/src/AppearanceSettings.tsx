@@ -1,4 +1,4 @@
-import { defaultGlass } from './domain/appearance.ts';
+import { backgroundSettingsUpdate,backgroundSettingsValue,defaultGlass,type WorkspaceBackgroundChoice } from './domain/appearance.ts';
 import type { WorkspaceState } from './domain/workspaces.ts';
 import { shortcutLabel } from './domain/shortcuts.ts';
 export default function AppearanceSettings({state,update,openShortcuts}:{state:WorkspaceState;update:(patch:Partial<WorkspaceState>)=>void;openShortcuts:()=>void}){
@@ -16,7 +16,7 @@ export default function AppearanceSettings({state,update,openShortcuts}:{state:W
       {([{key:'blur',label:'Background blur',min:0,max:18,unit:'px'},{key:'saturation',label:'Colour saturation',min:40,max:100,unit:'%'},{key:'opacity',label:'Glass opacity',min:45,max:90,unit:'%'}] as const).map(control=><label key={control.key} className="glass-control"><span>{control.label}</span><output>{state.glass[control.key]}{control.unit}</output><input type="range" aria-label={control.label} min={control.min} max={control.max} value={state.glass[control.key]} onChange={event=>update({glass:{...state.glass,[control.key]:Number(event.target.value)}})}/></label>)}
       <p className="glass-footnote">A softly defocused background, with crisp text above it. Changes save automatically.</p>
     </section>:null}
-    <label className="settings-row"><span>Workspace background</span><select aria-label="Background" value={glass?'leaf-photo':state.background} onChange={event=>event.target.value==='leaf-photo'?update({appearance:'liquid-glass'}):update({appearance:'minimal',background:event.target.value as WorkspaceState['background']})}><option value="solid">Solid</option><option value="transparent">Transparent</option><option value="dots">Dots</option><option value="leaf-photo">Leaf photo · Liquid Glass</option></select></label>
+    <label className="settings-row"><span>Workspace background</span><select aria-label="Background" value={backgroundSettingsValue(state.appearance,state.background)} onChange={event=>update(backgroundSettingsUpdate(event.target.value as WorkspaceBackgroundChoice))}><option value="solid">Solid</option><option value="transparent">Transparent</option><option value="dots">Dots</option><option value="leaf-photo">Leaf photo · Liquid Glass</option></select></label>
     <button className="shortcut-settings-link" onClick={openShortcuts}><span>Keyboard shortcuts</span><kbd>{shortcutLabel(state.shortcuts.up)} / {shortcutLabel(state.shortcuts.down)}</kbd><span aria-hidden="true">→</span></button>
   </>;
 }
