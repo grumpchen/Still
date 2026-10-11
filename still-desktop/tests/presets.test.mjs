@@ -2,6 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import * as workspaces from '../src/domain/workspaces.ts';
 import {localFiles} from '../src/platform/files.ts';
+import {presetFromWidget} from '../src/domain/presets.ts';
 
 test('a ChatGPT browser preset survives reopening and adds fresh independent browsers at its URL',()=>{
  const state=workspaces.createInitialState();assert.deepEqual(state.presets,[]);
@@ -12,6 +13,12 @@ test('a ChatGPT browser preset survives reopening and adds fresh independent bro
  assert.equal(first.type,'browser');assert.equal(first.title,'ChatGPT');assert.equal(first.url,'https://chatgpt.com/');
  assert.notEqual(first.id,second.id);assert.equal(second.instanceNumber,3);assert.equal(first.placement.y,16);
  first.url='https://example.com/';assert.equal(second.url,'https://chatgpt.com/');assert.equal(saved.presets[0].url,'https://chatgpt.com/');
+});
+
+test('a Tag Color Status saved button retains its selected plugin controls',()=>{
+ const widget=workspaces.createWidget('tagStatus');widget.id='status-widget';widget.pluginControls=['widget-relaunch.tag-colors','widget-relaunch.global-mode'];
+ const preset=presetFromWidget(widget),state=workspaces.createInitialState();state.presets=[preset];const restored=workspaces.parseState(JSON.stringify(state));
+ const copy=workspaces.createWidgetFromPreset(restored.presets[0],[]);assert.deepEqual(copy.pluginControls,widget.pluginControls);
 });
 
 test('a custom Files preset saves a selected-folder reference and creates separate Files instances',()=>{

@@ -2,6 +2,7 @@ import { AKO_URL, GOOGLE_URL, normalizeUrl } from './browser.ts';
 import { defaultShortcuts, parseShortcuts, type WorkspaceShortcuts } from './shortcuts.ts';
 import { defaultGlass, parseGlass, type Appearance, type GlassSettings } from './appearance.ts';
 import {parseAppShutdownBehavior,type AppShutdownBehavior} from './appSettings.ts';
+import {type WidgetRelaunchMode,type WidgetRelaunchOverride,type WidgetRelaunchPluginStatus} from './widgetRelaunch.ts';
 import {widgetCatalog,widgetTypes, type WidgetType} from './widgetCatalog.ts';
 import {placement, nextPlacement,constrainPlacement,type Placement} from './layout.ts';
 import {defaultWebShortcuts, parseWebShortcuts, shortcut, type WebShortcut} from './webShortcuts.ts';
@@ -25,6 +26,8 @@ export function deleteSavedGroup(workspace:Workspace,id:string):Workspace{
 export interface WidgetInstance {
   id: string; type: WidgetType; span: 1 | 2 | 3; instanceNumber:number; title:string;
   tagColor:WidgetTagColor|null;
+  relaunchOverride:WidgetRelaunchOverride;
+  pluginControls:string[];
   text: string;
   remaining: number; end: number | null; url: string; bookmarks: Bookmark[];
    homeVersion?: number; folderName?: string;folderKey:string|null;fileKey:string|null;fileName?:string;fileKind?:FileKind;appKey:string|null;appName?:string;appIconData?:string;appPanelOpen:boolean;appWasCollected?:boolean;appReuseExisting:boolean;appMinWidth?:number;appMinHeight?:number;
@@ -37,14 +40,15 @@ export function browserSize(value: unknown, fallback: number, maximum: number): 
   return typeof value==='number'&&Number.isFinite(value)?Math.min(maximum,Math.max(50,Math.round(value))):fallback;
 }
 export interface WorkspaceState {
-  version: 4; activeId: string; workspaces: Workspace[]; sidebarCollapsed:boolean;sidebarPlugins:SidebarPlugin[];presets:WidgetPreset[];
+  version: 5; activeId: string; workspaces: Workspace[]; sidebarCollapsed:boolean;sidebarPlugins:SidebarPlugin[];presets:WidgetPreset[];
   theme: 'light' | 'dark'; density: 'comfortable' | 'compact'; background: 'solid' | 'dots';
   shortcuts: WorkspaceShortcuts;
   appearance: Appearance; glass: GlassSettings;
   saveAppShortcutsOnAttach:boolean;appShutdownBehavior:AppShutdownBehavior;
+  widgetRelaunchMode:WidgetRelaunchMode;widgetRelaunchPluginStatus:WidgetRelaunchPluginStatus;widgetRelaunchColors:Partial<Record<WidgetTagColor,WidgetRelaunchMode>>;
 }
 export function createWidget(type: WidgetType): WidgetInstance {
-  return { id: crypto.randomUUID(), type, instanceNumber:1, title:'', tagColor:null, span: type === 'browser' ? 3 : type === 'ai' ? 2 : 1,
+  return { id: crypto.randomUUID(), type, instanceNumber:1, title:'', tagColor:null, relaunchOverride:'follow',pluginControls:type==='tagStatus'?['widget-relaunch.tag-colors']:[], span: type === 'browser' ? 3 : type === 'ai' ? 2 : 1,
     text: type === 'notes' ? 'A clear space, a clear mind.\n\nStart with one important thing.\nLeave room for a new idea.' : '',
     remaining: 1500, end: null, placement:placement(type,null), shortcuts:type==='browser'?defaultWebShortcuts():[], schedule:[],groupId:null,folderKey:null,fileKey:null,appKey:null,appPanelOpen:false,appReuseExisting:false,
     url: type==='desmos'?DESMOS_URL:GOOGLE_URL, homeVersion:1,browserVersion:1,browserToolsExpanded:false,bookmarksExpanded:false,pageTitle:'',lectureRestore:null,
@@ -238,7 +242,7 @@ function parseGroupEntries(value:unknown):GroupWidgetEntry[]{
   const item=groupWidgetEntry({id:typeof v.id==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(v.id)&&!ids.has(v.id)?v.id:undefined,type:v.type,name:v.name,icon:typeof v.icon==='string'?v.icon:undefined,iconData:typeof v.iconData==='string'?v.iconData:undefined});ids.add(item.id);return[item];
  }catch{return []}});
 }
-const PERSISTED_WIDGET_FIELDS:(keyof WidgetInstance)[]=['id','type','span','instanceNumber','title','tagColor','text','remaining','end','url','bookmarks','homeVersion','folderName','folderKey','fileKey','fileName','fileKind','appKey','appName','appIconData','appPanelOpen','appWasCollected','appReuseExisting','appMinWidth','appMinHeight','browserVersion','browserToolsExpanded','bookmarksExpanded','pageTitle','lectureRestore','placement','minimized','restorePlacement','shortcuts','schedule','groupId'];
+const PERSISTED_WIDGET_FIELDS:(keyof WidgetInstance)[]=['id','type','span','instanceNumber','title','tagColor','relaunchOverride','pluginControls','text','remaining','end','url','bookmarks','homeVersion','folderName','folderKey','fileKey','fileName','fileKind','appKey','appName','appIconData','appPanelOpen','appWasCollected','appReuseExisting','appMinWidth','appMinHeight','browserVersion','browserToolsExpanded','bookmarksExpanded','pageTitle','lectureRestore','placement','minimized','restorePlacement','shortcuts','schedule','groupId'];
 function persistentWidgetSnapshot(value:unknown):WidgetInstance {
  if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('Invalid collected widget.');
  const source=value as Record<string,unknown>,filtered=Object.fromEntries(PERSISTED_WIDGET_FIELDS.filter(key=>key in source).map(key=>[key,source[key]]));
@@ -265,7 +269,8 @@ export function createWidgetFromPreset(preset:WidgetPreset,widgets:WidgetInstanc
  else if(checked.type==='files'&&checked.resourceKind==='document'){widget.fileKey=checked.fileSourceId;widget.fileName=checked.fileName;widget.fileKind=checked.fileKind}
  else if(checked.type==='files'){widget.folderName=checked.folderName;widget.folderKey=checked.folderSourceId}
   else if(checked.type==='apps'){widget.appKey=checked.appSourceId;widget.appName=checked.appName;widget.appIconData=checked.iconData}
- else if(checked.type==='notes'||checked.type==='ai')widget.text=checked.text??widget.text;
+  else if(checked.type==='notes'||checked.type==='ai')widget.text=checked.text??widget.text;
+  else if(checked.type==='tagStatus')widget.pluginControls=checked.pluginControls??widget.pluginControls;
  else if(checked.type==='focus')widget.remaining=checked.remaining??widget.remaining;
  else if(checked.type==='timetable')widget.schedule=structuredClone(checked.schedule??[]);
  widget.placement=at?placement(checked.type,{...widget.placement,...at}):nextPlacement(checked.type,widgets,width);return widget;
@@ -287,11 +292,17 @@ export function saveGroupName(workspace:Workspace,id:string,value:string):Worksp
 }
 export function createInitialState(): WorkspaceState {
   const workspaces = [createWorkspace('Study',['browser','desmos','notes','focus']), createWorkspace('Design',['notes','ai','files']), createWorkspace('Daily',['notes','focus']), createWorkspace('Minimal',['desmos','notes'])];
-  return { version:4,activeId:workspaces[0].id,workspaces,sidebarCollapsed:false,sidebarPlugins:[],presets:[],theme:'light',density:'comfortable',background:'solid',shortcuts:defaultShortcuts(),appearance:'liquid-glass',glass:defaultGlass(),saveAppShortcutsOnAttach:true,appShutdownBehavior:'leaveOpen' };
+  return { version:5,activeId:workspaces[0].id,workspaces,sidebarCollapsed:false,sidebarPlugins:[],presets:[],theme:'light',density:'comfortable',background:'solid',shortcuts:defaultShortcuts(),appearance:'liquid-glass',glass:defaultGlass(),saveAppShortcutsOnAttach:true,appShutdownBehavior:'leaveOpen',widgetRelaunchMode:'automatic',widgetRelaunchPluginStatus:'enabled',widgetRelaunchColors:{} };
 }
 function parseSidebarPlugins(value:unknown):SidebarPlugin[]{
  if(!Array.isArray(value))return[];
  return [...new Set(value.filter((plugin):plugin is SidebarPlugin=>plugin==='stack'))].slice(0,12);
+}
+function parseWidgetRelaunchMode(value:unknown):WidgetRelaunchMode{return value==='manual'?'manual':'automatic'}
+function parseWidgetRelaunchPluginStatus(value:unknown):WidgetRelaunchPluginStatus{return value==='disabled'||value==='removed'?value:'enabled'}
+function parseWidgetRelaunchColors(value:unknown):Partial<Record<WidgetTagColor,WidgetRelaunchMode>>{
+ if(!value||typeof value!=='object'||Array.isArray(value))return{};
+ return Object.fromEntries(widgetTagColors.flatMap(color=>{const mode=(value as Record<string,unknown>)[color];return mode==='automatic'||mode==='manual'?[[color,mode]]:[]})) as Partial<Record<WidgetTagColor,WidgetRelaunchMode>>;
 }
 function checkedWidget(value: unknown): WidgetInstance {
   const item = value as Partial<WidgetInstance>;
@@ -314,6 +325,8 @@ function checkedWidget(value: unknown): WidgetInstance {
   return {...defaults,...item,type:item.type as WidgetType,span:item.span===2?2:item.span===3?3:1,
     title:typeof item.title==='string'?item.title.trim().slice(0,60):'',
     tagColor:widgetTagColors.includes(item.tagColor as WidgetTagColor)?item.tagColor as WidgetTagColor:null,
+    relaunchOverride:item.relaunchOverride==='automatic'||item.relaunchOverride==='manual'?item.relaunchOverride:'follow',
+    pluginControls:Array.isArray(item.pluginControls)?[...new Set(item.pluginControls.filter((control):control is string=>typeof control==='string'&&/^[a-z0-9.-]{1,80}$/.test(control)))].slice(0,20):defaults.pluginControls,
     groupId:item.type==='group'&&typeof item.groupId==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(item.groupId)?item.groupId:null,
     url:normalizeUrl(item.type==='browser'&&!item.homeVersion&&item.url===AKO_URL?GOOGLE_URL:typeof item.url==='string'?item.url:defaults.url),homeVersion:1,
     folderName:typeof item.folderName==='string'?item.folderName:undefined,
@@ -335,7 +348,7 @@ function checkedWidget(value: unknown): WidgetInstance {
 }
 export function parseState(text: string): WorkspaceState {
   const value = JSON.parse(text) as Omit<WorkspaceState,'version'> & {version:number};
-  if (!value || ![2,3,4].includes(value.version) || !Array.isArray(value.workspaces) || !value.workspaces.length) throw new Error('Unsupported workspace data');
+  if (!value || ![2,3,4,5].includes(value.version) || !Array.isArray(value.workspaces) || !value.workspaces.length) throw new Error('Unsupported workspace data');
   const ids = new Set<string>();
   const widgetIds = new Set<string>();
   const workspaces = value.workspaces.map(workspace=>{
@@ -363,7 +376,7 @@ export function parseState(text: string): WorkspaceState {
     return {id:workspace.id,name:workspaceName(workspace.name),widgets,groups,layout:'canvas',browserWidth:browserSize(workspace.browserWidth,80,95),browserHeight:browserSize(workspace.browserHeight,100,100)} as Workspace;
   });
   if (!ids.has(value.activeId)) throw new Error('Missing active workspace');
-  return {version:4,activeId:value.activeId,workspaces,sidebarCollapsed:value.sidebarCollapsed===true,sidebarPlugins:parseSidebarPlugins(value.sidebarPlugins),presets:parsePresets(value.presets),theme:value.theme==='dark'?'dark':'light',density:value.density==='compact'?'compact':'comfortable',background:value.background==='dots'?'dots':'solid',shortcuts:parseShortcuts(value.shortcuts),appearance:value.appearance==='minimal'?'minimal':'liquid-glass',glass:parseGlass(value.glass),saveAppShortcutsOnAttach:value.saveAppShortcutsOnAttach!==false,appShutdownBehavior:parseAppShutdownBehavior(value.appShutdownBehavior)};
+  return {version:5,activeId:value.activeId,workspaces,sidebarCollapsed:value.sidebarCollapsed===true,sidebarPlugins:parseSidebarPlugins(value.sidebarPlugins),presets:parsePresets(value.presets),theme:value.theme==='dark'?'dark':'light',density:value.density==='compact'?'compact':'comfortable',background:value.background==='dots'?'dots':'solid',shortcuts:parseShortcuts(value.shortcuts),appearance:value.appearance==='minimal'?'minimal':'liquid-glass',glass:parseGlass(value.glass),saveAppShortcutsOnAttach:value.saveAppShortcutsOnAttach!==false,appShutdownBehavior:parseAppShutdownBehavior(value.appShutdownBehavior),widgetRelaunchMode:parseWidgetRelaunchMode(value.widgetRelaunchMode),widgetRelaunchPluginStatus:parseWidgetRelaunchPluginStatus(value.widgetRelaunchPluginStatus),widgetRelaunchColors:parseWidgetRelaunchColors(value.widgetRelaunchColors)};
 }
 export function migratePreview(value: unknown): WorkspaceState {
   const legacy = value as {active:string;theme:string;density:string;background:string;workspaces:Record<string,Array<Record<string,unknown>>>};

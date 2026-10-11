@@ -7,14 +7,14 @@ import {mockIPC,clearMocks} from '@tauri-apps/api/mocks';
 import {createInitialState,createWidget,minimizeWidgetInstance} from '../src/domain/workspaces.ts';
 import {createServer} from 'vite';
 
-const types=['browser','group','desmos','notes','focus','ai','files','apps','timetable'];
+const types=['browser','group','desmos','notes','focus','ai','files','apps','timetable','tagStatus'];
 const rect=(left,top,width,height)=>({x:left,y:top,left,top,right:left+width,bottom:top+height,width,height,toJSON(){return this}});
 const info=(args)=>({hwnd:args.id==='app-one'?451:452,pid:args.id==='app-one'?902:903,minWidth:0,minHeight:0,requiredWidth:null,requiredHeight:null,measured:false,probing:false,shown:args.visible??true});
 const setGlobal=(key,value)=>Object.defineProperty(globalThis,key,{configurable:true,writable:true,value});
 const vite=await createServer({server:{middlewareMode:true,hmr:false},appType:'custom',optimizeDeps:{noDiscovery:true,entries:[]}});
 after(()=>vite.close());
 
-async function setup(widgets,{identity={hwnd:451,pid:902}}={}){
+async function setup(widgets,{identity={hwnd:451,pid:902},startupDeferredIds=new Set()}={}){
  const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true});
  const oldGlobals=new Map();
  for(const key of ['window','document','navigator','HTMLElement','Element','Node','MutationObserver','ResizeObserver','requestAnimationFrame','cancelAnimationFrame','getComputedStyle','isTauri','IS_REACT_ACT_ENVIRONMENT'])oldGlobals.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
@@ -45,8 +45,9 @@ async function setup(widgets,{identity={hwnd:451,pid:902}}={}){
  let currentState,root;
  function Host(){
   const [current,setCurrent]=useState(state);currentState=current;
+  const [deferred,setDeferred]=useState(startupDeferredIds);
   const update=(id,patch)=>setCurrent(value=>({...value,workspaces:value.workspaces.map(workspace=>({...workspace,widgets:workspace.widgets.map(item=>item.id===id?{...item,...patch}:item)}))}));
-  return createElement(WorkspaceCanvas,{workspaceId:current.workspaces[0].id,transferWidget(){},setWorkspaceDropTarget(){},openAppsDialog(){},editTray(){},presets:current.presets,savePresets(){},openPreset(){},editPreset(){},removePreset(){},renamePreset(){},renameGroup(){},widgets:current.workspaces[0].widgets,groups:[],updateGroup(){},saveToGroup(){},openGroup(){},editGroup(){},removeGroup(){},openGroupWidget(){},update,add(){},remove(){},begin(){},bringToFront(){},notify(){},obscured:false,openResource(){},openDropped(){},pickApp(){},saveApp(){},appAttachments:{},appAttachmentHandled(){}});
+  return createElement(WorkspaceCanvas,{workspaceId:current.workspaces[0].id,transferWidget(){},setWorkspaceDropTarget(){},openAppsDialog(){},editTray(){},presets:current.presets,savePresets(){},openPreset(){},editPreset(){},removePreset(){},renamePreset(){},renameGroup(){},widgets:current.workspaces[0].widgets,groups:[],updateGroup(){},saveToGroup(){},openGroup(){},editGroup(){},removeGroup(){},openGroupWidget(){},update,add(){},remove(){},begin(){},bringToFront(){},notify(){},obscured:false,openResource(){},openDropped(){},pickApp(){},saveApp(){},appAttachments:{},appAttachmentHandled(){},startupDeferredIds:deferred,startupRelaunch:id=>setDeferred(value=>new Set([...value].filter(item=>item!==id)))});
  }
  root=createRoot(window.document.querySelector('#root'));
  await act(async()=>root.render(createElement(Host)));
@@ -71,6 +72,45 @@ test('Relaunch remounts an ordinary widget view while preserving its saved conte
   const after=app.window.document.querySelector('.note');assert.ok(after);assert.notEqual(after,before,'the widget view is remounted');
   assert.equal(after.value,'Keep this saved text','the saved widget model survives the restart');
   assert.equal(app.currentState.workspaces[0].widgets[0].text,'Keep this saved text');
+ }finally{await app.cleanup()}
+});
+
+test('manual startup keeps the widget card and saved data in place until Relaunch',async()=>{
+ const note=createWidget('notes');note.id='manual-note';note.title='Manual note';note.text='Keep this saved text';note.placement={x:700,y:360,width:400,height:340};
+ const app=await setup([note],{startupDeferredIds:new Set(['manual-note'])});
+ try{
+  assert.ok(app.window.document.querySelector('[data-widget-id="manual-note"]'),'the card stays on its workspace');
+  assert.equal(app.window.document.querySelector('.note'),null,'the widget view waits for manual relaunch');
+  assert.ok(app.window.document.querySelector('[aria-label="Relaunch Manual note"]'));
+  await act(async()=>app.window.document.querySelector('[aria-label="Relaunch Manual note"]').dispatchEvent(new app.window.MouseEvent('click',{bubbles:true})));
+  assert.equal(app.window.document.querySelector('.note')?.value,'Keep this saved text');
+  assert.equal(app.currentState.workspaces[0].widgets[0].id,'manual-note');assert.deepEqual(app.currentState.workspaces[0].widgets[0].placement,note.placement);
+ }finally{await app.cleanup()}
+});
+
+test('manual startup delays Browser native Chrome creation until the user relaunches its card',async()=>{
+ const widget=createWidget('browser');widget.id='manual-browser';widget.title='Manual browser';
+ const app=await setup([widget],{startupDeferredIds:new Set(['manual-browser'])});
+ try{
+  await act(async()=>await new Promise(resolve=>setTimeout(resolve,30)));
+  assert.equal(app.calls.filter(call=>call.command==='chrome_panel_open').length,0);
+  assert.ok(app.window.document.querySelector('[data-widget-id="manual-browser"]'));
+  await act(async()=>app.window.document.querySelector('[aria-label="Relaunch Manual browser"]').dispatchEvent(new app.window.MouseEvent('click',{bubbles:true})));
+  await act(async()=>{for(let attempt=0;attempt<40&&!app.calls.some(call=>call.command==='chrome_panel_open');attempt++)await new Promise(resolve=>setTimeout(resolve,10))});
+  assert.equal(app.calls.filter(call=>call.command==='chrome_panel_open').length,1);
+ }finally{await app.cleanup()}
+});
+
+test('Tag Color Status lets users combine global and tag-color widget plugin controls',async()=>{
+ const status=createWidget('tagStatus');status.id='status-card';status.title='Launch status';
+ const app=await setup([status]);
+ try{
+  await act(async()=>app.window.document.querySelector('[aria-label="Customize status controls"]').dispatchEvent(new app.window.MouseEvent('click',{bubbles:true})));
+  const global=app.window.document.querySelector('input[type=checkbox]');assert.ok(global);assert.equal(global.checked,false,'global mode is an optional plugin control');
+  await act(async()=>global.dispatchEvent(new app.window.MouseEvent('click',{bubbles:true})));
+  assert.deepEqual(app.currentState.workspaces[0].widgets[0].pluginControls,['widget-relaunch.tag-colors','widget-relaunch.global-mode']);
+  assert.ok(app.window.document.querySelector('[aria-label="Status card global relaunch mode"]'));
+  assert.ok(app.window.document.querySelector('[aria-label="Status card red relaunch mode"]'));
  }finally{await app.cleanup()}
 });
 

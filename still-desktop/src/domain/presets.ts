@@ -9,7 +9,7 @@ export type WidgetPreset={id:string;type:'browser';name:string;url:string}
  |{id:string;type:'files';name:string;resourceKind?:'folder';folderSourceId:string;folderName:string}
  |{id:string;type:'files';name:string;resourceKind:'document';fileSourceId:string;fileName:string;fileKind:FileKind}
  |{id:string;type:'apps';name:string;appSourceId:string;appName:string;iconData?:string}
- |{id:string;type:GenericPresetType;name:string;text?:string;remaining?:number;schedule?:PresetScheduleEntry[]};
+ |{id:string;type:GenericPresetType;name:string;text?:string;remaining?:number;schedule?:PresetScheduleEntry[];pluginControls?:string[]};
 export function fileKind(value:unknown):value is FileKind{return value==='pdf'||value==='image'||value==='media'||value==='document'}
 export function fileName(value:unknown):value is string{return typeof value==='string'&&value.length>0&&value.length<=260&&!/[\\/\x00-\x1f]/.test(value)&&value!=='.'&&value!=='..'}
 function checkedIconData(value:unknown):string|undefined{return typeof value==='string'&&value.length<=32*1024&&/^data:image\/png;base64,iVBORw0KGgo[A-Za-z0-9+/]*={0,2}$/.test(value)?value:undefined}
@@ -48,6 +48,7 @@ export function widgetPreset(value:WidgetPreset):WidgetPreset {
   return{id:value.id,type:'focus',name,...(value.remaining===undefined?{}:{remaining:Math.ceil(value.remaining)})};
  }
  if(value.type==='timetable')return{id:value.id,type:'timetable',name,schedule:savedSchedule(value.schedule)};
+ if(value.type==='tagStatus')return{id:value.id,type:'tagStatus',name,pluginControls:Array.isArray(value.pluginControls)?[...new Set(value.pluginControls.filter(control=>typeof control==='string'&&/^[a-z0-9.-]{1,80}$/.test(control)))].slice(0,20):undefined};
  if(value.type==='desmos')return{id:value.id,type:'desmos',name};
  throw new Error('Choose a supported widget.');
 }
@@ -67,7 +68,8 @@ export function presetFromWidget(widget:WidgetInstance):WidgetPreset {
  return widgetPreset({id,type:widget.type,name,
   ...(widget.type==='notes'||widget.type==='ai'?{text:widget.text}:{}),
   ...(widget.type==='focus'?{remaining:widget.end?Math.max(0,Math.ceil((widget.end-Date.now())/1000)):widget.remaining}:{}),
-  ...(widget.type==='timetable'?{schedule:widget.schedule}:{})});
+  ...(widget.type==='timetable'?{schedule:widget.schedule}:{}),
+  ...(widget.type==='tagStatus'?{pluginControls:widget.pluginControls}:{})});
 }
 export function parsePresets(value:unknown):WidgetPreset[]{
  if(!Array.isArray(value))return [];const ids=new Set<string>();

@@ -61,7 +61,7 @@ test('version 2 browser migration preserves bookmarks, custom URL, notes, appear
   web.url='https://example.com/course';web.bookmarks=[{id:'course',name:'Course page',url:'https://example.com/lectures'}];
   const note=w.widgets.find(w=>w.type==='notes');note.text='Do not lose this';delete note.placement;
   const restored=parseState(JSON.stringify(state));const browser=restored.workspaces[0].widgets.find(w=>w.type==='browser');
-  assert.equal(restored.version,4);assert.equal(restored.workspaces[0].layout,'canvas');assert.equal(browser.id,web.id);
+  assert.equal(restored.version,5);assert.equal(restored.workspaces[0].layout,'canvas');assert.equal(browser.id,web.id);
   assert.ok(browser.shortcuts.some(s=>s.name==='Course page'));assert.ok(browser.shortcuts.some(s=>s.url===web.url));
   assert.equal(restored.workspaces[0].widgets.find(w=>w.type==='notes').text,note.text);
   assert.deepEqual(restored.glass,state.glass);assert.deepEqual(restored.shortcuts,state.shortcuts);

@@ -12,4 +12,9 @@ test('sidebar Settings opens a tabbed dialog with General, Appearance, and Plugi
  assert.match(app,/settingsTab==='general'&&<GeneralSettings/);
  assert.match(general,/<h3>General settings<\/h3>/);
  assert.match(app,/settingsTab==='plugins'[\s\S]*?Sidebar plugins/);
+ assert.match(app,/Widget plugins[\s\S]*?Widget Relaunch/);
+ assert.match(app,/Disable Widget Relaunch plugin[\s\S]*?Remove Widget Relaunch plugin[\s\S]*?Enable Widget Relaunch plugin/);
+ assert.match(general,/aria-label="Widget relaunch mode"/);
+ assert.match(general,/Apply to All/);
+ assert.match(general,/aria-label=\{color\+' tag relaunch mode'\}/);
 });

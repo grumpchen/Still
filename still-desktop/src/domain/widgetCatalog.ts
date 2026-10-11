@@ -9,6 +9,7 @@ export const widgetCatalog = {
   apps: {name:'Apps', icon:'apps', description:'Real desktop apps inside movable panels', width:360, height:280, minWidth:280, minHeight:220},
   timetable: {name:'Timetable', icon:'study', description:'A weekly schedule you can edit', width:460, height:360, minWidth:280, minHeight:220},
   ai: {name:'Assistant', icon:'ai', description:'AI concept — connection is still pending', width:380, height:300, minWidth:260, minHeight:220},
+  tagStatus: {name:'Tag Color Status', icon:'stack', description:'Quick controls for widget relaunch and other enabled widget plugins', width:400, height:300, minWidth:280, minHeight:200},
 } as const;
 export type WidgetType = keyof typeof widgetCatalog;
 export const widgetTypes = Object.keys(widgetCatalog) as WidgetType[];
