@@ -23,6 +23,26 @@ pub struct LayoutItem { pub id: String, pub x: i64, pub y: i64, pub width: i64, 
 #[serde(deny_unknown_fields)]
 pub struct Reply { pub reply: String, pub layout: Vec<LayoutItem> }
 
+pub fn available_models(value: Value) -> Vec<String> {
+    let Some(models) = value["models"].as_array() else { return Vec::new(); };
+    let mut result = Vec::new();
+    for model in models {
+        let Some(name) = model["name"].as_str().and_then(|name| name.strip_prefix("models/")) else { continue; };
+        let supports_generation = model["supportedGenerationMethods"].as_array()
+            .is_some_and(|methods| methods.iter().any(|method| method.as_str() == Some("generateContent")));
+        if supports_generation
+            && name.starts_with("gemini-")
+            && name.len() <= 80
+            && name.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'.')
+            && !result.iter().any(|existing| existing == name)
+        {
+            result.push(name.to_string());
+        }
+    }
+    result.sort();
+    result
+}
+
 pub fn body(request: &Request) -> Result<Value, String> {
     if !request.model.starts_with("gemini-") || request.model.len() > 80 || !request.model.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'.') {
         return Err("Choose a valid Gemini model.".into());
@@ -97,6 +117,17 @@ pub fn http_error(status:u16) -> String {
 mod tests {
     use super::*;
     fn request() -> Request { Request {model:"gemini-2.5-flash".into(),mode:Mode::Chat,messages:vec![Message {role:"user".into(),text:"Hello".into()}],context:String::new(),image:None} }
+    #[test] fn only_lists_project_models_that_support_content_generation() {
+        let models=available_models(json!({"models":[
+            {"name":"models/gemini-3.8-flash","supportedGenerationMethods":["generateContent"]},
+            {"name":"models/gemini-2.5-flash","supportedGenerationMethods":["generateContent"]},
+            {"name":"models/gemini-2.5-flash-lite","supportedGenerationMethods":["embedContent"]},
+            {"name":"models/embedding-001","supportedGenerationMethods":["generateContent"]},
+            {"name":"models/gemini-3.8-flash?key=bad","supportedGenerationMethods":["generateContent"]},
+            {"name":"models/gemini-3.8-flash","supportedGenerationMethods":["generateContent"]}
+        ]}));
+        assert_eq!(models,vec!["gemini-2.5-flash","gemini-3.8-flash"]);
+    }
     #[test] fn request_is_bounded_and_contains_no_key() {
         let r=request();let payload=body(&r).unwrap();
         assert_eq!(payload["contents"][0]["parts"][0]["text"],"Hello");

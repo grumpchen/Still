@@ -9,6 +9,9 @@ export type AssistantReply = {reply:string; layout:LayoutItem[]};
 export type LayoutPlan = {workspaceId:string; fingerprint:string; width:number; height:number; items:LayoutItem[]};
 export const DEFAULT_MODEL = 'gemini-2.5-flash';
 export const HISTORY_LIMIT = 12;
+export function preferredModel(models:string[]):string {
+  return models.includes(DEFAULT_MODEL)?DEFAULT_MODEL:models[0]??DEFAULT_MODEL;
+}
 export function assistantKeyError(reason:unknown):string {
   const detail=reason instanceof Error?reason.message:typeof reason==='string'?reason:'';
   return detail.trim()||'Could not verify the Gemini API key.';

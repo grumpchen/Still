@@ -6,8 +6,9 @@ export type AssistantRequest = {model:string; mode:AssistantMode; messages:ChatM
 export const geminiAssistant = {
   available:isTauri(),
   configured:()=>invoke<boolean>('assistant_configured'),
+  models:()=>invoke<string[]>('assistant_models'),
   keySetup:()=>invoke<void>('assistant_key_setup'),
-  setKey:(key:string)=>invoke<void>('assistant_set_key',{key}),
+  setKey:(key:string)=>invoke<string[]>('assistant_set_key',{key}),
   async send(request:AssistantRequest){return parseAssistantReply(await invoke<unknown>('assistant_chat',{request}));},
 };
 export async function widgetImage(id:string):Promise<string> {

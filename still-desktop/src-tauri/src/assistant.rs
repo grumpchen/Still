@@ -17,15 +17,24 @@ fn validate_api_key(key:&str)->Result<String,&'static str> {
     }
     Ok(key.into())
 }
-async fn verify_api_key(client:&reqwest::Client,key:&str)->Result<(),String> {
-    verify_api_key_at(client,"https://generativelanguage.googleapis.com/v1beta/models?pageSize=1",key).await
+async fn fetch_models(client:&reqwest::Client,key:&str)->Result<Vec<String>,String> {
+    fetch_models_at(client,"https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000",key).await
 }
-async fn verify_api_key_at(client:&reqwest::Client,endpoint:&str,key:&str)->Result<(),String> {
+async fn fetch_models_at(client:&reqwest::Client,endpoint:&str,key:&str)->Result<Vec<String>,String> {
     let response=client.get(endpoint)
         .header("x-goog-api-key",key).send().await
         .map_err(|_|"Could not reach Google Gemini. Check your connection and try again.".to_string())?;
-    if response.status().is_success() { Ok(()) }
-    else { Err(crate::assistant_protocol::http_error(response.status().as_u16())) }
+    if !response.status().is_success() { return Err(crate::assistant_protocol::http_error(response.status().as_u16())); }
+    let mut bytes=Vec::new();
+    let mut response=response;
+    while let Some(chunk)=response.chunk().await.map_err(|_|"Gemini's model list could not be read.".to_string())? {
+        if bytes.len()+chunk.len()>512_000 { return Err("Gemini returned an oversized model list.".into()); }
+        bytes.extend_from_slice(&chunk);
+    }
+    let value=serde_json::from_slice(&bytes).map_err(|_|"Gemini returned an unreadable model list.".to_string())?;
+    let models=assistant_protocol::available_models(value);
+    if models.is_empty() { return Err("This project has no Gemini models available for content generation.".into()); }
+    Ok(models)
 }
 #[tauri::command]
 pub fn assistant_key_setup(app:tauri::AppHandle,webview:Webview) -> Result<(),String> {
@@ -39,17 +48,27 @@ pub fn assistant_configured(webview:Webview,state:State<AssistantState>) -> Resu
     Ok(!state.key.lock().map_err(|_|"AI settings are unavailable.")?.trim().is_empty())
 }
 #[tauri::command]
-pub async fn assistant_set_key(webview:Webview,state:State<'_,AssistantState>,key:String) -> Result<(),String> {
+pub async fn assistant_models(webview:Webview,state:State<'_,AssistantState>) -> Result<Vec<String>,String> {
+    crate::browser::authorize(&webview)?;
+    let key=state.key.lock().map_err(|_|"AI settings are unavailable.")?.clone();
+    if key.trim().is_empty() { return Ok(Vec::new()); }
+    let client=reqwest::Client::builder().timeout(std::time::Duration::from_secs(15))
+        .redirect(reqwest::redirect::Policy::none()).build()
+        .map_err(|_|"Could not start the Gemini connection.".to_string())?;
+    fetch_models(&client,&key).await
+}
+#[tauri::command]
+pub async fn assistant_set_key(webview:Webview,state:State<'_,AssistantState>,key:String) -> Result<Vec<String>,String> {
     crate::browser::authorize(&webview)?;
     let key=validate_api_key(&key)?;
-    if !key.is_empty() {
+    let models=if !key.is_empty() {
         let client=reqwest::Client::builder().timeout(std::time::Duration::from_secs(15))
             .redirect(reqwest::redirect::Policy::none()).build()
             .map_err(|_|"Could not start the Gemini connection.".to_string())?;
-        verify_api_key(&client,&key).await?;
-    }
+        fetch_models(&client,&key).await?
+    } else { Vec::new() };
     *state.key.lock().map_err(|_|"AI settings are unavailable.")?=key;
-    Ok(())
+    Ok(models)
 }
 #[tauri::command]
 pub async fn assistant_chat(webview:Webview,state:State<'_,AssistantState>,request:Request) -> Result<Reply,String> {
@@ -74,7 +93,7 @@ pub async fn assistant_chat(webview:Webview,state:State<'_,AssistantState>,reque
 
 #[cfg(test)]
 mod tests {
-    use super::{validate_api_key,verify_api_key_at};
+    use super::{validate_api_key,fetch_models_at};
     use std::io::{Read,Write};
     use std::net::TcpListener;
 
@@ -93,7 +112,7 @@ mod tests {
     }
 
     #[test]
-    fn verifies_api_keys_and_maps_google_auth_failures() {
+    fn discovers_project_models_and_maps_google_auth_failures() {
         let listener=TcpListener::bind("127.0.0.1:0").unwrap();
         let address=listener.local_addr().unwrap();
         let server=std::thread::spawn(move||{
@@ -104,9 +123,30 @@ mod tests {
             stream.write_all(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
         });
         let client=reqwest::Client::new();
-        let endpoint=format!("http://{address}/v1beta/models?pageSize=1");
-        let error=tauri::async_runtime::block_on(verify_api_key_at(&client,&endpoint,"test-key-auth-123")).unwrap_err();
+        let endpoint=format!("http://{address}/v1beta/models?pageSize=1000");
+        let error=tauri::async_runtime::block_on(fetch_models_at(&client,&endpoint,"test-key-auth-123")).unwrap_err();
         server.join().unwrap();
         assert!(error.contains("authorize this key"));
+    }
+
+    #[test]
+    fn fetches_only_models_available_for_generation() {
+        let listener=TcpListener::bind("127.0.0.1:0").unwrap();
+        let address=listener.local_addr().unwrap();
+        let server=std::thread::spawn(move||{
+            let (mut stream,_)=listener.accept().unwrap();
+            let mut request=[0u8;2048];
+            let size=stream.read(&mut request).unwrap();
+            let request=String::from_utf8_lossy(&request[..size]);
+            assert!(request.contains("/v1beta/models?pageSize=1000"));
+            assert!(request.contains("x-goog-api-key: test-key-models-123"));
+            let body=r#"{"models":[{"name":"models/gemini-3.8-flash","supportedGenerationMethods":["generateContent"]},{"name":"models/gemini-2.5-flash-lite","supportedGenerationMethods":["embedContent"]}]}"#;
+            write!(stream,"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",body.len(),body).unwrap();
+        });
+        let client=reqwest::Client::new();
+        let endpoint=format!("http://{address}/v1beta/models?pageSize=1000");
+        let models=tauri::async_runtime::block_on(fetch_models_at(&client,&endpoint,"test-key-models-123")).unwrap();
+        server.join().unwrap();
+        assert_eq!(models,vec!["gemini-3.8-flash"]);
     }
 }

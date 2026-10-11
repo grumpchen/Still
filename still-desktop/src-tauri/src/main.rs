@@ -41,7 +41,7 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            assistant::assistant_configured, assistant::assistant_set_key, assistant::assistant_chat, assistant::assistant_key_setup,
+            assistant::assistant_configured, assistant::assistant_models, assistant::assistant_set_key, assistant::assistant_chat, assistant::assistant_key_setup,
             chrome::chrome_open, capture::widget_capture, capture::widget_export,
             chrome_overlay::chrome_panel_open,chrome_overlay::chrome_panel_present,chrome_overlay::chrome_panel_navigate,chrome_overlay::chrome_panel_close,
             browser::browser_open, browser::browser_bounds, browser::browser_visible,
