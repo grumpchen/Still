@@ -1,14 +1,14 @@
 import {invoke,isTauri} from '@tauri-apps/api/core';
 import {captureWidget} from './capture.ts';
-import {parseAssistantReply,type AssistantMode,type ChatMessage} from '../domain/assistant.ts';
+import {parseAssistantReply,type AssistantProvider,type ChatMessage} from '../domain/assistant.ts';
 
-export type AssistantRequest = {model:string; mode:AssistantMode; messages:ChatMessage[]; context:string; image?:string};
+export type AssistantRequest = {provider:AssistantProvider;model:string;messages:ChatMessage[];context:string;image?:string};
 export const geminiAssistant = {
   available:isTauri(),
-  configured:()=>invoke<boolean>('assistant_configured'),
-  models:()=>invoke<string[]>('assistant_models'),
-  keySetup:()=>invoke<void>('assistant_key_setup'),
-  setKey:(key:string)=>invoke<string[]>('assistant_set_key',{key}),
+  configured:(provider:AssistantProvider)=>invoke<boolean>('assistant_configured',{provider}),
+  models:(provider:AssistantProvider)=>invoke<string[]>('assistant_models',{provider}),
+  keySetup:(provider:AssistantProvider)=>invoke<void>('assistant_key_setup',{provider}),
+  setKey:(provider:AssistantProvider,key:string)=>invoke<string[]>('assistant_set_key',{provider,key}),
   async send(request:AssistantRequest){return parseAssistantReply(await invoke<unknown>('assistant_chat',{request}));},
 };
 export async function widgetImage(id:string):Promise<string> {

@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createWidget,createWorkspace} from '../src/domain/workspaces.ts';
-import {assistantKeyError,preferredModel,widgetContext,layoutContext,layoutFingerprint,parseAssistantReply,validateLayout,applyLayoutPlan} from '../src/domain/assistant.ts';
+import {assistantKeyError,assistantWorkspaceContext,preferredModel,widgetContext,layoutContext,layoutFingerprint,parseAssistantReply,validateLayout,applyLayoutPlan} from '../src/domain/assistant.ts';
 
 function fixture(){
   const workspace=createWorkspace('Study',[]),note=createWidget('notes'),timer=createWidget('focus');
@@ -14,6 +14,16 @@ test('sharing a selected widget omits grants, URLs, bookmarks, and unrelated con
   assert.deepEqual(widgetContext(note),{type:'notes',title:'Notes 1',text:'Only this note'});
   const app=createWidget('apps');app.appKey='secret-app';assert.ok(!JSON.stringify(widgetContext(app)).includes('secret-app'));
   const {workspace}=fixture();workspace.widgets[0].text='private note';assert.ok(!JSON.stringify(layoutContext(workspace,900,700)).includes('private note'));
+});
+test('workspace context always exposes layout metadata and reads only @-selected widgets',()=>{
+  const {workspace}=fixture(),note=workspace.widgets[0],timer=workspace.widgets[1];note.text='private note';timer.remaining=88;
+  const context=assistantWorkspaceContext(workspace,900,700,[note.id]);
+  assert.equal(context.canvasAndWidgets.widgets.length,2);
+  assert.deepEqual(context.selectedWidgets,[widgetContext(note)]);
+  assert.equal(JSON.stringify(context.selectedWidgets).includes('private note'),true);
+  assert.ok(!JSON.stringify(context.selectedWidgets).includes(String(timer.remaining)));
+  assert.deepEqual(assistantWorkspaceContext(workspace,900,700,[note.id,note.id]).selectedWidgets,[widgetContext(note)]);
+  assert.equal(assistantWorkspaceContext(workspace,900,700,workspace.widgets.map(widget=>widget.id)).selectedWidgets.length,2);
 });
 test('layout applies atomically and preserves contents and unrelated widget state',()=>{
   const {workspace,items}=fixture(),before=structuredClone(workspace);items[0].y=300;
@@ -50,10 +60,12 @@ test('model responses are parsed without trusting arbitrary fields or geometry',
 test('Gemini key setup shows the verification reason instead of masking it',()=>{
   assert.equal(assistantKeyError(new Error('Gemini could not authorize this key. Check it in Google AI Studio and reconnect.')),'Gemini could not authorize this key. Check it in Google AI Studio and reconnect.');
   assert.equal(assistantKeyError('Google Gemini is temporarily unavailable.'),'Google Gemini is temporarily unavailable.');
-  assert.equal(assistantKeyError({unexpected:true}),'Could not verify the Gemini API key.');
+  assert.equal(assistantKeyError({unexpected:true}),'Could not verify the API key.');
 });
 test('model selection prefers the configured default only when the project exposes it',()=>{
   assert.equal(preferredModel(['gemini-3.8-flash','gemini-2.5-flash']),'gemini-2.5-flash');
   assert.equal(preferredModel(['gemini-3.8-flash']),'gemini-3.8-flash');
   assert.equal(preferredModel([]),'gemini-2.5-flash');
+  assert.equal(preferredModel(['gpt-4.1-mini','gpt-4o-mini'],'openai'),'gpt-4o-mini');
+  assert.equal(preferredModel(['gpt-4.1-mini'],'openai'),'gpt-4.1-mini');
 });

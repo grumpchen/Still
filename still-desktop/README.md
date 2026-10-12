@@ -1,8 +1,8 @@
 # Still — ver0.20 workspace visibility fix
 
-## Gemini AI sidebar (task branch)
+## Still AI assistant
 
-The `agent/codex/gemini-sidebar` branch adds **AI assistant** to the sidebar: Gemini chat, reading a selected widget's text/optional visible screenshot, and reviewable layout proposals with Apply/Undo. In the Windows app, open AI settings and connect a Gemini key for a free-tier Google AI Studio project. Keys stay in desktop memory for the session; browser previews do not make API calls. Live Gemini/Windows screenshot acceptance remains pending. Setup, sharing behavior, and acceptance steps are in [the Gemini sidebar notes](docs/plans/2026-10-11-gemini-sidebar.md).
+The current AI sidebar uses one chat flow for Gemini and OpenAI API models. Type `@` to select one or all widgets for explicit content sharing; ordinary layout requests include workspace geometry and produce reviewable proposals with Apply/Undo. Choose the model from the chat footer and connect each provider once per Still session in AI settings. API keys remain in desktop memory until Still closes; OpenAI API usage requires separate billing from a ChatGPT subscription. Browser previews do not send AI requests. Setup, privacy limits, and verification steps are in [the AI assistant notes](docs/plans/2026-10-11-gemini-sidebar.md).
 
 ## Existing desktop release
 

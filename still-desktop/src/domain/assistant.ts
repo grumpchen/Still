@@ -2,19 +2,21 @@ import type {WidgetInstance, Workspace} from './workspaces.ts';
 import {widgetCatalog} from './widgetCatalog.ts';
 import type {Placement} from './layout.ts';
 
-export type AssistantMode = 'chat' | 'read' | 'layout';
+export type AssistantProvider = 'gemini' | 'openai';
 export type ChatMessage = {role:'user'|'model'; text:string};
 export type LayoutItem = Placement & {id:string};
 export type AssistantReply = {reply:string; layout:LayoutItem[]};
 export type LayoutPlan = {workspaceId:string; fingerprint:string; width:number; height:number; items:LayoutItem[]};
 export const DEFAULT_MODEL = 'gemini-2.5-flash';
+export const DEFAULT_MODELS:Record<AssistantProvider,string> = {gemini:DEFAULT_MODEL,openai:'gpt-4o-mini'};
 export const HISTORY_LIMIT = 12;
-export function preferredModel(models:string[]):string {
-  return models.includes(DEFAULT_MODEL)?DEFAULT_MODEL:models[0]??DEFAULT_MODEL;
+export function preferredModel(models:string[],provider:AssistantProvider='gemini'):string {
+  const preferred=DEFAULT_MODELS[provider];
+  return models.includes(preferred)?preferred:models[0]??preferred;
 }
 export function assistantKeyError(reason:unknown):string {
   const detail=reason instanceof Error?reason.message:typeof reason==='string'?reason:'';
-  return detail.trim()||'Could not verify the Gemini API key.';
+  return detail.trim()||'Could not verify the API key.';
 }
 
 export function widgetLabel(widget:WidgetInstance):string {
@@ -39,12 +41,18 @@ export function layoutContext(workspace:Workspace,width:number,height:number) {
     minimumHeight:Math.max(widgetCatalog[w.type].minHeight,w.appPanelOpen?w.appMinHeight??0:0),
   }))};
 }
+/** Layout metadata is always available for arrangement requests; widget contents are shared only by explicit @ mention. */
+export function assistantWorkspaceContext(workspace:Workspace,width:number,height:number,selectedWidgetIds:string[]):Record<string,unknown> {
+  const unique=[...new Set(selectedWidgetIds)];
+  const selected=unique.map(id=>workspace.widgets.find(widget=>widget.id===id)).filter((widget):widget is WidgetInstance=>!!widget);
+  return {canvasAndWidgets:layoutContext(workspace,width,height),selectedWidgets:selected.map(widgetContext)};
+}
 export function parseAssistantReply(value:unknown):AssistantReply {
-  if(!value||typeof value!=='object')throw new Error('Gemini returned an invalid response. Try again.');
+  if(!value||typeof value!=='object')throw new Error('The AI returned an invalid response. Try again.');
   const {reply,layout}=value as AssistantReply;
-  if(typeof reply!=='string'||!reply.trim()||reply.length>24000||!Array.isArray(layout)||layout.length>100)throw new Error('Gemini returned an incomplete response. Try again.');
+  if(typeof reply!=='string'||!reply.trim()||reply.length>24000||!Array.isArray(layout)||layout.length>100)throw new Error('The AI returned an incomplete response. Try again.');
   const items=layout.map(item=>{
-    if(!item||typeof item.id!=='string'||item.id.length>80||[item.x,item.y,item.width,item.height].some(n=>!Number.isSafeInteger(n)))throw new Error('Gemini returned an invalid layout. Try again.');
+    if(!item||typeof item.id!=='string'||item.id.length>80||[item.x,item.y,item.width,item.height].some(n=>!Number.isSafeInteger(n)))throw new Error('The AI returned an invalid layout. Try again.');
     return {id:item.id,x:item.x,y:item.y,width:item.width,height:item.height};
   });
   return {reply,layout:items};
