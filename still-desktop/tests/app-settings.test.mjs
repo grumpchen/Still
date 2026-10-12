@@ -54,7 +54,9 @@ test('General settings expose the three app shutdown choices and auto-save prefe
  assert.match(general,/Save an Apps shortcut automatically when attaching/);
  for(const action of ['Attach','Detach','Save to tray'])assert.match(general,new RegExp('Show '+action+' button'));
  assert.match(general,/Show Relaunch button/);assert.match(general,/Show Export PNG button/);assert.doesNotMatch(general,/Workspace widget buttons/);
- assert.match(general,/Icon name=\{action\.icon\}/);assert.match(styles,/general-settings-action-toggle input\[type=checkbox\]\{appearance:none;[^}]*border-radius:50%/);assert.match(styles,/general-settings-action-toggle input\[type=checkbox\]:checked\{background:var\(--accent\);border-color:var\(--accent\)\}/,'widget action toggles use a filled circle with no checkmark');
+ assert.match(general,/Icon name=\{action\.icon\}/);assert.match(general,/showAppAttachAction',label:'Show Attach button',icon:'attach'/);assert.match(general,/showAppDetachAction',label:'Show Detach button',icon:'eject'/);assert.match(general,/showAppSaveAction',label:'Show Save to tray button',icon:'tray'/);
+ assert.match(general,/<span>\{action\.label\}<Icon name=\{action\.icon\}\/><\/span>/,'icons appear to the right of every action label');
+ assert.match(styles,/general-settings-action-toggle input\[type=checkbox\]\{appearance:none;[^}]*width:15px;height:15px;[^}]*border-radius:50%/);assert.match(styles,/general-settings-action-toggle input\[type=checkbox\]:checked\{background:var\(--accent\);border-color:var\(--accent\)\}/,'all five action toggles use a smaller filled circle with no checkmark');
  assert.match(app,/showWidgetRelaunchAction=\{state\.showWidgetRelaunchAction\}/);assert.match(app,/showWidgetExportPngAction=\{state\.showWidgetExportPngAction\}/);
 });
 
