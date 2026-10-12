@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {createInitialState,parseState} from '../src/domain/workspaces.ts';
+import {createInitialState,createWidget,parseState} from '../src/domain/workspaces.ts';
 import {backgroundSettingsUpdate,backgroundSettingsValue} from '../src/domain/appearance.ts';
 
 const app=readFileSync(new URL('../src/App.tsx',import.meta.url),'utf8');
@@ -22,19 +22,20 @@ test('app behavior settings default to automatic shortcut saving and preserve th
  assert.equal(state.showWidgetExportPngAction,true);
  assert.equal(state.screenshotPluginMode,'global');
  assert.deepEqual(state.screenshotPluginColors,[]);
+ assert.deepEqual(state.screenshotPluginColorOverrides,{});
 });
 
 test('app behavior settings persist and invalid shutdown values safely fall back',()=>{
  const state=createInitialState();
  state.saveAppShortcutsOnAttach=false;
  state.appShutdownBehavior='minimize';
- state.showAppAttachAction=true;state.showAppDetachAction=true;state.showAppSaveAction=true;state.showWidgetRelaunchAction=false;state.showWidgetExportPngAction=false;state.screenshotPluginMode='tag-colors';state.screenshotPluginColors=['red','blue'];state.background='transparent';
+ state.showAppAttachAction=true;state.showAppDetachAction=true;state.showAppSaveAction=true;state.showWidgetRelaunchAction=false;state.showWidgetExportPngAction=false;state.screenshotPluginMode='tag-colors';state.screenshotPluginColors=['red','blue'];state.screenshotPluginColorOverrides={red:false,blue:true,invalid:'disabled'};state.background='transparent';
  let restored=parseState(JSON.stringify(state));
  assert.equal(restored.saveAppShortcutsOnAttach,false);
  assert.equal(restored.appShutdownBehavior,'minimize');
  assert.equal(restored.showAppAttachAction,true);assert.equal(restored.showAppDetachAction,true);assert.equal(restored.showAppSaveAction,true);
  assert.equal(restored.showWidgetRelaunchAction,false);assert.equal(restored.showWidgetExportPngAction,false);
- assert.equal(restored.screenshotPluginMode,'tag-colors');assert.deepEqual(restored.screenshotPluginColors,['red','blue']);assert.equal(restored.background,'transparent');
+ assert.equal(restored.screenshotPluginMode,'tag-colors');assert.deepEqual(restored.screenshotPluginColors,['red','blue']);assert.deepEqual(restored.screenshotPluginColorOverrides,{red:false,blue:true});assert.equal(restored.background,'transparent');
  state.screenshotPluginMode='invalid';state.screenshotPluginColors=['invalid','red','red'];restored=parseState(JSON.stringify(state));
  assert.equal(restored.screenshotPluginMode,'global');assert.deepEqual(restored.screenshotPluginColors,['red']);
  state.appShutdownBehavior='invalid';
@@ -45,6 +46,15 @@ test('app behavior settings persist and invalid shutdown values safely fall back
  delete state.showWidgetRelaunchAction;delete state.showWidgetExportPngAction;
  restored=parseState(JSON.stringify(state));
  assert.equal(restored.showWidgetRelaunchAction,true);assert.equal(restored.showWidgetExportPngAction,true,'older saved layouts keep the existing buttons visible');
+});
+
+test('Tag Color Status persists stacked plugin settings for each color',()=>{
+ const state=createInitialState(),status=createWidget('tagStatus');
+ status.pluginControls.push('widget-color-rule.red','widget-color-setting.red.relaunch','widget-color-setting.red.screenshot');
+ state.workspaces[0].widgets.push(status);state.screenshotPluginColorOverrides={red:false,blue:true};
+ const restored=parseState(JSON.stringify(state));
+ assert.deepEqual(restored.workspaces[0].widgets.at(-1).pluginControls,status.pluginControls);
+ assert.deepEqual(restored.screenshotPluginColorOverrides,{red:false,blue:true});
 });
 
 test('General settings expose the three app shutdown choices and auto-save preference',()=>{

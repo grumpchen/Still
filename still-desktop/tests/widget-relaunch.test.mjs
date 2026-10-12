@@ -14,7 +14,7 @@ const setGlobal=(key,value)=>Object.defineProperty(globalThis,key,{configurable:
 const vite=await createServer({server:{middlewareMode:true,hmr:false},appType:'custom',optimizeDeps:{noDiscovery:true,entries:[]}});
 after(()=>vite.close());
 
-async function setup(widgets,{identity={hwnd:451,pid:902},startupDeferredIds=new Set(),screenshotPluginMode='global',screenshotPluginColors=[],showAppAttachAction=false,showAppDetachAction=false,showAppSaveAction=false,showWidgetRelaunchAction=true,showWidgetExportPngAction=true}={}){
+async function setup(widgets,{identity={hwnd:451,pid:902},startupDeferredIds=new Set(),screenshotPluginMode='global',screenshotPluginColors=[],screenshotPluginColorOverrides={},showAppAttachAction=false,showAppDetachAction=false,showAppSaveAction=false,showWidgetRelaunchAction=true,showWidgetExportPngAction=true}={}){
  const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true});
  const oldGlobals=new Map();
  for(const key of ['window','document','navigator','HTMLElement','Element','Node','MutationObserver','ResizeObserver','requestAnimationFrame','cancelAnimationFrame','getComputedStyle','isTauri','IS_REACT_ACT_ENVIRONMENT'])oldGlobals.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
@@ -41,30 +41,30 @@ async function setup(widgets,{identity={hwnd:451,pid:902},startupDeferredIds=new
   return null;
  },{shouldMockEvents:true});
  const {default:WorkspaceCanvas}=await vite.ssrLoadModule('/src/WorkspaceCanvas.tsx');
- const state=createInitialState();state.workspaces[0].widgets=widgets;state.screenshotPluginMode=screenshotPluginMode;state.screenshotPluginColors=screenshotPluginColors;
+ const state=createInitialState();state.workspaces[0].widgets=widgets;state.screenshotPluginMode=screenshotPluginMode;state.screenshotPluginColors=screenshotPluginColors;state.screenshotPluginColorOverrides=screenshotPluginColorOverrides;
  let currentState,root;
  function Host(){
   const [current,setCurrent]=useState(state);currentState=current;
   const [deferred,setDeferred]=useState(startupDeferredIds);
   const update=(id,patch)=>setCurrent(value=>({...value,workspaces:value.workspaces.map(workspace=>({...workspace,widgets:workspace.widgets.map(item=>item.id===id?{...item,...patch}:item)}))}));
-   return createElement(WorkspaceCanvas,{workspaceId:current.workspaces[0].id,transferWidget(){},setWorkspaceDropTarget(){},openAppsDialog(){},editTray(){},presets:current.presets,savePresets(){},openPreset(){},editPreset(){},removePreset(){},renamePreset(){},renameGroup(){},widgets:current.workspaces[0].widgets,groups:[],updateGroup(){},saveToGroup(){},openGroup(){},editGroup(){},removeGroup(){},openGroupWidget(){},update,add(){},remove(){},begin(){},bringToFront(){},notify(){},obscured:false,openResource(){},openDropped(){},pickApp(){},saveApp(){},appAttachments:{},appAttachmentHandled(){},startupDeferredIds:deferred,startupRelaunch:id=>setDeferred(value=>new Set([...value].filter(item=>item!==id))),widgetRelaunchColors:current.widgetRelaunchColors,setRelaunchColor:(color,mode)=>setCurrent(value=>{const colors={...value.widgetRelaunchColors};if(mode)colors[color]=mode;else delete colors[color];return{...value,widgetRelaunchColors:colors}}),screenshotPluginMode:current.screenshotPluginMode,screenshotPluginColors:current.screenshotPluginColors,setScreenshotMode:mode=>setCurrent(value=>({...value,screenshotPluginMode:mode})),setScreenshotColor:(color,enabled)=>setCurrent(value=>({...value,screenshotPluginColors:enabled?[...new Set([...value.screenshotPluginColors,color])]:value.screenshotPluginColors.filter(item=>item!==color)})),showAppAttachAction,showAppDetachAction,showAppSaveAction,showWidgetRelaunchAction,showWidgetExportPngAction});
+   return createElement(WorkspaceCanvas,{workspaceId:current.workspaces[0].id,transferWidget(){},setWorkspaceDropTarget(){},openAppsDialog(){},editTray(){},presets:current.presets,savePresets(){},openPreset(){},editPreset(){},removePreset(){},renamePreset(){},renameGroup(){},widgets:current.workspaces[0].widgets,groups:[],updateGroup(){},saveToGroup(){},openGroup(){},editGroup(){},removeGroup(){},openGroupWidget(){},update,add(){},remove(){},begin(){},bringToFront(){},notify(){},obscured:false,openResource(){},openDropped(){},pickApp(){},saveApp(){},appAttachments:{},appAttachmentHandled(){},startupDeferredIds:deferred,startupRelaunch:id=>setDeferred(value=>new Set([...value].filter(item=>item!==id))),widgetRelaunchColors:current.widgetRelaunchColors,setRelaunchColor:(color,mode)=>setCurrent(value=>{const colors={...value.widgetRelaunchColors};if(mode)colors[color]=mode;else delete colors[color];return{...value,widgetRelaunchColors:colors}}),screenshotPluginMode:current.screenshotPluginMode,screenshotPluginColors:current.screenshotPluginColors,screenshotPluginColorOverrides:current.screenshotPluginColorOverrides,setScreenshotColorOverride:(color,enabled)=>setCurrent(value=>{const overrides={...value.screenshotPluginColorOverrides};if(enabled===null)delete overrides[color];else overrides[color]=enabled;return{...value,screenshotPluginColorOverrides:overrides}}),setScreenshotMode:mode=>setCurrent(value=>({...value,screenshotPluginMode:mode})),setScreenshotColor:(color,enabled)=>setCurrent(value=>({...value,screenshotPluginColors:enabled?[...new Set([...value.screenshotPluginColors,color])]:value.screenshotPluginColors.filter(item=>item!==color)})),showAppAttachAction,showAppDetachAction,showAppSaveAction,showWidgetRelaunchAction,showWidgetExportPngAction});
  }
  root=createRoot(window.document.querySelector('#root'));
  await act(async()=>root.render(createElement(Host)));
  return{dom,window,calls,get currentState(){return currentState},root,cleanup:async()=>{if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();for(const [key,descriptor]of oldGlobals){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}}};
 }
 
-async function setupStatusCard(widget,{screenshotPluginMode='global',screenshotPluginColors=[]}={}){
+async function setupStatusCard(widget,{screenshotPluginMode='global',screenshotPluginColors=[],screenshotPluginColorOverrides={}}={}){
  const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true}),oldGlobals=new Map(),{window}=dom;
  for(const key of ['window','document','navigator','HTMLElement','Element','Node','IS_REACT_ACT_ENVIRONMENT'])oldGlobals.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
  setGlobal('window',window);setGlobal('document',window.document);setGlobal('navigator',window.navigator);setGlobal('HTMLElement',window.HTMLElement);setGlobal('Element',window.Element);setGlobal('Node',window.Node);setGlobal('IS_REACT_ACT_ENVIRONMENT',true);
  const {default:TagColorStatusWidget}=await vite.ssrLoadModule('/src/TagColorStatusWidget.tsx');
  let currentWidget,currentState,root;
  function Host(){
-  const [current,setCurrent]=useState(widget),[settings,setSettings]=useState({relaunchPluginStatus:'enabled',globalMode:'automatic',colors:{},screenshotPluginMode,screenshotPluginColors});
+  const [current,setCurrent]=useState(widget),[settings,setSettings]=useState({relaunchPluginStatus:'enabled',globalMode:'automatic',colors:{},screenshotPluginMode,screenshotPluginColors,screenshotPluginColorOverrides});
   currentWidget=current;currentState={widget:current,...settings};
   const setColorMode=(color,mode)=>setSettings(value=>{const colors={...value.colors};if(mode)colors[color]=mode;else delete colors[color];return{...value,colors}});
-  return createElement(TagColorStatusWidget,{widget:current,update:patch=>setCurrent(value=>({...value,...patch})),widgetPluginContext:{relaunchPluginStatus:settings.relaunchPluginStatus,globalMode:settings.globalMode,colors:settings.colors,setGlobalMode:mode=>setSettings(value=>({...value,globalMode:mode})),setColorMode,screenshotMode:settings.screenshotPluginMode,screenshotColors:settings.screenshotPluginColors,setScreenshotMode:mode=>setSettings(value=>({...value,screenshotPluginMode:mode})),setScreenshotColor:(color,enabled)=>setSettings(value=>({...value,screenshotPluginColors:enabled?[...new Set([...value.screenshotPluginColors,color])]:value.screenshotPluginColors.filter(item=>item!==color)}))}});
+  return createElement(TagColorStatusWidget,{widget:current,update:patch=>setCurrent(value=>({...value,...patch})),widgetPluginContext:{relaunchPluginStatus:settings.relaunchPluginStatus,globalMode:settings.globalMode,colors:settings.colors,setGlobalMode:mode=>setSettings(value=>({...value,globalMode:mode})),setColorMode,screenshotMode:settings.screenshotPluginMode,screenshotColors:settings.screenshotPluginColors,screenshotColorOverrides:settings.screenshotPluginColorOverrides,setScreenshotColorOverride:(color,enabled)=>setSettings(value=>{const overrides={...value.screenshotPluginColorOverrides};if(enabled===null)delete overrides[color];else overrides[color]=enabled;return{...value,screenshotPluginColorOverrides:overrides}}),setScreenshotMode:mode=>setSettings(value=>({...value,screenshotPluginMode:mode})),setScreenshotColor:(color,enabled)=>setSettings(value=>({...value,screenshotPluginColors:enabled?[...new Set([...value.screenshotPluginColors,color])]:value.screenshotPluginColors.filter(item=>item!==color)}))}});
  }
  root=createRoot(window.document.querySelector('#root'));await act(async()=>root.render(createElement(Host)));
  return{dom,window,get currentWidget(){return currentWidget},get currentState(){return currentState},root,cleanup:async()=>{if(root)await act(async()=>root.unmount());dom.window.close();for(const [key,descriptor]of oldGlobals){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}}};
@@ -167,13 +167,20 @@ test('Tag Color Status stacks controls from multiple registered widget plugins',
   assert.equal(app.window.document.querySelector('[aria-label="All tag colors follow global mode"]').checked,false,'turning the switch off exposes color-specific rules');
   const addColor=app.window.document.querySelector('[aria-label="Add tag color relaunch setting"]');assert.ok(addColor);
   addColor.value='red';await act(async()=>addColor.dispatchEvent(new app.window.Event('change',{bubbles:true})));
+  let redSetting=app.window.document.querySelector('[aria-label="Add red plugin setting"]');assert.ok(redSetting,'a color rule can stack plugin settings through its dropdown');redSetting.value='relaunch';await act(async()=>redSetting.dispatchEvent(new app.window.Event('change',{bubbles:true})));
   let redMode=app.window.document.querySelector('[aria-label="Status card red relaunch mode"]');assert.ok(redMode,'selected color settings stack as separate rows');
   redMode.value='manual';await act(async()=>redMode.dispatchEvent(new app.window.Event('change',{bubbles:true})));
   assert.equal(app.window.document.querySelector('[aria-label="All tag colors follow global mode"]').checked,false,'a color-specific choice turns off the all-global switch');
   const addSecondColor=app.window.document.querySelector('[aria-label="Add tag color relaunch setting"]');addSecondColor.value='purple';await act(async()=>addSecondColor.dispatchEvent(new app.window.Event('change',{bubbles:true})));
   assert.ok(app.window.document.querySelector('[aria-label="Status card red relaunch mode"]'));
+  const purpleSetting=app.window.document.querySelector('[aria-label="Add purple plugin setting"]');purpleSetting.value='relaunch';await act(async()=>purpleSetting.dispatchEvent(new app.window.Event('change',{bubbles:true})));
   assert.ok(app.window.document.querySelector('[aria-label="Status card purple relaunch mode"]'));
   assert.match(app.window.document.querySelector('.tag-status-summary')?.textContent??'',/Manual: Red/);
+  redSetting=app.window.document.querySelector('[aria-label="Add red plugin setting"]');redSetting.value='screenshot';await act(async()=>redSetting.dispatchEvent(new app.window.Event('change',{bubbles:true})));
+  const redScreenshot=app.window.document.querySelector('[aria-label="Status card red screenshot setting"]');assert.ok(redScreenshot,'Screenshot is available as another setting within Red');redScreenshot.value='disabled';await act(async()=>redScreenshot.dispatchEvent(new app.window.Event('change',{bubbles:true})));
+  const {showScreenshotControl}=await vite.ssrLoadModule('/src/domain/screenshotPlugin.ts');
+  assert.equal(showScreenshotControl('global',[],'red',app.currentState.screenshotPluginColorOverrides),false,'a red color override can hide its camera while global screenshot remains enabled');
+  assert.equal(showScreenshotControl('global',[],'blue',app.currentState.screenshotPluginColorOverrides),true,'the color override leaves other colors unchanged');
   assert.ok(app.window.document.querySelector('[aria-label="Status card screenshot scope"]'),'the Screenshot settings appear alongside relaunch controls');
   const scope=app.window.document.querySelector('[aria-label="Status card screenshot scope"]');scope.value='tag-colors';
   await act(async()=>scope.dispatchEvent(new app.window.Event('change',{bubbles:true})));
@@ -182,6 +189,7 @@ test('Tag Color Status stacks controls from multiple registered widget plugins',
   assert.equal(app.currentState.screenshotPluginMode,'tag-colors');assert.deepEqual(app.currentState.screenshotPluginColors,['red']);
   const globalSwitch=app.window.document.querySelector('[aria-label="All tag colors follow global mode"]');await act(async()=>globalSwitch.dispatchEvent(new app.window.MouseEvent('click',{bubbles:true})));
   assert.equal(app.window.document.querySelector('[aria-label="All tag colors follow global mode"]').checked,true,'turning global mode back on removes stacked per-color overrides');
+  assert.deepEqual(app.currentState.screenshotPluginColorOverrides,{},'following global clears color-specific Screenshot overrides');
   assert.equal(app.window.document.querySelector('[aria-label="Status card red relaunch mode"]'),null);
  }finally{await app.cleanup()}
 });
