@@ -69,6 +69,8 @@ html.native-transparent .workspace-canvas{background-image:none}
 @media(max-width:900px){.canvas-app .search .search-label,.canvas-app .search kbd{display:none}.canvas-app .search{padding:6px 8px}.canvas-app .topbar-customize .topbar-action-label{display:none}.canvas-app .topbar-actions button{padding:6px 8px}}
 .canvas-app.sidebar-expanded{grid-template-columns:160px minmax(0,1fr)}
 .canvas-app.sidebar-collapsed{grid-template-columns:52px minmax(0,1fr)}
+.canvas-app.sidebar-hidden{grid-template-columns:minmax(0,1fr)}
+.canvas-app.sidebar-hidden .sidebar{display:none}
 .canvas-app.sidebar-collapsed .sidebar{padding:14px 4px 12px;margin-left:4px;margin-right:4px;border-radius:17px}
 .canvas-app.sidebar-collapsed .nav{overflow-x:hidden}
 .sidebar-collapsed .brand-text,.sidebar-collapsed .personal,.sidebar-collapsed .side-label,.sidebar-collapsed .nav-name,.sidebar-collapsed .nav kbd,.sidebar-collapsed .profile{display:none}
@@ -85,6 +87,7 @@ html.native-transparent .workspace-canvas{background-image:none}
 .canvas-app.focus-mode{grid-template-columns:minmax(0,1fr)}
 .canvas-app.focus-mode .sidebar{display:none}
 .canvas-app.focus-mode .widget-tray{display:none}
+.canvas-app.widget-tray-hidden .widget-tray{display:none}
 .sidebar .nav button.workspace-drop-active{outline:2px solid var(--accent);outline-offset:1px;background:var(--tint);color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
 .workspace-heading{display:flex;align-items:center;gap:8px;min-width:0;flex:1}
 .canvas-app .topbar-workspace-name{font-size:15px;font-weight:500;letter-spacing:-.3px;margin:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
