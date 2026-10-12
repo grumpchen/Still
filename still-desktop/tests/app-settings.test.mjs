@@ -53,7 +53,8 @@ test('General settings expose the three app shutdown choices and auto-save prefe
  assert.match(general,/value="leaveOpen"[\s\S]*?Leave attached apps open/);
  assert.match(general,/Save an Apps shortcut automatically when attaching/);
  for(const action of ['Attach','Detach','Save to tray'])assert.match(general,new RegExp('Show '+action+' button'));
- assert.match(general,/Show Relaunch button/);assert.match(general,/Show Export PNG button/);
+ assert.match(general,/Show Relaunch button/);assert.match(general,/Show Export PNG button/);assert.doesNotMatch(general,/Workspace widget buttons/);
+ assert.match(general,/Icon name=\{action\.icon\}/);assert.match(styles,/general-settings-action-toggle input\[type=checkbox\]\{appearance:none;[^}]*border-radius:50%/);assert.match(styles,/general-settings-action-toggle input\[type=checkbox\]:checked\{background:var\(--accent\);border-color:var\(--accent\)\}/,'widget action toggles use a filled circle with no checkmark');
  assert.match(app,/showWidgetRelaunchAction=\{state\.showWidgetRelaunchAction\}/);assert.match(app,/showWidgetExportPngAction=\{state\.showWidgetExportPngAction\}/);
 });
 
