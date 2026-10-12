@@ -177,7 +177,7 @@ export function createBrowserFromGroup(link:WebShortcut,widgets:WidgetInstance[]
  widget.placement=at?placement('browser',{...widget.placement,...at}):nextPlacement('browser',widgets);
  return widget;
 }
-const GROUP_ICON_LIMIT=32*1024,GROUP_ICON_BUDGET=512*1024;
+const GROUP_ICON_LIMIT=80*1024,GROUP_ICON_BUDGET=512*1024;
 export function checkedAppIconData(value:unknown):string|undefined {
  return typeof value==='string'&&value.length<=GROUP_ICON_LIMIT&&/^data:image\/png;base64,iVBORw0KGgo[A-Za-z0-9+/]*={0,2}$/.test(value)?value:undefined;
 }

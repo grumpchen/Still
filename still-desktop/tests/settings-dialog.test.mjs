@@ -5,6 +5,7 @@ import {readFileSync} from 'node:fs';
 const app=readFileSync(new URL('../src/App.tsx',import.meta.url),'utf8');
 const general=readFileSync(new URL('../src/GeneralSettings.tsx',import.meta.url),'utf8');
 const tagStatus=readFileSync(new URL('../src/TagColorStatusWidget.tsx',import.meta.url),'utf8');
+const canvasStyles=readFileSync(new URL('../src/canvas.css',import.meta.url),'utf8');
 
 test('sidebar Settings opens a tabbed dialog with General, Appearance, and Plugins pages',()=>{
  assert.match(app,/title="Settings" aria-label="Settings" onClick=\{\(\)=>\{setSettingsTab\('general'\);setModal\('settings'\)\}\}/);
@@ -23,4 +24,9 @@ test('sidebar Settings opens a tabbed dialog with General, Appearance, and Plugi
  assert.match(general,/aria-label="Widget relaunch mode"/);
  assert.match(general,/Apply to All/);
  assert.match(general,/aria-label=\{color\+' tag relaunch mode'\}/);
+});
+
+test('all checkboxes are compact circles without checkmarks',()=>{
+ assert.match(canvasStyles,/(^|})\s*input\[type=checkbox\]\{appearance:none;[^}]*width:14px!important;height:14px!important;[^}]*border-radius:50%/);
+ assert.match(canvasStyles,/(^|})\s*input\[type=checkbox\]:checked\{background:var\(--accent\);border-color:var\(--accent\)\}/);
 });

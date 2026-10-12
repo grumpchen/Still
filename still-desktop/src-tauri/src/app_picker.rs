@@ -1,7 +1,7 @@
 use serde::Serialize;
 use std::{collections::{HashMap,HashSet},path::{Path,PathBuf},sync::{atomic::{AtomicUsize,Ordering},Mutex}};
 use tauri::{AppHandle,Manager,Webview};
-use windows::{core::PCWSTR,Win32::{Foundation::{HWND,LPARAM,RECT,WPARAM},Graphics::Gdi::*,Storage::{FileSystem::*,Xps::{PrintWindow,PRINT_WINDOW_FLAGS}},System::Com::*,UI::{Shell::ExtractIconExW,WindowsAndMessaging::*}}};
+use windows::{core::PCWSTR,Win32::{Foundation::{HWND,LPARAM,RECT,WPARAM},Graphics::Gdi::*,Storage::{FileSystem::*,Xps::{PrintWindow,PRINT_WINDOW_FLAGS}},System::Com::*,UI::{Controls::{IImageList,ILD_TRANSPARENT},Shell::{ExtractIconExW,SHGetFileInfoW,SHGetImageList,SHFILEINFOW,SHIL_JUMBO,SHGFI_SYSICONINDEX},WindowsAndMessaging::*}}};
 
 fn wide(text:&str)->Vec<u16>{text.encode_utf16().chain(Some(0)).collect()}
 fn handle(value:usize)->HWND{HWND(value as *mut _)}
@@ -55,12 +55,21 @@ impl Bitmap{
 }
 impl Drop for Bitmap{fn drop(&mut self){unsafe{SelectObject(self.memory,self.previous);let _=DeleteObject(HGDIOBJ(self.bitmap.0));let _=DeleteDC(self.memory);ReleaseDC(None,self.desktop);}}}
 fn png(image:image::DynamicImage)->Result<Vec<u8>,String>{let mut bytes=std::io::Cursor::new(Vec::new());image.write_to(&mut bytes,image::ImageFormat::Png).map_err(|e|e.to_string())?;Ok(bytes.into_inner())}
+const APP_ICON_SIZE:i32=128;
+unsafe fn jumbo_icon(path:&str)->Option<HICON>{
+ let _com=Com::initialize();
+ let filename=wide(path);let mut file_info=SHFILEINFOW::default();
+ let index=SHGetFileInfoW(PCWSTR(filename.as_ptr()),FILE_FLAGS_AND_ATTRIBUTES(0),Some(&mut file_info),std::mem::size_of::<SHFILEINFOW>() as u32,SHGFI_SYSICONINDEX);
+ if index==0{return None}
+ SHGetImageList::<IImageList>(SHIL_JUMBO as i32).ok()?.GetIcon(file_info.iIcon,ILD_TRANSPARENT.0).ok()
+}
 fn icon(hwnd:HWND,path:Option<&str>)->Vec<u8>{unsafe{
  let mut owned=false;let mut image=HICON::default();
- if let Some(path)=path{let filename=wide(path);if ExtractIconExW(PCWSTR(filename.as_ptr()),0,None,Some(&mut image),1)>0{owned=true}}
+ if let Some(path)=path{if let Some(jumbo)=jumbo_icon(path){image=jumbo;owned=true}}
+ if image.0.is_null(){if let Some(path)=path{let filename=wide(path);if ExtractIconExW(PCWSTR(filename.as_ptr()),0,None,Some(&mut image),1)>0{owned=true}}}
  if image.0.is_null(){let mut result=0;SendMessageTimeoutW(hwnd,WM_GETICON,WPARAM(ICON_SMALL2 as usize),LPARAM(0),SMTO_ABORTIFHUNG|SMTO_BLOCK,60,Some(&mut result));image=HICON(result as *mut _);}
  if image.0.is_null(){image=HICON(GetClassLongPtrW(hwnd,GCLP_HICONSM) as *mut _)}
- let result=(||{if image.0.is_null(){return Err("No app icon")};let bitmap=Bitmap::new(32,32).map_err(|_|"No app icon")?;DrawIconEx(bitmap.memory,0,0,image,32,32,0,None,DI_NORMAL).map_err(|_|"No app icon")?;png(image::DynamicImage::ImageRgba8(bitmap.image().map_err(|_|"No app icon")?)).map_err(|_|"No app icon")})();
+ let result=(||{if image.0.is_null(){return Err("No app icon")};let bitmap=Bitmap::new(APP_ICON_SIZE,APP_ICON_SIZE).map_err(|_|"No app icon")?;DrawIconEx(bitmap.memory,0,0,image,APP_ICON_SIZE,APP_ICON_SIZE,0,None,DI_NORMAL).map_err(|_|"No app icon")?;png(image::DynamicImage::ImageRgba8(bitmap.image().map_err(|_|"No app icon")?)).map_err(|_|"No app icon")})();
  if owned{let _=DestroyIcon(image);}result.unwrap_or_default()
 }}
 
@@ -196,13 +205,19 @@ pub async fn app_picker_preview(webview:Webview,hwnd:usize,pid:u32)->Result<Vec<
  }
  #[test]fn installed_catalog_reads_only_named_entries_with_bounded_png_icons(){
   let apps=installed_shortcuts().unwrap();assert!(apps.len()<=500);
-  for(name,_,_,icon)in apps{assert!(!name.trim().is_empty());assert!(icon.is_empty()||icon.len()<=12_000);if !icon.is_empty(){assert_eq!(&icon[..8],&[137,80,78,71,13,10,26,10]);}}
+  for(name,_,_,icon)in apps{assert!(!name.trim().is_empty());assert!(icon.is_empty()||icon.len()<=48_000);if !icon.is_empty(){assert_eq!(&icon[..8],&[137,80,78,71,13,10,26,10]);}}
  }
  #[test]fn bitmap_icon_rendering_encodes_real_pixels_and_rejects_unbounded_dimensions(){unsafe{
   assert!(Bitmap::new(0,20).is_err());assert!(Bitmap::new(20000,20000).is_err());
-  let bitmap=Bitmap::new(32,32).unwrap();let image=LoadIconW(None,IDI_APPLICATION).unwrap();DrawIconEx(bitmap.memory,0,0,image,32,32,0,None,DI_NORMAL).unwrap();
-  let bytes=png(image::DynamicImage::ImageRgba8(bitmap.image().unwrap())).unwrap();let decoded=image::load_from_memory(&bytes).unwrap();assert_eq!((decoded.width(),decoded.height()),(32,32));
+  let bitmap=Bitmap::new(APP_ICON_SIZE,APP_ICON_SIZE).unwrap();let image=LoadIconW(None,IDI_APPLICATION).unwrap();DrawIconEx(bitmap.memory,0,0,image,APP_ICON_SIZE,APP_ICON_SIZE,0,None,DI_NORMAL).unwrap();
+  let bytes=png(image::DynamicImage::ImageRgba8(bitmap.image().unwrap())).unwrap();let decoded=image::load_from_memory(&bytes).unwrap();assert_eq!((decoded.width(),decoded.height()),(APP_ICON_SIZE as u32,APP_ICON_SIZE as u32));
  }}
+ #[test]fn executable_icons_are_exported_at_high_dpi_resolution(){
+  let source="C:\\Windows\\explorer.exe";let jumbo=unsafe{jumbo_icon(source)}.expect("Windows should provide a jumbo executable icon");
+  unsafe{DestroyIcon(jumbo).unwrap()};
+  let bytes=icon(handle(0),Some(source));assert!(!bytes.is_empty());
+  let decoded=image::load_from_memory(&bytes).unwrap();assert_eq!((decoded.width(),decoded.height()),(APP_ICON_SIZE as u32,APP_ICON_SIZE as u32));
+ }
  #[test]fn stale_process_identity_and_hidden_windows_are_rejected_before_previewing(){unsafe{
   let class=wide("STATIC");let caption=wide("Still app preview fixture");let hwnd=CreateWindowExW(WINDOW_EX_STYLE(0),PCWSTR(class.as_ptr()),PCWSTR(caption.as_ptr()),WS_OVERLAPPEDWINDOW,0,0,640,400,None,None,None,None).unwrap();
   let id=hwnd.0 as usize;let process=std::process::id();assert!(window_matches(id,process));assert!(!window_matches(id,process+1));

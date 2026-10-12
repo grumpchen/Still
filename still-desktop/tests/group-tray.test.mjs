@@ -281,14 +281,14 @@ test('group app icons persist within size limits and over-budget icons fall back
  assert.equal(typeof workspaces.checkedAppIconData,'function');
  assert.equal(workspaces.checkedAppIconData(icon),icon);
  assert.equal(workspaces.checkedAppIconData('data:image/png;base64,not-png'),undefined);
- assert.equal(workspaces.checkedAppIconData('data:image/png;base64,'+'A'.repeat(16*1024)),undefined);
+ assert.equal(workspaces.checkedAppIconData('data:image/png;base64,'+'A'.repeat(81*1024)),undefined);
  const workspace=workspaces.createWorkspace('Apps',['group']);
  const source=workspaces.createWidget('apps');source.title='Word';source.appIconData=icon;
  const saved=workspaces.saveWidgetToGroup(workspace,source);
  assert.equal(saved.groups.at(-1).widgets[0].iconData,icon);
  const roundtrip=workspaces.parseState(JSON.stringify({...workspaces.createInitialState(),workspaces:[saved],activeId:saved.id})).workspaces[0];
  assert.equal(roundtrip.groups.at(-1).widgets[0].iconData,icon);
- const tooMuch={...source,appIconData:'data:image/png;base64,iVBORw0KGgo='+'.'.repeat(16*1024)};
+ const tooMuch={...source,appIconData:'data:image/png;base64,iVBORw0KGgo='+'.'.repeat(81*1024)};
  const fallback=workspaces.saveWidgetToGroup(workspace,tooMuch);
  assert.equal(fallback.groups.at(-1).widgets[0].iconData,undefined);
  assert.equal(fallback.groups.at(-1).widgets[0].icon,'WO');
@@ -300,7 +300,7 @@ test('the workspace icon budget is enforced without dropping saved group entries
  assert.equal(workspaces.groupIconBudget(groups),true);
  assert.equal(workspaces.groupIconBudget(groups,{id:'e2',type:'apps',name:'Two',icon:'TW',iconData:'A'.repeat(512*1024)}),false);
  const workspace=workspaces.createWorkspace('Apps',[]);workspace.groups=groups;
- const source=workspaces.createWidget('apps');source.appIconData='data:image/png;base64,iVBORw0KGgo='+'A'.repeat(14*1024);
+ const source=workspaces.createWidget('apps');source.appIconData='data:image/png;base64,iVBORw0KGgo='+'A'.repeat(90*1024);
  const saved=workspaces.saveWidgetToGroup(workspace,source,'g1');
  assert.equal(saved.groups[0].widgets.length,2);assert.equal(saved.groups[0].widgets[1].iconData,undefined);
  const restored=workspaces.parseState(JSON.stringify({...workspaces.createInitialState(),workspaces:[saved],activeId:saved.id})).workspaces[0];
