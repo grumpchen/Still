@@ -14,7 +14,7 @@ const setGlobal=(key,value)=>Object.defineProperty(globalThis,key,{configurable:
 const vite=await createServer({server:{middlewareMode:true,hmr:false},appType:'custom',optimizeDeps:{noDiscovery:true,entries:[]}});
 after(()=>vite.close());
 
-async function setup(widgets,{identity={hwnd:451,pid:902},startupDeferredIds=new Set(),screenshotPluginMode='global',screenshotPluginColors=[],showAppAttachAction=false,showAppDetachAction=false,showAppSaveAction=false}={}){
+async function setup(widgets,{identity={hwnd:451,pid:902},startupDeferredIds=new Set(),screenshotPluginMode='global',screenshotPluginColors=[],showAppAttachAction=false,showAppDetachAction=false,showAppSaveAction=false,showWidgetRelaunchAction=true,showWidgetExportPngAction=true}={}){
  const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true});
  const oldGlobals=new Map();
  for(const key of ['window','document','navigator','HTMLElement','Element','Node','MutationObserver','ResizeObserver','requestAnimationFrame','cancelAnimationFrame','getComputedStyle','isTauri','IS_REACT_ACT_ENVIRONMENT'])oldGlobals.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
@@ -47,7 +47,7 @@ async function setup(widgets,{identity={hwnd:451,pid:902},startupDeferredIds=new
   const [current,setCurrent]=useState(state);currentState=current;
   const [deferred,setDeferred]=useState(startupDeferredIds);
   const update=(id,patch)=>setCurrent(value=>({...value,workspaces:value.workspaces.map(workspace=>({...workspace,widgets:workspace.widgets.map(item=>item.id===id?{...item,...patch}:item)}))}));
-  return createElement(WorkspaceCanvas,{workspaceId:current.workspaces[0].id,transferWidget(){},setWorkspaceDropTarget(){},openAppsDialog(){},editTray(){},presets:current.presets,savePresets(){},openPreset(){},editPreset(){},removePreset(){},renamePreset(){},renameGroup(){},widgets:current.workspaces[0].widgets,groups:[],updateGroup(){},saveToGroup(){},openGroup(){},editGroup(){},removeGroup(){},openGroupWidget(){},update,add(){},remove(){},begin(){},bringToFront(){},notify(){},obscured:false,openResource(){},openDropped(){},pickApp(){},saveApp(){},appAttachments:{},appAttachmentHandled(){},startupDeferredIds:deferred,startupRelaunch:id=>setDeferred(value=>new Set([...value].filter(item=>item!==id))),widgetRelaunchColors:current.widgetRelaunchColors,setRelaunchColor:(color,mode)=>setCurrent(value=>{const colors={...value.widgetRelaunchColors};if(mode)colors[color]=mode;else delete colors[color];return{...value,widgetRelaunchColors:colors}}),screenshotPluginMode:current.screenshotPluginMode,screenshotPluginColors:current.screenshotPluginColors,setScreenshotMode:mode=>setCurrent(value=>({...value,screenshotPluginMode:mode})),setScreenshotColor:(color,enabled)=>setCurrent(value=>({...value,screenshotPluginColors:enabled?[...new Set([...value.screenshotPluginColors,color])]:value.screenshotPluginColors.filter(item=>item!==color)})),showAppAttachAction,showAppDetachAction,showAppSaveAction});
+   return createElement(WorkspaceCanvas,{workspaceId:current.workspaces[0].id,transferWidget(){},setWorkspaceDropTarget(){},openAppsDialog(){},editTray(){},presets:current.presets,savePresets(){},openPreset(){},editPreset(){},removePreset(){},renamePreset(){},renameGroup(){},widgets:current.workspaces[0].widgets,groups:[],updateGroup(){},saveToGroup(){},openGroup(){},editGroup(){},removeGroup(){},openGroupWidget(){},update,add(){},remove(){},begin(){},bringToFront(){},notify(){},obscured:false,openResource(){},openDropped(){},pickApp(){},saveApp(){},appAttachments:{},appAttachmentHandled(){},startupDeferredIds:deferred,startupRelaunch:id=>setDeferred(value=>new Set([...value].filter(item=>item!==id))),widgetRelaunchColors:current.widgetRelaunchColors,setRelaunchColor:(color,mode)=>setCurrent(value=>{const colors={...value.widgetRelaunchColors};if(mode)colors[color]=mode;else delete colors[color];return{...value,widgetRelaunchColors:colors}}),screenshotPluginMode:current.screenshotPluginMode,screenshotPluginColors:current.screenshotPluginColors,setScreenshotMode:mode=>setCurrent(value=>({...value,screenshotPluginMode:mode})),setScreenshotColor:(color,enabled)=>setCurrent(value=>({...value,screenshotPluginColors:enabled?[...new Set([...value.screenshotPluginColors,color])]:value.screenshotPluginColors.filter(item=>item!==color)})),showAppAttachAction,showAppDetachAction,showAppSaveAction,showWidgetRelaunchAction,showWidgetExportPngAction});
  }
  root=createRoot(window.document.querySelector('#root'));
  await act(async()=>root.render(createElement(Host)));
@@ -94,6 +94,22 @@ test('every workspace widget, including a minimized card, exposes Relaunch',asyn
  try{
   for(const widget of widgets)assert.ok(app.window.document.querySelector(`[data-widget-id="${widget.id}"] [aria-label="Relaunch ${widget.title}"]`),`${widget.type} card has a Relaunch control`);
  }finally{await app.cleanup()}
+});
+
+test('Relaunch and Export PNG controls can be hidden independently without removing manual startup recovery',async()=>{
+ const note=createWidget('notes');note.id='button-note';note.title='Button note';
+ const minimized=minimizeWidgetInstance({...createWidget('focus'),id:'minimized-focus',title:'Minimized focus'},1400,900);
+ const hidden=await setup([note,minimized],{showWidgetRelaunchAction:false,showWidgetExportPngAction:false,startupDeferredIds:new Set(['button-note'])});
+ try{
+  assert.equal(hidden.window.document.querySelector('[data-widget-id="button-note"] .widget-relaunch-control'),null,'the normal card Relaunch toolbar control can be hidden');
+  assert.equal(hidden.window.document.querySelector('[data-widget-id="minimized-focus"] .widget-minimized-relaunch'),null,'the minimized-card Relaunch control follows the same setting');
+  assert.equal(hidden.window.document.querySelector('[aria-label="Export Button note PNG"]'),null,'the PNG export button can be hidden');
+  assert.ok([...hidden.window.document.querySelectorAll('[data-widget-id="button-note"] button')].some(button=>button.textContent==='Relaunch Button note'),'manual-startup recovery remains available when its toolbar button is hidden');
+ }finally{await hidden.cleanup()}
+ const onlyExport=await setup([note],{showWidgetRelaunchAction:false,showWidgetExportPngAction:true});
+ try{assert.ok(onlyExport.window.document.querySelector('[aria-label="Export Button note PNG"]'),'PNG export can remain visible while Relaunch is hidden')}finally{await onlyExport.cleanup()}
+ const onlyRelaunch=await setup([note],{showWidgetRelaunchAction:true,showWidgetExportPngAction:false});
+ try{assert.ok(onlyRelaunch.window.document.querySelector('[aria-label="Relaunch Button note"]'),'Relaunch can remain visible while PNG export is hidden');assert.equal(onlyRelaunch.window.document.querySelector('[aria-label="Export Button note PNG"]'),null)}finally{await onlyRelaunch.cleanup()}
 });
 
 test('Relaunch remounts an ordinary widget view while preserving its saved content',async()=>{

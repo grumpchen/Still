@@ -18,6 +18,8 @@ test('app behavior settings default to automatic shortcut saving and preserve th
  assert.equal(state.showAppAttachAction,false);
  assert.equal(state.showAppDetachAction,false);
  assert.equal(state.showAppSaveAction,false);
+ assert.equal(state.showWidgetRelaunchAction,true);
+ assert.equal(state.showWidgetExportPngAction,true);
  assert.equal(state.screenshotPluginMode,'global');
  assert.deepEqual(state.screenshotPluginColors,[]);
 });
@@ -26,11 +28,12 @@ test('app behavior settings persist and invalid shutdown values safely fall back
  const state=createInitialState();
  state.saveAppShortcutsOnAttach=false;
  state.appShutdownBehavior='minimize';
- state.showAppAttachAction=true;state.showAppDetachAction=true;state.showAppSaveAction=true;state.screenshotPluginMode='tag-colors';state.screenshotPluginColors=['red','blue'];state.background='transparent';
+ state.showAppAttachAction=true;state.showAppDetachAction=true;state.showAppSaveAction=true;state.showWidgetRelaunchAction=false;state.showWidgetExportPngAction=false;state.screenshotPluginMode='tag-colors';state.screenshotPluginColors=['red','blue'];state.background='transparent';
  let restored=parseState(JSON.stringify(state));
  assert.equal(restored.saveAppShortcutsOnAttach,false);
  assert.equal(restored.appShutdownBehavior,'minimize');
  assert.equal(restored.showAppAttachAction,true);assert.equal(restored.showAppDetachAction,true);assert.equal(restored.showAppSaveAction,true);
+ assert.equal(restored.showWidgetRelaunchAction,false);assert.equal(restored.showWidgetExportPngAction,false);
  assert.equal(restored.screenshotPluginMode,'tag-colors');assert.deepEqual(restored.screenshotPluginColors,['red','blue']);assert.equal(restored.background,'transparent');
  state.screenshotPluginMode='invalid';state.screenshotPluginColors=['invalid','red','red'];restored=parseState(JSON.stringify(state));
  assert.equal(restored.screenshotPluginMode,'global');assert.deepEqual(restored.screenshotPluginColors,['red']);
@@ -39,6 +42,9 @@ test('app behavior settings persist and invalid shutdown values safely fall back
  assert.equal(restored.appShutdownBehavior,'leaveOpen');
  delete state.saveAppShortcutsOnAttach;
  assert.equal(parseState(JSON.stringify(state)).saveAppShortcutsOnAttach,true);
+ delete state.showWidgetRelaunchAction;delete state.showWidgetExportPngAction;
+ restored=parseState(JSON.stringify(state));
+ assert.equal(restored.showWidgetRelaunchAction,true);assert.equal(restored.showWidgetExportPngAction,true,'older saved layouts keep the existing buttons visible');
 });
 
 test('General settings expose the three app shutdown choices and auto-save preference',()=>{
@@ -47,6 +53,8 @@ test('General settings expose the three app shutdown choices and auto-save prefe
  assert.match(general,/value="leaveOpen"[\s\S]*?Leave attached apps open/);
  assert.match(general,/Save an Apps shortcut automatically when attaching/);
  for(const action of ['Attach','Detach','Save to tray'])assert.match(general,new RegExp('Show '+action+' button'));
+ assert.match(general,/Show Relaunch button/);assert.match(general,/Show Export PNG button/);
+ assert.match(app,/showWidgetRelaunchAction=\{state\.showWidgetRelaunchAction\}/);assert.match(app,/showWidgetExportPngAction=\{state\.showWidgetExportPngAction\}/);
 });
 
 test('Appearance settings offer transparent and solid backgrounds and the existing leaf-photo glass material',()=>{
