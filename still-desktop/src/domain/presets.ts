@@ -1,12 +1,10 @@
-import {normalizeUrl} from './browser.ts';
 import {widgetCatalog,type WidgetType} from './widgetCatalog.ts';
 import type {WidgetInstance} from './workspaces.ts';
 export type FileKind='pdf'|'image'|'media'|'document';
 export type PresetType=Exclude<WidgetType,'group'>;
-export type GenericPresetType=Exclude<PresetType,'browser'|'files'|'apps'>;
+export type GenericPresetType=Exclude<PresetType,'files'|'apps'>;
 export interface PresetScheduleEntry {id:string;day:number;time:string;title:string;location:string}
-export type WidgetPreset={id:string;type:'browser';name:string;url:string;remaining?:number;clockPluginEnabled?:boolean}
- |{id:string;type:'files';name:string;resourceKind?:'folder';folderSourceId:string;folderName:string;remaining?:number;clockPluginEnabled?:boolean}
+export type WidgetPreset={id:string;type:'files';name:string;resourceKind?:'folder';folderSourceId:string;folderName:string;remaining?:number;clockPluginEnabled?:boolean}
  |{id:string;type:'files';name:string;resourceKind:'document';fileSourceId:string;fileName:string;fileKind:FileKind;remaining?:number;clockPluginEnabled?:boolean}
  |{id:string;type:'apps';name:string;appSourceId:string;appName:string;iconData?:string;remaining?:number;clockPluginEnabled?:boolean}
  |{id:string;type:GenericPresetType;name:string;text?:string;remaining?:number;schedule?:PresetScheduleEntry[];pluginControls?:string[];clockPluginEnabled?:boolean};
@@ -26,7 +24,6 @@ export function widgetPreset(value:WidgetPreset):WidgetPreset {
  if(value.remaining!==undefined&&(typeof value.remaining!=='number'||!Number.isFinite(value.remaining)||value.remaining<0||value.remaining>31536000))throw new Error('Use a valid saved timer duration.');
  const remaining=value.remaining===undefined?{}:{remaining:Math.ceil(value.remaining)};
  const clockPluginEnabled=value.clockPluginEnabled===true?true:undefined;
- if(value.type==='browser')return{id:value.id,type:'browser',name,url:normalizeUrl(value.url),...remaining,...(clockPluginEnabled?{clockPluginEnabled}:{})};
  if(value.type==='files'){
   if(value.resourceKind==='document'){
    if(typeof value.fileSourceId!=='string'||!/^[a-zA-Z0-9-]{1,80}$/.test(value.fileSourceId))throw new Error('Choose a file for this saved shortcut.');
@@ -57,7 +54,6 @@ export function widgetPreset(value:WidgetPreset):WidgetPreset {
 export function presetFromWidget(widget:WidgetInstance):WidgetPreset {
  const id=crypto.randomUUID(),name=widget.title.trim()||widgetCatalog[widget.type].name;
  const remaining=widget.end?Math.max(0,Math.ceil((widget.end-Date.now())/1000)):widget.remaining;
- if(widget.type==='browser')return widgetPreset({id,type:'browser',name,url:widget.url,...(widget.clockPluginEnabled?{remaining}:{}),clockPluginEnabled:widget.clockPluginEnabled});
  if(widget.type==='files'){
   if(widget.fileKey&&widget.fileName&&widget.fileKind)return widgetPreset({id,type:'files',resourceKind:'document',name,fileSourceId:widget.fileKey,fileName:widget.fileName,fileKind:widget.fileKind,...(widget.clockPluginEnabled?{remaining}:{}),clockPluginEnabled:widget.clockPluginEnabled});
   if(widget.folderKey||widget.folderName)return widgetPreset({id,type:'files',name,folderSourceId:widget.folderKey||widget.id,folderName:widget.folderName||'Selected folder',...(widget.clockPluginEnabled?{remaining}:{}),clockPluginEnabled:widget.clockPluginEnabled});

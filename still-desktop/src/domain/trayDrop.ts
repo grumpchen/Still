@@ -25,7 +25,7 @@ export function trayDropDecision(target:TrayDropTarget):TrayDropAction {
  if(target.savedTarget)return 'save';
  if(target.source==='file')return target.targetType==='files'?'save':'none';
  if(target.source==='app')return target.targetType==='apps'?'save':'none';
- return target.targetType==='browser'?'save':'none';
+ return 'none';
 }
 
 function entities(value:string):string {

@@ -4,12 +4,12 @@ export async function captureWidget(node:HTMLElement,copy:boolean):Promise<Blob>
   if(isTauri()){
     const rect=node.getBoundingClientRect();
     if(rect.left<0||rect.top<0||rect.right>innerWidth||rect.bottom>innerHeight)throw new Error('Bring the whole widget into view before capturing it.');
-    const host=node.querySelector<HTMLElement>('[data-native-browser-id],[data-native-app-id]');
+    const host=node.querySelector<HTMLElement>('[data-native-app-id]');
     if(host)for(let attempt=0;attempt<30&&host.dataset.nativeVisible!=='true';attempt++)await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));
     if(host&&host.dataset.nativeVisible!=='true')throw new Error('Let the app finish opening and bring the whole widget into view before capturing it.');
-    const browserRect=host?.getBoundingClientRect();
-    const region=host&&browserRect?{id:host.dataset.nativeBrowserId??host.dataset.nativeAppId,x:browserRect.x,y:browserRect.y,width:browserRect.width,height:browserRect.height}:null;
-    const bytes=await invoke<number[]>('widget_capture',{bounds:{x:rect.x,y:rect.y,width:rect.width,height:rect.height,viewportWidth:innerWidth,viewportHeight:innerHeight},browser:host?.dataset.nativeBrowserId?region:null,appRegion:host?.dataset.nativeAppId?region:null,copy});
+    const appRect=host?.getBoundingClientRect();
+    const appRegion=host&&appRect?{id:host.dataset.nativeAppId,x:appRect.x,y:appRect.y,width:appRect.width,height:appRect.height}:null;
+    const bytes=await invoke<number[]>('widget_capture',{bounds:{x:rect.x,y:rect.y,width:rect.width,height:rect.height,viewportWidth:innerWidth,viewportHeight:innerHeight},appRegion,copy});
     return new Blob([new Uint8Array(bytes)],{type:'image/png'});
   }
   if(node.querySelector('iframe'))throw new Error('Calculator screenshots require the Windows app. Web previews cannot capture a cross-site iframe.');

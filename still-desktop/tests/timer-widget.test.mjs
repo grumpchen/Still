@@ -50,3 +50,24 @@ test('the Focus widget uses the same clock dial surface',async()=>{
   if(old.IS_REACT_ACT_ENVIRONMENT===undefined)delete globalThis.IS_REACT_ACT_ENVIRONMENT;else globalThis.IS_REACT_ACT_ENVIRONMENT=old.IS_REACT_ACT_ENVIRONMENT;
  }
 });
+
+test('hidden workspace timers pause their display interval and resume on activation',async()=>{
+ const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true});
+ const old={window:globalThis.window,document:globalThis.document,IS_REACT_ACT_ENVIRONMENT:globalThis.IS_REACT_ACT_ENVIRONMENT,setInterval:globalThis.setInterval,clearInterval:globalThis.clearInterval};
+ const {default:TimerWidget}=await vite.ssrLoadModule('/src/TimerWidget.tsx');
+ globalThis.window=dom.window;globalThis.document=dom.window.document;globalThis.IS_REACT_ACT_ENVIRONMENT=true;
+ let started=0,cleared=0;globalThis.setInterval=()=>{started++;return started};globalThis.clearInterval=()=>{cleared++};
+ const root=createRoot(dom.window.document.querySelector('#root')),widget=createWidget('focus');
+ const render=workspaceActive=>createElement(TimerWidget,{widget,variant:'focus',workspaceActive,update:()=>{},notify:()=>{}});
+ try{
+  await act(async()=>root.render(render(false)));
+  assert.equal(started,0,'inactive workspace widgets do not schedule a display tick');
+  await act(async()=>root.render(render(true)));
+  assert.equal(started,1,'activating a workspace starts one display tick');
+  await act(async()=>root.render(render(false)));
+  assert.equal(cleared,1,'switching away clears the display tick');
+ }finally{
+  await act(async()=>root.unmount());dom.window.close();
+  for(const key of Object.keys(old)){if(old[key]===undefined)delete globalThis[key];else globalThis[key]=old[key]}
+ }
+});

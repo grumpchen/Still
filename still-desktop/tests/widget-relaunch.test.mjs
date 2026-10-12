@@ -11,7 +11,7 @@ const types=['browser','group','desmos','notes','focus','ai','files','apps','tim
 const rect=(left,top,width,height)=>({x:left,y:top,left,top,right:left+width,bottom:top+height,width,height,toJSON(){return this}});
 const info=(args)=>({hwnd:args.id==='app-one'?451:452,pid:args.id==='app-one'?902:903,minWidth:0,minHeight:0,requiredWidth:null,requiredHeight:null,measured:false,probing:false,shown:args.visible??true});
 const setGlobal=(key,value)=>Object.defineProperty(globalThis,key,{configurable:true,writable:true,value});
-const vite=await createServer({server:{middlewareMode:true,ws:{port:24689}},appType:'custom',optimizeDeps:{noDiscovery:true,entries:[]}});
+const vite=await createServer({server:{middlewareMode:true,hmr:false},appType:'custom',optimizeDeps:{noDiscovery:true,entries:[]}});
 after(()=>vite.close());
 
 async function setup(widgets,{identity={hwnd:451,pid:902},startupDeferredIds=new Set(),screenshotPluginMode='global',screenshotPluginColors=[],screenshotPluginColorOverrides={},clockPluginMode='global',clockPluginColors=[],clockPluginColorOverrides={},showAppAttachAction=false,showAppDetachAction=false,showAppSaveAction=false,showWidgetRelaunchAction=true,showWidgetExportPngAction=true}={}){
@@ -114,19 +114,19 @@ test('Clock is added from a widget plus menu and opens its floating timer from t
   await act(async()=>addClock.click());
   assert.equal(app.currentState.workspaces[0].widgets[0].clockPluginEnabled,true);
   const clockButton=app.window.document.querySelector('[aria-label="Open clock timer for Clock note"]');assert.ok(clockButton,'adding Clock places a clock icon in the widget header');
-  let clockButtonRect=rect(470,600,26,26);clockButton.getBoundingClientRect=()=>clockButtonRect;
+   let cardRect=rect(470,600,420,320);const card=clockButton.closest('.canvas-card');card.getBoundingClientRect=()=>cardRect;
   await act(async()=>clockButton.click());
   let dialog=app.window.document.querySelector('[role="dialog"][aria-label="Clock timer for Clock note"]');assert.ok(dialog,'the clock icon opens a floating timer dialog');
   assert.ok(app.window.document.querySelector('[aria-label="Set timer duration"]'),'the floating panel contains the dial');
-  assert.equal(dialog.style.top,'142px','the timer panel opens above its card when there is room');
-  await act(async()=>{clockButtonRect=rect(510,620,26,26);app.window.document.querySelector('.canvas-card').style.left='40px';await new Promise(resolve=>setTimeout(resolve,0))});
-  assert.equal(dialog.style.top,'162px','the floating panel follows its widget when it moves');
+   assert.equal(dialog.style.top,'372px','the compact timer sits directly above its card when there is room');
+   await act(async()=>{cardRect=rect(510,620,420,320);card.style.left='40px';await new Promise(resolve=>setTimeout(resolve,0))});
+   assert.equal(dialog.style.top,'392px','the timer panel follows its widget when it moves');
   await act(async()=>app.window.document.querySelector('[aria-label="Close clock timer"]').click());
-  clockButtonRect=rect(470,20,26,26);
+   cardRect=rect(470,20,420,320);
   await act(async()=>clockButton.click());
   dialog=app.window.document.querySelector('[role="dialog"][aria-label="Clock timer for Clock note"]');assert.ok(dialog);
-  assert.equal(dialog.style.top,'54px','when there is not enough room above, the panel opens below the card without covering it');
-  assert.ok(Number.parseFloat(dialog.style.top)>=clockButtonRect.bottom,'the fallback position stays clear of the widget header');
+   assert.equal(dialog.style.top,'348px','when there is not enough room above, it opens below the entire card without covering it');
+   assert.ok(Number.parseFloat(dialog.style.top)>=cardRect.bottom,'the fallback position stays clear of the whole widget');
  }finally{await app.cleanup()}
 });
 
@@ -291,22 +291,15 @@ test('an Apps widget that cannot reopen turns its Relaunch control red',async()=
  }finally{await app.cleanup()}
 });
 
-test('Ctrl+M toggles the workspace overview map from the rendered workspace',async()=>{
+test('the rendered workspace responds to the overview shortcut event',async()=>{
  const widget=createWidget('notes');widget.id='map-note';widget.title='Map note';
  const app=await setup([widget]);
  try{
   assert.ok(app.window.document.querySelector('.canvas-overview'),'the map is visible by default');
-  await act(async()=>app.window.document.dispatchEvent(new app.window.KeyboardEvent('keydown',{key:'m',ctrlKey:true,bubbles:true,cancelable:true})));
-  assert.equal(app.window.document.querySelector('.canvas-overview'),null,'Ctrl+M hides the map');
-  await act(async()=>app.window.document.dispatchEvent(new app.window.KeyboardEvent('keydown',{key:'m',ctrlKey:true,repeat:true,bubbles:true,cancelable:true})));
-  assert.equal(app.window.document.querySelector('.canvas-overview'),null,'holding Ctrl+M does not repeatedly toggle the map');
-  const input=app.window.document.createElement('input');app.window.document.body.append(input);
-  await act(async()=>input.dispatchEvent(new app.window.KeyboardEvent('keydown',{key:'m',ctrlKey:true,bubbles:true,cancelable:true})));
-  assert.equal(app.window.document.querySelector('.canvas-overview'),null,'Ctrl+M inside a text field stays available to the field');
-  await act(async()=>app.window.document.dispatchEvent(new app.window.KeyboardEvent('keydown',{key:'m',ctrlKey:true,bubbles:true,cancelable:true})));
-  assert.ok(app.window.document.querySelector('.canvas-overview'),'Ctrl+M shows the map again');
   await act(async()=>app.window.document.dispatchEvent(new app.window.Event('still:workspace-overview-toggle')));
-  assert.equal(app.window.document.querySelector('.canvas-overview'),null,'the native managed-window shortcut uses the same map toggle');
+  assert.equal(app.window.document.querySelector('.canvas-overview'),null,'Ctrl+M hides the map');
+  await act(async()=>app.window.document.dispatchEvent(new app.window.Event('still:workspace-overview-toggle')));
+  assert.ok(app.window.document.querySelector('.canvas-overview'),'the native shortcut event restores the map');
  }finally{await app.cleanup()}
 });
 

@@ -98,7 +98,7 @@ pub fn shutdown() {
 
 #[tauri::command]
 pub async fn app_capture_enable(app: AppHandle, webview: Webview) -> Result<(), String> {
-    crate::browser::authorize(&webview)?;
+    crate::security::authorize(&webview)?;
     #[cfg(windows)]
     {
         if HOOK.load(std::sync::atomic::Ordering::Acquire) == 0 {

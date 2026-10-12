@@ -55,7 +55,6 @@ input[type=checkbox]{appearance:none;-webkit-appearance:none;width:14px!importan
 .canvas-card.group-collapsed .group-hidden-header-action{display:none!important}
 .canvas-card .group-widget-count{flex:none;padding:2px 5px;border:1px solid var(--border);border-radius:999px;background:var(--tint);color:var(--muted);font-size:9px;line-height:1.2}
 .canvas-card .group-collapse-toggle{font-size:17px;line-height:1;color:var(--accent)}
-.canvas-card .widget-controls .browser-lecture-action{width:auto;min-width:32px;padding:4px;font-size:9px;white-space:nowrap}
 .canvas-card.widget-minimized{min-width:0;min-height:0;border-radius:12px;overflow:visible;box-shadow:0 3px 14px #14233224}.widget-minimized .widget-content,.widget-minimized .widget-resize{display:none!important}.widget-minimized-button{position:absolute;inset:0;width:100%;height:100%;display:flex;align-items:center;gap:8px;padding:5px 36px 5px 10px;border:1px solid var(--border);border-radius:12px;background:var(--surface);box-shadow:0 3px 14px #14233218;color:var(--text);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:left;cursor:grab;touch-action:none;user-select:none}.widget-minimized-button:active{cursor:grabbing}.widget-minimized-button svg{width:16px;height:16px;flex:none}.widget-minimized-button span{overflow:hidden;text-overflow:ellipsis}.widget-minimized-relaunch{position:absolute;z-index:1;top:7px;right:7px;width:28px;height:28px;display:grid;place-items:center;padding:5px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--muted);box-shadow:none;cursor:pointer}.widget-minimized-relaunch svg{width:15px;height:15px}.widget-minimized-relaunch:hover{color:var(--accent);background:var(--tint)}
 .canvas-status{display:flex;justify-content:space-between;gap:10px;font-size:9px;color:var(--muted);flex-shrink:0;padding:0 3px}
 .canvas-empty{position:absolute;top:80px;left:0;width:100%;text-align:center;color:var(--muted);padding:30px}.canvas-empty svg{height:30px;width:30px;margin-bottom:15px}.canvas-empty h2{font-size:22px;font-weight:400}.canvas-empty p{margin-top:12px;font-size:12px}
@@ -91,13 +90,23 @@ input[type=checkbox]{appearance:none;-webkit-appearance:none;width:14px!importan
 
 .widget-clock-control{display:grid;place-items:center;width:26px;height:26px;padding:4px}
 .widget-clock-control svg,.widget-plugin-choice svg{width:15px;height:15px;flex:none}
-.widget-clock-popover{z-index:9998;width:min(360px,calc(100vw - 16px));max-height:min(450px,calc(100dvh - 16px));overflow:auto;border:1px solid #555958;border-radius:18px;background:#101111;box-shadow:0 18px 44px #0008;color:#f5f5f3;overscroll-behavior:contain}
-.widget-clock-popover .timer-widget{min-height:0;max-height:none;overflow:visible;padding:18px 20px 16px;border-radius:17px}
-.widget-clock-popover .timer-dial{width:min(100%,190px)}
-.widget-clock-close{position:absolute;z-index:2;top:7px;right:8px;width:26px;height:26px;padding:0;border:0;border-radius:50%;background:#ffffff18;color:#f5f5f3;font-size:18px;line-height:1;box-shadow:none}
+.widget-clock-popover{z-index:9998;width:min(180px,calc(100vw - 16px));max-height:min(220px,calc(100dvh - 16px));overflow:auto;border:1px solid #555958;border-radius:14px;background:#101111;box-shadow:0 10px 24px #0008;color:#f5f5f3;overscroll-behavior:contain}
+.widget-clock-popover .timer-widget{min-height:0;max-height:none;overflow:visible;gap:4px;padding:10px 9px 9px;border-radius:13px}
+.widget-clock-popover .timer-widget-top{padding-right:20px;font-size:8px}
+.widget-clock-popover .timer-widget-top span:last-child{font-size:6px}
+.widget-clock-popover .timer-mode-switch{width:min(130px,90%);padding:1px}
+.widget-clock-popover .timer-mode-switch button{min-height:21px;padding:2px 5px;font-size:8px}
+.widget-clock-popover .timer-dial{width:min(100%,100px)}
+.widget-clock-popover .timer-dial-mark{width:18px;height:18px;font-size:8px}
+.widget-clock-popover .timer-dial-center strong{font-size:14px}
+.widget-clock-popover .timer-dial-center span{font-size:6px}
+.widget-clock-popover .timer-range-wrap input{height:10px}
+.widget-clock-popover .timer-range-labels{font-size:6px}
+.widget-clock-popover .timer-widget-actions{grid-template-columns:1fr 1.2fr 1fr .8fr;gap:2px}
+.widget-clock-popover .timer-widget-actions button{min-height:20px;padding:2px 1px;border-radius:6px;font-size:6px}
+.widget-clock-close{position:absolute;z-index:2;top:4px;right:4px;width:19px;height:19px;padding:0;border:0;border-radius:50%;background:#ffffff18;color:#f5f5f3;font-size:14px;line-height:1;box-shadow:none}
 .widget-clock-close:hover{background:#ffffff2c}
 .liquid-glass .widget-clock-popover{backdrop-filter:blur(18px);background:#111312f2;border-color:#ffffff33}
-@media(max-width:420px){.widget-clock-popover{width:calc(100vw - 16px)}.widget-clock-popover .timer-widget{padding:16px 12px 12px}.widget-clock-popover .timer-dial{width:min(100%,160px)}}
 
 .timer-widget{display:flex;flex-direction:column;align-items:center;gap:7px;min-height:0;overflow:auto;padding:9px 11px 11px;color:#f5f5f3;background:radial-gradient(ellipse at 50% 35%,#1b1b1b 0%,#101111 62%,#090a0a 100%)}
 .timer-widget-top{display:flex;align-items:center;justify-content:space-between;width:100%;font-size:10px;color:#c9cbca;letter-spacing:.04em}
@@ -167,23 +176,6 @@ input[type=checkbox]{appearance:none;-webkit-appearance:none;width:14px!importan
 .liquid-glass .topbar-actions button{border-radius:999px;backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);background:rgb(248 255 248 / .64);border-color:rgb(255 255 255 / .65);text-shadow:none}
 .liquid-glass.dark .topbar-actions{background:rgb(35 51 42 / .78);border-color:rgb(230 255 236 / .22)}
 .liquid-glass .topbar-actions button:hover{background:rgb(255 255 255 / .35)}
-.embedded-browser{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}
-.canvas-card.widget-browser .widget-content{overflow:hidden}
-.canvas-card.widget-browser .browser-host{flex:1 1 0;height:auto;min-height:0}
-.canvas-card .browser-toolbar{gap:4px;padding:7px 9px;flex-shrink:0}
-.canvas-card .browser-toolbar>button{width:25px;height:27px;padding:3px;font-size:16px;border:0;background:transparent;box-shadow:none}
-.canvas-card .browser-toolbar form{border-radius:10px;padding:1px 5px}
-.canvas-card .browser-toolbar input{font-size:11px;padding:5px 0}
-.browser-tools{display:flex;align-items:center;gap:5px;flex-wrap:wrap;flex-shrink:0;padding:6px 9px;border-bottom:1px solid var(--border);background:var(--sidebar)}
-.canvas-card .browser-tools button{font-size:10px;padding:6px 8px;border-radius:9px;white-space:nowrap}
-.browser-tools .lecture-button{margin-left:auto}
-.browser-extra-controls{flex-shrink:0;max-height:50%;min-height:0;overflow:auto;border-bottom:1px solid var(--border)}
-.browser-extra-controls .bookmark-panel{max-height:none;border-bottom:0;padding:7px 9px}
-.browser-extra-controls .bookmark-item{display:flex;align-items:center;max-width:100%;border:1px solid var(--border);border-radius:9px;overflow:hidden;background:var(--tint)}
-.canvas-card .bookmark-item button{border:0;box-shadow:none;background:transparent;border-radius:0;font-size:10px;padding:5px 6px}
-.canvas-card .bookmark-item .bookmark-open{display:flex;align-items:center;gap:5px;min-width:0;max-width:230px;text-align:left;padding:6px 8px}
-.bookmark-open>span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.canvas-card .bookmark-item button:hover{background:var(--surface)}
-.canvas-card .bookmark-add{font-size:10px;margin-top:8px;padding:5px 8px;border-style:dashed;box-shadow:none}
 .group-widget{display:flex;flex-direction:column;flex:1;min-height:0}
 .group-name{display:flex;flex-direction:column;gap:5px;font-size:10px;color:var(--muted);padding:12px 14px;border-bottom:1px solid var(--border)}
 .group-name input{width:100%;min-width:0;border:1px solid var(--border);border-radius:8px;background:var(--tint);padding:7px 8px;font-size:12px;color:var(--text)}
@@ -197,13 +189,6 @@ input[type=checkbox]{appearance:none;-webkit-appearance:none;width:14px!importan
 .group-empty{padding:12px 4px;color:var(--muted);font-size:12px;line-height:1.7}
 .canvas-card .group-add{margin:7px 14px 14px;flex-shrink:0;border-style:dashed;box-shadow:none;font-size:11px;padding:8px}
 .group-widget .shortcut-form{flex:1;min-height:0}.group-widget .shortcut-form .widget-error{margin:0;padding:7px 0}
-.canvas-card .browser-placeholder{gap:10px;padding:18px}
-.canvas-card .browser-placeholder h2{font-size:20px}.canvas-card .browser-placeholder p{font-size:11px}
-.canvas-card .browser-placeholder .site-symbol{width:32px;height:32px;border-radius:10px}.canvas-card .browser-placeholder .site-symbol svg{width:18px}
-.canvas-card .embedded-browser .widget-error{max-height:65px;overflow:auto;flex-shrink:0;padding:7px 11px}
-.liquid-glass .browser-tools{background:rgb(255 255 255 / .07);border-color:rgb(255 255 255 / .22)}
-.liquid-glass .bookmark-panel{background:rgb(255 255 255 / .08)}
-.liquid-glass .bookmark-item{background:rgb(255 255 255 / .16)}
 .widget-tray{flex-direction:column;align-items:stretch;gap:0}
 .tray-main-row{display:flex;align-items:center;gap:10px;min-height:0;flex-shrink:0;min-width:0}
 .tray-main-row .tray-items{flex:1;min-width:0}
@@ -240,8 +225,8 @@ input[type=checkbox]{appearance:none;-webkit-appearance:none;width:14px!importan
 .preset-tray-entry .preset-action{font-size:10px;padding:3px 5px;border:0;border-radius:0;background:transparent;box-shadow:none;flex-shrink:0}
 .preset-file-entry{max-width:240px}.preset-file-entry .preset-open{min-width:0;max-width:205px;overflow:hidden}.preset-file-entry .preset-open>span:first-of-type{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .preset-tray .preset-app-entry{background:transparent;border:0;overflow:visible;gap:3px}
-.preset-app-entry .preset-open{width:34px;height:34px;min-width:34px;justify-content:center;padding:4px;border:1px solid var(--border);border-radius:9px;background:var(--tint);box-shadow:none}
-.preset-app-entry .preset-open svg,.preset-app-icon{width:23px;height:23px;object-fit:contain;flex-shrink:0}
+.preset-app-entry .preset-open{width:34px;height:34px;min-width:34px;justify-content:center;padding:4px;border:1px solid #fff;border-radius:9px;background:#fff;box-shadow:none}
+.preset-app-entry .preset-open svg,.preset-app-icon{width:23px;height:23px;object-fit:contain;flex-shrink:0;background:#fff;border-radius:5px}
 .preset-app-entry .preset-action{width:24px;min-width:24px;padding:2px;border:1px solid transparent;border-radius:7px}
 .preset-app-entry .preset-action:hover{border-color:var(--border);background:var(--tint)}
 .apps-tray-add{width:30px;min-width:30px;height:30px;justify-content:center!important;border:1px dashed var(--accent)!important;border-radius:9px!important;background:transparent!important;color:var(--accent)!important;font-size:20px!important;line-height:1;padding:0!important;box-shadow:none!important;cursor:pointer!important}

@@ -68,5 +68,5 @@ test('a captured external window creates a source-free transient Apps widget wit
 
 test('quick attach fetches the icon for the exact captured HWND/PID and passes it into the widget',()=>{
  assert.match(appSource,/appPanel\.icon\(\{hwnd:result\.hwnd,pid:result\.pid\}\)/);
- assert.match(appSource,/managedAppWidget\(\{sourceId:source\?\.sourceId\?\?null,name:title\},title,owner\.widgets,undefined,undefined,false,icon\)/);
+ assert.match(appSource,/managedAppWidget\(\{sourceId:null,name:title\},title,owner\.widgets,undefined,undefined,false,icon\)/);
 });

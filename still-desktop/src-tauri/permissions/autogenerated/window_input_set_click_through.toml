@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-window-input-set-click-through"
+description = "Enables the window_input_set_click_through command without any pre-configured scope."
+commands.allow = ["window_input_set_click_through"]
+
+[[permission]]
+identifier = "deny-window-input-set-click-through"
+description = "Denies the window_input_set_click_through command without any pre-configured scope."
+commands.deny = ["window_input_set_click_through"]

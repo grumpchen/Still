@@ -135,7 +135,6 @@ pub(crate) fn capture_candidate(app:&AppHandle,hwnd:usize,expected_pid:u32)->Res
  let mut class=[0u16;256];let class_len=GetClassNameW(target,&mut class).max(0) as usize;let class=String::from_utf16_lossy(&class[..class_len.min(class.len())]);
  if ["Progman","WorkerW","Shell_TrayWnd","#32768"].contains(&class.as_str())||class.to_ascii_lowercase().contains("splash")||GetWindowLongPtrW(target,GWL_EXSTYLE)&WS_EX_TOOLWINDOW.0 as isize!=0{return Ok(None)}
   }
-  if crate::chrome_overlay::managed_windows(app).contains(&(hwnd,expected_pid)){return Ok(None)}
  let state=app.state::<AppPanelState>();let panels=state.0.lock().map_err(|_|"App panels are unavailable")?;if target_claimed(&panels,hwnd,expected_pid){return Ok(None)}drop(panels);
  direct_candidate(hwnd,expected_pid).map(|candidate|Some(candidate.title))
 }
@@ -191,7 +190,7 @@ fn foreground_in(items:&HashMap<String,Entry>,front:HWND)->bool{
  items.values().any(|e|belongs(front,e.hwnd,e.pid))
 }
 pub fn is_managed_foreground(app:&AppHandle,hwnd:HWND)->bool{app.state::<AppPanelState>().0.try_lock().map(|s|foreground_in(&s.items,hwnd)).unwrap_or(false)}
-fn parent_context(items:&HashMap<String,Entry>,main:HWND,app:&AppHandle)->bool{let front=unsafe{GetForegroundWindow()};front.0.is_null()||pid(front)==std::process::id()||foreground_in(items,front)||crate::chrome_overlay::is_managed_foreground(app,front)||front==main}
+fn parent_context(items:&HashMap<String,Entry>,main:HWND)->bool{let front=unsafe{GetForegroundWindow()};front.0.is_null()||pid(front)==std::process::id()||foreground_in(items,front)||front==main}
 
 fn attach(window:&WindowInfo,source_id:String,bounds:Bounds,clip:Bounds,grip:Option<Bounds>,main:HWND,preserve_focus:bool)->Result<Entry,String>{unsafe{
  let hwnd=handle(window.hwnd);
@@ -360,7 +359,7 @@ fn place(app:&AppHandle,panels:&mut Panels){
  remove_closed(app,panels,None);
  let Ok(main)=owner()else{return};let mut origin=POINT::default();if !unsafe{ClientToScreen(main,&mut origin).as_bool()}{return}
  let scale=unsafe{windows::Win32::UI::HiDpi::GetDpiForWindow(main)}.max(96) as f64/96.;
- let parent=unsafe{IsWindowVisible(main).as_bool()&&!IsIconic(main).as_bool()}&&parent_context(&panels.items,main,app);
+ let parent=unsafe{IsWindowVisible(main).as_bool()&&!IsIconic(main).as_bool()}&&parent_context(&panels.items,main);
  for (id,entry) in panels.items.iter_mut(){if !valid_window(entry){continue}
   match protect_collected_window(entry){
    Ok(true)=>continue,
@@ -409,7 +408,7 @@ unsafe extern "system" fn event(_:HWINEVENTHOOK,event:u32,hwnd:HWND,object:i32,c
  }
 }
 pub fn install(app:&AppHandle)->Result<(),String>{
- let _=APP.set(app.clone());let main=app.get_window("main").ok_or("Still window is missing")?.hwnd().map_err(|e|e.to_string())?;
+ let _=APP.set(app.clone());let main=app.get_webview_window("main").ok_or("Still window is missing")?.hwnd().map_err(|e|e.to_string())?;
  OWNER.store(main.0 as usize,std::sync::atomic::Ordering::Relaxed);
  unsafe{for (a,b) in [(EVENT_SYSTEM_FOREGROUND,EVENT_SYSTEM_FOREGROUND),(EVENT_OBJECT_DESTROY,EVENT_OBJECT_LOCATIONCHANGE)]{if SetWinEventHook(a,b,None,Some(event),0,0,WINEVENT_OUTOFCONTEXT).0.is_null(){return Err("Unable to synchronize application panels".into())}}}Ok(())
 }
@@ -418,14 +417,14 @@ pub fn shutdown(app:&AppHandle){let state=app.state::<AppPanelState>();if let Ok
 
 #[tauri::command]
 pub async fn app_panel_configure_shutdown(app:AppHandle,webview:Webview,behavior:AppShutdownBehavior)->Result<(),String>{
- crate::browser::authorize(&webview)?;
+ crate::security::authorize(&webview)?;
  let state=app.state::<AppPanelState>();let mut panels=state.0.lock().map_err(|_|"App panels are unavailable")?;
  panels.shutdown_behavior=behavior;Ok(())
 }
 
 #[tauri::command]
 pub async fn app_panel_suspend(app:AppHandle,webview:Webview,id:String,for_collection:Option<bool>)->Result<bool,String>{
- crate::browser::authorize(&webview)?;instance(&id)?;
+ crate::security::authorize(&webview)?;instance(&id)?;
  let state=app.state::<AppPanelState>();let mut panels=state.0.lock().map_err(|_|"App panels are unavailable")?;
  let Some(hwnd)=panels.items.get(&id).filter(|entry|valid_window(entry)).map(|entry|entry.hwnd)else{return Ok(false)};
  *panels.generation.entry(id.clone()).or_default()+=1;panels.pending.remove(&id);
@@ -439,7 +438,7 @@ pub async fn app_panel_suspend(app:AppHandle,webview:Webview,id:String,for_colle
 
 #[tauri::command]
 pub async fn app_panel_resume(app:AppHandle,webview:Webview,id:String,cancel_collection:Option<bool>)->Result<Info,String>{
- crate::browser::authorize(&webview)?;instance(&id)?;let main=owner()?;
+ crate::security::authorize(&webview)?;instance(&id)?;let main=owner()?;
  let state=app.state::<AppPanelState>();let mut panels=state.0.lock().map_err(|_|"App panels are unavailable")?;
  if panels.items.get(&id).is_some_and(valid_window){
   if cancel_collection==Some(true){prepare_collection_resume(panels.items.get_mut(&id).unwrap(),true);place(&app,&mut panels);crate::native_panels::apply_order(&app);let entry=panels.items.get(&id).ok_or("The app window is no longer available. Reattach it from Apps.")?;return Ok(info(entry,main,false))}
@@ -464,7 +463,7 @@ pub async fn app_panel_resume(app:AppHandle,webview:Webview,id:String,cancel_col
 
 #[tauri::command]
 pub async fn app_panel_open(app:AppHandle,webview:Webview,id:String,source_id:String,bounds:Bounds,clip:Bounds,grip:Option<Bounds>,reuse_existing:Option<bool>)->Result<Info,String>{
- crate::browser::authorize(&webview)?;instance(&id)?;bounds.validate()?;clip.validate()?;if let Some(grip)=&grip{grip.validate()?}
+ crate::security::authorize(&webview)?;instance(&id)?;bounds.validate()?;clip.validate()?;if let Some(grip)=&grip{grip.validate()?}
  let path=app.state::<crate::dropped_files::AppGrants>().target(&source_id)?;
  tauri::async_runtime::spawn_blocking(move||{
   let main=owner()?;let state=app.state::<AppPanelState>();
@@ -501,17 +500,17 @@ pub async fn app_panel_open(app:AppHandle,webview:Webview,id:String,source_id:St
  }).await.map_err(|e|e.to_string())?
 }
 #[tauri::command]
-pub async fn app_panel_windows(app:AppHandle,webview:Webview)->Result<Vec<WindowInfo>,String>{crate::browser::authorize(&webview)?;let _=app;tauri::async_runtime::spawn_blocking(windows).await.map_err(|e|e.to_string())}
+pub async fn app_panel_windows(app:AppHandle,webview:Webview)->Result<Vec<WindowInfo>,String>{crate::security::authorize(&webview)?;let _=app;tauri::async_runtime::spawn_blocking(windows).await.map_err(|e|e.to_string())}
 #[tauri::command]
 pub async fn app_panel_identity(app:AppHandle,webview:Webview,id:String)->Result<Option<AttachmentIdentity>,String>{
- crate::browser::authorize(&webview)?;instance(&id)?;
+ crate::security::authorize(&webview)?;instance(&id)?;
  tauri::async_runtime::spawn_blocking(move||{let state=app.state::<AppPanelState>();let panels=state.0.lock().map_err(|_|"App panels are unavailable")?;
   Ok(attachment_identity(panels.items.get(&id)))
  }).await.map_err(|e|e.to_string())?
 }
 #[tauri::command]
 pub async fn app_panel_attach(app:AppHandle,webview:Webview,id:String,hwnd:usize,pid:u32,bounds:Bounds,clip:Bounds,grip:Option<Bounds>,preserve_focus:Option<bool>)->Result<Info,String>{
- crate::browser::authorize(&webview)?;instance(&id)?;bounds.validate()?;clip.validate()?;if let Some(grip)=&grip{grip.validate()?}
+ crate::security::authorize(&webview)?;instance(&id)?;bounds.validate()?;clip.validate()?;if let Some(grip)=&grip{grip.validate()?}
  let preserve_focus=preserve_focus.unwrap_or(false);
  tauri::async_runtime::spawn_blocking(move||{
   let state=app.state::<AppPanelState>();
@@ -540,7 +539,7 @@ pub async fn app_panel_attach(app:AppHandle,webview:Webview,id:String,hwnd:usize
 }
 #[tauri::command]
 pub async fn app_panel_present(app:AppHandle,webview:Webview,id:String,bounds:Bounds,clip:Bounds,grip:Option<Bounds>,occlusions:Vec<Bounds>,viewport_right:f64,visible:bool,stacking_rank:i64,revision:u64)->Result<Info,String>{
- crate::browser::authorize(&webview)?;instance(&id)?;bounds.validate()?;clip.validate()?;if !viewport_right.is_finite()||!(-20000.0..=40000.0).contains(&viewport_right){return Err("Invalid Apps viewport edge".into())}if let Some(grip)=&grip{grip.validate()?}if occlusions.len()>256{return Err("Too many overlapping workspace widgets".into())}for item in &occlusions{item.validate()?}
+ crate::security::authorize(&webview)?;instance(&id)?;bounds.validate()?;clip.validate()?;if !viewport_right.is_finite()||!(-20000.0..=40000.0).contains(&viewport_right){return Err("Invalid Apps viewport edge".into())}if let Some(grip)=&grip{grip.validate()?}if occlusions.len()>256{return Err("Too many overlapping workspace widgets".into())}for item in &occlusions{item.validate()?}
  let state=app.state::<AppPanelState>();let mut s=state.0.lock().map_err(|_|"App panels unavailable")?;
   let entry=s.items.get_mut(&id).ok_or("The app was closed. Reopen it below.")?;
   if !valid_window(entry){s.items.remove(&id);return Err("The app was closed. Reopen it below.".into())}
@@ -554,12 +553,12 @@ pub async fn app_panel_present(app:AppHandle,webview:Webview,id:String,bounds:Bo
  let main=owner()?;let entry=s.items.get(&id).ok_or("The app was closed. Reopen it below.")?;let result=info(entry,main,entry.fresh);drop(s);crate::native_panels::apply_order(&app);Ok(result)
 }
 #[tauri::command]
-pub async fn app_panel_release(app:AppHandle,webview:Webview,id:String)->Result<(),String>{crate::browser::authorize(&webview)?;instance(&id)?;release(&app,&id);crate::native_panels::apply_order(&app);Ok(())}
+pub async fn app_panel_release(app:AppHandle,webview:Webview,id:String)->Result<(),String>{crate::security::authorize(&webview)?;instance(&id)?;release(&app,&id);crate::native_panels::apply_order(&app);Ok(())}
 
 pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
  let state=app.state::<AppPanelState>();let panels=state.0.lock().map_err(|_|"App panels unavailable")?;
  let entry=panels.items.get(id).ok_or("Reopen the app before capturing")?;let main=owner()?;
- if !entry.shown||!entry.visible||!valid_window(entry)||!parent_context(&panels.items,main,app){return Err("Bring Still and this app panel to the front before capturing".into())}
+ if !entry.shown||!entry.visible||!valid_window(entry)||!parent_context(&panels.items,main){return Err("Bring Still and this app panel to the front before capturing".into())}
  let (_, (x,y,w,h), _, _, _)=entry.last.as_ref().ok_or("The app is not positioned yet")?;let (x,y,w,h)=(*x,*y,*w,*h);
  if w<1||h<1||w as i64*h as i64>16000000{return Err("App capture is too large".into())}
  unsafe{

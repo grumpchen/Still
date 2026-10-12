@@ -3,6 +3,18 @@ import assert from 'node:assert/strict';
 import {placement,nextPlacement,translate,resize,canvasExtent,canvasHeight,constrainPlacement} from '../src/domain/layout.ts';
 import {createInitialState,createWidget,createWorkspace,duplicateWorkspace,parseState,transferWidgetInstance,widgetTypes} from '../src/domain/workspaces.ts';
 import {shortcut,reorderShortcuts,parseWebShortcuts} from '../src/domain/webShortcuts.ts';
+import {canvasFrameInterval,isCanvasFrameDue} from '../src/domain/performance.ts';
+
+test('workspace movement rate caps interaction work without exceeding the display scheduler',()=>{
+  assert.equal(canvasFrameInterval(30),1000/30);
+  assert.equal(canvasFrameInterval(60),1000/60);
+  assert.equal(canvasFrameInterval('display'),0);
+  assert.equal(isCanvasFrameDue(0,0,30),true);
+  assert.equal(isCanvasFrameDue(20,10,30),false);
+  assert.equal(isCanvasFrameDue(44,10,30),true);
+  assert.equal(isCanvasFrameDue(20,10,60),false);
+  assert.equal(isCanvasFrameDue(20,10,'display'),true);
+});
 
 test('canvas geometry normalizes corrupt data and applies free movement/resizing with useful minima',()=>{
   const p=placement('notes',{x:17.2,y:33.4,width:451,height:297});
@@ -66,6 +78,14 @@ test('version 2 browser migration preserves bookmarks, custom URL, notes, appear
   assert.equal(restored.workspaces[0].widgets.find(w=>w.type==='notes').text,note.text);
   assert.deepEqual(restored.glass,state.glass);assert.deepEqual(restored.shortcuts,state.shortcuts);
   assert.deepEqual(parseState(JSON.stringify(restored)),restored);
+});
+test('workspace performance preference persists and old saves default to display refresh',()=>{
+  const state=createInitialState();
+  assert.equal(state.canvasFrameRate,'display');
+  state.canvasFrameRate=30;
+  assert.equal(parseState(JSON.stringify(state)).canvasFrameRate,30);
+  delete state.canvasFrameRate;
+  assert.equal(parseState(JSON.stringify(state)).canvasFrameRate,'display');
 });
 test('multiple instances and duplicated workspaces retain independent state and geometry',()=>{
   const workspace=createWorkspace('Many',['browser','browser','notes','notes','timetable']);

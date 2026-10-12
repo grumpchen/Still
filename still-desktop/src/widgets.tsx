@@ -1,7 +1,6 @@
 import FilesWidget from './FilesWidget.tsx';
 import AppsWidget from './AppsWidget.tsx';
 import { useEffect, useState, type ComponentType } from 'react';
-import BrowserWidget from './BrowserWidget.tsx';
 import TimetableWidget from './TimetableWidget.tsx';
 import GroupWidget from './GroupWidget.tsx';
 import type {WebShortcut} from './domain/webShortcuts.ts';
@@ -15,10 +14,10 @@ import TimerWidget from './TimerWidget.tsx';
 
 import { Icon } from './Icon.tsx';
 export { Icon };
-export interface WidgetProps { widget:WidgetInstance; update:(patch:Partial<WidgetInstance>)=>void; obscured:boolean; workspaceActive?:boolean; relaunchToken?:number; onRelaunchStatus?:(failed:boolean)=>void; notify:(message:string)=>void; lecture?:()=>void; openResource?:(link:WebShortcut)=>void;group?:SavedGroup;updateGroup?:(patch:Partial<Omit<SavedGroup,'id'>>)=>void;openGroupWidget?:(entry:GroupWidgetEntry)=>void;pickApp?:()=>void;saveApp?:()=>void;appAttachment?:import('./platform/appPanel.ts').AppAttachment;appAttachmentHandled?:()=>void;widgetPluginContext?:WidgetPluginContext }
+export interface WidgetProps { widget:WidgetInstance; update:(patch:Partial<WidgetInstance>)=>void; obscured:boolean; workspaceActive?:boolean; relaunchToken?:number; onRelaunchStatus?:(failed:boolean)=>void; notify:(message:string)=>void; openResource?:(link:WebShortcut)=>void;group?:SavedGroup;updateGroup?:(patch:Partial<Omit<SavedGroup,'id'>>)=>void;openGroupWidget?:(entry:GroupWidgetEntry)=>void;pickApp?:()=>void;saveApp?:()=>void;appAttachment?:import('./platform/appPanel.ts').AppAttachment;appAttachmentHandled?:()=>void;widgetPluginContext?:WidgetPluginContext }
 function Notes({widget,update}:WidgetProps){return <><div className="card-body"><h2 className="note-title">A place to begin</h2><textarea className="note" aria-label="Note text" value={widget.text} onChange={e=>update({text:e.target.value})}/></div><div className="note-status">PLAIN TEXT · SAVED LOCALLY</div></>}
 function Calculator({obscured,notify}:WidgetProps){return <div className="calculator-widget"><div className="widget-subbar"><span>Desmos scientific</span><button onClick={()=>void chromeLauncher.open(DESMOS_URL).catch(e=>notify(String(e)))}>Open in Chrome ↗</button></div><iframe title="Desmos scientific calculator" src={DESMOS_URL} referrerPolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-forms" style={{pointerEvents:obscured?'none':undefined}}/></div>}
 function Assistant({notify}:WidgetProps){return <><div className="card-body"><div className="assistant-mark"><Icon name="ai"/></div><h2>A thought starts here.</h2><p className="notice">AI provider connection is a later milestone.</p></div><form className="composer" onSubmit={e=>{e.preventDefault();notify('AI is not connected in this browser-focused build.')}}><input aria-label="Assistant message" placeholder="Ask, explore, or work through an idea…"/><button>↗</button></form></>}
 export interface WidgetDefinition { id:WidgetType; name:string; description:string; icon:string; component:ComponentType<WidgetProps> }
-const renderers:Record<WidgetType,ComponentType<WidgetProps>>={browser:BrowserWidget,group:GroupWidget,desmos:Calculator,notes:Notes,focus:props=><TimerWidget {...props} variant="focus"/>,ai:Assistant,files:FilesWidget,apps:AppsWidget,timetable:TimetableWidget,tagStatus:TagColorStatusWidget};
+const renderers:Record<WidgetType,ComponentType<WidgetProps>>={group:GroupWidget,desmos:Calculator,notes:Notes,focus:props=><TimerWidget {...props} variant="focus" workspaceActive={props.workspaceActive}/>,ai:Assistant,files:FilesWidget,apps:AppsWidget,timetable:TimetableWidget,tagStatus:TagColorStatusWidget};
 export const widgetRegistry=Object.fromEntries(Object.entries(widgetCatalog).map(([id,meta])=>[id,{id:id as WidgetType,...meta,component:renderers[id as WidgetType]}])) as unknown as Record<WidgetType,WidgetDefinition>;

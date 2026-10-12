@@ -210,8 +210,8 @@ fn entries_for_drop(paths: &[PathBuf], documents: &DocumentGrants, folders: &cra
 pub fn handle_event(window: &Window, event: &DragDropEvent) {
     if window.label() != "main" { return; }
     let app = window.app_handle();
-    let Some(view) = app.get_webview("main") else { return; };
-    if crate::browser::authorize(&view).is_err() { return; }
+    let Some(view) = app.get_webview_window("main") else { return; };
+    if crate::security::authorize(view.as_ref()).is_err() { return; }
     let scale = window.scale_factor().unwrap_or(1.0);
     let position = |point: &tauri::PhysicalPosition<f64>| Some(DropPosition { x: point.x / scale, y: point.y / scale });
     let payload = match event {
@@ -239,14 +239,14 @@ pub fn handle_event(window: &Window, event: &DragDropEvent) {
 
 #[tauri::command]
 pub async fn document_open(webview: Webview, grants: State<'_, DocumentGrants>, source_id: String) -> Result<(), String> {
-    crate::browser::authorize(&webview)?;
+    crate::security::authorize(&webview)?;
     let target = grants.target(&source_id)?;
     tauri_plugin_opener::open_path(&target, None::<&str>).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 pub async fn document_choose(app: AppHandle, webview: Webview, grants: State<'_, DocumentGrants>, source_id: Option<String>) -> Result<Option<DropEntry>, String> {
-    crate::browser::authorize(&webview)?;
+    crate::security::authorize(&webview)?;
     if let Some(id) = &source_id { crate::files::valid_id(id)?; }
     let handle = app.clone();
     let selected = tauri::async_runtime::spawn_blocking(move || handle.dialog().file().set_title("Choose a document for this shortcut").blocking_pick_file())
@@ -260,7 +260,7 @@ pub async fn document_choose(app: AppHandle, webview: Webview, grants: State<'_,
 
 #[tauri::command]
 pub async fn app_open(webview: Webview, grants: State<'_, AppGrants>, source_id: String) -> Result<(), String> {
-    crate::browser::authorize(&webview)?;
+    crate::security::authorize(&webview)?;
     let target = grants.target(&source_id)?;
     if target.extension().and_then(|extension| extension.to_str()).is_some_and(|extension| extension.eq_ignore_ascii_case("lnk")) {
         // Windows resolves an explicitly chosen app shortcut through its normal shell handler.
@@ -278,7 +278,7 @@ pub async fn app_open(webview: Webview, grants: State<'_, AppGrants>, source_id:
 
 #[tauri::command]
 pub async fn app_choose(app: AppHandle, webview: Webview, grants: State<'_, AppGrants>) -> Result<Option<DropEntry>, String> {
-    crate::browser::authorize(&webview)?;
+    crate::security::authorize(&webview)?;
     let handle = app.clone();
     let selected = tauri::async_runtime::spawn_blocking(move || handle.dialog().file().set_title("Choose a Windows app or app shortcut")
         .add_filter("Windows apps and shortcuts", &["exe", "lnk"]).blocking_pick_file())

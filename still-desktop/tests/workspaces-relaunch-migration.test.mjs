@@ -4,6 +4,20 @@ import {createInitialState,createWidget,createWorkspace,collectWidgetIntoGroup,r
 
 test('new workspace state defaults relaunch to automatic with the built-in plugin enabled',()=>{
  const state=createInitialState();assert.equal(state.version,6);assert.equal(state.widgetRelaunchMode,'automatic');assert.equal(state.widgetRelaunchPluginStatus,'enabled');assert.deepEqual(state.widgetRelaunchColors,{});
+ assert.equal(state.passThroughTransparentBackground,false);assert.equal(state.enableWholeWindowClickThrough,false);
+});
+
+test('workspace parser accepts already decoded state for startup without parsing large saved profiles twice',()=>{
+ const state=createInitialState();state.workspaces[0].widgets=[createWidget('notes')];
+ const decoded=JSON.parse(JSON.stringify(state));
+ assert.deepEqual(parseState(decoded),parseState(JSON.stringify(state)));
+});
+
+test('click-through preferences migrate safely and persist independently',()=>{
+ const state=createInitialState();const legacy={...state,version:5};delete legacy.passThroughTransparentBackground;delete legacy.enableWholeWindowClickThrough;
+ const restored=parseState(JSON.stringify(legacy));assert.equal(restored.passThroughTransparentBackground,false);assert.equal(restored.enableWholeWindowClickThrough,false);
+ state.passThroughTransparentBackground=true;state.enableWholeWindowClickThrough=true;
+ const roundTrip=parseState(JSON.stringify(state));assert.equal(roundTrip.passThroughTransparentBackground,true);assert.equal(roundTrip.enableWholeWindowClickThrough,true);
 });
 
 test('loading older workspace state keeps cards in place and adds safe relaunch defaults',()=>{

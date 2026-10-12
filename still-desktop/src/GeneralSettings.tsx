@@ -3,6 +3,8 @@ import {widgetTagColors,type WidgetTagColor} from './domain/workspaces.ts';
 import type {WidgetRelaunchMode} from './domain/widgetRelaunch.ts';
 import type {WorkspaceShortcuts} from './domain/shortcuts.ts';
 import {shortcutLabel} from './domain/shortcuts.ts';
+import type {CanvasFrameRate} from './domain/performance.ts';
+import type {StartupStatus} from './domain/startup.ts';
 import {Icon} from './Icon.tsx';
 
 interface Props{
@@ -15,20 +17,35 @@ interface Props{
  showWidgetExportPngAction:boolean;
  widgetRelaunchMode:WidgetRelaunchMode;
  widgetRelaunchColors:Partial<Record<WidgetTagColor,WidgetRelaunchMode>>;
+ background:'solid'|'dots'|'transparent';
+ passThroughTransparentBackground:boolean;
+ enableWholeWindowClickThrough:boolean;
+ clickThroughActive:boolean;
+ canvasFrameRate:CanvasFrameRate;
+ startup:StartupStatus;
+ startupLoading:boolean;
+ setStartupEnabled:(enabled:boolean)=>void;
  shortcuts:WorkspaceShortcuts;
  openShortcuts:()=>void;
- update:(patch:{appShutdownBehavior?:AppShutdownBehavior;saveAppShortcutsOnAttach?:boolean;widgetRelaunchMode?:WidgetRelaunchMode;showAppAttachAction?:boolean;showAppDetachAction?:boolean;showAppSaveAction?:boolean;showWidgetRelaunchAction?:boolean;showWidgetExportPngAction?:boolean})=>void;
+ update:(patch:{appShutdownBehavior?:AppShutdownBehavior;saveAppShortcutsOnAttach?:boolean;widgetRelaunchMode?:WidgetRelaunchMode;showAppAttachAction?:boolean;showAppDetachAction?:boolean;showAppSaveAction?:boolean;showWidgetRelaunchAction?:boolean;showWidgetExportPngAction?:boolean;passThroughTransparentBackground?:boolean;enableWholeWindowClickThrough?:boolean;canvasFrameRate?:CanvasFrameRate;shortcuts?:WorkspaceShortcuts})=>void;
  setRelaunchColor:(color:WidgetTagColor,mode:WidgetRelaunchMode|null)=>void;
  applyRelaunchModeToAll:()=>void;
+ toggleClickThrough:()=>void;
 }
 
-export default function GeneralSettings({appShutdownBehavior,saveAppShortcutsOnAttach,showAppAttachAction,showAppDetachAction,showAppSaveAction,showWidgetRelaunchAction,showWidgetExportPngAction,widgetRelaunchMode,widgetRelaunchColors,shortcuts,openShortcuts,update,setRelaunchColor,applyRelaunchModeToAll}:Props){
+export default function GeneralSettings({appShutdownBehavior,saveAppShortcutsOnAttach,showAppAttachAction,showAppDetachAction,showAppSaveAction,showWidgetRelaunchAction,showWidgetExportPngAction,widgetRelaunchMode,widgetRelaunchColors,shortcuts,openShortcuts,background,passThroughTransparentBackground,enableWholeWindowClickThrough,clickThroughActive,canvasFrameRate,startup,startupLoading,setStartupEnabled,update,setRelaunchColor,applyRelaunchModeToAll,toggleClickThrough}:Props){
  return <section className="settings-page general-settings" role="tabpanel" id="settings-general" aria-labelledby="settings-tab-general">
   <h3>General settings</h3>
-  <h4>Workspace shortcuts</h4>
-  <div className="settings-row"><span>Toggle workspace map</span><kbd>Ctrl + M</kbd></div>
-  <div className="settings-row"><span>Minimize a widget</span><kbd>Ctrl + Shift + Right-click</kbd></div>
-  <button className="shortcut-settings-link" onClick={openShortcuts}><span>Keyboard shortcuts</span><kbd>{shortcutLabel(shortcuts.up)} / {shortcutLabel(shortcuts.down)}</kbd><span aria-hidden="true">→</span></button>
+  <h4>Still startup</h4>
+  <label className="settings-row general-settings-toggle"><span>Launch Still when I sign in<small>{startup.supported?'Start Still automatically after you sign in to Windows.':'Available in the installed Windows app.'}</small></span><input aria-label="Launch Still when I sign in" type="checkbox" checked={startup.enabled} disabled={!startup.supported||startupLoading} onChange={event=>setStartupEnabled(event.target.checked)}/></label>
+  <h4>Workspace performance</h4>
+  <label className="settings-row"><span>Widget drag and resize rate<small>Lower rates reduce work while moving cards. Display refresh uses the fastest rate supported by your screen.</small></span><select aria-label="Widget drag and resize rate" value={canvasFrameRate} onChange={event=>update({canvasFrameRate:event.target.value==='30'?30:event.target.value==='60'?60:'display'})}><option value="30">30 FPS · Reduced load</option><option value="60">60 FPS · Balanced</option><option value="display">Display refresh · Smoothest</option></select></label>
+ <h4>Keyboard shortcuts</h4>
+  <button className="shortcut-settings-link" onClick={openShortcuts}><span>Customize keyboard shortcuts</span><kbd>{shortcutLabel(shortcuts.up)} / {shortcutLabel(shortcuts.down)}</kbd><span aria-hidden="true">→</span></button>
+  <h4>Click through Still</h4>
+  <label className="settings-row general-settings-toggle"><span>Pass clicks through transparent background<small>{background==='transparent'?'Widgets remain interactive.':'Choose Transparent under Appearance → Workspace background to use this.'}</small></span><input aria-label="Pass clicks through transparent background" type="checkbox" checked={passThroughTransparentBackground} disabled={background!=='transparent'} onChange={event=>update({passThroughTransparentBackground:event.target.checked})}/></label>
+  <label className="settings-row general-settings-toggle"><span>Enable whole-window click-through shortcut<small>{shortcutLabel(shortcuts.clickThrough)} passes clicks through Still, including its widgets. Press it again to restore input.</small></span><input aria-label="Enable whole-window click-through shortcut" type="checkbox" checked={enableWholeWindowClickThrough} onChange={event=>update({enableWholeWindowClickThrough:event.target.checked})}/></label>
+  {enableWholeWindowClickThrough&&<div className="settings-row"><span>Whole-window click-through is {clickThroughActive?'on':'off'}</span><button type="button" aria-label={clickThroughActive?'Turn off whole-window click-through':'Turn on whole-window click-through'} onClick={toggleClickThrough}>{clickThroughActive?'Turn off':'Turn on'}</button></div>}
   <label className="settings-row"><span>When Still closes</span><select aria-label="When Still closes" value={appShutdownBehavior} onChange={event=>update({appShutdownBehavior:event.target.value as AppShutdownBehavior})}>
    <option value="minimize">Minimize attached apps</option>
    <option value="close">Close attached app windows</option>

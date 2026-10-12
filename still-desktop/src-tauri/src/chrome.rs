@@ -34,7 +34,7 @@ pub(crate) fn executable() -> Result<PathBuf, String> {
 
 #[tauri::command]
 pub async fn chrome_open(webview: Webview, url: String) -> Result<(), String> {
-    crate::browser::authorize(&webview)?;
+    crate::security::authorize(&webview)?;
     let destination = website(&url)?;
     #[cfg(target_os = "windows")]
     {

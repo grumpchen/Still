@@ -80,7 +80,7 @@ pub(crate) fn persist_roots(app:&AppHandle,roots:&FolderRoots)->Result<(),String
 }
 #[tauri::command]
 pub async fn files_choose(app: AppHandle, webview: Webview, roots: State<'_,FolderRoots>, id:String) -> Result<Option<FolderListing>,String> {
-    crate::browser::authorize(&webview)?;valid_id(&id)?;
+    crate::security::authorize(&webview)?;valid_id(&id)?;
     let handle=app.clone();
     let selected=tauri::async_runtime::spawn_blocking(move || handle.dialog().file().set_title("Choose a folder for this Files widget").blocking_pick_folder()).await.map_err(|e| e.to_string())?;
     let Some(selected)=selected else {return Ok(None)};
@@ -93,17 +93,17 @@ pub async fn files_choose(app: AppHandle, webview: Webview, roots: State<'_,Fold
 }
 #[tauri::command]
 pub async fn files_reuse(app:AppHandle,webview:Webview,roots:State<'_,FolderRoots>,id:String,source_id:String)->Result<FolderListing,String>{
-    crate::browser::authorize(&webview)?;
+    crate::security::authorize(&webview)?;
     let result=reuse_folder(&roots,&id,&source_id)?;persist_roots(&app,&roots)?;Ok(result)
 }
 #[tauri::command]
 pub async fn files_list(webview: Webview, roots: State<'_,FolderRoots>, id:String, location:String) -> Result<FolderListing,String> {
-    crate::browser::authorize(&webview)?;valid_id(&id)?;
+    crate::security::authorize(&webview)?;valid_id(&id)?;
     listing(&roots.root(&id)?,&location)
 }
 #[tauri::command]
 pub async fn files_open(app: AppHandle, webview: Webview, roots: State<'_,FolderRoots>, id:String, path:String) -> Result<(),String> {
-    crate::browser::authorize(&webview)?;valid_id(&id)?;
+    crate::security::authorize(&webview)?;valid_id(&id)?;
     let target=resolve(&roots.root(&id)?,&path)?;
     if !target.is_file() || blocked(&target) { return Err("Choose a document, image or media file to open".into()); }
     app.opener().open_path(target.to_string_lossy(),None::<&str>).map_err(|e| e.to_string())

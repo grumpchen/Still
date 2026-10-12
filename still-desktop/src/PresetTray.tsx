@@ -5,7 +5,6 @@ import type {WidgetPreset,PresetType} from './domain/presets.ts';
 interface Props {presets:WidgetPreset[];add:(preset:WidgetPreset)=>void;onContextMenu:(event:React.MouseEvent<HTMLButtonElement>,id:string)=>void}
 
 function title(preset:WidgetPreset):string {
- if(preset.type==='browser')return preset.url;
  if(preset.type==='files')return preset.resourceKind==='document'?preset.fileName:preset.folderName;
  if(preset.type==='apps')return preset.appName;
  return widgetRegistry[preset.type].name;

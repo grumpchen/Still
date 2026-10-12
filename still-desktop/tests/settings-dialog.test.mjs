@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 
 const app=readFileSync(new URL('../src/App.tsx',import.meta.url),'utf8');
 const general=readFileSync(new URL('../src/GeneralSettings.tsx',import.meta.url),'utf8');
+const shortcuts=readFileSync(new URL('../src/ShortcutSettings.tsx',import.meta.url),'utf8');
 const appearance=readFileSync(new URL('../src/AppearanceSettings.tsx',import.meta.url),'utf8');
 const tagStatus=readFileSync(new URL('../src/TagColorStatusWidget.tsx',import.meta.url),'utf8');
 const widgetPlugins=readFileSync(new URL('../src/WidgetPluginsSettings.tsx',import.meta.url),'utf8');
@@ -16,7 +17,11 @@ test('sidebar Settings opens a tabbed dialog with General, Appearance, and Plugi
  assert.match(app,/settingsTab==='appearance'[\s\S]*?<AppearanceSettings/);
  assert.match(app,/settingsTab==='general'&&<GeneralSettings/);
  assert.match(general,/<h3>General settings<\/h3>/);
- assert.match(general,/Toggle workspace map[\s\S]*?Ctrl \+ M[\s\S]*?Minimize a widget[\s\S]*?Ctrl \+ Shift \+ Right-click[\s\S]*?Keyboard shortcuts/);
+ assert.doesNotMatch(general,/Toggle workspace map|Minimize a widget with right-click/);
+ assert.match(shortcuts,/\['overview','Toggle workspace map','Show or hide the map'\]/);
+ assert.match(shortcuts,/Minimize a widget with right-click[\s\S]*?draft\.minimizeModifiers\[modifier\][\s\S]*?setDraft\(value=>\(\{\.\.\.value,minimizeModifiers:/);
+ assert.match(general,/Customize keyboard shortcuts/);
+ assert.match(general,/Workspace performance[\s\S]*?Widget drag and resize rate[\s\S]*?30 FPS[\s\S]*?60 FPS[\s\S]*?Display refresh/);
  assert.match(general,/className="shortcut-settings-link" onClick=\{openShortcuts\}/);
  assert.doesNotMatch(appearance,/shortcut-settings-link|Keyboard shortcuts/);
  assert.match(app,/settingsTab==='plugins'[\s\S]*?Sidebar plugins[\s\S]*?<WidgetPluginsSettings/);

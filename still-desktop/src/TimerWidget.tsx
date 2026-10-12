@@ -4,6 +4,7 @@ import type {WidgetInstance} from './domain/workspaces.ts';
 interface TimerWidgetProps {
  widget:WidgetInstance;
  variant:'focus'|'clock';
+ workspaceActive?:boolean;
  update:(patch:Partial<WidgetInstance>)=>void;
  notify:(message:string)=>void;
 }
@@ -12,21 +13,26 @@ const hourMarks=[1,2,3,4,5,6,7,8,9,10,11,12];
 const minuteMarks=[0,5,10,15,20,25,30,35,40,45,50,55];
 const pad=(value:number)=>String(value).padStart(2,'0');
 
-export default function TimerWidget({widget,variant,update,notify}:TimerWidgetProps){
+export default function TimerWidget({widget,variant,workspaceActive=true,update,notify}:TimerWidgetProps){
  const [now,setNow]=useState(Date.now());
  const [mode,setMode]=useState<'hour'|'minute'>('hour');
  const [selected,setSelected]=useState(widget.remaining);
  const completedEnd=useRef<number|null>(null);
- useEffect(()=>{const interval=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(interval)},[]);
+ useEffect(()=>{
+  if(!workspaceActive)return;
+  setNow(Date.now());
+  const interval=setInterval(()=>setNow(Date.now()),1000);
+  return()=>clearInterval(interval);
+ },[workspaceActive]);
  const remaining=widget.end?Math.max(0,Math.ceil((widget.end-now)/1000)):widget.remaining;
  useEffect(()=>{if(!widget.end)setSelected(widget.remaining)},[widget.end,widget.remaining]);
  useEffect(()=>{
-  if(variant==='focus'&&widget.end&&remaining===0&&completedEnd.current!==widget.end){
+  if(workspaceActive&&variant==='focus'&&widget.end&&remaining===0&&completedEnd.current!==widget.end){
    completedEnd.current=widget.end;
    update({end:null,remaining:0});
    notify(variant==='focus'?'Focus session complete. Take a breath.':'Clock timer complete.');
   }
- },[remaining,widget.end,variant,update,notify]);
+ },[workspaceActive,remaining,widget.end,variant,update,notify]);
 
  const hours=Math.min(12,Math.floor(selected/3600));
  const minutes=Math.floor(selected%3600/60);

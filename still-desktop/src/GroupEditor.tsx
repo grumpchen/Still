@@ -33,7 +33,7 @@ export default function GroupEditor({group,update,openLink,openWidget,initialMod
   </form>:<>
    <div className="group-items">
     {group.shortcuts.map((item,index)=><div className="group-item" key={item.id}>
-     <button className="group-open" title={item.url} aria-label={'Open '+item.name+' as a new widget'} onClick={()=>openLink?.(item)}><span className="group-icon">{item.icon}</span><span>{item.name}<small>New Browser widget ↗</small></span></button>
+     <button className="group-open" title={item.url} aria-label={'Open '+item.name+' in your browser'} onClick={()=>openLink?.(item)}><span className="group-icon">{item.icon}</span><span>{item.name}<small>Open in browser ↗</small></span></button>
      <div className="group-item-actions"><button aria-label={'Move '+item.name+' up'} disabled={index===0} onClick={()=>moveLink(item,-1)}>↑</button><button aria-label={'Move '+item.name+' down'} disabled={index===group.shortcuts.length-1} onClick={()=>moveLink(item,1)}>↓</button><button aria-label={'Edit '+item.name} onClick={()=>editLink(item)}>✎</button><button aria-label={'Remove '+item.name+' from group'} onClick={()=>update({shortcuts:group.shortcuts.filter(s=>s.id!==item.id)})}>×</button></div>
     </div>)}
     {group.widgets.map((item,index)=><div className={'group-item '+(item.kind==='collected'?'group-item-collected':'')} key={item.id}>

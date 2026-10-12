@@ -25,7 +25,7 @@ function kind(entry:DroppedResource):FileKind {
 export function presetForDroppedResource(entry:DroppedResource):WidgetPreset {
  const id=crypto.randomUUID(),name=entry.name.slice(0,60);
  if(entry.kind==='app')return widgetPreset({id,type:'apps',name,appSourceId:entry.sourceId??'',appName:entry.name});
- if(entry.kind==='website')return widgetPreset({id,type:'browser',name,url:entry.url??''});
+ if(entry.kind==='website')throw new Error('Website links can be saved inside a Group. Drop a link into a Group or add it from the Group editor.');
  if(entry.kind==='folder')return widgetPreset({id,type:'files',name,folderSourceId:entry.sourceId??'',folderName:entry.name});
  return widgetPreset({id,type:'files',name,resourceKind:'document',fileSourceId:entry.sourceId??'',fileName:entry.name,fileKind:kind(entry)});
 }

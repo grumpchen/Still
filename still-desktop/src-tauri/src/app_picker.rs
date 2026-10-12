@@ -105,7 +105,7 @@ fn installed_shortcuts()->Result<Vec<(String,PathBuf,String,Vec<u8>)>,String>{
 
 fn choices(app:&AppHandle,source_id:Option<&str>)->Result<Vec<PickerWindow>,String>{
  let expected=source_id.map(|id|app.state::<crate::dropped_files::AppGrants>().target(id)).transpose()?.and_then(|path|crate::app_panel::expected_executable(&path));
- let mut list=crate::app_panel::windows();let managed=crate::app_panel::managed_windows(app).into_iter().chain(crate::chrome_overlay::managed_windows(app)).collect::<Vec<_>>();
+ let mut list=crate::app_panel::windows();let managed=crate::app_panel::managed_windows(app);
  for (hwnd,pid) in &managed{if window_matches(*hwnd,*pid){list.push(crate::app_panel::WindowInfo{hwnd:*hwnd,pid:*pid,title:title(handle(*hwnd)),executable:crate::app_panel::executable(*pid)});}}
  let mut cache=HashMap::<String,(String,Vec<u8>)>::new();let mut result=Vec::new();
  for window in list.into_iter().take(200){if expected.as_ref().is_some_and(|path|!crate::app_panel::matches_executable(&window,path)){continue}
@@ -129,11 +129,11 @@ fn selected_for_prepare(app:&AppHandle,hwnd:usize,pid:u32)->Result<crate::app_pa
 }
 #[tauri::command]
 pub async fn app_picker_windows(app:AppHandle,webview:Webview,source_id:Option<String>)->Result<Vec<PickerWindow>,String>{
- crate::browser::authorize(&webview)?;tauri::async_runtime::spawn_blocking(move||choices(&app,source_id.as_deref())).await.map_err(|e|e.to_string())?
+ crate::security::authorize(&webview)?;tauri::async_runtime::spawn_blocking(move||choices(&app,source_id.as_deref())).await.map_err(|e|e.to_string())?
 }
 #[tauri::command]
 pub async fn app_picker_installed(app:AppHandle,webview:Webview)->Result<Vec<InstalledApp>,String>{
- crate::browser::authorize(&webview)?;
+ crate::security::authorize(&webview)?;
  let (choices,paths)=tauri::async_runtime::spawn_blocking(move||{
   let found=installed_shortcuts()?;let mut paths=HashMap::new();let mut choices=Vec::new();
   for(name,path,_,icon)in found{let id=crate::dropped_files::source_id()?;paths.insert(id.clone(),path);choices.push(InstalledApp{id,name,icon});}
@@ -143,7 +143,7 @@ pub async fn app_picker_installed(app:AppHandle,webview:Webview)->Result<Vec<Ins
 }
 #[tauri::command]
 pub async fn app_picker_select_installed(app:AppHandle,webview:Webview,id:String)->Result<crate::dropped_files::DropEntry,String>{
- crate::browser::authorize(&webview)?;crate::files::valid_id(&id)?;
+ crate::security::authorize(&webview)?;crate::files::valid_id(&id)?;
  tauri::async_runtime::spawn_blocking(move||{
   let path=app.state::<InstalledAppCatalog>().0.lock().map_err(|_|"Installed app list is unavailable")?.get(&id).cloned().ok_or("Refresh the installed app list and choose again")?;
   let (entry_path,mut entry)=crate::dropped_files::classify(&path)?;if entry.kind!="app"{return Err("This installed app shortcut is no longer supported".into())}
@@ -153,7 +153,7 @@ pub async fn app_picker_select_installed(app:AppHandle,webview:Webview,id:String
 }
 #[tauri::command]
 pub async fn app_picker_prepare(app:AppHandle,webview:Webview,hwnd:usize,pid:u32)->Result<crate::dropped_files::DropEntry,String>{
- crate::browser::authorize(&webview)?;
+ crate::security::authorize(&webview)?;
  tauri::async_runtime::spawn_blocking(move||{let window=selected_for_prepare(&app,hwnd,pid)?;let path=window.executable.ok_or("Windows could not identify this app's executable. It may run at a different permission level.")?;
   let state=app.state::<crate::dropped_files::AppGrants>();let mut entry=state.register(&crate::dropped_files::source_id()?,Path::new(&path))?;
   entry.name=version_name(&path).unwrap_or_else(||clean_name(&Path::new(&path).file_stem().unwrap_or_default().to_string_lossy()));
@@ -163,7 +163,7 @@ pub async fn app_picker_prepare(app:AppHandle,webview:Webview,hwnd:usize,pid:u32
 
 #[tauri::command]
 pub async fn app_picker_icon(app:AppHandle,webview:Webview,hwnd:usize,pid:u32)->Result<Vec<u8>,String>{
- crate::browser::authorize(&webview)?;
+ crate::security::authorize(&webview)?;
  tauri::async_runtime::spawn_blocking(move||{
   let window=selected_for_prepare(&app,hwnd,pid)?;
   let bytes=icon(handle(hwnd),window.executable.as_deref());
@@ -190,7 +190,7 @@ fn preview(hwnd:usize,pid:u32)->Result<Vec<u8>,String>{
  receiver.recv_timeout(std::time::Duration::from_millis(1500)).map_err(|_|"This app did not provide a preview in time. You can still attach it.".to_string())?
 }
 #[tauri::command]
-pub async fn app_picker_preview(webview:Webview,hwnd:usize,pid:u32)->Result<Vec<u8>,String>{crate::browser::authorize(&webview)?;tauri::async_runtime::spawn_blocking(move||preview(hwnd,pid)).await.map_err(|e|e.to_string())?}
+pub async fn app_picker_preview(webview:Webview,hwnd:usize,pid:u32)->Result<Vec<u8>,String>{crate::security::authorize(&webview)?;tauri::async_runtime::spawn_blocking(move||preview(hwnd,pid)).await.map_err(|e|e.to_string())?}
 
 #[cfg(test)]mod tests{
  use super::*;

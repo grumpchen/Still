@@ -12,7 +12,7 @@ const setGlobal=(key,value)=>Object.defineProperty(globalThis,key,{configurable:
 const vite=await createServer({server:{middlewareMode:true,hmr:false},appType:'custom',optimizeDeps:{noDiscovery:true,entries:[]}});
 after(()=>vite.close());
 
-async function setup(widgets){
+async function setup(widgets,canvasFrameRate='display'){
  const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true}),oldGlobals=new Map(),{window}=dom;
  for(const key of ['window','document','navigator','HTMLElement','Element','Node','MutationObserver','ResizeObserver','requestAnimationFrame','cancelAnimationFrame','getComputedStyle','isTauri','IS_REACT_ACT_ENVIRONMENT'])oldGlobals.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
  setGlobal('window',window);setGlobal('document',window.document);setGlobal('navigator',window.navigator);setGlobal('HTMLElement',window.HTMLElement);setGlobal('Element',window.Element);setGlobal('Node',window.Node);setGlobal('MutationObserver',window.MutationObserver);setGlobal('ResizeObserver',class{observe(){}disconnect(){}});setGlobal('requestAnimationFrame',callback=>setTimeout(()=>callback(Date.now()),0));setGlobal('cancelAnimationFrame',clearTimeout);setGlobal('getComputedStyle',window.getComputedStyle.bind(window));setGlobal('isTauri',true);setGlobal('IS_REACT_ACT_ENVIRONMENT',true);
@@ -21,13 +21,26 @@ async function setup(widgets){
  documentElement(window.document).elementFromPoint=()=>null;
  mockIPC(()=>null,{shouldMockEvents:true});
  const {default:WorkspaceCanvas}=await vite.ssrLoadModule('/src/WorkspaceCanvas.tsx');
- let currentState,root;
- function Host(){const [current,setCurrent]=useState(widgets),[mode,setMode]=useState('picker');currentState={widgets:current,mode};const update=(id,patch)=>setCurrent(items=>items.map(item=>item.id===id?{...item,...patch}:item));return createElement(WorkspaceCanvas,{workspaceId:'study',transferWidget(){},setWorkspaceDropTarget(){},openAppsDialog(){},editTray(){},presets:[],savePresets(){},openPreset(){},editPreset(){},removePreset(){},renamePreset(){},widgets:current,groups:[],updateGroup(){},saveToGroup(){},openGroup(){},editGroup(){},removeGroup(){},openGroupWidget(){},update,add(){},remove(){},begin(){},bringToFront(id){setCurrent(items=>[...items.filter(item=>item.id!==id),...items.filter(item=>item.id===id)])},notify(){},obscured:false,openResource(){},openDropped(){},pickApp(){},saveApp(){},appAttachments:{},appAttachmentHandled(){},layoutMode:mode,setLayoutMode:setMode})}
+ let currentState,root,updates=0;
+ function Host(){const [current,setCurrent]=useState(widgets),[mode,setMode]=useState('picker');currentState={widgets:current,mode};const update=(id,patch)=>{updates++;setCurrent(items=>items.map(item=>item.id===id?{...item,...patch}:item))};return createElement(WorkspaceCanvas,{workspaceId:'study',canvasFrameRate,transferWidget(){},setWorkspaceDropTarget(){},openAppsDialog(){},editTray(){},presets:[],savePresets(){},openPreset(){},editPreset(){},removePreset(){},renamePreset(){},widgets:current,groups:[],updateGroup(){},saveToGroup(){},openGroup(){},editGroup(){},removeGroup(){},openGroupWidget(){},update,add(){},remove(){},begin(){},bringToFront(id){setCurrent(items=>[...items.filter(item=>item.id!==id),...items.filter(item=>item.id===id)])},notify(){},obscured:false,openResource(){},openDropped(){},pickApp(){},saveApp(){},appAttachments:{},appAttachmentHandled(){},layoutMode:mode,setLayoutMode:setMode})}
  root=createRoot(window.document.querySelector('#root'));await act(async()=>root.render(createElement(Host)));
  const pointer=(type,x,y)=>{const event=new window.Event(type,{bubbles:true,cancelable:true});Object.defineProperties(event,{button:{value:0},pointerId:{value:1},clientX:{value:x},clientY:{value:y}});return event};
- return{dom,window,get currentState(){return currentState},root,pointer,cleanup:async()=>{if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();for(const [key,descriptor]of oldGlobals){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}}};
+ return{dom,window,get currentState(){return currentState},get updates(){return updates},root,pointer,cleanup:async()=>{if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();for(const [key,descriptor]of oldGlobals){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}}};
 }
 function documentElement(document){return document}
+
+test('bursts of pointer movement coalesce into one canvas update and pointer-up flushes the final position',async()=>{
+ const notes=createWidget('notes');notes.id='notes';const app=await setup([notes],'display');
+ try{
+  const header=app.window.document.querySelector('#widget-notes .widget-move');
+  await act(async()=>header.dispatchEvent(app.pointer('pointerdown',20,20)));
+  await act(async()=>{for(const x of [30,40,50,60])header.dispatchEvent(app.pointer('pointermove',x,20));await new Promise(resolve=>setTimeout(resolve,10))});
+  assert.equal(app.updates,1,'only the latest pointer position is applied for a single display frame');
+  assert.equal(app.currentState.widgets[0].placement.x,40);
+  await act(async()=>header.dispatchEvent(app.pointer('pointerup',70,20)));
+  assert.equal(app.currentState.widgets[0].placement.x,50,'pointer-up applies the exact final position even if a frame was pending');
+ }finally{await app.cleanup()}
+});
 
 test('a dragged widget snaps to a highlighted zone and Snap Assist places another in an open zone',async()=>{
  const notes=createWidget('notes');notes.id='notes';const browser=createWidget('browser');browser.id='browser';
@@ -37,7 +50,7 @@ test('a dragged widget snaps to a highlighted zone and Snap Assist places anothe
   assert.equal(app.window.document.querySelectorAll('[data-snap-zone]').length,2);
   const header=app.window.document.querySelector('#widget-notes .widget-move');
   await act(async()=>header.dispatchEvent(app.pointer('pointerdown',20,20)));
-  await act(async()=>header.dispatchEvent(app.pointer('pointermove',900,320)));
+  await act(async()=>{header.dispatchEvent(app.pointer('pointermove',900,320));await new Promise(resolve=>setTimeout(resolve,10))});
   assert.equal(app.window.document.querySelector('[data-snap-zone="1"]').classList.contains('snap-layout-zone-hover'),true);
   await act(async()=>header.dispatchEvent(app.pointer('pointerup',900,320)));
   assert.equal(app.currentState.widgets.find(widget=>widget.id==='notes').placement.x,606);

@@ -3,8 +3,6 @@ fn main() {
         tauri_build::Attributes::new().app_manifest(
             tauri_build::AppManifest::new().commands(&[
                 "chrome_open", "widget_capture", "widget_export",
-                "chrome_panel_open", "chrome_panel_present", "chrome_panel_navigate", "chrome_panel_close", "chrome_panel_release",
-                "browser_open", "browser_bounds", "browser_visible", "browser_navigate", "browser_current", "browser_action", "browser_close",
                 "files_choose", "files_list", "files_open", "files_reuse",
                 "document_open", "document_choose",
                 "app_open", "app_choose",
@@ -12,6 +10,8 @@ fn main() {
                 "app_capture_enable",
                 "app_picker_windows", "app_picker_prepare", "app_picker_preview", "app_picker_installed", "app_picker_select_installed",
                 "shortcuts_configure",
+                "window_input_update_regions", "window_input_configure_toggle", "window_input_set_click_through",
+                "startup_status", "startup_set",
             ]),
         ),
     ).expect("Tauri build configuration failed");

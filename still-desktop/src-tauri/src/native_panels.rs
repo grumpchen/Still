@@ -63,23 +63,17 @@ pub(crate) fn invalidate_order() {
     if let Ok(mut last) = LAST_ORDER.get_or_init(|| Mutex::new(None)).lock() { *last = None; }
 }
 
-/// Process shared window, focus, DPI and foreground notifications through the
-/// same Browser → Apps → z-order pass instead of letting each subsystem win
-/// the race independently.
+/// Process shared window, focus, DPI and foreground notifications for Apps panels.
 pub(crate) fn refresh_all(app: &AppHandle) {
-    crate::chrome_overlay::refresh_state(app);
     crate::app_panel::refresh_state(app);
     apply_order(app);
 }
 
 /// Native panels are independent top-level windows, so the DOM's card order
-/// must be reapplied after either native subsystem moves or shows a window.
+/// must be reapplied after native app panels move or show a window.
 pub(crate) fn apply_order(app: &AppHandle) {
-    let mut windows = Vec::new();
-    let Some(chrome) = crate::chrome_overlay::ordered_windows(app) else { return };
     let Some(apps) = crate::app_panel::ordered_windows(app) else { return };
-    windows.extend(chrome);
-    windows.extend(apps);
+    let mut windows = apps;
     windows.sort_by_key(|(rank, hwnd)| (*rank, *hwnd));
     let _apply = match APPLY_LOCK.try_lock() { Ok(lock) => lock, Err(_) => return };
     let last_order = LAST_ORDER.get_or_init(|| Mutex::new(None));

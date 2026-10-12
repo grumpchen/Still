@@ -7,7 +7,7 @@ import {widgetRegistry} from './widgets.tsx';
 interface Props {type:PresetType;preset?:WidgetPreset;save:(preset:WidgetPreset)=>void;close:()=>void}
 export default function PresetEditor({type,preset,save,close}:Props){
  const [id]=useState(()=>preset?.id??crypto.randomUUID()),[name,setName]=useState(preset?.name??'');
- const [url,setUrl]=useState(preset?.type==='browser'?preset.url:''),[folder,setFolder]=useState(preset?.type==='files'&&preset.resourceKind!=='document'?{sourceId:preset.folderSourceId,name:preset.folderName}:null);
+ const [folder,setFolder]=useState(preset?.type==='files'&&preset.resourceKind!=='document'?{sourceId:preset.folderSourceId,name:preset.folderName}:null);
  const [file,setFile]=useState<WidgetPreset|null>(preset?.type==='files'&&preset.resourceKind==='document'?preset:null),[resourceKind,setResourceKind]=useState<'folder'|'document'>(preset?.type==='files'&&preset.resourceKind==='document'?'document':'folder');
  const [app,setApp]=useState<WidgetPreset|null>(preset?.type==='apps'?preset:null);
  const [busy,setBusy]=useState(false),[error,setError]=useState('');const picker=useRef<HTMLInputElement>(null),filePicker=useRef<HTMLInputElement>(null),pickerKey=useRef('');
@@ -20,12 +20,12 @@ export default function PresetEditor({type,preset,save,close}:Props){
  function selectedApp(entry:DroppedResource){const saved=presetForDroppedResource(entry);if(saved.type!=='apps')throw new Error('Choose an app shortcut or application.');setApp(saved);setName(current=>current.trim()?current:saved.name);setError('')}
  async function chooseApp(){setError('');if(!localApps.native){filePicker.current?.click();return}setBusy(true);try{const entry=await localApps.choose();if(entry)selectedApp(entry)}catch(e){setError(String(e))}finally{setBusy(false)}}
  function submit(){try{
-  const value:WidgetPreset=type==='browser'?{id,type,name,url}:type==='apps'?app?.type==='apps'?{...app,id,name}:{id,type,name,appSourceId:'',appName:''}:type==='files'?resourceKind==='folder'?{id,type,name,folderSourceId:folder?.sourceId??'',folderName:folder?.name??''}:file?.type==='files'&&file.resourceKind==='document'?{...file,id,name}:{id,type,name,resourceKind:'document',fileSourceId:'',fileName:'',fileKind:'document'}:{...preset,id,type,name};
+  const value:WidgetPreset=type==='apps'?app?.type==='apps'?{...app,id,name}:{id,type,name,appSourceId:'',appName:''}:type==='files'?resourceKind==='folder'?{id,type,name,folderSourceId:folder?.sourceId??'',folderName:folder?.name??''}:file?.type==='files'&&file.resourceKind==='document'?{...file,id,name}:{id,type,name,resourceKind:'document',fileSourceId:'',fileName:'',fileKind:'document'}:{...preset,id,type,name};
   save(widgetPreset(value));
  }catch(e){setError(String((e as Error).message))}}
  return <form className="preset-editor" onSubmit={e=>{e.preventDefault();submit()}}>
-  <label>Name<input aria-label="Saved widget name" autoFocus required maxLength={60} placeholder={type==='browser'?'e.g. ChatGPT':'e.g. CHEM111 '+widgetRegistry[type].name} value={name} onChange={e=>setName(e.target.value)}/></label>
-  {type==='browser'?<label>Starting website<input aria-label="Saved browser URL" required placeholder="https://chatgpt.com" value={url} onChange={e=>setUrl(e.target.value)}/></label>:type==='files'?<>
+  <label>Name<input aria-label="Saved widget name" autoFocus required maxLength={60} placeholder={'e.g. CHEM111 '+widgetRegistry[type].name} value={name} onChange={e=>setName(e.target.value)}/></label>
+  {type==='files'?<>
    <label>Shortcut type<select aria-label="File shortcut type" value={resourceKind} onChange={e=>setResourceKind(e.target.value as 'folder'|'document')}><option value="folder">Folder</option><option value="document">File</option></select></label>
    <input ref={picker} aria-label="Select preset folder" type="file" multiple {...{webkitdirectory:'',directory:''}} hidden onChange={e=>{try{if(e.target.files?.length)selected(pickerKey.current,localFiles.select(pickerKey.current,Array.from(e.target.files)))}catch(reason){setError(String(reason))}e.target.value=''}}/>
    <input ref={filePicker} aria-label="Select preset file" type="file" hidden onChange={e=>{try{const result=previewFileDrop(Array.from(e.target.files??[]));if(result.entries[0])selectedFile(result.entries[0]);else if(result.errors.length)setError(result.errors.join(' '))}catch(reason){setError(String(reason))}e.target.value=''}}/>

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-window-input-update-regions"
+description = "Enables the window_input_update_regions command without any pre-configured scope."
+commands.allow = ["window_input_update_regions"]
+
+[[permission]]
+identifier = "deny-window-input-update-regions"
+description = "Denies the window_input_update_regions command without any pre-configured scope."
+commands.deny = ["window_input_update_regions"]

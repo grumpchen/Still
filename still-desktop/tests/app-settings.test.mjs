@@ -10,6 +10,7 @@ const picker=readFileSync(new URL('../src/AppWindowPicker.tsx',import.meta.url),
 const native=readFileSync(new URL('../src-tauri/src/app_panel.rs',import.meta.url),'utf8');
 const appearance=readFileSync(new URL('../src/AppearanceSettings.tsx',import.meta.url),'utf8');
 const styles=readFileSync(new URL('../src/styles.css',import.meta.url),'utf8');
+const windowInput=readFileSync(new URL('../src/platform/windowInput.ts',import.meta.url),'utf8');
 
 test('app behavior settings default to automatic shortcut saving and preserve the existing leave-open shutdown behavior',()=>{
  const state=createInitialState();
@@ -23,6 +24,18 @@ test('app behavior settings default to automatic shortcut saving and preserve th
  assert.equal(state.screenshotPluginMode,'global');
  assert.deepEqual(state.screenshotPluginColors,[]);
  assert.deepEqual(state.screenshotPluginColorOverrides,{});
+});
+
+test('click-through preferences are optional General settings with transparent-background gating and a restore shortcut',()=>{
+ assert.match(general,/Pass clicks through transparent background/);
+ assert.match(general,/disabled=\{background!==\x27transparent\x27\}/);
+ assert.match(general,/Enable whole-window click-through shortcut/);
+ assert.match(general,/shortcuts\.clickThrough/);
+ assert.match(general,/Customize keyboard shortcuts/);
+ assert.match(app,/subscribeActions/);
+ assert.match(app,/shortcutAction/);
+ assert.match(windowInput,/window_input_update_regions/);
+ assert.match(app,/interactiveHitRegions/);
 });
 
 test('app behavior settings persist and invalid shutdown values safely fall back',()=>{
@@ -86,9 +99,11 @@ test('the attach picker initializes its existing save checkbox from the General 
  assert.match(app,/saveAppShortcutsOnAttach=\{state\.saveAppShortcutsOnAttach\}/);
 });
 
-test('direct Ctrl+Shift app capture also prepares and saves a shortcut when enabled',()=>{
- assert.match(app,/if\(snapshot\.saveAppShortcutsOnAttach\)\{try\{source=await appPanel\.prepare\(\{hwnd:result\.hwnd,pid:result\.pid\}\)/);
- assert.match(app,/const preset=source\?\.sourceId\?presetFromWidget\(widget\):null/);
+test('direct Ctrl+Shift app capture attaches without saving a tray shortcut',()=>{
+ const capture=app.slice(app.indexOf('const onCapture=async'),app.indexOf('void appCapture.subscribe'));
+ assert.match(capture,/managedAppWidget\(\{sourceId:null,name:title\}/,'captured apps are transient workspace widgets');
+ assert.doesNotMatch(capture,/saveAppShortcutsOnAttach|appPanel\.prepare|presetFromWidget|upsertSavedPresets/,'Ctrl+Shift capture never prepares or saves an Apps shortcut');
+ assert.match(capture,/setState\(current=>\(\{\.\.\.current,workspaces:/,'only workspace state receives the new widget');
 });
 
 test('app shutdown configuration is applied natively and window close actions remain graceful',()=>{

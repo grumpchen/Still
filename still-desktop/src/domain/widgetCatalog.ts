@@ -1,6 +1,5 @@
 // Add metadata here and a renderer to widgets.tsx to introduce a new widget type.
 export const widgetCatalog = {
-  browser: {name:'Browser', icon:'browser', description:'Real Chrome in your workspace · tabs, extensions and 80% Lecture mode', width:600, height:460, minWidth:340, minHeight:280},
   group: {name:'Group', icon:'group', description:'Named tray collections · reusable widget types and course links', width:400, height:360, minWidth:280, minHeight:240},
   desmos: {name:'Calculator', icon:'desmos', description:'Live Desmos scientific calculator', width:440, height:490, minWidth:280, minHeight:300},
   notes: {name:'Notes', icon:'notes', description:'Independent notes, saved locally', width:400, height:340, minWidth:240, minHeight:180},

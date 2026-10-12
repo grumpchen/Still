@@ -72,7 +72,10 @@ test('saved entry rename and deletion stay in the saved collection and Edit dial
  assert.match(actions,/renameSavedPreset/);assert.match(actions,/removeSavedPreset/);
  assert.match(editor,/Rename shortcut/);assert.match(editor,/Rename group/);
  assert.match(editor,/Remove shortcut/);assert.match(editor,/Remove group/);
- assert.match(app,/localStorage\.setItem\(KEY,JSON\.stringify\(state\)\)/);
+ assert.match(app,/latestState=useRef\(state\)/);
+ assert.match(app,/persistTimer\.current=setTimeout\(\(\)=>\{persistTimer\.current=null;persistNow\.current\(\)\},250\)/);
+ assert.match(app,/localStorage\.setItem\(KEY,JSON\.stringify\(snapshot\)\)/);
+ assert.match(app,/addEventListener\('pagehide',flush\)/);
 });
 
 test('expanded Group entries stay inline, with management actions retained in Edit',()=>{
