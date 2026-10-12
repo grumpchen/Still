@@ -2,12 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 
-const css=await readFile(new URL('../src/canvas.css',import.meta.url),'utf8');
+const [canvasCss,baseCss]=await Promise.all([
+ readFile(new URL('../src/canvas.css',import.meta.url),'utf8'),
+ readFile(new URL('../src/styles.css',import.meta.url),'utf8'),
+]);
+const css=`${canvasCss}\n${baseCss}`;
 
-test('workspace viewport lets its thin WebKit scrollbar styling take effect',()=>{
- const viewport=css.match(/\.canvas-viewport\{([^}]*)\}/)?.[1]??'';
- assert.ok(viewport,'workspace viewport rule exists');
- assert.doesNotMatch(viewport,/scrollbar-(?:width|color)\s*:\s*(?!auto\b)[^;]+/,'standard scrollbar properties override Chromium WebKit scrollbar styling');
- assert.match(css,/\.canvas-viewport::\-webkit-scrollbar:horizontal\{[^}]*height:4px/);
- assert.match(css,/\.canvas-viewport::\-webkit-scrollbar-button:horizontal\{[^}]*display:none/);
+test('all scrollbars share a thin visible thumb and a wider native hit area',()=>{
+ assert.match(css,/:where\(\*\)\{[^}]*scrollbar-width:auto[^}]*scrollbar-color:auto/);
+ assert.match(css,/\*::\-webkit-scrollbar\{[^}]*width:14px[^}]*height:14px/);
+ assert.match(css,/\*::\-webkit-scrollbar-thumb\{[^}]*border:5px solid transparent[^}]*background-clip:content-box/);
+ assert.match(css,/\*::\-webkit-scrollbar-button\{[^}]*display:none/);
+ assert.doesNotMatch(css,/scrollbar-width:thin/,'per-element thin settings can override the shared WebView scrollbar styling');
 });
