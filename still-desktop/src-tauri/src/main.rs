@@ -49,7 +49,7 @@ fn main() {
             dropped_files::app_open, dropped_files::app_choose,
             app_panel::app_panel_open,app_panel::app_panel_windows,app_panel::app_panel_identity,app_panel::app_panel_attach,app_panel::app_panel_present,app_panel::app_panel_release,app_panel::app_panel_suspend,app_panel::app_panel_resume,app_panel::app_panel_configure_shutdown,
             app_capture::app_capture_enable,
-            app_picker::app_picker_windows,app_picker::app_picker_prepare,app_picker::app_picker_preview,
+            app_picker::app_picker_windows,app_picker::app_picker_prepare,app_picker::app_picker_icon,app_picker::app_picker_preview,
             app_picker::app_picker_installed,app_picker::app_picker_select_installed,
             shortcuts::shortcuts_configure,
         ])

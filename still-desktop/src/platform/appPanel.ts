@@ -22,6 +22,7 @@ export const appPanel={
  windows:()=>invoke<AppWindow[]>('app_panel_windows'),
  identity:(id:string)=>invoke<AppAttachment|null>('app_panel_identity',{id}),
  choices:(sourceId?:string)=>invoke<AppWindowChoice[]>('app_picker_windows',{sourceId:sourceId??null}),
+ icon:(window:AppAttachment)=>invoke<number[]>('app_picker_icon',{hwnd:window.hwnd,pid:window.pid}),
  installed:()=>invoke<InstalledAppChoice[]>('app_picker_installed'),
  selectInstalled:(id:string)=>invoke<DroppedResource>('app_picker_select_installed',{id}),
  prepare:(window:AppAttachment)=>invoke<DroppedResource>('app_picker_prepare',{hwnd:window.hwnd,pid:window.pid}),

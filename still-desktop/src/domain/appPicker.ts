@@ -23,7 +23,7 @@ export function refreshedAppSelection(current:AppWindowChoice|null,windows:AppWi
 export function managedAppWidget(source:{sourceId:string|null;name:string},name:string,widgets:WidgetInstance[],at?:{x:number;y:number},width?:number,reuseExisting=false,icon?:number[]|string):WidgetInstance{
  if(source.sourceId===null){
   const displayName=(source.name.trim()||name.trim()||'Attached app').slice(0,60),widget=createWidget('apps');
-  widget.title=(name.trim()||displayName).slice(0,60);widget.appName=displayName;widget.appPanelOpen=true;
+  widget.title=(name.trim()||displayName).slice(0,60);widget.appName=displayName;widget.appPanelOpen=true;widget.appIconData=typeof icon==='string'?checkedAppIconData(icon):appIconData(icon);
   widget.instanceNumber=nextInstanceNumber('apps',widgets);widget.placement=at?placement('apps',{...widget.placement,...at}):nextPlacement('apps',widgets,width);
   return widget;
  }

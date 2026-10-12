@@ -192,11 +192,12 @@ export default function App(){
       const snapshot=captureState.current,owner=snapshot.workspaces.find(item=>item.id===snapshot.activeId);
       if(!owner){captureInFlight.current.delete(key);notify('The clicked app could not be attached because its workspace is unavailable.');return}
        try{
+        const icon=await appPanel.icon({hwnd:result.hwnd,pid:result.pid}).catch(()=>undefined);
         const title=result.title.trim().slice(0,60)||'Attached app';
          let source:DroppedResource|null=null,shortcutError='';
          if(snapshot.saveAppShortcutsOnAttach){try{source=await appPanel.prepare({hwnd:result.hwnd,pid:result.pid})}catch(error){shortcutError=String(error)}}
          if(disposed){captureInFlight.current.delete(key);return}
-         const widget=boundNewWidget(managedAppWidget({sourceId:source?.sourceId??null,name:title},title,owner.widgets),owner.widgets);
+         const widget=boundNewWidget(managedAppWidget({sourceId:source?.sourceId??null,name:title},title,owner.widgets,undefined,undefined,false,icon),owner.widgets);
          const preset=source?.sourceId?presetFromWidget(widget):null;
         undo.current=snapshot;
          setState(current=>({...current,presets:preset?upsertSavedPresets(current.presets,[preset]):current.presets,workspaces:current.workspaces.map(item=>item.id===owner.id?{...item,widgets:[...item.widgets,widget]}:item)}));

@@ -152,6 +152,17 @@ pub async fn app_picker_prepare(app:AppHandle,webview:Webview,hwnd:usize,pid:u32
  }).await.map_err(|e|e.to_string())?
 }
 
+#[tauri::command]
+pub async fn app_picker_icon(app:AppHandle,webview:Webview,hwnd:usize,pid:u32)->Result<Vec<u8>,String>{
+ crate::browser::authorize(&webview)?;
+ tauri::async_runtime::spawn_blocking(move||{
+  let window=selected_for_prepare(&app,hwnd,pid)?;
+  let bytes=icon(handle(hwnd),window.executable.as_deref());
+  if bytes.is_empty(){return Err("Windows could not read this app's icon.".into())}
+  Ok(bytes)
+ }).await.map_err(|e|e.to_string())?
+}
+
 static PREVIEWS:AtomicUsize=AtomicUsize::new(0);
 struct PreviewPermit;impl Drop for PreviewPermit{fn drop(&mut self){PREVIEWS.fetch_sub(1,Ordering::Relaxed);}}
 fn render_preview(hwnd:usize,pid:u32)->Result<Vec<u8>,String>{unsafe{

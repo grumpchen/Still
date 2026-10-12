@@ -1,7 +1,9 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {filterAppWindows,filterInstalledApps,refreshedAppSelection,managedAppWidget,appIconData} from '../src/domain/appPicker.ts';
 import {createInitialState,parseState} from '../src/domain/workspaces.ts';
+const appSource=readFileSync(new URL('../src/App.tsx',import.meta.url),'utf8');
 
 test('open app search distinguishes document windows and keeps attached windows marked after available choices',()=>{
  const windows=[{hwnd:1,pid:10,appName:'Word',title:'CHEM111 notes — Word',attached:false,minimized:false},{hwnd:2,pid:10,appName:'Word',title:'Engineering report — Word',attached:true,minimized:false},{hwnd:3,pid:20,appName:'Excel',title:'Lab results — Excel',attached:false,minimized:true}];
@@ -54,10 +56,17 @@ test('saved Apps presets retain only validated PNG data URLs when reopened',()=>
 });
 
 test('a captured external window creates a source-free transient Apps widget without persisting HWND/PID',()=>{
- const widget=managedAppWidget({sourceId:null,name:'Lecture window'},'Lecture window',[]);
+ const bytes=[137,80,78,71,13,10,26,10,1,2,3],icon=appIconData(bytes);
+ const widget=managedAppWidget({sourceId:null,name:'Lecture window'},'Lecture window',[],undefined,undefined,false,bytes);
  assert.equal(widget.type,'apps');assert.equal(widget.appKey,null);assert.equal(widget.appPanelOpen,true);assert.equal(widget.appReuseExisting,false);
+ assert.equal(widget.appIconData,icon,'the native app logo is retained on the attached widget');
  const state=createInitialState();state.workspaces[0].widgets.push(widget);
  const saved=JSON.stringify(state);assert.ok(!saved.includes('"hwnd"'));assert.ok(!saved.includes('"pid"'));
  const restored=parseState(saved).workspaces[0].widgets.at(-1);
  assert.equal(restored.appKey,null);assert.equal(restored.appPanelOpen,false,'a transient native handle must not be restored after restart');
+});
+
+test('quick attach fetches the icon for the exact captured HWND/PID and passes it into the widget',()=>{
+ assert.match(appSource,/appPanel\.icon\(\{hwnd:result\.hwnd,pid:result\.pid\}\)/);
+ assert.match(appSource,/managedAppWidget\(\{sourceId:source\?\.sourceId\?\?null,name:title\},title,owner\.widgets,undefined,undefined,false,icon\)/);
 });
