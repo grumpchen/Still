@@ -39,6 +39,8 @@ export interface BuiltInWidgetPluginDefinition{id:string;name:string;description
 const alwaysAvailable=()=>true;
 const relaunchAvailable=(status:WidgetRelaunchPluginStatus)=>status==='enabled';
 export const widgetPluginCatalog:BuiltInWidgetPluginDefinition[]=[{
+ id:'color-tag',name:'Color Tag',description:'Assign a color to a workspace widget and change it from the card header.',controls:[],
+},{
  id:'widget-relaunch',name:'Widget Relaunch',description:'Control which workspace widgets start automatically.',controls:[
   {id:'widget-relaunch.global-mode',pluginId:'widget-relaunch',label:'Global relaunch mode',StatusControl:RelaunchGlobalModeControl,available:relaunchAvailable},
   {id:'widget-relaunch.tag-colors',pluginId:'widget-relaunch',label:'Tag color plugin settings',StatusControl:RelaunchTagColorsControl,available:alwaysAvailable},

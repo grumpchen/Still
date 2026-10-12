@@ -11,7 +11,7 @@ const types=['browser','group','desmos','notes','focus','ai','files','apps','tim
 const rect=(left,top,width,height)=>({x:left,y:top,left,top,right:left+width,bottom:top+height,width,height,toJSON(){return this}});
 const info=(args)=>({hwnd:args.id==='app-one'?451:452,pid:args.id==='app-one'?902:903,minWidth:0,minHeight:0,requiredWidth:null,requiredHeight:null,measured:false,probing:false,shown:args.visible??true});
 const setGlobal=(key,value)=>Object.defineProperty(globalThis,key,{configurable:true,writable:true,value});
-const vite=await createServer({server:{middlewareMode:true,hmr:false},appType:'custom',optimizeDeps:{noDiscovery:true,entries:[]}});
+const vite=await createServer({server:{middlewareMode:true,ws:{port:24689}},appType:'custom',optimizeDeps:{noDiscovery:true,entries:[]}});
 after(()=>vite.close());
 
 async function setup(widgets,{identity={hwnd:451,pid:902},startupDeferredIds=new Set(),screenshotPluginMode='global',screenshotPluginColors=[],screenshotPluginColorOverrides={},clockPluginMode='global',clockPluginColors=[],clockPluginColorOverrides={},showAppAttachAction=false,showAppDetachAction=false,showAppSaveAction=false,showWidgetRelaunchAction=true,showWidgetExportPngAction=true}={}){
@@ -288,6 +288,39 @@ test('an Apps widget that cannot reopen turns its Relaunch control red',async()=
   await act(async()=>relaunch.dispatchEvent(new app.window.MouseEvent('click',{bubbles:true})));
   const failed=app.window.document.querySelector('[aria-label="Relaunch Attached app"]');assert.equal(failed.getAttribute('aria-invalid'),'true','an unavailable app is visibly marked as a failed relaunch');
   assert.equal(app.calls.filter(call=>call.command==='app_panel_open').length,0,'an attached app without a saved launch source is never replaced by another process');
+ }finally{await app.cleanup()}
+});
+
+test('Ctrl+M toggles the workspace overview map from the rendered workspace',async()=>{
+ const widget=createWidget('notes');widget.id='map-note';widget.title='Map note';
+ const app=await setup([widget]);
+ try{
+  assert.ok(app.window.document.querySelector('.canvas-overview'),'the map is visible by default');
+  await act(async()=>app.window.document.dispatchEvent(new app.window.KeyboardEvent('keydown',{key:'m',ctrlKey:true,bubbles:true,cancelable:true})));
+  assert.equal(app.window.document.querySelector('.canvas-overview'),null,'Ctrl+M hides the map');
+  await act(async()=>app.window.document.dispatchEvent(new app.window.KeyboardEvent('keydown',{key:'m',ctrlKey:true,repeat:true,bubbles:true,cancelable:true})));
+  assert.equal(app.window.document.querySelector('.canvas-overview'),null,'holding Ctrl+M does not repeatedly toggle the map');
+  const input=app.window.document.createElement('input');app.window.document.body.append(input);
+  await act(async()=>input.dispatchEvent(new app.window.KeyboardEvent('keydown',{key:'m',ctrlKey:true,bubbles:true,cancelable:true})));
+  assert.equal(app.window.document.querySelector('.canvas-overview'),null,'Ctrl+M inside a text field stays available to the field');
+  await act(async()=>app.window.document.dispatchEvent(new app.window.KeyboardEvent('keydown',{key:'m',ctrlKey:true,bubbles:true,cancelable:true})));
+  assert.ok(app.window.document.querySelector('.canvas-overview'),'Ctrl+M shows the map again');
+  await act(async()=>app.window.document.dispatchEvent(new app.window.Event('still:workspace-overview-toggle')));
+  assert.equal(app.window.document.querySelector('.canvas-overview'),null,'the native managed-window shortcut uses the same map toggle');
+ }finally{await app.cleanup()}
+});
+
+test('Ctrl+Shift+right-click on a workspace card minimizes it, while ordinary right-click does not',async()=>{
+ const widget=createWidget('notes');widget.id='context-note';widget.title='Context note';
+ const app=await setup([widget]);
+ try{
+  const card=app.window.document.querySelector('[data-widget-id="context-note"]');
+  await act(async()=>card.dispatchEvent(new app.window.MouseEvent('contextmenu',{bubbles:true,cancelable:true,button:2,ctrlKey:true})));
+  assert.equal(card.classList.contains('widget-minimized'),false,'ordinary right-click leaves the widget open');
+  await act(async()=>card.dispatchEvent(new app.window.MouseEvent('contextmenu',{bubbles:true,cancelable:true,button:0,ctrlKey:true,shiftKey:true})));
+  assert.equal(card.classList.contains('widget-minimized'),false,'the left-click gesture remains untouched');
+  await act(async()=>card.dispatchEvent(new app.window.MouseEvent('contextmenu',{bubbles:true,cancelable:true,button:2,ctrlKey:true,shiftKey:true})));
+  assert.equal(card.classList.contains('widget-minimized'),true,'Ctrl+Shift+right-click minimizes the widget');
  }finally{await app.cleanup()}
 });
 

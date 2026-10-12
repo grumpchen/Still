@@ -1,6 +1,8 @@
 import type {AppShutdownBehavior} from './domain/appSettings.ts';
 import {widgetTagColors,type WidgetTagColor} from './domain/workspaces.ts';
 import type {WidgetRelaunchMode} from './domain/widgetRelaunch.ts';
+import type {WorkspaceShortcuts} from './domain/shortcuts.ts';
+import {shortcutLabel} from './domain/shortcuts.ts';
 import {Icon} from './Icon.tsx';
 
 interface Props{
@@ -13,14 +15,20 @@ interface Props{
  showWidgetExportPngAction:boolean;
  widgetRelaunchMode:WidgetRelaunchMode;
  widgetRelaunchColors:Partial<Record<WidgetTagColor,WidgetRelaunchMode>>;
+ shortcuts:WorkspaceShortcuts;
+ openShortcuts:()=>void;
  update:(patch:{appShutdownBehavior?:AppShutdownBehavior;saveAppShortcutsOnAttach?:boolean;widgetRelaunchMode?:WidgetRelaunchMode;showAppAttachAction?:boolean;showAppDetachAction?:boolean;showAppSaveAction?:boolean;showWidgetRelaunchAction?:boolean;showWidgetExportPngAction?:boolean})=>void;
  setRelaunchColor:(color:WidgetTagColor,mode:WidgetRelaunchMode|null)=>void;
  applyRelaunchModeToAll:()=>void;
 }
 
-export default function GeneralSettings({appShutdownBehavior,saveAppShortcutsOnAttach,showAppAttachAction,showAppDetachAction,showAppSaveAction,showWidgetRelaunchAction,showWidgetExportPngAction,widgetRelaunchMode,widgetRelaunchColors,update,setRelaunchColor,applyRelaunchModeToAll}:Props){
+export default function GeneralSettings({appShutdownBehavior,saveAppShortcutsOnAttach,showAppAttachAction,showAppDetachAction,showAppSaveAction,showWidgetRelaunchAction,showWidgetExportPngAction,widgetRelaunchMode,widgetRelaunchColors,shortcuts,openShortcuts,update,setRelaunchColor,applyRelaunchModeToAll}:Props){
  return <section className="settings-page general-settings" role="tabpanel" id="settings-general" aria-labelledby="settings-tab-general">
   <h3>General settings</h3>
+  <h4>Workspace shortcuts</h4>
+  <div className="settings-row"><span>Toggle workspace map</span><kbd>Ctrl + M</kbd></div>
+  <div className="settings-row"><span>Minimize a widget</span><kbd>Ctrl + Shift + Right-click</kbd></div>
+  <button className="shortcut-settings-link" onClick={openShortcuts}><span>Keyboard shortcuts</span><kbd>{shortcutLabel(shortcuts.up)} / {shortcutLabel(shortcuts.down)}</kbd><span aria-hidden="true">→</span></button>
   <label className="settings-row"><span>When Still closes</span><select aria-label="When Still closes" value={appShutdownBehavior} onChange={event=>update({appShutdownBehavior:event.target.value as AppShutdownBehavior})}>
    <option value="minimize">Minimize attached apps</option>
    <option value="close">Close attached app windows</option>

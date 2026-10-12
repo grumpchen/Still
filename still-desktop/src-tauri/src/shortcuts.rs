@@ -47,6 +47,9 @@ fn validate(shortcuts: &WorkspaceShortcuts) -> Result<(), String> {
     if shortcuts.up == shortcuts.down { return Err("Use different shortcuts for moving up and down".into()); }
     Ok(())
 }
+fn overview_toggle(key:u32,ctrl:bool,alt:bool,shift:bool,editing:bool)->bool{
+    key==b'M' as u32&&ctrl&&!alt&&!shift&&!editing
+}
 impl ShortcutConfig {
     fn direction(&self, key: u32, ctrl: bool, alt: bool, shift: bool) -> Option<&'static str> {
         if !self.enabled { return None; }
@@ -163,6 +166,10 @@ unsafe extern "system" fn keyboard(code:i32,w:windows::Win32::Foundation::WPARAM
  if w.0!=WM_KEYDOWN as usize&&w.0!=WM_SYSKEYDOWN as usize{return CallNextHookEx(None,code,w,l)}
  let ctrl=GetAsyncKeyState(VK_CONTROL.0 as i32)<0;let alt=GetAsyncKeyState(VK_MENU.0 as i32)<0;let shift=GetAsyncKeyState(VK_SHIFT.0 as i32)<0;
  if GetAsyncKeyState(VK_LWIN.0 as i32)<0||GetAsyncKeyState(VK_RWIN.0 as i32)<0||(ctrl&&alt&&GetAsyncKeyState(VK_RMENU.0 as i32)<0)||(shift&&!ctrl&&!alt&&EDITING.load(Ordering::Relaxed)){return CallNextHookEx(None,code,w,l)}
+ if overview_toggle(event.vkCode,ctrl,alt,shift,EDITING.load(Ordering::Relaxed)){
+  if !pressed.contains(&event.vkCode){pressed.push(event.vkCode);let app=app.clone();tauri::async_runtime::spawn(async move{let _=app.emit_to("main","workspace-overview-toggle",());});}
+  return LRESULT(1)
+ }
  let direction=app.state::<ShortcutState>().0.try_lock().ok().and_then(|s|s.direction(event.vkCode,ctrl,alt,shift));
  if let Some(direction)=direction{
   if !pressed.contains(&event.vkCode){pressed.push(event.vkCode);let app=app.clone();tauri::async_runtime::spawn(async move{let _=app.emit_to("main","workspace-shortcut",direction);});}
@@ -180,6 +187,13 @@ pub fn install(app:&AppHandle)->Result<(),String>{
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test] fn overview_toggle_requires_ctrl_m_outside_editing(){
+        assert!(overview_toggle(b'M' as u32,true,false,false,false));
+        assert!(!overview_toggle(b'M' as u32,true,false,false,true));
+        assert!(!overview_toggle(b'M' as u32,true,true,false,false));
+        assert!(!overview_toggle(b'M' as u32,true,false,true,false));
+        assert!(!overview_toggle(b'N' as u32,true,false,false,false));
+    }
     #[test] fn shift_only_bindings_are_valid(){
         let shortcuts=WorkspaceShortcuts{up:Shortcut{key:"W".into(),ctrl:false,alt:false,shift:true},down:Shortcut{key:"S".into(),ctrl:false,alt:false,shift:true}};
         assert!(validate(&shortcuts).is_ok());

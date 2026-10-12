@@ -7,4 +7,5 @@ export const nativeShortcuts = {
   subscribe:(callback:(direction:WorkspaceDirection)=>void):Promise<UnlistenFn>=>listen<WorkspaceDirection>('workspace-shortcut',event=>{
     if(event.payload==='up'||event.payload==='down')callback(event.payload);
   }),
+  subscribeOverviewToggle:():Promise<UnlistenFn>=>listen('workspace-overview-toggle',()=>window.dispatchEvent(new Event('still:workspace-overview-toggle'))),
 };
