@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {filterAppWindows,refreshedAppSelection,managedAppWidget,appIconData} from '../src/domain/appPicker.ts';
+import {filterAppWindows,filterInstalledApps,refreshedAppSelection,managedAppWidget,appIconData} from '../src/domain/appPicker.ts';
 import {createInitialState,parseState} from '../src/domain/workspaces.ts';
 
 test('open app search distinguishes document windows and keeps attached windows marked after available choices',()=>{
@@ -18,6 +18,12 @@ test('refresh keeps the exact selected HWND/PID and adopts its latest title and 
  assert.equal(refreshedAppSelection(selected,[otherWindow,refreshed]),refreshed);
  assert.equal(refreshedAppSelection(selected,[{...refreshed,attached:true}]),null);
  assert.equal(refreshedAppSelection(selected,[]),null);
+});
+test('installed app search filters by app name and keeps the real icon with the selected item',()=>{
+ const icon=[137,80,78,71,13,10,26,10,1,2,3],apps=[{id:'installed-word',name:'Microsoft Word',icon},{id:'installed-edge',name:'Microsoft Edge',icon:[...icon,4]}];
+ assert.deepEqual(filterInstalledApps(apps,'microsoft e').map(app=>app.id),['installed-edge']);
+ assert.equal(filterInstalledApps(apps,'')[0].icon[0],137);
+ assert.deepEqual(filterInstalledApps(apps,'no match'),[]);
 });
 test('attaching a chosen app saves its grant and name without persisting native window handles',()=>{
  const selected={sourceId:'app-word',name:'Microsoft Word',hwnd:77,pid:99};

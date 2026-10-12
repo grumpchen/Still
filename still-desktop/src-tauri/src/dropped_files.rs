@@ -105,7 +105,7 @@ struct DropPayload {
     errors: Vec<String>,
 }
 
-fn classify(path: &Path) -> Result<(PathBuf, DropEntry), String> {
+pub(crate) fn classify(path: &Path) -> Result<(PathBuf, DropEntry), String> {
     let name = path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_else(|| "Dropped item".into());
     let canonical = path.canonicalize().map_err(|_| format!("{name}: this file or folder is no longer available."))?;
     let metadata = fs::metadata(&canonical).map_err(|_| format!("{name}: this file or folder cannot be read."))?;

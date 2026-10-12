@@ -155,7 +155,7 @@ fn window_snapshot()->Vec<usize>{
 struct Com(bool);
 impl Com{fn initialize()->Self{Self(unsafe{CoInitializeEx(None,COINIT_APARTMENTTHREADED).is_ok()})}}
 impl Drop for Com{fn drop(&mut self){if self.0{unsafe{CoUninitialize();}}}}
-fn shortcut_target(path:&Path)->Option<(PathBuf,String,Option<PathBuf>)>{unsafe{
+pub(crate) fn shortcut_target(path:&Path)->Option<(PathBuf,String,Option<PathBuf>)>{unsafe{
  let link:IShellLinkW=CoCreateInstance(&ShellLink,None,CLSCTX_INPROC_SERVER).ok()?;
  let file:IPersistFile=link.cast().ok()?;let selected=os_wide(path.as_os_str());file.Load(PCWSTR(selected.as_ptr()),STGM_READ).ok()?;
  let mut target=vec![0u16;32768];let mut data=windows::Win32::Storage::FileSystem::WIN32_FIND_DATAW::default();

@@ -1,7 +1,7 @@
 use serde::Serialize;
-use std::{collections::HashMap,path::Path,sync::atomic::{AtomicUsize,Ordering}};
+use std::{collections::{HashMap,HashSet},path::{Path,PathBuf},sync::{atomic::{AtomicUsize,Ordering},Mutex}};
 use tauri::{AppHandle,Manager,Webview};
-use windows::{core::PCWSTR,Win32::{Foundation::{HWND,LPARAM,RECT,WPARAM},Graphics::Gdi::*,Storage::{FileSystem::*,Xps::{PrintWindow,PRINT_WINDOW_FLAGS}},UI::{Shell::ExtractIconExW,WindowsAndMessaging::*}}};
+use windows::{core::PCWSTR,Win32::{Foundation::{HWND,LPARAM,RECT,WPARAM},Graphics::Gdi::*,Storage::{FileSystem::*,Xps::{PrintWindow,PRINT_WINDOW_FLAGS}},System::Com::*,UI::{Shell::ExtractIconExW,WindowsAndMessaging::*}}};
 
 fn wide(text:&str)->Vec<u16>{text.encode_utf16().chain(Some(0)).collect()}
 fn handle(value:usize)->HWND{HWND(value as *mut _)}
@@ -12,6 +12,16 @@ fn clean_name(text:&str)->String{text.chars().map(|c|if c.is_control()||c=='/'||
 
 #[derive(Serialize)]#[serde(rename_all="camelCase")]
 pub struct PickerWindow{hwnd:usize,pid:u32,app_name:String,title:String,attached:bool,minimized:bool,icon:Vec<u8>}
+
+#[derive(Serialize)]#[serde(rename_all="camelCase")]
+pub struct InstalledApp{ id:String,name:String,icon:Vec<u8> }
+
+#[derive(Default)]
+pub struct InstalledAppCatalog(Mutex<HashMap<String,PathBuf>>);
+
+struct Com(bool);
+impl Com{fn initialize()->Self{Self(unsafe{CoInitializeEx(None,COINIT_APARTMENTTHREADED).is_ok()})}}
+impl Drop for Com{fn drop(&mut self){if self.0{unsafe{CoUninitialize();}}}}
 
 fn version_name(path:&str)->Option<String>{unsafe{
  let filename=wide(path);let size=GetFileVersionInfoSizeW(PCWSTR(filename.as_ptr()),None);if size==0||size>1024*1024{return None}
@@ -54,6 +64,36 @@ fn icon(hwnd:HWND,path:Option<&str>)->Vec<u8>{unsafe{
  if owned{let _=DestroyIcon(image);}result.unwrap_or_default()
 }}
 
+fn start_menu_roots()->Vec<PathBuf>{
+ let mut roots=Vec::new();
+ if let Some(app_data)=std::env::var_os("APPDATA"){roots.push(PathBuf::from(app_data).join("Microsoft/Windows/Start Menu/Programs"));}
+ if let Some(program_data)=std::env::var_os("ProgramData"){roots.push(PathBuf::from(program_data).join("Microsoft/Windows/Start Menu/Programs"));}
+ roots
+}
+fn shortcut_files(root:&Path,depth:u8,remaining:&mut usize,items:&mut Vec<PathBuf>){
+ if depth>8||*remaining==0{return}
+ let Ok(entries)=std::fs::read_dir(root) else{return};
+ for entry in entries.flatten(){if *remaining==0{break}*remaining-=1;let path=entry.path();let Ok(kind)=entry.file_type()else{continue};
+  if kind.is_dir(){shortcut_files(&path,depth+1,remaining,items)}
+  else if kind.is_file()&&path.extension().is_some_and(|ext|ext.eq_ignore_ascii_case("lnk")){items.push(path)}
+ }
+}
+fn installed_shortcuts()->Result<Vec<(String,PathBuf,String,Vec<u8>)>,String>{
+ let _com=Com::initialize();let mut files=Vec::new();let mut remaining=10_000;
+ for root in start_menu_roots(){shortcut_files(&root,0,&mut remaining,&mut files)}
+ files.sort_by_key(|path|path.to_string_lossy().to_lowercase());
+ let mut seen=HashSet::new();let mut result=Vec::new();
+ for path in files.into_iter().take(500){
+  let Some((target,_,_))=crate::app_panel::shortcut_target(&path) else{continue};
+  let key=target.to_string_lossy().to_lowercase();if !seen.insert(key){continue}
+  let target_text=target.to_string_lossy().into_owned();
+  let name=version_name(&target_text).filter(|name|!name.is_empty()).or_else(||path.file_stem().map(|name|name.to_string_lossy().into_owned())).unwrap_or_else(||"Application".into());
+  let icon=icon(handle(0),Some(&target_text));
+  result.push((name,path,target_text,icon));
+ }
+ result.sort_by(|a,b|a.0.to_lowercase().cmp(&b.0.to_lowercase()));Ok(result)
+}
+
 fn choices(app:&AppHandle,source_id:Option<&str>)->Result<Vec<PickerWindow>,String>{
  let expected=source_id.map(|id|app.state::<crate::dropped_files::AppGrants>().target(id)).transpose()?.and_then(|path|crate::app_panel::expected_executable(&path));
  let mut list=crate::app_panel::windows();let managed=crate::app_panel::managed_windows(app).into_iter().chain(crate::chrome_overlay::managed_windows(app)).collect::<Vec<_>>();
@@ -81,6 +121,26 @@ fn selected_for_prepare(app:&AppHandle,hwnd:usize,pid:u32)->Result<crate::app_pa
 #[tauri::command]
 pub async fn app_picker_windows(app:AppHandle,webview:Webview,source_id:Option<String>)->Result<Vec<PickerWindow>,String>{
  crate::browser::authorize(&webview)?;tauri::async_runtime::spawn_blocking(move||choices(&app,source_id.as_deref())).await.map_err(|e|e.to_string())?
+}
+#[tauri::command]
+pub async fn app_picker_installed(app:AppHandle,webview:Webview)->Result<Vec<InstalledApp>,String>{
+ crate::browser::authorize(&webview)?;
+ let (choices,paths)=tauri::async_runtime::spawn_blocking(move||{
+  let found=installed_shortcuts()?;let mut paths=HashMap::new();let mut choices=Vec::new();
+  for(name,path,_,icon)in found{let id=crate::dropped_files::source_id()?;paths.insert(id.clone(),path);choices.push(InstalledApp{id,name,icon});}
+  Ok::<_,String>((choices,paths))
+ }).await.map_err(|e|e.to_string())??;
+ *app.state::<InstalledAppCatalog>().0.lock().map_err(|_|"Installed app list is unavailable")?=paths;Ok(choices)
+}
+#[tauri::command]
+pub async fn app_picker_select_installed(app:AppHandle,webview:Webview,id:String)->Result<crate::dropped_files::DropEntry,String>{
+ crate::browser::authorize(&webview)?;crate::files::valid_id(&id)?;
+ tauri::async_runtime::spawn_blocking(move||{
+  let path=app.state::<InstalledAppCatalog>().0.lock().map_err(|_|"Installed app list is unavailable")?.get(&id).cloned().ok_or("Refresh the installed app list and choose again")?;
+  let (entry_path,mut entry)=crate::dropped_files::classify(&path)?;if entry.kind!="app"{return Err("This installed app shortcut is no longer supported".into())}
+  let grants=app.state::<crate::dropped_files::AppGrants>();let source_id=crate::dropped_files::source_id()?;entry=grants.register(&source_id,&entry_path)?;
+  grants.persist(&app.path().app_data_dir().map_err(|e|e.to_string())?)?;Ok(entry)
+ }).await.map_err(|e|e.to_string())?
 }
 #[tauri::command]
 pub async fn app_picker_prepare(app:AppHandle,webview:Webview,hwnd:usize,pid:u32)->Result<crate::dropped_files::DropEntry,String>{
@@ -116,6 +176,17 @@ pub async fn app_picker_preview(webview:Webview,hwnd:usize,pid:u32)->Result<Vec<
  use super::*;
  use crate::app_panel::WindowInfo;
  #[test]fn names_are_safe_for_saved_app_references(){assert_eq!(clean_name("  Microsoft / Word\n "),"Microsoft   Word");assert!(clean_name(&"a".repeat(500)).len()<=200);}
+ #[test]fn installed_catalog_walk_is_bounded_and_only_collects_shortcut_files(){
+  let root=std::env::temp_dir().join(format!("still-app-catalog-test-{}",crate::dropped_files::source_id().unwrap()));
+  let nested=root.join("Nested");let fake_directory=root.join("Folder.lnk");std::fs::create_dir_all(&nested).unwrap();std::fs::create_dir_all(&fake_directory).unwrap();
+  let first=root.join("One.lnk");let second=nested.join("Two.LNK");std::fs::write(&first,b"fixture").unwrap();std::fs::write(&second,b"fixture").unwrap();
+  let mut files=Vec::new();let mut remaining=100;shortcut_files(&root,0,&mut remaining,&mut files);files.sort();let mut expected=vec![first,second];expected.sort();assert_eq!(files,expected);
+  let _=std::fs::remove_dir_all(root);
+ }
+ #[test]fn installed_catalog_reads_only_named_entries_with_bounded_png_icons(){
+  let apps=installed_shortcuts().unwrap();assert!(apps.len()<=500);
+  for(name,_,_,icon)in apps{assert!(!name.trim().is_empty());assert!(icon.is_empty()||icon.len()<=12_000);if !icon.is_empty(){assert_eq!(&icon[..8],&[137,80,78,71,13,10,26,10]);}}
+ }
  #[test]fn bitmap_icon_rendering_encodes_real_pixels_and_rejects_unbounded_dimensions(){unsafe{
   assert!(Bitmap::new(0,20).is_err());assert!(Bitmap::new(20000,20000).is_err());
   let bitmap=Bitmap::new(32,32).unwrap();let image=LoadIconW(None,IDI_APPLICATION).unwrap();DrawIconEx(bitmap.memory,0,0,image,32,32,0,None,DI_NORMAL).unwrap();

@@ -1,8 +1,9 @@
 import {checkedAppIconData,createWidget,createWidgetFromPreset,nextInstanceNumber,type WidgetInstance} from './workspaces.ts';
 import {nextPlacement,placement} from './layout.ts';
 export interface AppWindowChoice {hwnd:number;pid:number;appName:string;title:string;attached:boolean;minimized:boolean;icon?:number[]}
+export interface InstalledAppChoice {id:string;name:string;icon:number[]}
 export function appIconData(bytes:unknown):string|undefined {
- if(!Array.isArray(bytes)||bytes.length<8||bytes.length>24_000||bytes.some(value=>!Number.isInteger(value)||value<0||value>255))return undefined;
+ if(!Array.isArray(bytes)||bytes.length<8||bytes.length>12_000||bytes.some(value=>!Number.isInteger(value)||value<0||value>255))return undefined;
  if([137,80,78,71,13,10,26,10].some((value,index)=>bytes[index]!==value))return undefined;
  const encoded='data:image/png;base64,'+btoa(String.fromCharCode(...bytes));return checkedAppIconData(encoded);
 }
@@ -10,6 +11,10 @@ export function filterAppWindows(windows:AppWindowChoice[],query:string):AppWind
  const terms=query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
  return windows.filter(window=>terms.every(term=>(window.appName+' '+window.title).toLocaleLowerCase().includes(term)))
   .sort((a,b)=>Number(a.attached)-Number(b.attached)||a.appName.localeCompare(b.appName)||a.title.localeCompare(b.title));
+}
+export function filterInstalledApps(apps:InstalledAppChoice[],query:string):InstalledAppChoice[]{
+ const terms=query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+ return apps.filter(app=>terms.every(term=>app.name.toLocaleLowerCase().includes(term))).sort((a,b)=>a.name.localeCompare(b.name));
 }
 export function refreshedAppSelection(current:AppWindowChoice|null,windows:AppWindowChoice[]):AppWindowChoice|null{
  if(!current)return null;

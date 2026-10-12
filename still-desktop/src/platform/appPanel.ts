@@ -1,7 +1,7 @@
 import {invoke,isTauri} from '@tauri-apps/api/core';
 import {listen,type UnlistenFn} from '@tauri-apps/api/event';
 import type {PanelBounds} from '../domain/appPanel.ts';
-import type {AppWindowChoice} from '../domain/appPicker.ts';
+import type {AppWindowChoice,InstalledAppChoice} from '../domain/appPicker.ts';
 import type {DroppedResource} from './resourceDrop.ts';
 import type {AppShutdownBehavior} from '../domain/appSettings.ts';
 export interface AppWindow {hwnd:number;pid:number;title:string}
@@ -22,6 +22,8 @@ export const appPanel={
  windows:()=>invoke<AppWindow[]>('app_panel_windows'),
  identity:(id:string)=>invoke<AppAttachment|null>('app_panel_identity',{id}),
  choices:(sourceId?:string)=>invoke<AppWindowChoice[]>('app_picker_windows',{sourceId:sourceId??null}),
+ installed:()=>invoke<InstalledAppChoice[]>('app_picker_installed'),
+ selectInstalled:(id:string)=>invoke<DroppedResource>('app_picker_select_installed',{id}),
  prepare:(window:AppAttachment)=>invoke<DroppedResource>('app_picker_prepare',{hwnd:window.hwnd,pid:window.pid}),
  preview:async(window:AppAttachment)=>appImageUrl(await invoke<number[]>('app_picker_preview',{hwnd:window.hwnd,pid:window.pid})),
  release:(id:string)=>command<void>(id,'app_panel_release'),
