@@ -25,7 +25,16 @@ fn select_window<'a>(launch:&Launch,windows:&'a [WindowInfo],claimed:&[usize])->
  windows.iter().find(|w|!launch.before.contains(&w.hwnd)&&!claimed.contains(&w.hwnd)&&((launch.pid!=0&&w.pid==launch.pid)||launch.executable.as_ref().zip(w.executable.as_ref()).is_some_and(|(a,b)|same_path(a,b))))
 }
 fn launch_arguments(executable:&Path,args:&str)->String{
- if executable.file_name().is_some_and(|n|n.to_string_lossy().eq_ignore_ascii_case("winword.exe")){format!("{} /n",args.trim()).trim().to_owned()}else{args.to_owned()}
+ if executable.file_name().is_some_and(|n|n.to_string_lossy().eq_ignore_ascii_case("winword.exe")){format!("{} /n",args.trim()).trim().to_owned()}
+ else if is_chrome(executable)&&has_chrome_profile_argument(args)&&!has_new_window_argument(args){format!("{} --new-window",args.trim()).trim().to_owned()}
+ else{args.to_owned()}
+}
+fn is_chrome(path:&Path)->bool{path.file_name().is_some_and(|name|name.to_string_lossy().eq_ignore_ascii_case("chrome.exe"))}
+fn has_chrome_profile_argument(args:&str)->bool{args.split_whitespace().any(|arg|matches!(arg.trim_matches('"').split('=').next().unwrap_or("").to_ascii_lowercase().as_str(),"--profile-directory"|"--user-data-dir"))}
+fn has_new_window_argument(args:&str)->bool{args.split_whitespace().any(|arg|arg.trim_matches('"').eq_ignore_ascii_case("--new-window"))}
+fn explicit_chrome_profile_shortcut(path:&Path)->bool{
+ if !path.extension().is_some_and(|ext|ext.eq_ignore_ascii_case("lnk")){return false}
+ shortcut_target(path).is_some_and(|(target,args,_)|is_chrome(&target)&&has_chrome_profile_argument(&args))
 }
 fn handle(value:usize)->HWND{HWND(value as *mut std::ffi::c_void)}
 fn wide(value:&str)->Vec<u16>{value.encode_utf16().chain(Some(0)).collect()}
@@ -145,6 +154,10 @@ fn reuse_candidate<'a>(windows:&'a [WindowInfo],expected:Option<&str>)->Result<O
  let mut matches=windows.iter().filter(|window|matches_executable(window,expected));let chosen=matches.next();
  if matches.next().is_some(){return Err("Several windows of this app are open. Use Attach open app to choose the document you want.".into())}
  Ok(chosen)
+}
+fn reuse_candidate_for_launch<'a>(windows:&'a [WindowInfo],expected:Option<&str>,explicit_chrome_profile:bool)->Result<Option<&'a WindowInfo>,String>{
+ if explicit_chrome_profile{return Ok(None)}
+ reuse_candidate(windows,expected)
 }
 fn window_snapshot()->Vec<usize>{
  unsafe extern "system" fn collect(hwnd:HWND,param:LPARAM)->windows::core::BOOL{(*(param.0 as *mut Vec<usize>)).push(hwnd.0 as usize);windows::core::BOOL(1)}
@@ -475,9 +488,9 @@ pub async fn app_panel_open(app:AppHandle,webview:Webview,id:String,source_id:St
   };
   let result=(||{
    let launch=match pending{Some(p)=>p,None=>{
-    let before=window_snapshot();let expected=expected_executable(&path);
+    let before=window_snapshot();let expected=expected_executable(&path);let explicit_profile=explicit_chrome_profile_shortcut(&path);
     let available=if reuse_existing==Some(true){windows()}else{Vec::new()};
-    let ticket=if let Some(window)=reuse_candidate(&available,expected.as_deref())?{Launch{pid:window.pid,executable:expected,before:before.into_iter().filter(|h|*h!=window.hwnd).collect()}}else{launch(&path,before)?};
+    let ticket=if let Some(window)=reuse_candidate_for_launch(&available,expected.as_deref(),explicit_profile)?{Launch{pid:window.pid,executable:expected,before:before.into_iter().filter(|h|*h!=window.hwnd).collect()}}else{launch(&path,before)?};
     state.0.lock().map_err(|_|"App panels are unavailable")?.pending.insert(id.clone(),ticket.clone());ticket
    }};
    let started=std::time::Instant::now();
@@ -635,9 +648,21 @@ pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
   assert_eq!(select_window(&launch,&choices,&[103]).map(|w|w.hwnd),Some(104));
   assert!(select_window(&launch,&choices,&[103,104]).is_none());
  }
+ #[test]fn opening_an_explicit_chrome_profile_does_not_reuse_an_arbitrary_existing_profile_window(){
+  let chrome=WindowInfo{hwnd:81,pid:900,title:"Google - Stephen".into(),executable:Some("C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe".into())};
+  let windows=[chrome];let candidate=reuse_candidate_for_launch(&windows,Some("C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"),true).unwrap();
+  assert!(candidate.is_none(),"a matching executable does not prove this is the profile named by the shortcut");
+ }
  #[test]fn word_uses_a_new_instance_switch_and_preserves_shortcut_arguments_without_shell_composition(){
   assert_eq!(launch_arguments(std::path::Path::new("C:\\Office\\WINWORD.EXE"),"/q"),"/q /n");
   assert_eq!(launch_arguments(std::path::Path::new("C:\\Apps\\Editor.exe"),"--profile \"Study Space\""),"--profile \"Study Space\"");
+ }
+ #[test]fn chrome_profile_shortcuts_open_a_new_window_and_keep_the_requested_profile(){
+  let chrome=std::path::Path::new("C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe");
+  assert_eq!(launch_arguments(chrome,"--profile-directory=Default"),"--profile-directory=Default --new-window");
+  assert_eq!(launch_arguments(chrome,"--user-data-dir \"C:\\Chrome Data\""),"--user-data-dir \"C:\\Chrome Data\" --new-window");
+  assert_eq!(launch_arguments(chrome,"--profile-directory=Default --new-window"),"--profile-directory=Default --new-window");
+  assert_eq!(launch_arguments(chrome,""),"");
  }
  #[test]fn refreshing_a_window_region_preserves_its_shape(){unsafe{
   let target=Fixture::new("Still fixture region refresh");let original=CreateRectRgn(12,18,90,120);

@@ -83,7 +83,7 @@ export default function AssistantPanel({workspace,open,close,dimensions,apply,un
     try{
       const context=assistantWorkspaceContext(owner,size.width,size.height,selectedIds),serialized=JSON.stringify(context);
       if(serialized.length>64000)throw new Error('That selection contains too much widget data. Mention fewer widgets and try again.');
-      const image=requestProvider==='gemini'&&screenshot&&screenshotWidget?await widgetImage(screenshotWidget.id):undefined;
+      const image=screenshot&&screenshotWidget?await widgetImage(screenshotWidget.id):undefined;
       const history=messages.slice(-HISTORY_LIMIT).map(message=>({...message,text:message.text.slice(0,message.role==='model'?6000:8000)}));
       const result=await geminiAssistant.send({provider:requestProvider,model:requestModel,messages:[...history,{role:'user',text:prompt}],context:serialized,image});
       if(!alive.current)return;
@@ -113,8 +113,8 @@ export default function AssistantPanel({workspace,open,close,dimensions,apply,un
     {error&&<p className="assistant-error" role="alert">{error}</p>}
     <form className="assistant-compose" onSubmit={event=>{event.preventDefault();void send()}}>
       {mentions.length>0&&<div className="assistant-mentions" aria-label="Widgets shared with AI">{mentions.map(item=><button type="button" key={item.id} onClick={()=>setMentions(current=>current.filter(value=>value.id!==item.id))} aria-label={`Remove ${item.label} from message`}>@ {item.label} ×</button>)}</div>}
-      {screenshotWidget&&provider==='gemini'&&<label className="assistant-check"><input type="checkbox" checked={screenshot} disabled={busy} onChange={event=>setScreenshot(event.target.checked)}/>Include visible screenshot of {widgetLabel(screenshotWidget)}</label>}
-      {screenshotWidget&&provider==='openai'&&<small className="assistant-inline-note">OpenAI reads widget text and metadata; screenshot sharing is currently Gemini-only.</small>}
+      {screenshotWidget&&<label className="assistant-check"><input type="checkbox" checked={screenshot} disabled={busy} onChange={event=>setScreenshot(event.target.checked)}/>Send visible screenshot of {widgetLabel(screenshotWidget)} with this message</label>}
+      {screenshotWidget&&<small className="assistant-inline-note">Visual sharing requires a model that accepts images.</small>}
       <div className="assistant-input-wrap">
         {mentionOpen&&<div className="assistant-mention-picker" role="listbox" aria-label="Select widgets to share">{visibleMentions.length?visibleMentions.map((item,index)=><button type="button" role="option" aria-selected={index===mentionIndex} key={item.id} onMouseDown={event=>event.preventDefault()} onClick={()=>selectMention(item)}>{item.label}</button>):<p>No matching widgets</p>}</div>}
         <label className="sr-only" htmlFor="ai-message">Message Still AI</label><textarea ref={textarea} id="ai-message" value={input} onChange={onInputChange} onKeyDown={onInputKeyDown} maxLength={8000} disabled={busy} placeholder="Message Still AI…" rows={3}/>

@@ -81,3 +81,15 @@ test('dragging into an occupied snap zone moves the blocking widget into the nex
   assert.equal(app.window.document.querySelector('[data-snap-zone="1"]').classList.contains('snap-layout-zone-filled'),true);
  }finally{await app.cleanup()}
 });
+
+test('choosing a layout temporarily disables canvas scrolling until layout mode closes',async()=>{
+ const notes=createWidget('notes');notes.id='notes';const app=await setup([notes]);
+ try{
+  const viewport=app.window.document.querySelector('.canvas-viewport');
+  assert.equal(viewport.classList.contains('layout-scroll-locked'),false);
+  await act(async()=>app.window.document.querySelector('[aria-label="Side by side"]').click());
+  assert.equal(viewport.classList.contains('layout-scroll-locked'),true);
+  await act(async()=>app.window.document.querySelector('[aria-label="Exit layout mode"]').click());
+  assert.equal(viewport.classList.contains('layout-scroll-locked'),false);
+ }finally{await app.cleanup()}
+});

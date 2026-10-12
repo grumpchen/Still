@@ -35,16 +35,17 @@ test('placing into an occupied zone cascades the blocker to the next open zone',
  assert.deepEqual(result.placements.apps,snapPlacement('apps',layout,1,{width:1200,height:800}));
 });
 
-test('the cascade keeps moving blockers and places the last one in free workspace space',()=>{
- const layout=snapLayout('halves'),widgets=[
+test('when all snap zones are occupied, overflow stays inside the currently visible scrolled page',()=>{
+ const layout=snapLayout('halves'),size={width:1200,height:700},scroll={x:400,y:0},widgets=[
   {id:'notes',type:'notes',placement:{x:20,y:20,width:400,height:300}},
-  {id:'apps',type:'apps',placement:{x:80,y:80,width:400,height:300}},
-  {id:'focus',type:'focus',placement:{x:700,y:80,width:360,height:330}},
+  {id:'apps',type:'apps',placement:snapPlacement('apps',layout,0,size,scroll)},
+  {id:'focus',type:'focus',placement:snapPlacement('focus',layout,1,size,scroll)},
  ];
- const result=cascadeSnapZone(layout,{},widgets,'notes',0,{width:1200,height:800},{x:0,y:0},{width:1800,height:800});
- assert.deepEqual(result.assignments,{0:'notes',1:'apps'});
- assert.ok(result.placements.focus.x>=1212,'the final blocker goes outside the visible snap grid');
- assert.ok(![result.placements.notes,result.placements.apps].some(p=>overlap(p,result.placements.focus)));
+ const result=cascadeSnapZone(layout,{0:'apps',1:'focus'},widgets,'notes',0,size,scroll,{width:1800,height:800});
+ assert.deepEqual(result.assignments,{0:'notes',1:'focus'});
+ assert.deepEqual(result.overflowIds,['apps']);
+ assert.ok(result.placements.apps.x>=400&&result.placements.apps.x+result.placements.apps.width<=1600,'the displaced widget stays within the visible horizontal page');
+ assert.ok(result.placements.apps.y>=0&&result.placements.apps.y+result.placements.apps.height<=700,'the displaced widget stays within the visible vertical page');
 });
 
 test('snap zone hit testing excludes edges outside the viewport and identifies each zone',()=>{

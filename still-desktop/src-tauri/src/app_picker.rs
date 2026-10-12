@@ -1,7 +1,7 @@
 use serde::Serialize;
 use std::{collections::{HashMap,HashSet},path::{Path,PathBuf},sync::{atomic::{AtomicUsize,Ordering},Mutex}};
 use tauri::{AppHandle,Manager,Webview};
-use windows::{core::PCWSTR,Win32::{Foundation::{HWND,LPARAM,RECT,WPARAM},Graphics::Gdi::*,Storage::{FileSystem::*,Xps::{PrintWindow,PRINT_WINDOW_FLAGS}},System::Com::*,UI::{Controls::{IImageList,ILD_TRANSPARENT},Shell::{ExtractIconExW,SHGetFileInfoW,SHGetImageList,SHFILEINFOW,SHIL_JUMBO,SHGFI_SYSICONINDEX},WindowsAndMessaging::*}}};
+use windows::{core::PCWSTR,Win32::{Foundation::{HWND,LPARAM,RECT,WPARAM},Graphics::Gdi::*,Storage::{FileSystem::*,Xps::{PrintWindow,PRINT_WINDOW_FLAGS}},System::Com::*,UI::{Controls::{IImageList,ILD_TRANSPARENT},Shell::{ExtractIconExW,FOLDERID_Desktop,FOLDERID_PublicDesktop,KNOWN_FOLDER_FLAG,SHFILEINFOW,SHGetFileInfoW,SHGetImageList,SHGetKnownFolderPath,SHIL_JUMBO,SHGFI_SYSICONINDEX},WindowsAndMessaging::*}}};
 
 fn wide(text:&str)->Vec<u16>{text.encode_utf16().chain(Some(0)).collect()}
 fn handle(value:usize)->HWND{HWND(value as *mut _)}
@@ -79,6 +79,20 @@ fn start_menu_roots()->Vec<PathBuf>{
  if let Some(program_data)=std::env::var_os("ProgramData"){roots.push(PathBuf::from(program_data).join("Microsoft/Windows/Start Menu/Programs"));}
  roots
 }
+fn known_folder_path(folder:&windows::core::GUID)->Option<PathBuf>{unsafe{
+ let path=SHGetKnownFolderPath(folder,KNOWN_FOLDER_FLAG(0),None).ok()?;
+ let mut length=0usize;while *path.0.add(length)!=0{length+=1}
+ use std::os::windows::ffi::OsStringExt;
+ let value=PathBuf::from(std::ffi::OsString::from_wide(std::slice::from_raw_parts(path.0,length)));
+ CoTaskMemFree(Some(path.0 as *const std::ffi::c_void));Some(value)
+}}
+fn shortcut_roots()->Vec<PathBuf>{
+ let mut roots=start_menu_roots();
+ for folder in [&FOLDERID_Desktop,&FOLDERID_PublicDesktop]{if let Some(path)=known_folder_path(folder){roots.push(path)}}
+ roots
+}
+fn has_chrome_profile_argument(args:&str)->bool{args.split_whitespace().any(|arg|matches!(arg.trim_matches('"').split('=').next().unwrap_or("").to_ascii_lowercase().as_str(),"--profile-directory"|"--user-data-dir"))}
+fn shortcut_identity(target:&Path,args:&str)->String{format!("{}\0{}",target.to_string_lossy().to_lowercase(),args.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase())}
 fn shortcut_files(root:&Path,depth:u8,remaining:&mut usize,items:&mut Vec<PathBuf>){
  if depth>8||*remaining==0{return}
  let Ok(entries)=std::fs::read_dir(root) else{return};
@@ -89,14 +103,15 @@ fn shortcut_files(root:&Path,depth:u8,remaining:&mut usize,items:&mut Vec<PathBu
 }
 fn installed_shortcuts()->Result<Vec<(String,PathBuf,String,Vec<u8>)>,String>{
  let _com=Com::initialize();let mut files=Vec::new();let mut remaining=10_000;
- for root in start_menu_roots(){shortcut_files(&root,0,&mut remaining,&mut files)}
+ for root in shortcut_roots(){shortcut_files(&root,0,&mut remaining,&mut files)}
  files.sort_by_key(|path|path.to_string_lossy().to_lowercase());
  let mut seen=HashSet::new();let mut result=Vec::new();
  for path in files.into_iter().take(500){
-  let Some((target,_,_))=crate::app_panel::shortcut_target(&path) else{continue};
-  let key=target.to_string_lossy().to_lowercase();if !seen.insert(key){continue}
+  let Some((target,args,_))=crate::app_panel::shortcut_target(&path) else{continue};
+  let key=shortcut_identity(&target,&args);if !seen.insert(key){continue}
   let target_text=target.to_string_lossy().into_owned();
-  let name=version_name(&target_text).filter(|name|!name.is_empty()).or_else(||path.file_stem().map(|name|name.to_string_lossy().into_owned())).unwrap_or_else(||"Application".into());
+  let profile_shortcut=target.file_name().is_some_and(|name|name.to_string_lossy().eq_ignore_ascii_case("chrome.exe"))&&has_chrome_profile_argument(&args);
+  let name=if profile_shortcut{path.file_stem().map(|name|name.to_string_lossy().into_owned())}else{version_name(&target_text).filter(|name|!name.is_empty())}.or_else(||path.file_stem().map(|name|name.to_string_lossy().into_owned())).unwrap_or_else(||"Application".into());
   let icon=icon(handle(0),Some(&target_text));
   result.push((name,path,target_text,icon));
  }
@@ -202,6 +217,13 @@ pub async fn app_picker_preview(webview:Webview,hwnd:usize,pid:u32)->Result<Vec<
   let first=root.join("One.lnk");let second=nested.join("Two.LNK");std::fs::write(&first,b"fixture").unwrap();std::fs::write(&second,b"fixture").unwrap();
   let mut files=Vec::new();let mut remaining=100;shortcut_files(&root,0,&mut remaining,&mut files);files.sort();let mut expected=vec![first,second];expected.sort();assert_eq!(files,expected);
   let _=std::fs::remove_dir_all(root);
+ }
+ #[test]fn distinct_chrome_profile_shortcuts_are_not_collapsed_to_one_installed_app(){
+  let target=Path::new(r"C:\Program Files\Google\Chrome\Application\chrome.exe");
+  assert_ne!(shortcut_identity(target,"--profile-directory=Default"),shortcut_identity(target,"--profile-directory=Profile 1"));
+  assert_eq!(shortcut_identity(target,"--profile-directory=Default"),shortcut_identity(target," --profile-directory=default "));
+  assert!(has_chrome_profile_argument("--profile-directory=Default"));
+  assert!(!has_chrome_profile_argument("--incognito"));
  }
  #[test]fn installed_catalog_reads_only_named_entries_with_bounded_png_icons(){
   let apps=installed_shortcuts().unwrap();assert!(apps.len()<=500);
