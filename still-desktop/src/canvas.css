@@ -88,7 +88,7 @@ html.native-transparent .workspace-canvas{background-image:none}
 .canvas-app.focus-mode .sidebar{display:none}
 .canvas-app.focus-mode .widget-tray{display:none}
 .widget-tray-shell{position:relative;flex:0 0 auto;min-width:0}
-.tray-edge-toggle{position:absolute;z-index:5;top:100%;left:50%;transform:translate(-50%,-50%);display:grid;place-items:center;width:24px;height:20px;padding:0;border:0;border-radius:6px;background:transparent;color:var(--text);box-shadow:none;cursor:pointer}
+.tray-edge-toggle{position:absolute;z-index:5;top:100%;left:50%;transform:translate(-50%,0);display:grid;place-items:center;width:24px;height:20px;padding:0;border:0;border-radius:6px;background:transparent;color:var(--text);box-shadow:none;cursor:pointer}
 .canvas-app.widget-tray-hidden .widget-tray{display:none}
 .sidebar .nav button.workspace-drop-active{outline:2px solid var(--accent);outline-offset:1px;background:var(--tint);color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
 .workspace-heading{display:flex;align-items:center;gap:8px;min-width:0;flex:1}
