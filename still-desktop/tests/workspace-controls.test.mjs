@@ -16,10 +16,19 @@ test('widget headers expose other workspace rows as transfer targets and reset i
 
 test('compact focus state is temporary and keeps its exit control beside fullscreen',()=>{
  assert.match(app,/useState\(false\);const \[workspaceDropTarget/);
- assert.match(app,/focusMode&&<button aria-label="Exit focus"/);
- assert.match(app,/focus=\{\(\)=>\{setFocusMode/);
+ assert.match(app,/aria-label=\{focusMode\?'Exit focus mode':'Enter focus mode'\}/);
+ assert.match(app,/aria-pressed=\{focusMode\} onClick=\{\(\)=>setFocusMode/);
  assert.match(app,/focusMode\?' focus-mode':''/);
  assert.match(styles,/\.canvas-app\.focus-mode \.sidebar\{display:none\}/);
  assert.match(styles,/\.canvas-app\.focus-mode \.widget-tray\{display:none\}/);
  assert.doesNotMatch(readFileSync(new URL('../src/domain/workspaces.ts',import.meta.url),'utf8'),/focusMode\??:/);
+});
+
+test('sidebar and widget-tray visibility chevrons sit on their panel edges, outside the top bar',()=>{
+ assert.match(app,/<button className="sidebar-edge-toggle"[\s\S]*aria-controls="workspace-sidebar"/);
+ assert.doesNotMatch(app,/<button className="sidebar-toggle"/);
+ assert.doesNotMatch(app,/<button aria-label=\{widgetTrayVisible\?/);
+ assert.match(canvas,/<div className="widget-tray-shell"><div id="workspace-tray"[\s\S]*className="tray-edge-toggle"[\s\S]*aria-controls="workspace-tray"/);
+ assert.match(styles,/\.sidebar-edge-toggle\{position:absolute/);
+ assert.match(styles,/\.tray-edge-toggle\{position:absolute/);
 });
