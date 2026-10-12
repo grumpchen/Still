@@ -28,7 +28,7 @@ The main window minimum is 780 × 660 logical pixels. The canvas bounds its inte
 
 ## Extension and security model
 
-The current extension points are first-party registries: `widgetCatalog` plus the renderer table, saved widget presets, and an allow-listed sidebar plugin ID (`stack`). The Plugins settings page enables or removes that built-in action. This does not implement third-party discovery, installation, arbitrary plugin code, plugin-specific configuration, or an external lifecycle API. Adding a first-party widget currently requires code and schema changes.
+The current extension points are first-party registries: `widgetCatalog` plus the renderer table, saved widget presets, and allow-listed sidebar plugin IDs (`stack`, `layout`). The Plugins settings page enables or removes these built-in actions. This does not implement third-party discovery, installation, arbitrary plugin code, plugin-specific configuration, or an external lifecycle API. Adding a first-party widget currently requires code and schema changes.
 
 Still deliberately does not evaluate third-party JavaScript in the privileged main webview. A future third-party host needs a sandboxed view/process, a versioned message protocol, per-plugin permission grants, config isolation, and failure containment before loading plugin code. Tauri commands must remain unavailable to untrusted plugin views. The current built-in registries are safe extension seams for maintainers, not a claim of user-installable plugins.
 

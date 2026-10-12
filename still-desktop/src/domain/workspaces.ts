@@ -42,7 +42,7 @@ export interface Workspace { id: string; name: string; widgets: WidgetInstance[]
 export function workspaceHasFinishedTimer(workspace:Pick<Workspace,'widgets'>,now=Date.now()):boolean{
  return workspace.widgets.some(widget=>(widget.type==='focus'||widget.clockPluginEnabled)&&(widget.end===null?widget.remaining===0:widget.end<=now));
 }
-export type SidebarPlugin='stack';
+export type SidebarPlugin='stack'|'layout';
 export function browserSize(value: unknown, fallback: number, maximum: number): number {
   return typeof value==='number'&&Number.isFinite(value)?Math.min(maximum,Math.max(50,Math.round(value))):fallback;
 }
@@ -307,7 +307,7 @@ export function createInitialState(): WorkspaceState {
 }
 function parseSidebarPlugins(value:unknown):SidebarPlugin[]{
  if(!Array.isArray(value))return[];
- return [...new Set(value.filter((plugin):plugin is SidebarPlugin=>plugin==='stack'))].slice(0,12);
+ return [...new Set(value.filter((plugin):plugin is SidebarPlugin=>plugin==='stack'||plugin==='layout'))].slice(0,12);
 }
 function parseWidgetRelaunchMode(value:unknown):WidgetRelaunchMode{return value==='manual'?'manual':'automatic'}
 function parseWidgetRelaunchPluginStatus(value:unknown):WidgetRelaunchPluginStatus{return value==='disabled'||value==='removed'?value:'enabled'}
