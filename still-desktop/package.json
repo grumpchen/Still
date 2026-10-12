@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 4318 --strictPort",
+    "dev:desktop": "node scripts/dev-desktop.mjs",
     "check": "tsc --noEmit",
     "test": "node --test --test-concurrency=1 tests/*.test.mjs",
     "build": "tsc --noEmit && vite build",

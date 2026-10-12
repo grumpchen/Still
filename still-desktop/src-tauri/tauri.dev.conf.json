@@ -1,0 +1,21 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Still Dev",
+  "identifier": "nz.personal.still.dev",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Still · Live Development",
+        "url": "design-preview.html",
+        "width": 1360,
+        "height": 960,
+        "minWidth": 780,
+        "minHeight": 660,
+        "transparent": true,
+        "dragDropEnabled": true,
+        "devtools": true
+      }
+    ]
+  }
+}
