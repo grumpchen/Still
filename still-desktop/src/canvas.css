@@ -88,7 +88,7 @@ html.native-transparent .workspace-canvas{background-image:none}
 .canvas-app.focus-mode .sidebar{display:none}
 .canvas-app.focus-mode .widget-tray{display:none}
 .widget-tray-shell{position:relative;flex:0 0 auto;min-width:0}
-.tray-edge-toggle{position:absolute;z-index:5;top:50%;right:-12px;transform:translateY(-50%);display:grid;place-items:center;width:26px;height:36px;padding:5px;border:1px solid var(--border);border-radius:9px;background:var(--surface);color:var(--text);box-shadow:0 2px 9px #14233220;cursor:pointer}
+.tray-edge-toggle{position:absolute;z-index:5;top:100%;left:50%;transform:translate(-50%,-50%);display:grid;place-items:center;width:24px;height:20px;padding:0;border:0;border-radius:6px;background:transparent;color:var(--text);box-shadow:none;cursor:pointer}
 .canvas-app.widget-tray-hidden .widget-tray{display:none}
 .sidebar .nav button.workspace-drop-active{outline:2px solid var(--accent);outline-offset:1px;background:var(--tint);color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
 .workspace-heading{display:flex;align-items:center;gap:8px;min-width:0;flex:1}
@@ -97,8 +97,8 @@ html.native-transparent .workspace-canvas{background-image:none}
 .canvas-app .topbar-actions button{display:flex;align-items:center;gap:6px;white-space:nowrap;font-size:12px;padding:6px 10px}
 .canvas-app .topbar-actions .topbar-fullscreen{font-size:11px;padding:6px 9px}.topbar-fullscreen svg{width:15px;height:15px}
 .canvas-app .topbar-actions .topbar-focus{font-size:11px;padding:6px 9px}.topbar-focus svg{width:15px;height:15px}
-.sidebar-edge-toggle{position:absolute;z-index:20;top:50%;left:-14px;transform:translateY(-50%);display:grid;place-items:center;width:28px;height:38px;padding:5px;border:1px solid var(--border);border-radius:9px;background:var(--surface);color:var(--text);box-shadow:0 2px 9px #14233220;cursor:pointer}
-.sidebar-edge-toggle:hover,.tray-edge-toggle:hover{background:var(--tint);color:var(--accent)}.sidebar-edge-toggle svg,.tray-edge-toggle svg{width:17px;height:17px}.liquid-glass .sidebar-edge-toggle,.liquid-glass .tray-edge-toggle{color:#f4f9f3;background:color-mix(in srgb,var(--surface) 88%,transparent);backdrop-filter:blur(16px)}
+.sidebar-edge-toggle{position:absolute;z-index:20;top:50%;left:-10px;transform:translateY(-50%);display:grid;place-items:center;width:20px;height:28px;padding:0;border:0;border-radius:6px;background:transparent;color:var(--text);box-shadow:none;cursor:pointer}
+.sidebar-edge-toggle:hover,.tray-edge-toggle:hover{background:var(--tint);color:var(--accent)}.sidebar-edge-toggle svg,.tray-edge-toggle svg{width:16px;height:16px}.liquid-glass .sidebar-edge-toggle,.liquid-glass .tray-edge-toggle{color:#f4f9f3;background:transparent}
 .sidebar-hidden .sidebar-edge-toggle,.focus-mode .sidebar-edge-toggle{left:0;border-top-left-radius:0;border-bottom-left-radius:0}
 .liquid-glass .topbar-workspace-name{color:#f4f9f3}
 .liquid-glass .topbar-actions button{border-radius:999px;backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);background:rgb(248 255 248 / .64);border-color:rgb(255 255 255 / .65);text-shadow:none}

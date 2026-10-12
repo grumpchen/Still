@@ -29,6 +29,7 @@ test('sidebar and widget-tray visibility chevrons sit on their panel edges, outs
  assert.doesNotMatch(app,/<button className="sidebar-toggle"/);
  assert.doesNotMatch(app,/<button aria-label=\{widgetTrayVisible\?/);
  assert.match(canvas,/<div className="widget-tray-shell"><div id="workspace-tray"[\s\S]*className="tray-edge-toggle"[\s\S]*aria-controls="workspace-tray"/);
- assert.match(styles,/\.sidebar-edge-toggle\{position:absolute/);
- assert.match(styles,/\.tray-edge-toggle\{position:absolute/);
+ assert.match(canvas,/aria-expanded=\{widgetTrayVisible\}[\s\S]*<Icon name=\{widgetTrayVisible\?"chevronUp":"chevronDown"\}/);
+ assert.match(styles,/\.sidebar-edge-toggle\{position:absolute[^}]*background:transparent/);
+ assert.match(styles,/\.tray-edge-toggle\{position:absolute[^}]*top:100%;left:50%;transform:translate\(-50%,-50%\)[^}]*background:transparent/);
 });
