@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-assistant-chat"
+description = "Enables the assistant_chat command without any pre-configured scope."
+commands.allow = ["assistant_chat"]
+
+[[permission]]
+identifier = "deny-assistant-chat"
+description = "Denies the assistant_chat command without any pre-configured scope."
+commands.deny = ["assistant_chat"]

@@ -2,6 +2,7 @@ fn main() {
     tauri_build::try_build(
         tauri_build::Attributes::new().app_manifest(
             tauri_build::AppManifest::new().commands(&[
+                "assistant_configured", "assistant_models", "assistant_set_key", "assistant_chat", "assistant_key_setup",
                 "chrome_open", "widget_capture", "widget_export",
                 "files_choose", "files_list", "files_open", "files_reuse",
                 "document_open", "document_choose",

@@ -1,5 +1,11 @@
 # Still — ver0.20 workspace visibility fix
 
+## Gemini AI sidebar (task branch)
+
+The `agent/codex/gemini-sidebar` branch adds **AI assistant** to the sidebar: Gemini chat, reading a selected widget's text/optional visible screenshot, and reviewable layout proposals with Apply/Undo. In the Windows app, open AI settings and connect a Gemini key for a free-tier Google AI Studio project. Keys stay in desktop memory for the session; browser previews do not make API calls. Live Gemini/Windows screenshot acceptance remains pending. Setup, sharing behavior, and acceptance steps are in [the Gemini sidebar notes](docs/plans/2026-10-11-gemini-sidebar.md).
+
+## Existing desktop release
+
 ver0.20 retains the ver0.19 minimum-size work and fixes attached Apps windows remaining over another workspace. Hidden DOM resize handles now produce no native grip rectangle, so the native hide request passes validation. The sidebar/header plan is paused; this build changes no layout controls.
 
 Close ver0.19 and open `ver0.20.exe` from the shared project root. Attach Codex or another app in one workspace, switch to a different workspace repeatedly using the sidebar and workspace hotkeys, then return. The app should hide away from its workspace and return in its card with its minimum-size limit intact. Live desktop acceptance remains pending.
