@@ -1,6 +1,7 @@
 import {useCallback,useEffect,useRef,useState,type PointerEvent,type KeyboardEvent,type DragEvent,type MouseEvent as ReactMouseEvent} from 'react';
 import {createPortal} from 'react-dom';
 import {Icon} from './Icon.tsx';
+import TimerWidget from './TimerWidget.tsx';
 import {widgetRegistry} from './widgets.tsx';
 import {widgetTypes,widgetTagColors,type WidgetInstance,type WidgetType,type SavedGroup,type GroupWidgetEntry,type WidgetTagColor,minimizeWidgetInstance,moveMinimizedWidgetInstance,restoreWidgetInstance,toggleGroupCollapsed,collectedWidgetCount,constrainGroupCollapsedPlacement} from './domain/workspaces.ts';
 import {placement,translate,resize,type Placement,canvasExtent,canvasHeight,constrainPlacement} from './domain/layout.ts';
@@ -29,7 +30,7 @@ export default function WorkspaceCanvas({workspaceId,transferWidget,setWorkspace
   const viewport=useRef<HTMLDivElement>(null),tray=useRef<HTMLDivElement>(null),trayItems=useRef<HTMLDivElement>(null),gesture=useRef<Gesture|null>(null);
   const preparedAppSources=useRef(new Map<string,{appKey:string;appName:string}>());
   const previousPresetIds=useRef(new Set(presets.map(preset=>preset.id)));
-  const [active,setActive]=useState<string|null>(null),[trayDragging,setTrayDragging]=useState(false),[overTray,setOverTray]=useState(false),[overCanvas,setOverCanvas]=useState(false),[busy,setBusy]=useState<string|null>(null),[tagPicker,setTagPicker]=useState<{id:string;top:number;right:number}|null>(null),[pluginPicker,setPluginPicker]=useState<{id:string;top:number;right:number}|null>(null);
+  const [active,setActive]=useState<string|null>(null),[trayDragging,setTrayDragging]=useState(false),[overTray,setOverTray]=useState(false),[overCanvas,setOverCanvas]=useState(false),[busy,setBusy]=useState<string|null>(null),[tagPicker,setTagPicker]=useState<{id:string;top:number;right:number}|null>(null),[pluginPicker,setPluginPicker]=useState<{id:string;top:number;right:number}|null>(null),[clockPicker,setClockPicker]=useState<{id:string;top:number;right:number}|null>(null);
   const [relaunchTokens,setRelaunchTokens]=useState<Record<string,number>>({}),[relaunchFailures,setRelaunchFailures]=useState<Record<string,boolean>>({});
   const [viewportWidth,setViewportWidth]=useState(0),[viewportHeight,setViewportHeight]=useState(0);
   const overviewViewportRef=useRef<SVGRectElement>(null);
@@ -37,18 +38,24 @@ export default function WorkspaceCanvas({workspaceId,transferWidget,setWorkspace
   const [savedMenu,setSavedMenu]=useState<SavedItemMenuTarget|null>(null);
   const closeSavedMenu=useCallback(()=>setSavedMenu(null),[]);
   function popupPosition(rect:DOMRect,width:number){return{top:Math.max(4,rect.top-40),right:Math.max(4,Math.min(window.innerWidth-rect.right,window.innerWidth-width-4))}}
-  const popupKind=tagPicker?'tag':pluginPicker?'plugin':null,popupWidgetId=tagPicker?.id??pluginPicker?.id;
+  const popupKind=tagPicker?'tag':pluginPicker?'plugin':clockPicker?'clock':null,popupWidgetId=tagPicker?.id??pluginPicker?.id??clockPicker?.id;
   useEffect(()=>{
    if(!popupKind||!popupWidgetId)return;
-   const card=document.querySelector<HTMLElement>(`[data-widget-id="${popupWidgetId}"]`),anchor=card?.querySelector<HTMLElement>(popupKind==='tag'?'.widget-active-tag':'.widget-customize-control');
-   if(!card||!anchor)return;
-   const width=popupKind==='tag'?238:190;
-   const reposition=()=>{const position=popupPosition(anchor.getBoundingClientRect(),width);if(popupKind==='tag')setTagPicker(current=>current?.id!==popupWidgetId||current.top===position.top&&current.right===position.right?current:{id:popupWidgetId,...position});else setPluginPicker(current=>current?.id!==popupWidgetId||current.top===position.top&&current.right===position.right?current:{id:popupWidgetId,...position})};
+   const card=document.querySelector<HTMLElement>(`[data-widget-id="${popupWidgetId}"]`),anchor=card?.querySelector<HTMLElement>(popupKind==='tag'?'.widget-active-tag':popupKind==='clock'?'.widget-clock-control':'.widget-customize-control');
+   if(!card||!anchor){if(popupKind==='clock')setClockPicker(null);return}
+   const width=popupKind==='tag'?238:popupKind==='clock'?360:190,height=popupKind==='clock'?450:0;
+   const reposition=()=>{const rect=anchor.getBoundingClientRect(),position=popupKind==='clock'?{top:rect.bottom+height+12>window.innerHeight?Math.max(8,rect.top-height-8):Math.min(window.innerHeight-height-8,rect.bottom+8),right:Math.max(8,Math.min(window.innerWidth-rect.right,window.innerWidth-width-8))}:popupPosition(rect,width);if(popupKind==='tag')setTagPicker(current=>current?.id!==popupWidgetId||current.top===position.top&&current.right===position.right?current:{id:popupWidgetId,...position});else if(popupKind==='plugin')setPluginPicker(current=>current?.id!==popupWidgetId||current.top===position.top&&current.right===position.right?current:{id:popupWidgetId,...position});else setClockPicker(current=>current?.id!==popupWidgetId||current.top===position.top&&current.right===position.right?current:{id:popupWidgetId,...position})};
    const mutations=new MutationObserver(reposition),sizes=new ResizeObserver(reposition),viewport=card.closest('.canvas-viewport');
    mutations.observe(card,{attributes:true,attributeFilter:['style']});sizes.observe(card);sizes.observe(anchor);if(viewport)sizes.observe(viewport);
    window.addEventListener('resize',reposition);window.addEventListener('scroll',reposition,true);reposition();
    return()=>{mutations.disconnect();sizes.disconnect();window.removeEventListener('resize',reposition);window.removeEventListener('scroll',reposition,true)};
   },[popupKind,popupWidgetId]);
+  const runningClockSignature=widgets.filter(widget=>widget.clockPluginEnabled&&widget.end!==null).map(widget=>`${widget.id}:${widget.end}`).join('|');
+  useEffect(()=>{
+   if(!runningClockSignature)return;
+   const timer=window.setInterval(()=>{const now=Date.now();for(const widget of widgets){if(widget.clockPluginEnabled&&widget.end!==null&&widget.end<=now){update(widget.id,{end:null,remaining:0});notify('Clock timer complete.')}}},500);
+   return()=>window.clearInterval(timer);
+  },[runningClockSignature,widgets,update,notify]);
   useEffect(()=>{
    const added=presets.some(preset=>!previousPresetIds.current.has(preset.id));
    previousPresetIds.current=new Set(presets.map(preset=>preset.id));
@@ -232,10 +239,13 @@ export default function WorkspaceCanvas({workspaceId,transferWidget,setWorkspace
             <div className="widget-controls" data-capture-ignore>
               <div className="widget-tag-picker">
                 {w.tagColor&&<button type="button" className="widget-active-tag" data-tag-color={w.tagColor} aria-label={'Change '+w.tagColor+' tag color'} title={'Click to change or remove '+w.tagColor+' tag'} aria-haspopup="menu" aria-expanded={tagPicker?.id===w.id} onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();const position=popupPosition(e.currentTarget.getBoundingClientRect(),238);setPluginPicker(null);setTagPicker(current=>current?.id===w.id?null:{id:w.id,...position})}}><span className="widget-tag-dot"/></button>}
-                <button type="button" className="widget-customize-control" aria-label={'Add widget add-on to '+title} aria-haspopup="menu" aria-expanded={pluginPicker?.id===w.id} title="Add widget add-on" onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();const position=popupPosition(e.currentTarget.getBoundingClientRect(),190);setTagPicker(null);setPluginPicker(current=>current?.id===w.id?null:{id:w.id,...position})}}>+</button>
+                <button type="button" className="widget-customize-control" aria-label={'Add widget add-on to '+title} aria-haspopup="menu" aria-expanded={pluginPicker?.id===w.id} title="Add widget add-on" onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();const position=popupPosition(e.currentTarget.getBoundingClientRect(),190);setTagPicker(null);setClockPicker(null);setPluginPicker(current=>current?.id===w.id?null:{id:w.id,...position})}}>+</button>
+                {w.clockPluginEnabled&&<button type="button" className="widget-clock-control" aria-label={'Open clock timer for '+title} aria-haspopup="dialog" aria-expanded={clockPicker?.id===w.id} title="Open clock timer" onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();const rect=e.currentTarget.getBoundingClientRect(),height=450,width=360,position={top:rect.bottom+height+12>window.innerHeight?Math.max(8,rect.top-height-8):Math.min(window.innerHeight-height-8,rect.bottom+8),right:Math.max(8,Math.min(window.innerWidth-rect.right,window.innerWidth-width-8))};setTagPicker(null);setPluginPicker(null);setClockPicker(current=>current?.id===w.id?null:{id:w.id,...position})}}><Icon name="clock"/></button>}
                 {pluginPicker?.id===w.id&&createPortal(<div className="widget-plugin-menu" style={{position:'fixed',top:pluginPicker.top,right:pluginPicker.right}} role="menu" aria-label={'Widget add-ons for '+title}>
                   <button type="button" className="widget-plugin-choice" role="menuitemcheckbox" aria-label="Add Color tag plugin" aria-checked={!!w.tagColor} disabled={!!w.tagColor} onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();update(w.id,{tagColor:'blue'});setPluginPicker(null)}}><span className="widget-plugin-dot" aria-hidden="true"/><span>Color tag</span><small>{w.tagColor?'Added':'Add'}</small></button>
+                  <button type="button" className="widget-plugin-choice" role="menuitemcheckbox" aria-label={w.clockPluginEnabled?'Remove Clock timer plugin':'Add Clock timer plugin'} aria-checked={w.clockPluginEnabled} onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();update(w.id,{clockPluginEnabled:!w.clockPluginEnabled});if(w.clockPluginEnabled)setClockPicker(current=>current?.id===w.id?null:current);setPluginPicker(null)}}><Icon name="clock"/><span>Clock timer</span><small>{w.clockPluginEnabled?'Remove':'Add'}</small></button>
                 </div>,document.body)}
+                {clockPicker?.id===w.id&&w.clockPluginEnabled&&createPortal(<div className="widget-clock-popover" role="dialog" aria-label={'Clock timer for '+title} style={{position:'fixed',top:clockPicker.top,right:clockPicker.right}} onPointerDown={e=>e.stopPropagation()}><button type="button" className="widget-clock-close" aria-label="Close clock timer" onClick={()=>setClockPicker(null)}>×</button><TimerWidget widget={w} variant="clock" update={patch=>update(w.id,patch)} notify={notify}/></div>,document.body)}
                 {tagPicker?.id===w.id&&createPortal(<div className="widget-tag-palette" style={{position:'fixed',top:tagPicker.top,right:tagPicker.right}} role="menu" aria-label={'Color tag for '+title}>
                   {widgetTagColors.map(color=><button key={color} type="button" role="menuitemradio" aria-label={'Set '+color+' tag color'} aria-checked={w.tagColor===color} className="widget-tag-choice" data-tag-color={color} title={color[0].toUpperCase()+color.slice(1)} onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();update(w.id,{tagColor:color});setTagPicker(null)}}><span className="widget-tag-dot"/></button>)}
                   <button type="button" role="menuitemradio" aria-label="Remove color tag" aria-checked={!w.tagColor} className="widget-tag-choice widget-tag-none" onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();update(w.id,{tagColor:null});setTagPicker(null)}}>×</button>

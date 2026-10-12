@@ -79,7 +79,8 @@ test('expanded Group entries stay inline, with management actions retained in Ed
  assert.match(groups,/groups\.map\(group=>[\s\S]*tray-group-button[\s\S]*group\.expanded&&[\s\S]*tray-group-inline-contents/);
  assert.match(groups,/data-group-drop-target="existing"/);
  assert.doesNotMatch(groups,/tray-group-inline-title|tray-group-add|Remove group|Open group/);
- for(const action of ['Edit','Add widget','Add link','Remove group','Attach open app','Focus'])assert.ok(editor.includes(action),action);
+ for(const action of ['Edit','Add widget','Add link','Remove group','Attach open app'])assert.ok(editor.includes(action),action);
+ assert.match(editor,/widgetTypes\.filter\(t=>t!=='group'&&t!=='ai'\)\.map\(type=>[\s\S]*widgetRegistry\[type\]\.name/,'saved widget options come from the widget registry');
 });
 
 test('saved shortcuts use app logos, accessible titles and a single label without entry management clutter',()=>{

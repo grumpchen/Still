@@ -29,6 +29,7 @@ export interface WidgetInstance {
   tagColor:WidgetTagColor|null;
   relaunchOverride:WidgetRelaunchOverride;
   pluginControls:string[];
+  clockPluginEnabled:boolean;
   text: string;
   remaining: number; end: number | null; url: string; bookmarks: Bookmark[];
    homeVersion?: number; folderName?: string;folderKey:string|null;fileKey:string|null;fileName?:string;fileKind?:FileKind;appKey:string|null;appName?:string;appIconData?:string;appPanelOpen:boolean;appWasCollected?:boolean;appReuseExisting:boolean;appMinWidth?:number;appMinHeight?:number;
@@ -36,6 +37,10 @@ export interface WidgetInstance {
   placement:Placement; minimized:boolean; restorePlacement:Placement|null; groupCollapsed:boolean;groupExpandedPlacement:Placement|null;shortcuts:WebShortcut[]; schedule:ScheduleEntry[]; groupId:string|null;
 }
 export interface Workspace { id: string; name: string; widgets: WidgetInstance[]; groups:SavedGroup[]; layout: 'canvas'; browserWidth: number; browserHeight: number }
+/** True when a Focus or Clock add-on timer in this workspace has reached zero. */
+export function workspaceHasFinishedTimer(workspace:Pick<Workspace,'widgets'>,now=Date.now()):boolean{
+ return workspace.widgets.some(widget=>(widget.type==='focus'||widget.clockPluginEnabled)&&(widget.end===null?widget.remaining===0:widget.end<=now));
+}
 export type SidebarPlugin='stack';
 export function browserSize(value: unknown, fallback: number, maximum: number): number {
   return typeof value==='number'&&Number.isFinite(value)?Math.min(maximum,Math.max(50,Math.round(value))):fallback;
@@ -53,7 +58,7 @@ export interface WorkspaceState {
 }
 export function createWidget(type: WidgetType): WidgetInstance {
   return { id: crypto.randomUUID(), type, instanceNumber:1, title:'', tagColor:null, relaunchOverride:'follow',pluginControls:type==='tagStatus'?['widget-relaunch.tag-colors']:[], span: type === 'browser' ? 3 : type === 'ai' ? 2 : 1,
-    text: type === 'notes' ? 'A clear space, a clear mind.\n\nStart with one important thing.\nLeave room for a new idea.' : '',
+    clockPluginEnabled:false,text: type === 'notes' ? 'A clear space, a clear mind.\n\nStart with one important thing.\nLeave room for a new idea.' : '',
     remaining: 1500, end: null, placement:placement(type,null), shortcuts:type==='browser'?defaultWebShortcuts():[], schedule:[],groupId:null,folderKey:null,fileKey:null,appKey:null,appPanelOpen:false,appReuseExisting:false,
     url: type==='desmos'?DESMOS_URL:GOOGLE_URL, homeVersion:1,browserVersion:1,browserToolsExpanded:false,bookmarksExpanded:false,pageTitle:'',lectureRestore:null,
     bookmarks:type==='browser'?parseBookmarks(defaultWebShortcuts()):[],minimized:false,restorePlacement:null,groupCollapsed:false,groupExpandedPlacement:null };
@@ -246,7 +251,7 @@ function parseGroupEntries(value:unknown):GroupWidgetEntry[]{
   const item=groupWidgetEntry({id:typeof v.id==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(v.id)&&!ids.has(v.id)?v.id:undefined,type:v.type,name:v.name,icon:typeof v.icon==='string'?v.icon:undefined,iconData:typeof v.iconData==='string'?v.iconData:undefined});ids.add(item.id);return[item];
  }catch{return []}});
 }
-const PERSISTED_WIDGET_FIELDS:(keyof WidgetInstance)[]=['id','type','span','instanceNumber','title','tagColor','relaunchOverride','pluginControls','text','remaining','end','url','bookmarks','homeVersion','folderName','folderKey','fileKey','fileName','fileKind','appKey','appName','appIconData','appPanelOpen','appWasCollected','appReuseExisting','appMinWidth','appMinHeight','browserVersion','browserToolsExpanded','bookmarksExpanded','pageTitle','lectureRestore','placement','minimized','restorePlacement','shortcuts','schedule','groupId'];
+const PERSISTED_WIDGET_FIELDS:(keyof WidgetInstance)[]=['id','type','span','instanceNumber','title','tagColor','relaunchOverride','pluginControls','clockPluginEnabled','text','remaining','end','url','bookmarks','homeVersion','folderName','folderKey','fileKey','fileName','fileKind','appKey','appName','appIconData','appPanelOpen','appWasCollected','appReuseExisting','appMinWidth','appMinHeight','browserVersion','browserToolsExpanded','bookmarksExpanded','pageTitle','lectureRestore','placement','minimized','restorePlacement','shortcuts','schedule','groupId'];
 function persistentWidgetSnapshot(value:unknown):WidgetInstance {
  if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('Invalid collected widget.');
  const source=value as Record<string,unknown>,filtered=Object.fromEntries(PERSISTED_WIDGET_FIELDS.filter(key=>key in source).map(key=>[key,source[key]]));
@@ -268,7 +273,7 @@ export function createWidgetFromGroupEntry(entry:GroupWidgetEntry,widgets:Widget
  widget.placement=at?placement(checked.type,{...widget.placement,...at}):nextPlacement(checked.type,widgets,width);return widget;
 }
 export function createWidgetFromPreset(preset:WidgetPreset,widgets:WidgetInstance[],at?:{x:number;y:number},width?:number):WidgetInstance {
- const checked=widgetPreset(preset),widget=createWidget(checked.type);widget.title=checked.name;widget.instanceNumber=nextInstanceNumber(checked.type,widgets);
+ const checked=widgetPreset(preset),widget=createWidget(checked.type);widget.title=checked.name;widget.instanceNumber=nextInstanceNumber(checked.type,widgets);widget.clockPluginEnabled=checked.clockPluginEnabled===true;if(checked.remaining!==undefined)widget.remaining=checked.remaining;
  if(checked.type==='browser')widget.url=checked.url;
  else if(checked.type==='files'&&checked.resourceKind==='document'){widget.fileKey=checked.fileSourceId;widget.fileName=checked.fileName;widget.fileKind=checked.fileKind}
  else if(checked.type==='files'){widget.folderName=checked.folderName;widget.folderKey=checked.folderSourceId}
@@ -338,6 +343,7 @@ function checkedWidget(value: unknown): WidgetInstance {
     tagColor:widgetTagColors.includes(item.tagColor as WidgetTagColor)?item.tagColor as WidgetTagColor:null,
     relaunchOverride:item.relaunchOverride==='automatic'||item.relaunchOverride==='manual'?item.relaunchOverride:'follow',
     pluginControls:Array.isArray(item.pluginControls)?[...new Set(item.pluginControls.filter((control):control is string=>typeof control==='string'&&/^[a-z0-9.-]{1,80}$/.test(control)))].slice(0,20):defaults.pluginControls,
+    clockPluginEnabled:item.clockPluginEnabled===true,
     groupId:item.type==='group'&&typeof item.groupId==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(item.groupId)?item.groupId:null,
     url:normalizeUrl(item.type==='browser'&&!item.homeVersion&&item.url===AKO_URL?GOOGLE_URL:typeof item.url==='string'?item.url:defaults.url),homeVersion:1,
     folderName:typeof item.folderName==='string'?item.folderName:undefined,

@@ -96,6 +96,25 @@ test('every workspace widget, including a minimized card, exposes Relaunch',asyn
  }finally{await app.cleanup()}
 });
 
+test('Clock is added from a widget plus menu and opens its floating timer from the clock icon',async()=>{
+ const note=createWidget('notes');note.id='clock-addon-note';note.title='Clock note';
+ const app=await setup([note]);
+ try{
+  await act(async()=>app.window.document.querySelector('[aria-label="Add widget add-on to Clock note"]').click());
+  const addClock=app.window.document.querySelector('[aria-label="Add Clock timer plugin"]');assert.ok(addClock,'Clock is available in the widget add-on menu');
+  await act(async()=>addClock.click());
+  assert.equal(app.currentState.workspaces[0].widgets[0].clockPluginEnabled,true);
+  const clockButton=app.window.document.querySelector('[aria-label="Open clock timer for Clock note"]');assert.ok(clockButton,'adding Clock places a clock icon in the widget header');
+  let clockButtonRect=rect(470,100,26,26);clockButton.getBoundingClientRect=()=>clockButtonRect;
+  await act(async()=>clockButton.click());
+  const dialog=app.window.document.querySelector('[role="dialog"][aria-label="Clock timer for Clock note"]');assert.ok(dialog,'the clock icon opens a floating timer dialog');
+  assert.ok(app.window.document.querySelector('[aria-label="Set timer duration"]'),'the floating panel contains the dial');
+  assert.equal(dialog.style.top,'134px','the timer panel opens beside its card control');
+  await act(async()=>{clockButtonRect=rect(510,150,26,26);app.window.document.querySelector('.canvas-card').style.left='40px';await new Promise(resolve=>setTimeout(resolve,0))});
+  assert.equal(dialog.style.top,'184px','the floating panel follows its widget when it moves');
+ }finally{await app.cleanup()}
+});
+
 test('Relaunch and Export PNG controls can be hidden independently without removing manual startup recovery',async()=>{
  const note=createWidget('notes');note.id='button-note';note.title='Button note';
  const minimized=minimizeWidgetInstance({...createWidget('focus'),id:'minimized-focus',title:'Minimized focus'},1400,900);

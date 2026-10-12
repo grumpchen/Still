@@ -70,6 +70,61 @@ input[type=checkbox]{appearance:none;-webkit-appearance:none;width:14px!importan
 .liquid-glass .tray-group-inline-contents .tray-group-add{background:transparent}
 @media(max-width:1050px){.tray-main-row{gap:8px}}
 @media(max-width:740px){.canvas-app{grid-template-columns:66px minmax(0,1fr)}.canvas-app .footer{flex-direction:row}.canvas-app .footer>span:last-child{display:none}.canvas-app .brand{padding:0 10px}}
+
+.canvas-app .nav .workspace-status-dot{width:6px;height:6px;flex:none;margin-left:auto;border-radius:50%;background:color-mix(in srgb,var(--muted) 35%,transparent);transition:background-color .12s}
+.canvas-app .nav .workspace-status-dot.timer-finished{background:#e4514d;box-shadow:0 0 0 3px color-mix(in srgb,#e4514d 15%,transparent)}
+.canvas-app .nav button.active .workspace-status-dot{background:color-mix(in srgb,var(--accent) 60%,var(--surface))}
+.canvas-app .nav button.active .workspace-status-dot.timer-finished{background:#e4514d}
+.canvas-app.sidebar-collapsed .nav .workspace-status-dot{position:absolute;right:7px;top:8px;width:5px;height:5px}
+.canvas-app.sidebar-collapsed .nav button{position:relative}
+
+/* Keep horizontal workspace scrolling native while making its scrollbar unobtrusive. */
+.canvas-viewport::-webkit-scrollbar:horizontal{height:4px}
+.canvas-viewport::-webkit-scrollbar-track:horizontal{background:transparent;border:0;box-shadow:none}
+.canvas-viewport::-webkit-scrollbar-thumb:horizontal{border:0;border-radius:999px;background:color-mix(in srgb,var(--muted) 42%,transparent);box-shadow:none}
+.canvas-viewport:hover::-webkit-scrollbar-thumb:horizontal{background:color-mix(in srgb,var(--muted) 68%,transparent)}
+.canvas-viewport::-webkit-scrollbar-button:horizontal{display:none;width:0;height:0}
+
+.widget-clock-control{display:grid;place-items:center;width:26px;height:26px;padding:4px}
+.widget-clock-control svg,.widget-plugin-choice svg{width:15px;height:15px;flex:none}
+.widget-clock-popover{z-index:9998;width:min(360px,calc(100vw - 16px));max-height:min(450px,calc(100dvh - 16px));overflow:auto;border:1px solid #555958;border-radius:18px;background:#101111;box-shadow:0 18px 44px #0008;color:#f5f5f3;overscroll-behavior:contain}
+.widget-clock-popover .timer-widget{min-height:0;max-height:none;overflow:visible;padding:18px 20px 16px;border-radius:17px}
+.widget-clock-popover .timer-dial{width:min(100%,190px)}
+.widget-clock-close{position:absolute;z-index:2;top:7px;right:8px;width:26px;height:26px;padding:0;border:0;border-radius:50%;background:#ffffff18;color:#f5f5f3;font-size:18px;line-height:1;box-shadow:none}
+.widget-clock-close:hover{background:#ffffff2c}
+.liquid-glass .widget-clock-popover{backdrop-filter:blur(18px);background:#111312f2;border-color:#ffffff33}
+@media(max-width:420px){.widget-clock-popover{width:calc(100vw - 16px)}.widget-clock-popover .timer-widget{padding:16px 12px 12px}.widget-clock-popover .timer-dial{width:min(100%,160px)}}
+
+.timer-widget{display:flex;flex-direction:column;align-items:center;gap:7px;min-height:0;overflow:auto;padding:9px 11px 11px;color:#f5f5f3;background:radial-gradient(ellipse at 50% 35%,#1b1b1b 0%,#101111 62%,#090a0a 100%)}
+.timer-widget-top{display:flex;align-items:center;justify-content:space-between;width:100%;font-size:10px;color:#c9cbca;letter-spacing:.04em}
+.timer-widget-top span:last-child{font-size:8px;letter-spacing:.12em;color:#8d9291}
+.timer-mode-switch{display:flex;width:min(180px,72%);padding:2px;border:1px solid #454747;border-radius:13px;background:#151616}
+.timer-mode-switch button{flex:1;min-height:27px;padding:4px 9px;border:0;border-radius:10px;background:transparent;color:#f2f2f0;font-size:11px;transition:background-color .1s,color .1s}
+.timer-mode-switch button[aria-pressed=true]{background:#f5f5f3;color:#111212;box-shadow:none}
+.timer-dial{position:relative;flex:none;width:min(100%,150px);aspect-ratio:1;border:1px solid #414444;border-radius:50%;background:radial-gradient(circle,#191a1a 0%,#101111 72%);isolation:isolate}
+.timer-dial-ring{position:absolute;inset:0;border-radius:50%;pointer-events:none}
+.timer-dial::before,.timer-dial::after{content:"";position:absolute;z-index:-1;left:50%;top:5%;width:1px;height:5px;background:#e8e9e7;transform:translateX(-50%)}
+.timer-dial::after{top:auto;bottom:5%}
+.timer-dial-hand{position:absolute;z-index:0;left:calc(50% - 1px);top:13%;width:2px;height:37%;transform-origin:center bottom;border-radius:2px;background:#f4f4f2;pointer-events:none;transition:transform .12s ease-out}
+.timer-dial-mark{position:absolute;z-index:1;display:grid;place-items:center;width:24px;height:24px;padding:0;border:0;border-radius:50%;background:transparent;color:#fff!important;font-size:11px;transform:translate(-50%,-50%);box-shadow:none}
+.timer-dial-mark:hover:not(:disabled){background:#ffffff20}
+.timer-dial-mark.selected{background:#f5f5f3;color:#111212!important;font-weight:600}
+.timer-dial-mark:disabled{cursor:default}
+.timer-dial-center{position:absolute;z-index:2;left:50%;top:58%;display:flex;flex-direction:column;align-items:center;gap:2px;transform:translate(-50%,-50%);pointer-events:none;text-shadow:0 1px 2px #000}
+.timer-dial-center strong{font-size:clamp(17px,6vw,25px);font-weight:500;letter-spacing:-.04em;font-variant-numeric:tabular-nums;white-space:nowrap}
+.timer-dial-center span{font-size:8px;letter-spacing:.1em;color:#aeb1b0}
+.timer-range-wrap{width:100%;padding:0 5px}
+.timer-range-wrap input{display:block;width:100%;height:14px;margin:0;accent-color:#f5f5f3;cursor:pointer}
+.timer-range-labels{display:flex;justify-content:space-between;color:#b0b3b2;font-size:8px;padding:1px 1px 0}
+.timer-widget-actions{display:grid;grid-template-columns:1fr 1.2fr 1fr .8fr;gap:4px;width:100%}
+.timer-widget-actions button{min-width:0;min-height:28px;padding:4px 5px;border:1px solid #5b5e5d;border-radius:9px;background:transparent;color:#f3f4f2;font-size:9px;white-space:nowrap;box-shadow:none;transition:background-color .1s}
+.timer-widget-actions button:hover:not(:disabled){background:#ffffff15}
+.timer-widget-actions button:disabled{opacity:.48;cursor:default}
+.timer-widget-actions .timer-set-button,.timer-widget-actions .timer-start-button{background:#f5f5f3;color:#101111;border-color:#f5f5f3;font-weight:600}
+.timer-widget-actions .timer-reset-button{color:#d2d4d2}
+.liquid-glass .timer-widget{border-radius:0 0 16px 16px;background:radial-gradient(ellipse at 50% 35%,#202322e8 0%,#111312f2 68%,#080909f5 100%);backdrop-filter:blur(16px)}
+.liquid-glass.light .timer-widget{background:radial-gradient(ellipse at 50% 35%,#2b302ee8 0%,#151816f2 68%,#0b0d0cf5 100%)}
+@media(max-height:520px){.timer-widget{gap:4px;padding-block:6px}.timer-dial{width:min(100%,124px)}.timer-widget-actions button{min-height:25px}}
 @media(max-width:900px){.canvas-app .search .search-label,.canvas-app .search kbd{display:none}.canvas-app .search{padding:6px 8px}.canvas-app .topbar-customize .topbar-action-label{display:none}.canvas-app .topbar-actions button{padding:6px 8px}}
 .canvas-app.sidebar-expanded{grid-template-columns:160px minmax(0,1fr)}
 .canvas-app.sidebar-collapsed{grid-template-columns:52px minmax(0,1fr)}
