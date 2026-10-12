@@ -43,8 +43,8 @@ test('bursts of pointer movement coalesce into one canvas update and pointer-up 
 });
 
 test('a dragged widget snaps to a highlighted zone and Snap Assist places another in an open zone',async()=>{
- const notes=createWidget('notes');notes.id='notes';const browser=createWidget('browser');browser.id='browser';
- const app=await setup([notes,browser]);
+ const notes=createWidget('notes');notes.id='notes';const apps=createWidget('apps');apps.id='apps';
+ const app=await setup([notes,apps]);
  try{
   await act(async()=>app.window.document.querySelector('[aria-label="Side by side"]').click());
   assert.equal(app.window.document.querySelectorAll('[data-snap-zone]').length,2);
@@ -54,13 +54,30 @@ test('a dragged widget snaps to a highlighted zone and Snap Assist places anothe
   assert.equal(app.window.document.querySelector('[data-snap-zone="1"]').classList.contains('snap-layout-zone-hover'),true);
   await act(async()=>header.dispatchEvent(app.pointer('pointerup',900,320)));
   assert.equal(app.currentState.widgets.find(widget=>widget.id==='notes').placement.x,606);
-  assert.equal(app.currentState.widgets.find(widget=>widget.id==='browser').minimized,false,'unselected widgets remain open for Snap Assist');
-  const browserOffer=app.window.document.querySelector('.snap-assist-widgets button');
-  assert.equal(browserOffer.textContent,'Browser');
-  await act(async()=>browserOffer.click());
-  const snappedBrowser=app.currentState.widgets.find(widget=>widget.id==='browser');
-  assert.deepEqual([snappedBrowser.placement.x,snappedBrowser.placement.width],[6,588]);
-  assert.equal(snappedBrowser.minimized,false);
+  assert.equal(app.currentState.widgets.find(widget=>widget.id==='apps').minimized,false,'unselected widgets remain open for Snap Assist');
+  const appsOffer=app.window.document.querySelector('.snap-assist-widgets button');
+  assert.equal(appsOffer.textContent,'Apps');
+  await act(async()=>appsOffer.click());
+  const snappedApps=app.currentState.widgets.find(widget=>widget.id==='apps');
+  assert.deepEqual([snappedApps.placement.x,snappedApps.placement.width],[6,588]);
+  assert.equal(snappedApps.minimized,false);
   assert.match(app.window.document.querySelector('.snap-assist-heading').textContent,/All areas are filled/);
+ }finally{await app.cleanup()}
+});
+
+test('dragging into an occupied snap zone moves the blocking widget into the next zone',async()=>{
+ const notes=createWidget('notes');notes.id='notes';notes.placement={x:20,y:20,width:400,height:300};
+ const apps=createWidget('apps');apps.id='apps';apps.placement={x:80,y:80,width:400,height:300};
+ const app=await setup([notes,apps]);
+ try{
+  await act(async()=>app.window.document.querySelector('[aria-label="Side by side"]').click());
+  const header=app.window.document.querySelector('#widget-notes .widget-move');
+  await act(async()=>header.dispatchEvent(app.pointer('pointerdown',20,20)));
+  await act(async()=>{header.dispatchEvent(app.pointer('pointermove',120,180));await new Promise(resolve=>setTimeout(resolve,10))});
+  await act(async()=>header.dispatchEvent(app.pointer('pointerup',120,180)));
+  assert.deepEqual([app.currentState.widgets.find(widget=>widget.id==='notes').placement.x,app.currentState.widgets.find(widget=>widget.id==='notes').placement.width],[6,588]);
+  assert.deepEqual([app.currentState.widgets.find(widget=>widget.id==='apps').placement.x,app.currentState.widgets.find(widget=>widget.id==='apps').placement.width],[606,588]);
+  assert.equal(app.window.document.querySelector('[data-snap-zone="0"]').classList.contains('snap-layout-zone-filled'),true);
+  assert.equal(app.window.document.querySelector('[data-snap-zone="1"]').classList.contains('snap-layout-zone-filled'),true);
  }finally{await app.cleanup()}
 });

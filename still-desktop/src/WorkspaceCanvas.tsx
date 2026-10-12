@@ -22,7 +22,7 @@ import type {WidgetRelaunchMode,WidgetRelaunchPluginStatus} from './domain/widge
 import {showClockControl,type ClockPluginMode} from './domain/clockPlugin.ts';
 import {clockPopupPosition} from './domain/clockPopup.ts';
 import {showScreenshotControl,type ScreenshotPluginMode} from './domain/screenshotPlugin.ts';
-import {assignSnapZone,nextSnapZone,snapLayout,snapPlacement,snapZoneAtPoint,type SnapLayoutId} from './domain/snapLayouts.ts';
+import {cascadeSnapZone,nextSnapZone,snapLayout,snapZoneAtPoint,type SnapLayoutId} from './domain/snapLayouts.ts';
 import {canvasFrameInterval,isCanvasFrameDue,type CanvasFrameRate} from './domain/performance.ts';
 import SnapLayoutOverlay from './SnapLayoutOverlay.tsx';
 interface DropProps {savePresets:(presets:WidgetPreset[],preserveUndo?:boolean)=>void;openDropped:(presets:WidgetPreset[],at:{x:number;y:number},width:number)=>void}
@@ -126,8 +126,7 @@ export default function WorkspaceCanvas({workspaceId,canvasFrameRate='display',m
   useEffect(()=>{setSnapAssignments({});setHoveredSnapZone(null)},[layoutMode]);
   function snapZoneAtClient(x:number,y:number){const node=viewport.current,layout=activeSnapLayout;if(!node||!layout)return null;const rect=node.getBoundingClientRect();if(!rect.width||!rect.height)return null;const index=snapZoneAtPoint(layout,{x:(x-rect.left)*node.clientWidth/rect.width,y:(y-rect.top)*node.clientHeight/rect.height},{width:node.clientWidth,height:node.clientHeight});return index===null||index<0?null:index}
   function liveSnapAssignments(assignments:Record<number,string>){const ids=new Set(widgets.map(widget=>widget.id));return Object.fromEntries(Object.entries(assignments).filter(([,id])=>ids.has(id)))}
-  function recordSnap(widgetId:string,zone:number){if(activeSnapLayout)setSnapAssignments(current=>assignSnapZone(activeSnapLayout,liveSnapAssignments(current),widgetId,zone))}
-  function snapWidgetToZone(widgetId:string,zone:number,recordUndo=false){const widget=widgets.find(item=>item.id===widgetId),node=viewport.current,layout=activeSnapLayout,assignments=liveSnapAssignments(snapAssignments);if(!widget||widget.minimized||widget.type==='group'&&widget.groupCollapsed||!node||!layout||assignments[zone]&&assignments[zone]!==widgetId)return;if(recordUndo)begin();const next=snapPlacement(widget.type,layout,zone,{width:node.clientWidth,height:node.clientHeight},{x:node.scrollLeft,y:node.scrollTop});update(widgetId,{placement:bounded(widget,next)});bringToFront(widgetId);recordSnap(widgetId,zone)}
+  function snapWidgetToZone(widgetId:string,zone:number,recordUndo=false){const widget=widgets.find(item=>item.id===widgetId),node=viewport.current,layout=activeSnapLayout;if(!widget||widget.minimized||widget.type==='group'&&widget.groupCollapsed||!node||!layout)return;if(recordUndo)begin();const result=cascadeSnapZone(layout,liveSnapAssignments(snapAssignments),widgets,widgetId,zone,{width:node.clientWidth,height:node.clientHeight},{x:node.scrollLeft,y:node.scrollTop},{width:extent,height});for(const item of widgets){const next=result.placements[item.id];if(next&&(next.x!==item.placement.x||next.y!==item.placement.y||next.width!==item.placement.width||next.height!==item.placement.height))update(item.id,{placement:bounded(item,next)})}bringToFront(widgetId);setSnapAssignments(result.assignments)}
   function chooseSnapAssistWidget(widgetId:string){if(!activeSnapLayout)return;const zone=nextSnapZone(activeSnapLayout,liveSnapAssignments(snapAssignments));if(zone>=0)snapWidgetToZone(widgetId,zone,true)}
   // Keep vertical space equal to the viewport; horizontal workspace extension remains available.
   function updateOverviewViewport(){const node=viewport.current,marker=overviewViewportRef.current;if(!node||!marker)return;marker.setAttribute('x',String(node.scrollLeft));marker.setAttribute('y',String(node.scrollTop));marker.setAttribute('width',String(node.clientWidth));marker.setAttribute('height',String(node.clientHeight))}
@@ -176,7 +175,7 @@ export default function WorkspaceCanvas({workspaceId,canvasFrameRate='display',m
      if(action==='remove')remove(g.id,true);
      else if(action==='save'&&original)void saveWidgetToTray(original).catch(error=>notify(String((error as Error).message??error)));
      else try{if((action==='create-group'||action==='save-group')&&original){const groupId=target.groupTarget?.kind==='existing'?target.groupTarget.groupId:undefined;saveToGroup(original,groupId,true)}}catch(error){notify(String((error as Error).message??error))}
-    }else{const snapZone=!cancel&&g.mode==='move'&&distance>4?snapZoneAtClient(e.clientX,e.clientY):null;if(snapZone!==null&&currentWidget&&!currentWidget.minimized&&!(currentWidget.type==='group'&&currentWidget.groupCollapsed)&&!liveSnapAssignments(snapAssignments)[snapZone])snapWidgetToZone(g.id,snapZone);else bringToFront(g.id)}
+    }else{const snapZone=!cancel&&g.mode==='move'&&distance>4?snapZoneAtClient(e.clientX,e.clientY):null;if(snapZone!==null&&currentWidget&&!currentWidget.minimized&&!(currentWidget.type==='group'&&currentWidget.groupCollapsed))snapWidgetToZone(g.id,snapZone);else bringToFront(g.id)}
   }
   function key(e:KeyboardEvent<HTMLElement>,w:WidgetInstance,mode:'move'|'resize'){
     const delta:Record<string,[number,number]>={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]};

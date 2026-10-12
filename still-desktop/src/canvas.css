@@ -325,3 +325,8 @@ dialog:has(.app-picker)>.dialog-head{flex:0 0 auto}
 .tray-editor-row{display:flex;align-items:center;gap:6px;padding:7px 0;flex-wrap:wrap}
 .tray-editor-row>span{display:flex;align-items:center;gap:6px;flex:1 1 150px;overflow-wrap:anywhere}
 dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
+.snap-layout-preview i{background:rgb(255 255 255 / 34%);border-color:rgb(255 255 255 / 82%)}
+.snap-layout-template:hover .snap-layout-preview i,.snap-layout-template:focus-visible .snap-layout-preview i{background:rgb(255 255 255 / 66%)}
+.snap-layout-zone{border-color:rgb(255 255 255 / 78%);background:rgb(255 255 255 / 10%)}
+.snap-layout-zone-hover{border-color:#fff;background:rgb(255 255 255 / 28%);outline-color:rgb(255 255 255 / 36%)}
+.snap-layout-zone-filled{border-color:rgb(255 255 255 / 48%);background:rgb(255 255 255 / 5%)}
