@@ -1,8 +1,9 @@
 import type {ComponentType} from 'react';
 import type {WidgetRelaunchMode,WidgetRelaunchPluginStatus} from './widgetRelaunch.ts';
 import type {ScreenshotPluginMode} from './screenshotPlugin.ts';
+import type {ClockPluginMode} from './clockPlugin.ts';
 import type {WidgetInstance,WidgetTagColor} from './workspaces.ts';
-import {RelaunchGlobalModeControl,RelaunchTagColorsControl,ScreenshotSettingsControl,widgetColorSettingCatalog} from '../WidgetPluginStatusControls.tsx';
+import {ClockTimerSettingsControl,RelaunchGlobalModeControl,RelaunchTagColorsControl,ScreenshotSettingsControl,widgetColorSettingCatalog} from '../WidgetPluginStatusControls.tsx';
 
 export interface WidgetPluginContext{
  relaunchPluginStatus:WidgetRelaunchPluginStatus;
@@ -16,6 +17,12 @@ export interface WidgetPluginContext{
  setScreenshotMode:(mode:ScreenshotPluginMode)=>void;
  setScreenshotColor:(color:WidgetTagColor,enabled:boolean)=>void;
  setScreenshotColorOverride:(color:WidgetTagColor,enabled:boolean|null)=>void;
+ clockMode:ClockPluginMode;
+ clockColors:WidgetTagColor[];
+ clockColorOverrides:Partial<Record<WidgetTagColor,boolean>>;
+ setClockMode:(mode:ClockPluginMode)=>void;
+ setClockColor:(color:WidgetTagColor,enabled:boolean)=>void;
+ setClockColorOverride:(color:WidgetTagColor,enabled:boolean|null)=>void;
 }
 export interface WidgetPluginControlProps{context?:WidgetPluginContext;widget:WidgetInstance;update:(patch:Partial<WidgetInstance>)=>void}
 export interface WidgetPluginColorSettingProps{context?:WidgetPluginContext;color:WidgetTagColor}
@@ -38,6 +45,8 @@ export const widgetPluginCatalog:BuiltInWidgetPluginDefinition[]=[{
  ]
 },{id:'screenshot',name:'Screenshot',description:'Copy workspace widget screenshots; choose global or tag-color availability in Settings.',controls:[
   {id:'screenshot.settings',pluginId:'screenshot',label:'Screenshot settings',StatusControl:ScreenshotSettingsControl,available:alwaysAvailable},
+]} ,{id:'clock-timer',name:'Clock Timer',description:'Show or limit the Clock timer add-on globally or by tag color.',controls:[
+ {id:'clock-timer.settings',pluginId:'clock-timer',label:'Clock timer settings',StatusControl:ClockTimerSettingsControl,available:alwaysAvailable},
 ]}];
 export {widgetColorSettingCatalog};
 export function availableStatusControls(status:WidgetRelaunchPluginStatus):WidgetPluginControlDefinition[]{

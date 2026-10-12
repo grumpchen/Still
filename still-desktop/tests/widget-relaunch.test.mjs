@@ -14,7 +14,7 @@ const setGlobal=(key,value)=>Object.defineProperty(globalThis,key,{configurable:
 const vite=await createServer({server:{middlewareMode:true,hmr:false},appType:'custom',optimizeDeps:{noDiscovery:true,entries:[]}});
 after(()=>vite.close());
 
-async function setup(widgets,{identity={hwnd:451,pid:902},startupDeferredIds=new Set(),screenshotPluginMode='global',screenshotPluginColors=[],screenshotPluginColorOverrides={},showAppAttachAction=false,showAppDetachAction=false,showAppSaveAction=false,showWidgetRelaunchAction=true,showWidgetExportPngAction=true}={}){
+async function setup(widgets,{identity={hwnd:451,pid:902},startupDeferredIds=new Set(),screenshotPluginMode='global',screenshotPluginColors=[],screenshotPluginColorOverrides={},clockPluginMode='global',clockPluginColors=[],clockPluginColorOverrides={},showAppAttachAction=false,showAppDetachAction=false,showAppSaveAction=false,showWidgetRelaunchAction=true,showWidgetExportPngAction=true}={}){
  const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true});
  const oldGlobals=new Map();
  for(const key of ['window','document','navigator','HTMLElement','Element','Node','MutationObserver','ResizeObserver','requestAnimationFrame','cancelAnimationFrame','getComputedStyle','isTauri','IS_REACT_ACT_ENVIRONMENT'])oldGlobals.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
@@ -41,13 +41,13 @@ async function setup(widgets,{identity={hwnd:451,pid:902},startupDeferredIds=new
   return null;
  },{shouldMockEvents:true});
  const {default:WorkspaceCanvas}=await vite.ssrLoadModule('/src/WorkspaceCanvas.tsx');
- const state=createInitialState();state.workspaces[0].widgets=widgets;state.screenshotPluginMode=screenshotPluginMode;state.screenshotPluginColors=screenshotPluginColors;state.screenshotPluginColorOverrides=screenshotPluginColorOverrides;
+ const state=createInitialState();state.workspaces[0].widgets=widgets;state.screenshotPluginMode=screenshotPluginMode;state.screenshotPluginColors=screenshotPluginColors;state.screenshotPluginColorOverrides=screenshotPluginColorOverrides;state.clockPluginMode=clockPluginMode;state.clockPluginColors=clockPluginColors;state.clockPluginColorOverrides=clockPluginColorOverrides;
  let currentState,root;
  function Host(){
   const [current,setCurrent]=useState(state);currentState=current;
   const [deferred,setDeferred]=useState(startupDeferredIds);
   const update=(id,patch)=>setCurrent(value=>({...value,workspaces:value.workspaces.map(workspace=>({...workspace,widgets:workspace.widgets.map(item=>item.id===id?{...item,...patch}:item)}))}));
-   return createElement(WorkspaceCanvas,{workspaceId:current.workspaces[0].id,transferWidget(){},setWorkspaceDropTarget(){},openAppsDialog(){},editTray(){},presets:current.presets,savePresets(){},openPreset(){},editPreset(){},removePreset(){},renamePreset(){},renameGroup(){},widgets:current.workspaces[0].widgets,groups:[],updateGroup(){},saveToGroup(){},openGroup(){},editGroup(){},removeGroup(){},openGroupWidget(){},update,add(){},remove(){},begin(){},bringToFront(){},notify(){},obscured:false,openResource(){},openDropped(){},pickApp(){},saveApp(){},appAttachments:{},appAttachmentHandled(){},startupDeferredIds:deferred,startupRelaunch:id=>setDeferred(value=>new Set([...value].filter(item=>item!==id))),widgetRelaunchColors:current.widgetRelaunchColors,setRelaunchColor:(color,mode)=>setCurrent(value=>{const colors={...value.widgetRelaunchColors};if(mode)colors[color]=mode;else delete colors[color];return{...value,widgetRelaunchColors:colors}}),screenshotPluginMode:current.screenshotPluginMode,screenshotPluginColors:current.screenshotPluginColors,screenshotPluginColorOverrides:current.screenshotPluginColorOverrides,setScreenshotColorOverride:(color,enabled)=>setCurrent(value=>{const overrides={...value.screenshotPluginColorOverrides};if(enabled===null)delete overrides[color];else overrides[color]=enabled;return{...value,screenshotPluginColorOverrides:overrides}}),setScreenshotMode:mode=>setCurrent(value=>({...value,screenshotPluginMode:mode})),setScreenshotColor:(color,enabled)=>setCurrent(value=>({...value,screenshotPluginColors:enabled?[...new Set([...value.screenshotPluginColors,color])]:value.screenshotPluginColors.filter(item=>item!==color)})),showAppAttachAction,showAppDetachAction,showAppSaveAction,showWidgetRelaunchAction,showWidgetExportPngAction});
+   return createElement(WorkspaceCanvas,{workspaceId:current.workspaces[0].id,transferWidget(){},setWorkspaceDropTarget(){},openAppsDialog(){},editTray(){},presets:current.presets,savePresets(){},openPreset(){},editPreset(){},removePreset(){},renamePreset(){},widgets:current.workspaces[0].widgets,groups:[],updateGroup(){},saveToGroup(){},openGroup(){},editGroup(){},removeGroup(){},openGroupWidget(){},update,add(){},remove(){},begin(){},bringToFront(){},notify(){},obscured:false,openResource(){},openDropped(){},pickApp(){},saveApp(){},appAttachments:{},appAttachmentHandled(){},startupDeferredIds:deferred,startupRelaunch:id=>setDeferred(value=>new Set([...value].filter(item=>item!==id))),widgetRelaunchColors:current.widgetRelaunchColors,setRelaunchColor:(color,mode)=>setCurrent(value=>{const colors={...value.widgetRelaunchColors};if(mode)colors[color]=mode;else delete colors[color];return{...value,widgetRelaunchColors:colors}}),screenshotPluginMode:current.screenshotPluginMode,screenshotPluginColors:current.screenshotPluginColors,screenshotPluginColorOverrides:current.screenshotPluginColorOverrides,setScreenshotColorOverride:(color,enabled)=>setCurrent(value=>{const overrides={...value.screenshotPluginColorOverrides};if(enabled===null)delete overrides[color];else overrides[color]=enabled;return{...value,screenshotPluginColorOverrides:overrides}}),setScreenshotMode:mode=>setCurrent(value=>({...value,screenshotPluginMode:mode})),setScreenshotColor:(color,enabled)=>setCurrent(value=>({...value,screenshotPluginColors:enabled?[...new Set([...value.screenshotPluginColors,color])]:value.screenshotPluginColors.filter(item=>item!==color)})),clockPluginMode:current.clockPluginMode,clockPluginColors:current.clockPluginColors,clockPluginColorOverrides:current.clockPluginColorOverrides,showAppAttachAction,showAppDetachAction,showAppSaveAction,showWidgetRelaunchAction,showWidgetExportPngAction});
  }
  root=createRoot(window.document.querySelector('#root'));
  await act(async()=>root.render(createElement(Host)));
@@ -61,10 +61,10 @@ async function setupStatusCard(widget,{screenshotPluginMode='global',screenshotP
  const {default:TagColorStatusWidget}=await vite.ssrLoadModule('/src/TagColorStatusWidget.tsx');
  let currentWidget,currentState,root;
  function Host(){
-  const [current,setCurrent]=useState(widget),[settings,setSettings]=useState({relaunchPluginStatus:'enabled',globalMode:'automatic',colors:{},screenshotPluginMode,screenshotPluginColors,screenshotPluginColorOverrides});
+  const [current,setCurrent]=useState(widget),[settings,setSettings]=useState({relaunchPluginStatus:'enabled',globalMode:'automatic',colors:{},screenshotPluginMode,screenshotPluginColors,screenshotPluginColorOverrides,clockPluginMode:'global',clockPluginColors:[],clockPluginColorOverrides:{}});
   currentWidget=current;currentState={widget:current,...settings};
   const setColorMode=(color,mode)=>setSettings(value=>{const colors={...value.colors};if(mode)colors[color]=mode;else delete colors[color];return{...value,colors}});
-  return createElement(TagColorStatusWidget,{widget:current,update:patch=>setCurrent(value=>({...value,...patch})),widgetPluginContext:{relaunchPluginStatus:settings.relaunchPluginStatus,globalMode:settings.globalMode,colors:settings.colors,setGlobalMode:mode=>setSettings(value=>({...value,globalMode:mode})),setColorMode,screenshotMode:settings.screenshotPluginMode,screenshotColors:settings.screenshotPluginColors,screenshotColorOverrides:settings.screenshotPluginColorOverrides,setScreenshotColorOverride:(color,enabled)=>setSettings(value=>{const overrides={...value.screenshotPluginColorOverrides};if(enabled===null)delete overrides[color];else overrides[color]=enabled;return{...value,screenshotPluginColorOverrides:overrides}}),setScreenshotMode:mode=>setSettings(value=>({...value,screenshotPluginMode:mode})),setScreenshotColor:(color,enabled)=>setSettings(value=>({...value,screenshotPluginColors:enabled?[...new Set([...value.screenshotPluginColors,color])]:value.screenshotPluginColors.filter(item=>item!==color)}))}});
+  return createElement(TagColorStatusWidget,{widget:current,update:patch=>setCurrent(value=>({...value,...patch})),widgetPluginContext:{relaunchPluginStatus:settings.relaunchPluginStatus,globalMode:settings.globalMode,colors:settings.colors,setGlobalMode:mode=>setSettings(value=>({...value,globalMode:mode})),setColorMode,screenshotMode:settings.screenshotPluginMode,screenshotColors:settings.screenshotPluginColors,screenshotColorOverrides:settings.screenshotPluginColorOverrides,setScreenshotColorOverride:(color,enabled)=>setSettings(value=>{const overrides={...value.screenshotPluginColorOverrides};if(enabled===null)delete overrides[color];else overrides[color]=enabled;return{...value,screenshotPluginColorOverrides:overrides}}),setScreenshotMode:mode=>setSettings(value=>({...value,screenshotPluginMode:mode})),setScreenshotColor:(color,enabled)=>setSettings(value=>({...value,screenshotPluginColors:enabled?[...new Set([...value.screenshotPluginColors,color])]:value.screenshotPluginColors.filter(item=>item!==color)})),clockMode:settings.clockPluginMode,clockColors:settings.clockPluginColors,clockColorOverrides:settings.clockPluginColorOverrides,setClockMode:mode=>setSettings(value=>({...value,clockPluginMode:mode})),setClockColor:(color,enabled)=>setSettings(value=>({...value,clockPluginColors:enabled?[...new Set([...value.clockPluginColors,color])]:value.clockPluginColors.filter(item=>item!==color)})),setClockColorOverride:(color,enabled)=>setSettings(value=>{const overrides={...value.clockPluginColorOverrides};if(enabled===null)delete overrides[color];else overrides[color]=enabled;return{...value,clockPluginColorOverrides:overrides}})}});
  }
  root=createRoot(window.document.querySelector('#root'));await act(async()=>root.render(createElement(Host)));
  return{dom,window,get currentWidget(){return currentWidget},get currentState(){return currentState},root,cleanup:async()=>{if(root)await act(async()=>root.unmount());dom.window.close();for(const [key,descriptor]of oldGlobals){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}}};
@@ -86,6 +86,15 @@ test('Screenshot widget plugin supports global, selected-tag, and off scopes in 
  try{assert.ok(selected.window.document.querySelector('[data-widget-id="red-note"] .widget-snapshot-control'));assert.equal(selected.window.document.querySelector('[data-widget-id="blue-note"] .widget-snapshot-control'),null);assert.equal(selected.window.document.querySelector('[data-widget-id="plain-note"] .widget-snapshot-control'),null)}finally{await selected.cleanup()}
  const off=await setup([red],{screenshotPluginMode:'off'});
  try{assert.equal(off.window.document.querySelector('.widget-snapshot-control'),null)}finally{await off.cleanup()}
+});
+
+test('Clock add-on button follows global and tag-color visibility settings',async()=>{
+ const red=createWidget('notes');red.id='clock-red';red.tagColor='red';red.clockPluginEnabled=true;
+ const blue=createWidget('notes');blue.id='clock-blue';blue.tagColor='blue';blue.clockPluginEnabled=true;
+ const selected=await setup([red,blue],{clockPluginMode:'tag-colors',clockPluginColors:['red']});
+ try{assert.ok(selected.window.document.querySelector('[data-widget-id="clock-red"] .widget-clock-control'));assert.equal(selected.window.document.querySelector('[data-widget-id="clock-blue"] .widget-clock-control'),null)}finally{await selected.cleanup()}
+ const override=await setup([red,blue],{clockPluginMode:'off',clockPluginColorOverrides:{blue:true}});
+ try{assert.equal(override.window.document.querySelector('[data-widget-id="clock-red"] .widget-clock-control'),null);assert.ok(override.window.document.querySelector('[data-widget-id="clock-blue"] .widget-clock-control'))}finally{await override.cleanup()}
 });
 
 test('every workspace widget, including a minimized card, exposes Relaunch',async()=>{
@@ -210,6 +219,26 @@ test('Tag Color Status stacks controls from multiple registered widget plugins',
   assert.equal(app.window.document.querySelector('[aria-label="All tag colors follow global mode"]').checked,true,'turning global mode back on removes stacked per-color overrides');
   assert.deepEqual(app.currentState.screenshotPluginColorOverrides,{},'following global clears color-specific Screenshot overrides');
   assert.equal(app.window.document.querySelector('[aria-label="Status card red relaunch mode"]'),null);
+ }finally{await app.cleanup()}
+});
+
+test('Tag Color Status exposes Clock timer globally and as a stacked tag-color setting',async()=>{
+ const status=createWidget('tagStatus');status.id='clock-status-card';
+ const app=await setupStatusCard(status);
+ try{
+  await act(async()=>app.window.document.querySelector('[aria-label="Customize status controls"]').dispatchEvent(new app.window.MouseEvent('click',{bubbles:true})));
+  const clockControl=app.window.document.querySelector('[aria-label="Show Clock timer settings"]');
+  assert.ok(clockControl,'Clock timer must be registered as a selectable widget-plugin control');
+  await act(async()=>clockControl.dispatchEvent(new app.window.MouseEvent('click',{bubbles:true})));
+  assert.ok(app.window.document.querySelector('[aria-label="Status card clock timer scope"]'),'Clock timer global settings render on the status card');
+  const allGlobal=app.window.document.querySelector('[aria-label="All tag colors follow global mode"]');
+  await act(async()=>allGlobal.dispatchEvent(new app.window.MouseEvent('click',{bubbles:true})));
+  const color=app.window.document.querySelector('[aria-label="Add tag color relaunch setting"]');color.value='red';await act(async()=>color.dispatchEvent(new app.window.Event('change',{bubbles:true})));
+  const setting=app.window.document.querySelector('[aria-label="Add red plugin setting"]');assert.ok(setting);
+  setting.value='clock-timer';await act(async()=>setting.dispatchEvent(new app.window.Event('change',{bubbles:true})));
+  const redClock=app.window.document.querySelector('[aria-label="Status card red clock timer setting"]');assert.ok(redClock,'Clock timer can be stacked under a tag color');
+  redClock.value='disabled';await act(async()=>redClock.dispatchEvent(new app.window.Event('change',{bubbles:true})));
+  assert.equal(app.currentState.clockPluginColorOverrides.red,false,'the color rule persists the disabled Clock override');
  }finally{await app.cleanup()}
 });
 

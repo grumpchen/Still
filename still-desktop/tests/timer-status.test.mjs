@@ -2,6 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createWidget,createInitialState,parseState,workspaceHasFinishedTimer,createWidgetFromPreset} from '../src/domain/workspaces.ts';
 import {presetFromWidget} from '../src/domain/presets.ts';
+import {showClockControl} from '../src/domain/clockPlugin.ts';
 
 test('workspace status turns red only after a Focus or Clock add-on timer has finished',()=>{
  const workspace=createInitialState().workspaces[0];
@@ -45,6 +46,21 @@ test('Clock add-on and timer duration are preserved by a saved tray shortcut',()
  const restored=createWidgetFromPreset(preset,[]);
  assert.equal(restored.clockPluginEnabled,true);
  assert.equal(restored.remaining,5400);
+});
+
+test('Clock add-on visibility follows global mode, selected colors, and per-color overrides',()=>{
+ assert.equal(showClockControl('global',[],'red'),true);
+ assert.equal(showClockControl('off',['red'],'red'),false);
+ assert.equal(showClockControl('tag-colors',['red'],'red'),true);
+ assert.equal(showClockControl('tag-colors',['red'],'blue'),false);
+ assert.equal(showClockControl('off',[],'red',{red:true}),true,'a color-specific setting overrides the global mode');
+ assert.equal(showClockControl('global',[],'red',{red:false}),false,'a color-specific disabled setting overrides the global mode');
+});
+
+test('Clock plugin scope and color overrides survive workspace persistence',()=>{
+ const state=createInitialState();state.clockPluginMode='tag-colors';state.clockPluginColors=['red','purple'];state.clockPluginColorOverrides={blue:false,green:true};
+ const loaded=parseState(JSON.stringify(state));
+ assert.equal(loaded.clockPluginMode,'tag-colors');assert.deepEqual(loaded.clockPluginColors,['red','purple']);assert.deepEqual(loaded.clockPluginColorOverrides,{blue:false,green:true});
 });
 
 test('completed-timer status ignores non-timer widgets without the Clock add-on',()=>{

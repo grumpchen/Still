@@ -1,5 +1,6 @@
 import {useState} from 'react';
 import {widgetTagColors,type WidgetTagColor} from './domain/widgetTags.ts';
+import type {ClockPluginMode} from './domain/clockPlugin.ts';
 import type {WidgetPluginColorSettingDefinition,WidgetPluginColorSettingProps,WidgetPluginControlProps} from './domain/widgetPlugins.ts';
 
 const colorControlPrefix='widget-relaunch.color.';
@@ -13,6 +14,7 @@ const screenshotAvailable=()=>true;
 export const widgetColorSettingCatalog:WidgetPluginColorSettingDefinition[]=[
  {id:'relaunch',pluginId:'widget-relaunch',label:'Auto relaunch',ColorSetting:RelaunchColorSettingControl,available:relaunchAvailable},
  {id:'screenshot',pluginId:'screenshot',label:'Screenshot',ColorSetting:ScreenshotColorSettingControl,available:screenshotAvailable},
+ {id:'clock-timer',pluginId:'clock-timer',label:'Clock timer',ColorSetting:ClockTimerColorSettingControl,available:screenshotAvailable},
 ];
 
 export function RelaunchGlobalModeControl({context}:WidgetPluginControlProps){
@@ -21,8 +23,8 @@ export function RelaunchGlobalModeControl({context}:WidgetPluginControlProps){
 
 export function RelaunchTagColorsControl({context,widget,update}:WidgetPluginControlProps){
  const controls=widget.pluginControls??[];
- const selectedColors=selectedColorControls(controls,[...Object.keys(context?.colors??{}),...Object.keys(context?.screenshotColorOverrides??{})] as WidgetTagColor[]);
- const hasOverrides=widgetTagColors.some(color=>context?.colors[color]||context?.screenshotColorOverrides[color]!==undefined);
+ const selectedColors=selectedColorControls(controls,[...Object.keys(context?.colors??{}),...Object.keys(context?.screenshotColorOverrides??{}),...Object.keys(context?.clockColorOverrides??{})] as WidgetTagColor[]);
+ const hasOverrides=widgetTagColors.some(color=>context?.colors[color]||context?.screenshotColorOverrides[color]!==undefined||context?.clockColorOverrides[color]!==undefined);
  const [expanded,setExpanded]=useState(selectedColors.length>0||hasOverrides);
  const useGlobal=selectedColors.length===0&&!hasOverrides&&!expanded;
  const showRules=expanded||selectedColors.length>0||hasOverrides;
@@ -33,6 +35,7 @@ export function RelaunchTagColorsControl({context,widget,update}:WidgetPluginCon
   update({pluginControls:controls.filter(id=>!id.startsWith(colorControlPrefix)&&!id.startsWith(colorRulePrefix)&&!id.startsWith(colorSettingPrefix))});
   for(const color of widgetTagColors)context?.setColorMode(color,null);
   for(const color of widgetTagColors)context?.setScreenshotColorOverride(color,null);
+  for(const color of widgetTagColors)context?.setClockColorOverride(color,null);
   setExpanded(false);
  }
  function addColor(color:WidgetTagColor){
@@ -43,12 +46,13 @@ export function RelaunchTagColorsControl({context,widget,update}:WidgetPluginCon
  function addSetting(color:WidgetTagColor,id:string){const token=colorSettingId(color,id);if(!controls.includes(token))update({pluginControls:[...controls,token]});setExpanded(true)}
  function removeSetting(color:WidgetTagColor,id:string){
   update({pluginControls:controls.filter(item=>item!==colorSettingId(color,id)&&!(id==='relaunch'&&item===colorControlPrefix+color))});
-  if(id==='relaunch')context?.setColorMode(color,null);if(id==='screenshot')context?.setScreenshotColorOverride(color,null);
+  if(id==='relaunch')context?.setColorMode(color,null);if(id==='screenshot')context?.setScreenshotColorOverride(color,null);if(id==='clock-timer')context?.setClockColorOverride(color,null);
  }
  function removeColor(color:WidgetTagColor){
   update({pluginControls:controls.filter(id=>id!==colorRulePrefix+color&&id!==colorControlPrefix+color&&!id.startsWith(colorSettingPrefix+color+'.'))});
   context?.setColorMode(color,null);
   context?.setScreenshotColorOverride(color,null);
+  context?.setClockColorOverride(color,null);
   if(selectedColors.length===1)setExpanded(false);
  }
  return <section className="tag-status-color-settings" aria-label="Plugin settings by tag color">
@@ -81,4 +85,13 @@ export function ScreenshotColorSettingControl({context,color}:WidgetPluginColorS
 
 export function ScreenshotSettingsControl({context}:WidgetPluginControlProps){
  return <fieldset className="status-plugin-settings"><legend>Screenshot button</legend><label className="settings-row"><span>Show for</span><select aria-label="Status card screenshot scope" value={context?.screenshotMode??'global'} onChange={event=>context?.setScreenshotMode(event.target.value as 'global'|'tag-colors'|'off')}><option value="global">All widgets</option><option value="tag-colors">Selected tag colors</option><option value="off">Off</option></select></label>{context?.screenshotMode==='tag-colors'&&<div className="status-plugin-colors">{widgetTagColors.map(color=><label key={color}><input type="checkbox" aria-label={'Status card '+color+' screenshot color'} checked={context.screenshotColors.includes(color)} onChange={event=>context.setScreenshotColor(color,event.target.checked)}/>{color[0].toUpperCase()+color.slice(1)}</label>)}</div>}</fieldset>;
+}
+
+export function ClockTimerColorSettingControl({context,color}:WidgetPluginColorSettingProps){
+ const override=context?.clockColorOverrides[color],value=override===undefined?'follow':override?'enabled':'disabled';
+ return <select aria-label={'Status card '+color+' clock timer setting'} value={value} onChange={event=>context?.setClockColorOverride(color,event.target.value==='follow'?null:event.target.value==='enabled')}><option value="follow">Follow global</option><option value="enabled">Clock enabled</option><option value="disabled">Clock disabled</option></select>;
+}
+
+export function ClockTimerSettingsControl({context}:WidgetPluginControlProps){
+ return <fieldset className="status-plugin-settings"><legend>Clock timer add-on</legend><label className="settings-row"><span>Show for</span><select aria-label="Status card clock timer scope" value={context?.clockMode??'global'} onChange={event=>context?.setClockMode(event.target.value as ClockPluginMode)}><option value="global">All tagged and untagged widgets</option><option value="tag-colors">Selected tag colors</option><option value="off">Off</option></select></label>{context?.clockMode==='tag-colors'&&<div className="status-plugin-colors">{widgetTagColors.map(color=><label key={color}><input type="checkbox" aria-label={'Status card '+color+' clock timer color'} checked={context.clockColors.includes(color)} onChange={event=>context.setClockColor(color,event.target.checked)}/>{color[0].toUpperCase()+color.slice(1)}</label>)}</div>}<p className="notice">Add Clock timer to an individual card with its + button. Color rules can override this setting.</p></fieldset>;
 }
