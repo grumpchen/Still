@@ -114,13 +114,19 @@ test('Clock is added from a widget plus menu and opens its floating timer from t
   await act(async()=>addClock.click());
   assert.equal(app.currentState.workspaces[0].widgets[0].clockPluginEnabled,true);
   const clockButton=app.window.document.querySelector('[aria-label="Open clock timer for Clock note"]');assert.ok(clockButton,'adding Clock places a clock icon in the widget header');
-  let clockButtonRect=rect(470,100,26,26);clockButton.getBoundingClientRect=()=>clockButtonRect;
+  let clockButtonRect=rect(470,600,26,26);clockButton.getBoundingClientRect=()=>clockButtonRect;
   await act(async()=>clockButton.click());
-  const dialog=app.window.document.querySelector('[role="dialog"][aria-label="Clock timer for Clock note"]');assert.ok(dialog,'the clock icon opens a floating timer dialog');
+  let dialog=app.window.document.querySelector('[role="dialog"][aria-label="Clock timer for Clock note"]');assert.ok(dialog,'the clock icon opens a floating timer dialog');
   assert.ok(app.window.document.querySelector('[aria-label="Set timer duration"]'),'the floating panel contains the dial');
-  assert.equal(dialog.style.top,'134px','the timer panel opens beside its card control');
-  await act(async()=>{clockButtonRect=rect(510,150,26,26);app.window.document.querySelector('.canvas-card').style.left='40px';await new Promise(resolve=>setTimeout(resolve,0))});
-  assert.equal(dialog.style.top,'184px','the floating panel follows its widget when it moves');
+  assert.equal(dialog.style.top,'142px','the timer panel opens above its card when there is room');
+  await act(async()=>{clockButtonRect=rect(510,620,26,26);app.window.document.querySelector('.canvas-card').style.left='40px';await new Promise(resolve=>setTimeout(resolve,0))});
+  assert.equal(dialog.style.top,'162px','the floating panel follows its widget when it moves');
+  await act(async()=>app.window.document.querySelector('[aria-label="Close clock timer"]').click());
+  clockButtonRect=rect(470,20,26,26);
+  await act(async()=>clockButton.click());
+  dialog=app.window.document.querySelector('[role="dialog"][aria-label="Clock timer for Clock note"]');assert.ok(dialog);
+  assert.equal(dialog.style.top,'54px','when there is not enough room above, the panel opens below the card without covering it');
+  assert.ok(Number.parseFloat(dialog.style.top)>=clockButtonRect.bottom,'the fallback position stays clear of the widget header');
  }finally{await app.cleanup()}
 });
 
