@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createWidget,createWorkspace} from '../src/domain/workspaces.ts';
 import {widgetTypes} from '../src/domain/widgetCatalog.ts';
-import {assistantActionRequest,assistantEditClarification,assistantReplyNeedsClarification,assistantLayoutRequested,assistantIsConversationalOnly,assistantRequestLimitError,assistantTrayItems,unsupportedAssistantRequest,extractAssistantTimerSeconds,resolveDirectAssistantActions,resolveAcceptedNotesOffer,addFocusForAssistantTimer,settleAssistantConfirmation,assistantKeyError,assistantWorkspaceContext,preferredModel,widgetContext,layoutContext,layoutFingerprint,parseAssistantReply,validateAssistantActionIntent,validateAssistantActions,applyAssistantWidgetActions,validateLayout,applyLayoutPlan,prepareAssistantHistory,assistantAddedWidgetReceipt,safeAssistantReceipt,MAX_ASSISTANT_BATCH,MAX_ASSISTANT_WIDGETS} from '../src/domain/assistant.ts';
+import {assistantActionRequest,assistantEditClarification,assistantReplyNeedsClarification,assistantLayoutRequested,assistantRequestLimitError,assistantTrayItems,unsupportedAssistantRequest,extractAssistantTimerSeconds,resolveDirectAssistantActions,resolveAcceptedNotesOffer,addFocusForAssistantTimer,settleAssistantConfirmation,assistantKeyError,assistantWorkspaceContext,preferredModel,widgetContext,layoutContext,layoutFingerprint,parseAssistantReply,validateAssistantActionIntent,validateAssistantActions,applyAssistantWidgetActions,validateLayout,applyLayoutPlan,prepareAssistantHistory,assistantAddedWidgetReceipt,safeAssistantReceipt,MAX_ASSISTANT_BATCH,MAX_ASSISTANT_WIDGETS} from '../src/domain/assistant.ts';
 
 function fixture(){
   const workspace=createWorkspace('Study',[]),note=createWidget('notes'),timer=createWidget('focus');
@@ -138,13 +138,14 @@ test('model responses are parsed without trusting arbitrary fields or geometry',
   assert.throws(()=>parseAssistantReply({reply:'Hello',layout:[{id:'a',x:0.1,y:0,width:100,height:100}]}));
   assert.throws(()=>parseAssistantReply({reply:'Hello',layout:[null]}));
 });
-test('casual chat turns discard accidental workspace actions and layout proposals',()=>{
-  assert.equal(assistantIsConversationalOnly('hi'),true);
-  assert.equal(assistantIsConversationalOnly('How you going?'),true);
-  assert.equal(assistantIsConversationalOnly('hi, add a Focus widget'),false);
-  const mixed={reply:'Hello! I am here to help.',layout:[{id:'notes-1',x:0,y:0,width:300,height:250}],actions:[{type:'edit_widget',ids:['notes-1'],title:'Unexpected edit'}]};
-  assert.deepEqual(parseAssistantReply(mixed,{ignoreWorkspaceChanges:true}),{reply:mixed.reply,layout:[],actions:[]});
-  assert.throws(()=>parseAssistantReply(mixed),/mixed a layout proposal/,'mixed workspace operations remain rejected for actual workspace requests');
+test('assistant response intent separates freeform conversation from workspace operations',()=>{
+  const layout=[{id:'notes-1',x:0,y:0,width:300,height:250}],actions=[{type:'edit_widget',ids:['notes-1'],title:'Unexpected edit'}];
+  assert.deepEqual(parseAssistantReply({intent:'chat',reply:'A black hole has an event horizon.',layout,actions}),{intent:'chat',reply:'A black hole has an event horizon.',layout:[],actions:[]});
+  assert.deepEqual(parseAssistantReply({intent:'clarification',reply:'Which note should I update?',layout,actions}),{intent:'clarification',reply:'Which note should I update?',layout:[],actions:[]});
+  assert.deepEqual(parseAssistantReply({intent:'workspace_action',reply:'I can update that note.',layout,actions}),{intent:'workspace_action',reply:'I can update that note.',layout:[],actions});
+  assert.deepEqual(parseAssistantReply({intent:'layout',reply:'Here is a layout proposal.',layout,actions}),{intent:'layout',reply:'Here is a layout proposal.',layout,actions:[]});
+  assert.throws(()=>parseAssistantReply({intent:'unrecognized',reply:'Hello',layout:[],actions:[]}));
+  assert.throws(()=>parseAssistantReply({reply:'Done',layout,actions}),/mixed a layout proposal/,'legacy replies without an intent remain guarded');
 });
 test('assistant workspace operations are parsed as explicit, exclusive actions',()=>{
   assert.deepEqual(parseAssistantReply({reply:'Done',layout:[],actions:[{type:'minimize',ids:['notes-1','focus-1']},{type:'save_to_tray',ids:['notes-1']}]}),{

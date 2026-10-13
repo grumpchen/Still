@@ -20,6 +20,7 @@ export const ASSISTANT_ACTION_TYPES=['minimize','restore','save_to_tray','set_ti
 export type AssistantActionType = typeof ASSISTANT_ACTION_TYPES[number];
 export type AssistantAction = {type:AssistantActionType;ids:string[];seconds?:number;title?:string;text?:string;schedule?:ScheduleEntry[];tagColor?:string;pluginControls?:string[];plugin?:string;enabled?:boolean};
 export type AssistantTrayItem={id:string;name:string;type:WidgetType;kind:'preset'|'group'};
+export type AssistantResponseIntent='chat'|'clarification'|'workspace_action'|'layout';
 export const MAX_ASSISTANT_BATCH=10;
 export const MAX_ASSISTANT_WIDGETS=100;
 export function resolveNamedNotesCreation(prompt:string):{title:string;topic:string}|null{
@@ -29,7 +30,7 @@ export function resolveNamedNotesCreation(prompt:string):{title:string;topic:str
   if(!title||title.length>60||topic.length>12000)return null;
   return {title,topic};
 }
-export type AssistantReply = {reply:string; layout:LayoutItem[]; actions:AssistantAction[]};
+export type AssistantReply = {intent?:AssistantResponseIntent;reply:string; layout:LayoutItem[]; actions:AssistantAction[]};
 export type LayoutPlan = {workspaceId:string; fingerprint:string; width:number; height:number; items:LayoutItem[]};
 export const DEFAULT_MODEL = 'gemini-2.5-flash';
 export const DEFAULT_MODELS:Record<AssistantProvider,string> = {gemini:DEFAULT_MODEL,openai:'gpt-4o-mini'};
@@ -54,10 +55,6 @@ export function prepareAssistantHistory(messages:ChatMessage[]):ChatMessage[]{
     ...message,
     text:message.text.trim()?message.text.slice(0,message.role==='model'?6000:8000):message.role==='model'?'No response was recorded for the previous message.':'No message text was recorded.',
   }));
-}
-/** Greetings and other standalone social turns are chat only, even if the model invents workspace operations. */
-export function assistantIsConversationalOnly(prompt:string):boolean{
-  return /^(?:hi|hello|hey|hiya|how are you(?: doing)?|how(?:'s| is) it going|how you going|good morning|good afternoon|good evening|thanks|thank you|bye|goodbye|see you)[.!?,\s]*$/i.test(prompt.trim());
 }
 /** Give locally applied add-widget actions a user-visible receipt. */
 export function assistantAddedWidgetReceipt(actions:AssistantAction[]):string{
@@ -138,14 +135,11 @@ function assistantRequestedItemCount(text:string):number|null{
   const amount=text.match(/(?<![-.\d])\b(\d+)\s+(?:saved\s+)?(?:[a-z-]+\s+)?(?:widgets?|cards?)\b/i)??text.match(/(?<![-.\d])\b(\d+)\s+(?:notes?|focus|calculators?|files?|apps?|timetables?|groups?)\b/i);
   return amount?Number(amount[1]):null;
 }
-export function parseAssistantReply(value:unknown,options:{ignoreWorkspaceChanges?:boolean}={}):AssistantReply {
+export function parseAssistantReply(value:unknown):AssistantReply {
   if(!value||typeof value!=='object')throw new Error('The AI returned an invalid response. Try again.');
-  const {reply}=value as Partial<AssistantReply>;
+  const {reply,intent}=value as Partial<AssistantReply>;
   if(typeof reply!=='string'||reply.length>24000)throw new Error('The AI returned an incomplete response. Try again.');
-  if(options.ignoreWorkspaceChanges){
-    if(!reply.trim())throw new Error('The AI returned no reply. Try again.');
-    return {reply:reply.trim(),layout:[],actions:[]};
-  }
+  if(intent!==undefined&&!['chat','clarification','workspace_action','layout'].includes(intent))throw new Error('The AI returned an invalid response intent. Try again.');
   const {layout}=value as Partial<AssistantReply>,rawActions=(value as Partial<AssistantReply>).actions??[];
   if(!Array.isArray(layout)||layout.length>100||!Array.isArray(rawActions)||rawActions.length>100)throw new Error('The AI returned an incomplete response. Try again.');
   const items=layout.map(item=>{
@@ -160,9 +154,12 @@ export function parseAssistantReply(value:unknown,options:{ignoreWorkspaceChange
   });
   if(actions.filter(action=>action.type==='add_widget'||action.type==='open_saved').reduce((total,action)=>total+action.ids.length,0)>MAX_ASSISTANT_BATCH)throw new Error('The AI returned too many widget actions. Nothing was changed. Try a smaller request.');
   if(actions.filter(action=>action.type==='edit_widget'||action.type==='set_widget_plugin'||action.type==='set_sidebar_plugin').reduce((total,action)=>total+action.ids.length,0)>MAX_ASSISTANT_BATCH)throw new Error('The AI returned too many workspace changes. Nothing was changed. Try a smaller request.');
-  if(items.length&&actions.length)throw new Error('The AI mixed a layout proposal with workspace actions. Nothing was changed. Try again.');
-  if(!reply.trim()&&!actions.length)throw new Error('The AI returned no reply or workspace action. Try again.');
-  return {reply:reply.trim()?reply:'Workspace actions requested.',layout:items,actions};
+  if(!intent&&items.length&&actions.length)throw new Error('The AI mixed a layout proposal with workspace actions. Nothing was changed. Try again.');
+  const safeLayout=intent==='chat'||intent==='clarification'||intent==='workspace_action'?[]:items;
+  const safeActions=intent==='chat'||intent==='clarification'||intent==='layout'?[]:actions;
+  if(!reply.trim()&&!safeActions.length&&!safeLayout.length)throw new Error('The AI returned no reply. Try again.');
+  const normalizedReply=reply.trim()?reply:safeActions.length?'Workspace actions requested.':'Workspace layout proposal.';
+  return {...(intent?{intent}:{}),reply:normalizedReply,layout:safeLayout,actions:safeActions};
 }
 function validateAssistantActionFields(action:AssistantAction):void{
   if(action.title!==undefined&&(action.type!=='add_widget'&&action.type!=='edit_widget'&&action.type!=='rename_workspace'||typeof action.title!=='string'||!action.title.trim()||action.title.length>60))throw new Error('Invalid names: use between 1 and 60 characters. Nothing was changed.');

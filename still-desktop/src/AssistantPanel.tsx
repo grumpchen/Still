@@ -174,9 +174,9 @@ export default function AssistantPanel({workspace,canDeleteWorkspace,sidebarPlug
         const receipt=safeAssistantReceipt(await act(owner.id,result.actions,prompt));if(!alive.current)return;
         setMessages(current=>[...current,{role:'user',text:prompt},{role:'model',text:receipt}]);setPlan(null);setInput('');setMentions([]);setScreenshot(false);return;
       }
-      const reply=requestedActions.length?`${result.reply}\n\nNo workspace changes were made.`:result.reply;
+      const reply=requestedActions.length&&result.intent!=='chat'&&result.intent!=='clarification'?`${result.reply}\n\nNo workspace changes were made.`:result.reply;
       setMessages(current=>[...current,{role:'user',text:prompt},{role:'model',text:reply}]);setInput('');setMentions([]);setScreenshot(false);
-      if(result.layout.length&&assistantLayoutRequested(prompt)){validateLayout(owner,result.layout,size.width,size.height);setPlan({workspaceId:owner.id,fingerprint:layoutFingerprint(owner),width:size.width,height:size.height,items:result.layout})}
+      if(result.layout.length&&(result.intent==='layout'||assistantLayoutRequested(prompt))){validateLayout(owner,result.layout,size.width,size.height);setPlan({workspaceId:owner.id,fingerprint:layoutFingerprint(owner),width:size.width,height:size.height,items:result.layout})}
     }catch(reason){if(alive.current)setError(reason instanceof Error?reason.message:String(reason))}
     finally{sending.current=false;if(alive.current){setBusy(false);setPending('')}}
   }

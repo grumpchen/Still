@@ -98,7 +98,8 @@ test('widget add commands show replies and provider chat carries complete action
   window.HTMLElement.prototype.scrollTo=function(){};window.HTMLTextAreaElement.prototype.focus=function(){};window.__TAURI_INTERNALS__={};
   mockIPC((command,args)=>{calls.push({command,args});if(command==='assistant_configured')return true;if(command==='assistant_models')return['gemini-2.5-flash'];if(command==='assistant_chat'){
     const prompt=args.request.messages.at(-1).text;
-    if(prompt==='hi')return{reply:'Hello! I am here to help.',layout:[{id:timetable.id,x:0,y:0,width:350,height:400}],actions:[{type:'edit_widget',ids:[timetable.id],title:'Unexpected edit'}]};
+    if(prompt==='hi')return{intent:'chat',reply:'Hello! I am here to help.',layout:[{id:timetable.id,x:0,y:0,width:350,height:400}],actions:[{type:'edit_widget',ids:[timetable.id],title:'Unexpected edit'}]};
+    if(prompt==='what is a black hole?')return{intent:'chat',reply:'It is a region where gravity is so strong that light cannot escape.',layout:[],actions:[{type:'remove_widget',ids:[timetable.id]}]};
     if(prompt==='make notes widget')throw new Error('Gemini returned an oversized or empty answer.');
     if(prompt==='edit timetable with details')return{reply:'Which class should I add?',layout:[],actions:[{type:'edit_widget',ids:[timetable.id],schedule:[{id:'class-1',day:1,time:'09:00',title:'Chemistry',location:'Room 1'}]}]};
     if(prompt==='I need somewhere to take notes')return{reply:'',layout:[],actions:[{type:'add_widget',ids:['notes'],title:'My notes',text:'Ready to write.'}]};
@@ -142,6 +143,11 @@ test('widget add commands show replies and provider chat carries complete action
   await waitFor(()=>[...window.document.querySelectorAll('.assistant-message.model p')].some(message=>message.textContent==='Hello! I am here to help.'));
   assert.equal(window.document.querySelector('.assistant-error'),null,'a greeting is answered as chat rather than shown as a workspace-operation error');
   assert.equal(actions.length,2,'spurious layout and widget-edit suggestions from a greeting are discarded');
+  await act(async()=>setReactValue(composer,'what is a black hole?','HTMLTextAreaElement'));
+  await act(async()=>window.document.querySelector('.assistant-compose').requestSubmit());
+  await waitFor(()=>calls.filter(call=>call.command==='assistant_chat').length===3);
+  await waitFor(()=>[...window.document.querySelectorAll('.assistant-message.model p')].some(message=>message.textContent==='It is a region where gravity is so strong that light cannot escape.'));
+  assert.equal(actions.length,2,'an unrelated freeform question stays conversational without phrase-specific rules');
   const history=calls.filter(call=>call.command==='assistant_chat').at(-1).args.request.messages;
   assert.ok(history.every(message=>message.text.trim()),'legacy empty assistant replies are not sent to the provider');
   assert.equal(history.find(message=>message.text==='Added a Focus widget.')?.role,'model','the action receipt is included in future chat history');
