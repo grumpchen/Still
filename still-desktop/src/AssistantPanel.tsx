@@ -1,11 +1,11 @@
 import {useEffect,useRef,useState,type ChangeEvent,type KeyboardEvent} from 'react';
 import type {Workspace,WidgetInstance} from './domain/workspaces.ts';
-import {addFocusForAssistantTimer,applyLayoutPlan,assistantActionRequest,assistantLayoutRequested,assistantKeyError,assistantRequestLimitError,assistantWorkspaceContext,DEFAULT_MODELS,extractAssistantTimerSeconds,HISTORY_LIMIT,layoutFingerprint,preferredModel,resolveDirectAssistantActions,settleAssistantConfirmation,unsupportedAssistantRequest,validateAssistantActionIntent,validateAssistantActions,validateLayout,widgetLabel,type AssistantAction,type AssistantProvider,type AssistantTrayItem,type ChatMessage,type LayoutPlan} from './domain/assistant.ts';
+import {addFocusForAssistantTimer,applyLayoutPlan,assistantActionRequest,assistantLayoutRequested,assistantKeyError,assistantRequestLimitError,assistantWorkspaceContext,DEFAULT_MODELS,extractAssistantTimerSeconds,layoutFingerprint,prepareAssistantHistory,preferredModel,resolveDirectAssistantActions,safeAssistantReceipt,settleAssistantConfirmation,unsupportedAssistantRequest,validateAssistantActionIntent,validateAssistantActions,validateLayout,widgetLabel,type AssistantAction,type AssistantProvider,type AssistantTrayItem,type ChatMessage,type LayoutPlan} from './domain/assistant.ts';
 import {geminiAssistant,widgetImage} from './platform/assistant.ts';
 import {Icon} from './widgets.tsx';
 import './assistant.css';
 
-type AssistantConfirmation='clear_tray'|'delete_widgets'|'open_saved_apps';
+type AssistantConfirmation='clear_tray'|'delete_widgets'|'open_saved_apps'|'remove_widgets';
 type Props={workspace:Workspace;trayItems:AssistantTrayItem[];open:boolean;close:()=>void;dimensions:()=>{width:number;height:number};apply:(plan:LayoutPlan)=>void;act:(workspaceId:string,actions:AssistantAction[],prompt:string)=>Promise<string>;startTimer:(workspaceId:string,seconds:number)=>Promise<string>;clearTray:(workspaceId:string)=>Promise<string>;deleteWidgets:(workspaceId:string)=>Promise<string>;undo:()=>void};
 type Mention={id:string;label:string};
 const PROVIDERS:AssistantProvider[]=['gemini','openai'];
@@ -107,27 +107,37 @@ export default function AssistantPanel({workspace,trayItems,open,close,dimension
       }
       if(localActions){
         validateAssistantActions(owner,localActions,trayItems);validateAssistantActionIntent(prompt,owner,localActions,trayItems);
+        if(localActions.some(action=>action.type==='remove_widget')){
+          pendingActions.current=localActions;pendingPrompt.current=prompt;
+          const names=localActions.filter(action=>action.type==='remove_widget').flatMap(action=>action.ids).map(id=>{const widget=owner.widgets.find(item=>item.id===id);return widget?widgetLabel(widget):''}).filter(Boolean);
+          setMessages(current=>[...current,{role:'user',text:prompt},{role:'model',text:`This will remove ${names.join(', ')} from ${owner.name}. Saved shortcuts stay in the tray. Confirm below to continue; Undo change restores the widget${names.length===1?'':'s'}.`}]);setConfirmation('remove_widgets');setInput('');setMentions([]);return;
+        }
         if(localActions.some(action=>action.type==='open_saved'&&action.ids.some(id=>trayItems.some(item=>item.id===id&&item.type==='apps')))){
           pendingActions.current=localActions;pendingPrompt.current=prompt;
           setMessages(current=>[...current,{role:'user',text:prompt},{role:'model',text:'This will open saved app shortcuts in Still. Confirm below to continue.'}]);setConfirmation('open_saved_apps');setInput('');setMentions([]);return;
         }
-        const receipt=await act(owner.id,localActions,prompt);if(!alive.current)return;
+        const receipt=safeAssistantReceipt(await act(owner.id,localActions,prompt));if(!alive.current)return;
         setMessages(current=>[...current,{role:'user',text:prompt},{role:'model',text:receipt}]);setInput('');setMentions([]);setScreenshot(false);return;
       }
       const context=assistantWorkspaceContext(owner,size.width,size.height,selectedIds,trayItems),serialized=JSON.stringify(context);
       if(serialized.length>64000)throw new Error('That selection contains too much widget data. Mention fewer widgets and try again.');
       const image=screenshot&&screenshotWidget?await widgetImage(screenshotWidget.id):undefined;
-      const history=messages.slice(-HISTORY_LIMIT).map(message=>({...message,text:message.text.slice(0,message.role==='model'?6000:8000)}));
+      const history=prepareAssistantHistory(messages);
       const result=await geminiAssistant.send({provider:requestProvider,model:requestModel,messages:[...history,{role:'user',text:prompt}],context:serialized,image});
       if(!alive.current)return;
       if(result.actions.length){
         if(!requestedActions.length)throw new Error('Still AI returned an action for a message that did not request a workspace change. Nothing was changed.');
         validateAssistantActions(owner,result.actions,trayItems);validateAssistantActionIntent(prompt,owner,result.actions,trayItems);
+        if(result.actions.some(action=>action.type==='remove_widget')){
+          pendingActions.current=result.actions;pendingPrompt.current=prompt;
+          const names=result.actions.filter(action=>action.type==='remove_widget').flatMap(action=>action.ids).map(id=>{const widget=owner.widgets.find(item=>item.id===id);return widget?widgetLabel(widget):''}).filter(Boolean);
+          setMessages(current=>[...current,{role:'user',text:prompt},{role:'model',text:`This will remove ${names.join(', ')} from ${owner.name}. Saved shortcuts stay in the tray. Confirm below to continue; Undo change restores the widget${names.length===1?'':'s'}.`}]);setConfirmation('remove_widgets');setPlan(null);setInput('');setMentions([]);return;
+        }
         if(result.actions.some(action=>action.type==='open_saved'&&action.ids.some(id=>trayItems.some(item=>item.id===id&&item.type==='apps')))){
           pendingActions.current=result.actions;pendingPrompt.current=prompt;
           setMessages(current=>[...current,{role:'user',text:prompt},{role:'model',text:'This will open saved app shortcuts in Still. Confirm below to continue.'}]);setConfirmation('open_saved_apps');setPlan(null);setInput('');setMentions([]);return;
         }
-        const receipt=await act(owner.id,result.actions,prompt);if(!alive.current)return;
+        const receipt=safeAssistantReceipt(await act(owner.id,result.actions,prompt));if(!alive.current)return;
         setMessages(current=>[...current,{role:'user',text:prompt},{role:'model',text:receipt}]);setPlan(null);setInput('');setMentions([]);setScreenshot(false);return;
       }
       if(requestedActions.length)throw new Error('No widgets were changed. Still AI did not return a valid workspace action. Try again.');
@@ -139,7 +149,7 @@ export default function AssistantPanel({workspace,trayItems,open,close,dimension
   async function confirmPendingAction(){
     if(sending.current||!confirmation)return;
     const owner=latest.current;sending.current=true;setBusy(true);setError('');
-    try{const receipt=confirmation==='open_saved_apps'&&pendingActions.current?await act(owner.id,pendingActions.current,pendingPrompt.current):confirmation==='clear_tray'?await clearTray(owner.id):await deleteWidgets(owner.id);if(!alive.current)return;setMessages(current=>settleAssistantConfirmation(current,receipt));setConfirmation(null);pendingActions.current=null;pendingPrompt.current=''}
+    try{const receipt=(confirmation==='open_saved_apps'||confirmation==='remove_widgets')&&pendingActions.current?safeAssistantReceipt(await act(owner.id,pendingActions.current,pendingPrompt.current)):confirmation==='clear_tray'?await clearTray(owner.id):await deleteWidgets(owner.id);if(!alive.current)return;setMessages(current=>settleAssistantConfirmation(current,receipt));setConfirmation(null);pendingActions.current=null;pendingPrompt.current=''}
     catch(reason){if(alive.current)setError(reason instanceof Error?reason.message:String(reason))}
     finally{sending.current=false;if(alive.current)setBusy(false)}
   }
@@ -161,7 +171,7 @@ export default function AssistantPanel({workspace,trayItems,open,close,dimension
       {messages.map((message,index)=><div className={'assistant-message '+message.role} key={index}><small>{message.role==='user'?'You':'Still AI'}</small><p>{message.text}</p></div>)}
       {busy&&<><div className="assistant-message user"><small>You</small><p>{pending}</p></div><p className="assistant-thinking" role="status">Thinking…</p></>}
     </div>
-    {confirmation&&<section className="assistant-proposal assistant-confirmation" aria-label={confirmation==='clear_tray'?'Confirm clearing widget tray':confirmation==='delete_widgets'?'Confirm removing workspace widgets':'Confirm opening saved apps'}><strong>{confirmation==='clear_tray'?'Clear saved tray items?':confirmation==='delete_widgets'?'Remove all workspace widgets?':'Open saved app shortcuts?'}</strong><p>{confirmation==='clear_tray'?`This removes shortcuts from the shared tray and Groups from ${workspace.name}. Use Undo change afterward to restore the saved tray data.`:confirmation==='delete_widgets'?`This removes every widget card from ${workspace.name}, including minimized cards. Saved shortcuts and Groups in the tray stay intact. Undo change restores the widget cards; attached app windows return to the desktop.`:'This opens the selected saved app shortcuts inside Still. Existing app windows will be reused when possible.'}</p><div className="assistant-row"><button type="button" onClick={cancelPendingAction} disabled={busy}>Cancel</button><button type="button" className="primary" onClick={()=>void confirmPendingAction()} disabled={busy}>{busy?'Working…':confirmation==='open_saved_apps'?'Confirm open':'Confirm remove'}</button></div></section>}
+    {confirmation&&<section className="assistant-proposal assistant-confirmation" aria-label={confirmation==='clear_tray'?'Confirm clearing widget tray':confirmation==='delete_widgets'?'Confirm removing workspace widgets':confirmation==='remove_widgets'?'Confirm removing selected widgets':'Confirm opening saved apps'}><strong>{confirmation==='clear_tray'?'Clear saved tray items?':confirmation==='delete_widgets'?'Remove all workspace widgets?':confirmation==='remove_widgets'?'Remove selected widgets?':'Open saved app shortcuts?'}</strong><p>{confirmation==='clear_tray'?`This removes shortcuts from the shared tray and Groups from ${workspace.name}. Use Undo change afterward to restore the saved tray data.`:confirmation==='delete_widgets'?`This removes every widget card from ${workspace.name}, including minimized cards. Saved shortcuts and Groups in the tray stay intact. Undo change restores the widget cards; attached app windows return to the desktop.`:confirmation==='remove_widgets'?'Only the named widget cards will be removed. Saved shortcuts stay in the tray. Undo change restores the cards.': 'This opens the selected saved app shortcuts inside Still. Existing app windows will be reused when possible.'}</p><div className="assistant-row"><button type="button" onClick={cancelPendingAction} disabled={busy}>Cancel</button><button type="button" className="primary" onClick={()=>void confirmPendingAction()} disabled={busy}>{busy?'Working…':confirmation==='open_saved_apps'?'Confirm open':'Confirm remove'}</button></div></section>}
     {plan&&<section className="assistant-proposal" aria-label="Proposed layout"><strong>Proposed layout</strong><svg role="img" aria-label="Preview of proposed widget positions" viewBox={`0 0 ${plan.width} ${plan.height}`}><rect className="assistant-preview-bg" width={plan.width} height={plan.height}/>{plan.items.map(item=><g key={item.id}><rect x={item.x} y={item.y} width={item.width} height={item.height}/><title>{workspace.widgets.find(widget=>widget.id===item.id)?widgetLabel(workspace.widgets.find(widget=>widget.id===item.id)!):'Removed widget'}</title></g>)}</svg><details><summary>{plan.items.length} widget positions</summary>{plan.items.map(item=><p key={item.id}>{workspace.widgets.find(widget=>widget.id===item.id)?widgetLabel(workspace.widgets.find(widget=>widget.id===item.id)!):'Removed widget'}: {item.x}, {item.y} · {item.width} × {item.height}</p>)}</details><div className="assistant-row"><button className="primary" onClick={applyProposal}>Apply layout</button><button onClick={()=>setPlan(null)}>Dismiss</button></div></section>}
     {error&&<p className="assistant-error" role="alert">{error}</p>}
     <form className="assistant-compose" onSubmit={event=>{event.preventDefault();void send()}}>

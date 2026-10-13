@@ -7,7 +7,7 @@ import {constrainPlacement,nextPlacement,type Placement} from './layout.ts';
 export type AssistantProvider = 'gemini' | 'openai';
 export type ChatMessage = {role:'user'|'model'; text:string};
 export type LayoutItem = Placement & {id:string};
-export type AssistantActionType = 'minimize'|'restore'|'save_to_tray'|'set_timer'|'add_widget'|'open_saved';
+export type AssistantActionType = 'minimize'|'restore'|'save_to_tray'|'set_timer'|'add_widget'|'open_saved'|'remove_widget';
 export type AssistantAction = {type:AssistantActionType;ids:string[];seconds?:number};
 export type AssistantTrayItem={id:string;name:string;type:WidgetType;kind:'preset'|'group'};
 export const MAX_ASSISTANT_BATCH=10;
@@ -30,6 +30,28 @@ export function settleAssistantConfirmation(messages:ChatMessage[],text:string):
   const last=messages.length-1;
   if(last<0||messages[last].role!=='model')return [...messages,{role:'model',text}];
   const next=[...messages];next[last]={...next[last],text};return next;
+}
+/** Repair empty legacy assistant turns before they reach providers, and cap prompt history. */
+export function prepareAssistantHistory(messages:ChatMessage[]):ChatMessage[]{
+  return messages.slice(-HISTORY_LIMIT).map(message=>({
+    ...message,
+    text:message.text.trim()?message.text.slice(0,message.role==='model'?6000:8000):message.role==='model'?'No response was recorded for the previous message.':'No message text was recorded.',
+  }));
+}
+/** Give locally applied add-widget actions a user-visible receipt. */
+export function assistantAddedWidgetReceipt(actions:AssistantAction[]):string{
+  const added=actions.filter(action=>action.type==='add_widget').flatMap(action=>action.ids);
+  if(!added.length)return '';
+  const counts=new Map<string,number>();for(const id of added)counts.set(id,(counts.get(id)??0)+1);
+  const labels=[...counts].map(([id,count])=>{
+    const name=widgetCatalog[id as WidgetType]?.name??'widget';
+    return count===1?`a ${name} widget`:`${count} ${name} widgets`;
+  });
+  const description=labels.length===1?labels[0]:`${labels.slice(0,-1).join(', ')} and ${labels.at(-1)}`;
+  return `Added ${description}.`;
+}
+export function safeAssistantReceipt(text:string):string{
+  return text.trim()?text:'Still could not confirm whether that action completed. Check the workspace before trying again.';
 }
 
 export function widgetLabel(widget:WidgetInstance):string {
@@ -83,7 +105,7 @@ export function parseAssistantReply(value:unknown):AssistantReply {
   });
   const actions:AssistantAction[]=rawActions.map(action=>{
     const newWidgets=action?.type==='add_widget',openSaved=action?.type==='open_saved';
-    if(!action||!['minimize','restore','save_to_tray','set_timer','add_widget','open_saved'].includes(action.type)||!Array.isArray(action.ids)||!action.ids.length||action.ids.length>(newWidgets||openSaved?MAX_ASSISTANT_BATCH:100)||action.ids.some(id=>typeof id!=='string'||!/^[a-zA-Z0-9-]{1,80}$/.test(id))||(!newWidgets&&new Set(action.ids).size!==action.ids.length)||(newWidgets&&action.ids.some(id=>!widgetTypes.includes(id as WidgetType)))||(openSaved&&action.ids.some(id=>!id.startsWith('preset-')&&!id.startsWith('group-')))||(action.type==='set_timer'&&(!Number.isSafeInteger(action.seconds)||action.seconds!<1||action.seconds!>31536000))||(action.type!=='set_timer'&&action.seconds!==undefined))throw new Error('The AI returned an invalid workspace action. Nothing was changed. Try again.');
+    if(!action||!['minimize','restore','save_to_tray','set_timer','add_widget','open_saved','remove_widget'].includes(action.type)||!Array.isArray(action.ids)||!action.ids.length||action.ids.length>(newWidgets||openSaved?MAX_ASSISTANT_BATCH:100)||action.ids.some(id=>typeof id!=='string'||!/^[a-zA-Z0-9-]{1,80}$/.test(id))||(!newWidgets&&new Set(action.ids).size!==action.ids.length)||(newWidgets&&action.ids.some(id=>!widgetTypes.includes(id as WidgetType)))||(openSaved&&action.ids.some(id=>!id.startsWith('preset-')&&!id.startsWith('group-')))||(action.type==='set_timer'&&(!Number.isSafeInteger(action.seconds)||action.seconds!<1||action.seconds!>31536000))||(action.type!=='set_timer'&&action.seconds!==undefined))throw new Error('The AI returned an invalid workspace action. Nothing was changed. Try again.');
     return {type:action.type,ids:[...action.ids],...(action.type==='set_timer'?{seconds:action.seconds}:{})};
   });
   if(actions.filter(action=>action.type==='add_widget'||action.type==='open_saved').reduce((total,action)=>total+action.ids.length,0)>MAX_ASSISTANT_BATCH)throw new Error('The AI returned too many widget actions. Nothing was changed. Try a smaller request.');
@@ -110,9 +132,16 @@ export function assistantActionRequest(text:string,savedTrayItems:AssistantTrayI
   const opensSaved=(/\b(?:open|add|load|bring|reopen)\b[\s\S]{0,100}\b(?:saved|tray|shortcut|widgets?)\b[\s\S]{0,80}\b(?:widgets?|shortcut|group|tray)?\b/i.test(prompt)&&/\b(?:saved|tray|shortcut)\b/i.test(prompt))||savedTrayItems.some(item=>/^\s*(?:please\s+)?(?:open|load|reopen|bring)\b/i.test(prompt)&&prompt.toLocaleLowerCase().includes(item.name.toLocaleLowerCase()));
   if(opensSaved)requested.push('open_saved');
   else if(/\b(?:save|put|move|send|store|copy|add|collect)\b[\s\S]{0,120}\btray\b/i.test(prompt))requested.push('save_to_tray');
-  if(!opensSaved&&/\b(?:add|create|insert)\b[\s\S]{0,60}\b(?:widgets?|cards?)\b/i.test(prompt))requested.push('add_widget');
+  const namedTypes=widgetTypes.filter(type=>widgetNameMentioned(prompt,type));
+  if(!opensSaved&&/\b(?:add|create|insert)\b/i.test(prompt)&&(/\b(?:widgets?|cards?)\b/i.test(prompt)||namedTypes.length))requested.push('add_widget');
+  if(!unsupportedAssistantRequest(prompt)&&/\b(?:remove|delete|close)\b[\s\S]{0,60}\b(?:widgets?|cards?|notes?|focus|timer|calculator|apps?|files?|timetable|assistant|group)\b/i.test(prompt))requested.push('remove_widget');
   if(/\b(?:set|start|begin)\b[\s\S]{0,40}\btimer\b/i.test(prompt)&&extractAssistantTimerSeconds(prompt)!==null)requested.push('set_timer');
   return [...new Set(requested)];
+}
+function widgetNameMentioned(text:string,type:WidgetType):boolean{
+  const aliases:Partial<Record<WidgetType,string[]>>={notes:['note','notes'],focus:['focus','timer'],desmos:['calculator','calculators'],timetable:['timetable','schedule'],ai:['assistant','ai'],tagStatus:['tag color status','tag status']};
+  const names=[type,widgetCatalog[type].name,...(aliases[type]??[])];
+  return names.some(name=>new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}\\b`,'i').test(text));
 }
 export function assistantLayoutRequested(text:string):boolean{
   if(isQuestionOrExplanation(text)||unsupportedAssistantRequest(text)||assistantActionRequest(text).length)return false;
@@ -121,7 +150,8 @@ export function assistantLayoutRequested(text:string):boolean{
 export function unsupportedAssistantRequest(text:string):'clear_tray'|'delete_widgets'|null{
   if(isQuestionOrExplanation(text))return null;
   if(/\b(?:delete|remove|clear|empty|erase|purge)\b[\s\S]{0,100}\b(?:all|every|entire|whole)\b[\s\S]{0,100}\b(?:widget\s+)?tray\b/i.test(text)||/\b(?:delete|remove|clear|empty|erase|purge)\b[\s\S]{0,100}\b(?:widget\s+)?tray\b[\s\S]{0,100}\b(?:all|every|entire|whole)\b/i.test(text))return 'clear_tray';
-  if(/\b(?:delete|remove|clear|erase)\b[\s\S]{0,100}\b(?:all|every|entire|whole)\b[\s\S]{0,100}\bwidgets?\b(?:[\s\S]{0,60}\b(?:on|in|from)\s+(?:the\s+)?(?:current\s+)?(?:workspace|canvas))?/i.test(text)||/\b(?:delete|remove|clear|erase)\b[\s\S]{0,100}\bwidgets?\b[\s\S]{0,60}\b(?:on|in|from)\s+(?:the\s+)?(?:current\s+)?(?:workspace|canvas)\b/i.test(text))return 'delete_widgets';
+  const namesSpecificWidget=widgetTypes.some(type=>widgetNameMentioned(text,type));
+  if((/\b(?:delete|remove|clear|erase)\b[\s\S]{0,100}\b(?:all|every|entire|whole)\b[\s\S]{0,100}\bwidgets?\b(?:[\s\S]{0,60}\b(?:on|in|from)\s+(?:the\s+)?(?:current\s+)?(?:workspace|canvas))?/i.test(text)&&!namesSpecificWidget)||(/\b(?:delete|remove|clear|erase)\b[\s\S]{0,100}\bwidgets?\b[\s\S]{0,60}\b(?:on|in|from)\s+(?:the\s+)?(?:current\s+)?(?:workspace|canvas)\b/i.test(text)&&!namesSpecificWidget))return 'delete_widgets';
   return null;
 }
 /** Resolve unambiguous local commands without asking the language model to reconstruct workspace IDs. */
@@ -138,9 +168,15 @@ export function resolveDirectAssistantActions(text:string,workspace:Workspace,se
     return [{type:'open_saved',ids:matched.map(item=>item.id)}];
   }
   if(types.includes('add_widget')){
-    const normalized=text.toLocaleLowerCase();
-    const matched=widgetTypes.filter(type=>normalized.includes(type.toLocaleLowerCase())||normalized.includes(widgetCatalog[type].name.toLocaleLowerCase()));
+    const matched=widgetTypes.filter(type=>widgetNameMentioned(text,type));
     if(matched.length){if(matched.length>MAX_ASSISTANT_BATCH)return null;const count=amount?Number(amount[1]):1;if(count>1&&matched.length===1)return [{type:'add_widget',ids:Array(count).fill(matched[0])}];return [{type:'add_widget',ids:matched}];}
+  }
+  if(types.includes('remove_widget')){
+    const matchedTypes=widgetTypes.filter(type=>widgetNameMentioned(text,type));
+    const named=workspace.widgets.filter(widget=>matchedTypes.includes(widget.type)||text.toLocaleLowerCase().includes(widgetLabel(widget).toLocaleLowerCase()));
+    const candidates=selectedWidgetIds.length?workspace.widgets.filter(widget=>selectedWidgetIds.includes(widget.id)):named;
+    if(!candidates.length||(!all&&candidates.length!==1))return null;
+    return [{type:'remove_widget',ids:candidates.map(widget=>widget.id)}];
   }
   if(!all&&!selectedWidgetIds.length&&!types.every(type=>type==='set_timer'))return null;
   const selected=new Set(selectedWidgetIds);
@@ -172,6 +208,7 @@ export function applyAssistantWidgetActions(workspace:Workspace,actions:Assistan
   for(const action of actions){
     if(action.type==='save_to_tray')continue;
     if(action.type==='open_saved')continue;
+    if(action.type==='remove_widget')continue;
     if(action.type==='add_widget'){
       if(next.widgets.length+action.ids.length>MAX_ASSISTANT_WIDGETS)throw new Error(`This workspace is limited to ${MAX_ASSISTANT_WIDGETS} widgets so it stays responsive. Nothing was changed.`);
       let widgets=[...next.widgets],groups=[...next.groups];
@@ -202,6 +239,11 @@ export function validateAssistantActionIntent(prompt:string,workspace:Workspace,
   if(!expected.length)return;
   const supplied=new Set(actions.map(action=>action.type));
   if(expected.some(type=>!supplied.has(type)))throw new Error('No widgets were changed. The AI did not return every requested workspace action. Try again.');
+  if(expected.includes('remove_widget')){
+    const removal=actions.find(action=>action.type==='remove_widget');
+    const namedTypes=widgetTypes.filter(type=>widgetNameMentioned(prompt,type));
+    if(!removal||namedTypes.length&&removal.ids.some(id=>!workspace.widgets.some(widget=>widget.id===id&&namedTypes.includes(widget.type))))throw new Error('No widgets were removed. Still AI selected a widget that does not match your request. Try again.');
+  }
   const amount=prompt.match(/\b(\d+)\s+(?:saved\s+)?(?:[a-z-]+\s+)?widgets?\b/i);
   if(amount)for(const type of ['add_widget','open_saved'] as const)if(expected.includes(type)){
     const action=actions.find(item=>item.type===type);
@@ -211,7 +253,8 @@ export function validateAssistantActionIntent(prompt:string,workspace:Workspace,
   if(asksForAll)for(const type of expected){
     if(type==='add_widget')continue;
     const action=actions.find(item=>item.type===type);
-    const targets=type==='open_saved'?savedTrayItems.map(item=>item.id):workspace.widgets.filter(widget=>type==='save_to_tray'?widget.type!=='group':type==='set_timer'?widget.type==='focus'||widget.clockPluginEnabled:true).map(widget=>widget.id);
+    const selectedTypes=widgetTypes.filter(widgetType=>widgetNameMentioned(prompt,widgetType));
+    const targets=type==='open_saved'?savedTrayItems.map(item=>item.id):workspace.widgets.filter(widget=>type==='save_to_tray'?widget.type!=='group':type==='set_timer'?widget.type==='focus'||widget.clockPluginEnabled:type==='remove_widget'&&selectedTypes.length?selectedTypes.includes(widget.type):true).map(widget=>widget.id);
     if(!action||targets.some(id=>!action.ids.includes(id)))throw new Error('No widgets were changed. The AI did not include every widget in the requested action. Try again.');
   }
 }

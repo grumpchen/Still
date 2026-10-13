@@ -8,7 +8,7 @@ import {chromeLauncher} from './platform/chrome.ts';
 import {openExternalUrl} from './platform/externalUrl.ts';
 import WorkspaceCanvas from './WorkspaceCanvas.tsx';
 import AssistantPanel from './AssistantPanel.tsx';
-import {addFocusForAssistantTimer,applyAssistantWidgetActions,applyLayoutPlan,assistantTrayItems,MAX_ASSISTANT_WIDGETS,validateAssistantActions,validateAssistantActionIntent,type AssistantAction,type LayoutPlan} from './domain/assistant.ts';
+import {addFocusForAssistantTimer,applyAssistantWidgetActions,applyLayoutPlan,assistantAddedWidgetReceipt,assistantTrayItems,MAX_ASSISTANT_WIDGETS,validateAssistantActions,validateAssistantActionIntent,type AssistantAction,type LayoutPlan} from './domain/assistant.ts';
 import {canvasExtent,canvasHeight,nextPlacement,placement,constrainPlacement} from './domain/layout.ts';
 import type {SnapLayoutId} from './domain/snapLayouts.ts';
 import { nativeShortcuts } from './platform/shortcuts.ts';
@@ -310,14 +310,21 @@ export default function App(){
         opened++;
       }
     }
+    const removedIds=[...new Set(actions.filter(action=>action.type==='remove_widget').flatMap(action=>action.ids))];
+    const removedWidgets=owner.widgets.filter(widget=>removedIds.includes(widget.id));
+    if(removedWidgets.length)nextWorkspace={...nextWorkspace,widgets:nextWorkspace.widgets.filter(widget=>!removedIds.includes(widget.id))};
     if(nextWorkspace.widgets.length>MAX_ASSISTANT_WIDGETS)throw new Error(`This workspace is limited to ${MAX_ASSISTANT_WIDGETS} widgets so it stays responsive. Nothing was changed.`);
     const minimized=actions.filter(action=>action.type==='minimize').flatMap(action=>action.ids).filter(id=>owner.widgets.find(widget=>widget.id===id)?.minimized===false&&nextWorkspace.widgets.find(widget=>widget.id===id)?.minimized===true);
     const restored=actions.filter(action=>action.type==='restore').flatMap(action=>action.ids).filter(id=>owner.widgets.find(widget=>widget.id===id)?.minimized===true&&nextWorkspace.widgets.find(widget=>widget.id===id)?.minimized===false);
     const stateChanged=nextWorkspace!==owner||nextPresets!==current.presets;
     if(stateChanged){undo.current=current;setState({...current,presets:nextPresets,workspaces:current.workspaces.map(item=>item.id===workspaceId?nextWorkspace:item)});}
+    const removedAppIds=removedWidgets.filter(widget=>widget.type==='apps').map(widget=>widget.id);
+    if(removedAppIds.length){setAppAttachments(attachments=>Object.fromEntries(Object.entries(attachments).filter(([id])=>!removedAppIds.includes(id))));for(const id of removedAppIds)if(appPanel.available)void appPanel.release(id).catch(error=>notify('Widget removed, but its attached app could not be released to the desktop: '+String(error)));}
     const result:string[]=[];
     if(actions.some(action=>action.type==='minimize'))result.push(minimized.length?`Minimized ${minimized.length} widget${minimized.length===1?'':'s'} as compact cards on the canvas.`:'Those widgets were already minimized.');
     if(actions.some(action=>action.type==='restore'))result.push(restored.length?`Restored ${restored.length} widget${restored.length===1?'':'s'}.`:'Those widgets were already restored.');
+    const addedReceipt=assistantAddedWidgetReceipt(actions);if(addedReceipt)result.push(addedReceipt);
+    if(removedWidgets.length)result.push(`Removed ${removedWidgets.map(widget=>widget.title.trim()||widgetRegistry[widget.type].name).join(', ')} from ${owner.name}. Saved shortcuts stay in the tray; Undo change restores the widget${removedWidgets.length===1?'':'s'}.`);
     if(actions.some(action=>action.type==='save_to_tray'))result.push(saved.length?`Saved ${saved.length} reusable shortcut${saved.length===1?'':'s'} to the widget tray. The original widgets stay open.`:'No reusable shortcuts were saved.');
     if(openAction)result.push(opened?`Opened ${opened} saved tray item${opened===1?'':'s'} in ${owner.name}.${alreadyOpen?` ${alreadyOpen} app shortcut${alreadyOpen===1?' was':'s were'} already open.`:''}`:`No saved items were opened.${alreadyOpen?` ${alreadyOpen} app shortcut${alreadyOpen===1?' was':'s were'} already open.`:''}`);
     for(const action of actions.filter(item=>item.type==='set_timer')){const seconds=action.seconds??0,label=seconds%3600===0?`${seconds/3600} hour${seconds===3600?'':'s'}`:seconds%60===0?`${seconds/60} minute${seconds===60?'':'s'}`:`${seconds} seconds`;const names=action.ids.map(id=>{const widget=nextWorkspace.widgets.find(item=>item.id===id);return widget?widget.title||widgetRegistry[widget.type].name:''}).filter(Boolean);result.push(`Started a ${label} timer on ${names.join(', ')}.`)}

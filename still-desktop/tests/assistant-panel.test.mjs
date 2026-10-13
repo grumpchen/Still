@@ -6,6 +6,7 @@ import {JSDOM} from 'jsdom';
 import {mockIPC,clearMocks} from '@tauri-apps/api/mocks';
 import {createServer} from 'vite';
 import {createWidget,createWorkspace} from '../src/domain/workspaces.ts';
+import {assistantAddedWidgetReceipt} from '../src/domain/assistant.ts';
 
 const vite=await createServer({server:{middlewareMode:true,hmr:false},appType:'custom',optimizeDeps:{noDiscovery:true,entries:[]}});
 after(()=>vite.close());
@@ -77,6 +78,49 @@ test('the single chat shares @-selected widgets, carries layout context and list
   await act(async()=>setReactChecked(visualToggle,true));
   assert.equal(visualToggle.checked,true,'the screenshot can be opted in for this message');
   assert.equal(calls.filter(call=>call.command==='assistant_chat').length,1,'toggling visual sharing never sends a request on its own');
+ }finally{
+  if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();
+  for(const key of old.keys()){const descriptor=old.get(key);if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}
+ }
+});
+
+test('widget add commands show replies and provider chat carries complete action history',async()=>{
+ const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true}),{window}=dom,old=new Map();
+ for(const key of ['window','document','navigator','HTMLElement','Element','Node','MutationObserver','requestAnimationFrame','cancelAnimationFrame','IS_REACT_ACT_ENVIRONMENT','isTauri'])old.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
+ const calls=[],actions=[];let root;
+ try{
+  for(const [key,value] of Object.entries({window,document:window.document,navigator:window.navigator,HTMLElement:window.HTMLElement,Element:window.Element,Node:window.Node,MutationObserver:window.MutationObserver,requestAnimationFrame:callback=>setTimeout(()=>callback(Date.now()),0),cancelAnimationFrame:clearTimeout,IS_REACT_ACT_ENVIRONMENT:true,isTauri:true}))setGlobal(key,value);
+  window.HTMLElement.prototype.scrollTo=function(){};window.HTMLTextAreaElement.prototype.focus=function(){};window.__TAURI_INTERNALS__={};
+  mockIPC((command,args)=>{calls.push({command,args});if(command==='assistant_configured')return true;if(command==='assistant_models')return['gemini-2.5-flash'];if(command==='assistant_chat')return{reply:'Still is ready.',layout:[],actions:[]};return null},{shouldMockEvents:true});
+  const {default:AssistantPanel}=await vite.ssrLoadModule('/src/AssistantPanel.tsx');
+  const workspace=createWorkspace('Study',[]);root=createRoot(window.document.querySelector('#root'));
+  const props={workspace,trayItems:[],open:true,close(){},dimensions:()=>({width:900,height:700}),apply(){},undo(){},startTimer:async()=>'',clearTray:async()=>'',deleteWidgets:async()=>'',act:async(_id,items)=>{actions.push(...items);return items.some(item=>item.type==='add_widget')?assistantAddedWidgetReceipt(items):'Removed Focus from Study. Undo change restores the widget.'}};
+  await act(async()=>root.render(createElement(AssistantPanel,props)));
+  await waitFor(()=>window.document.querySelector('#ai-model option[value="gemini::gemini-2.5-flash"]'));
+  const composer=window.document.querySelector('#ai-message');
+  await act(async()=>setReactValue(composer,'add focus widget','HTMLTextAreaElement'));
+  await act(async()=>window.document.querySelector('.assistant-compose').requestSubmit());
+  await waitFor(()=>[...window.document.querySelectorAll('.assistant-message.model p')].some(message=>message.textContent==='Added a Focus widget.'));
+  assert.deepEqual(actions,[{type:'add_widget',ids:['focus']}]);
+  assert.ok([...window.document.querySelectorAll('.assistant-message.model p')].every(message=>message.textContent.trim()),'the add operation never creates a blank model turn');
+  await act(async()=>setReactValue(composer,'add note','HTMLTextAreaElement'));
+  await act(async()=>window.document.querySelector('.assistant-compose').requestSubmit());
+  await waitFor(()=>actions.length===2&&[...window.document.querySelectorAll('.assistant-message.model p')].some(message=>message.textContent==='Added a Notes widget.'));
+  assert.deepEqual(actions[1],{type:'add_widget',ids:['notes']});
+  await act(async()=>setReactValue(composer,'hello','HTMLTextAreaElement'));
+  await act(async()=>window.document.querySelector('.assistant-compose').requestSubmit());
+  await waitFor(()=>calls.some(call=>call.command==='assistant_chat'));
+  const history=calls.find(call=>call.command==='assistant_chat').args.request.messages;
+  assert.ok(history.every(message=>message.text.trim()),'legacy empty assistant replies are not sent to the provider');
+  assert.equal(history.find(message=>message.text==='Added a Focus widget.')?.role,'model','the action receipt is included in future chat history');
+  const focus=createWidget('focus');workspace.widgets.push(focus);
+  await act(async()=>root.render(createElement(AssistantPanel,props)));
+  await act(async()=>setReactValue(composer,'remove focus','HTMLTextAreaElement'));
+  await act(async()=>window.document.querySelector('.assistant-compose').requestSubmit());
+  await waitFor(()=>window.document.querySelector('[aria-label="Confirm removing selected widgets"]'));
+  assert.equal(actions.filter(action=>action.type==='remove_widget').length,0,'the widget stays until removal is confirmed');
+  await act(async()=>window.document.querySelector('[aria-label="Confirm removing selected widgets"] button.primary').click());
+  await waitFor(()=>actions.some(action=>action.type==='remove_widget'&&action.ids[0]===focus.id));
  }finally{
   if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();
   for(const key of old.keys()){const descriptor=old.get(key);if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}

@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createWidget,createWorkspace} from '../src/domain/workspaces.ts';
-import {assistantActionRequest,assistantLayoutRequested,assistantRequestLimitError,assistantTrayItems,unsupportedAssistantRequest,extractAssistantTimerSeconds,resolveDirectAssistantActions,addFocusForAssistantTimer,settleAssistantConfirmation,assistantKeyError,assistantWorkspaceContext,preferredModel,widgetContext,layoutContext,layoutFingerprint,parseAssistantReply,validateAssistantActionIntent,validateAssistantActions,applyAssistantWidgetActions,validateLayout,applyLayoutPlan,MAX_ASSISTANT_BATCH,MAX_ASSISTANT_WIDGETS} from '../src/domain/assistant.ts';
+import {assistantActionRequest,assistantLayoutRequested,assistantRequestLimitError,assistantTrayItems,unsupportedAssistantRequest,extractAssistantTimerSeconds,resolveDirectAssistantActions,addFocusForAssistantTimer,settleAssistantConfirmation,assistantKeyError,assistantWorkspaceContext,preferredModel,widgetContext,layoutContext,layoutFingerprint,parseAssistantReply,validateAssistantActionIntent,validateAssistantActions,applyAssistantWidgetActions,validateLayout,applyLayoutPlan,prepareAssistantHistory,assistantAddedWidgetReceipt,safeAssistantReceipt,MAX_ASSISTANT_BATCH,MAX_ASSISTANT_WIDGETS} from '../src/domain/assistant.ts';
 
 function fixture(){
   const workspace=createWorkspace('Study',[]),note=createWidget('notes'),timer=createWidget('focus');
@@ -96,6 +96,7 @@ test('assistant workspace operations are parsed as explicit, exclusive actions',
   assert.throws(()=>parseAssistantReply({reply:'Done',layout:[{id:'notes-1',x:0,y:0,width:200,height:200}],actions:[{type:'minimize',ids:['notes-1']}]}),/layout|action/i);
   assert.deepEqual(parseAssistantReply({reply:'Added Notes',layout:[],actions:[{type:'add_widget',ids:['notes']}]}).actions,[{type:'add_widget',ids:['notes']}]);
   assert.deepEqual(parseAssistantReply({reply:'Opened shortcut',layout:[],actions:[{type:'open_saved',ids:['preset-123']}]}).actions,[{type:'open_saved',ids:['preset-123']}]);
+  assert.deepEqual(parseAssistantReply({reply:'Removing Focus',layout:[],actions:[{type:'remove_widget',ids:['focus-1']}]}).actions,[{type:'remove_widget',ids:['focus-1']}]);
   assert.throws(()=>parseAssistantReply({reply:'Too much',layout:[],actions:[{type:'add_widget',ids:Array(11).fill('notes')}]}),/action|too many/i);
   assert.throws(()=>parseAssistantReply({reply:'Invented type',layout:[],actions:[{type:'add_widget',ids:['powershell']}]}),/action/i);
   assert.throws(()=>parseAssistantReply({reply:'Invented id',layout:[],actions:[{type:'open_saved',ids:['appdata-secret']}]}),/action/i);
@@ -129,9 +130,15 @@ test('assistant keeps ordinary questions as chat and only marks direct workspace
   assert.deepEqual(assistantActionRequest('Minimize all widgets.'),['minimize']);
   assert.deepEqual(assistantActionRequest('Can you save all widgets to the tray?'),['save_to_tray']);
   assert.deepEqual(assistantActionRequest('Restore the Notes widget.'),['restore']);
+  assert.deepEqual(assistantActionRequest('add note'),['add_widget']);
+  assert.deepEqual(assistantActionRequest('remove focus'),['remove_widget']);
 });
 test('explicit all-widget tray requests resolve to real workspace IDs without relying on the model',()=>{
   const {workspace}=fixture();
+  assert.deepEqual(resolveDirectAssistantActions('add note',workspace,[]),[{type:'add_widget',ids:['notes']}]);
+  assert.deepEqual(resolveDirectAssistantActions('remove focus',workspace,[]),[{type:'remove_widget',ids:[workspace.widgets.find(widget=>widget.type==='focus').id]}]);
+  assert.equal(unsupportedAssistantRequest('remove all focus widgets'),null,'a type-specific removal must not be treated as removing every widget');
+  assert.equal(unsupportedAssistantRequest('remove all widgets from this workspace'),'delete_widgets');
   const actions=resolveDirectAssistantActions('save all widget in this workspace into widget tray',workspace,[]);
   assert.deepEqual(actions,[{type:'save_to_tray',ids:workspace.widgets.map(widget=>widget.id)}]);
   assert.deepEqual(resolveDirectAssistantActions('save the selected widget to the tray',workspace,[workspace.widgets[1].id]),[
@@ -158,6 +165,23 @@ test('settling a destructive-action confirmation preserves valid provider chat h
   assert.deepEqual(settled,[{role:'user',text:'delete all items in widget tray'},{role:'model',text:'Removed saved items.'}]);
   assert.deepEqual([...settled,{role:'user',text:'hi'}].map(message=>message.role),['user','model','user']);
   assert.deepEqual(settleAssistantConfirmation(pending.slice(0,1),'Canceled.'),[pending[0],{role:'model',text:'Canceled.'}]);
+});
+test('added widgets get a real reply and a prior blank reply cannot poison provider history',()=>{
+  const {workspace}=fixture(),actions=[{type:'add_widget',ids:['focus','notes']}];
+  const receipt=assistantAddedWidgetReceipt(actions);
+  assert.equal(receipt,'Added a Focus widget and a Notes widget.');
+  assert.equal(assistantAddedWidgetReceipt([{type:'add_widget',ids:['notes','notes']}]),'Added 2 Notes widgets.');
+  assert.equal(safeAssistantReceipt('  '),'Still could not confirm whether that action completed. Check the workspace before trying again.');
+  const history=prepareAssistantHistory([
+    {role:'user',text:'hi'},
+    {role:'model',text:'Hello!'},
+    {role:'user',text:'add focus widget'},
+    {role:'model',text:''},
+  ]);
+  assert.deepEqual(history.map(message=>message.role),['user','model','user','model']);
+  assert.ok(history.every(message=>message.text.trim().length>0));
+  assert.equal(history.at(-1)?.text,'No response was recorded for the previous message.');
+  assert.equal(prepareAssistantHistory([{role:'user',text:'hi'},{role:'model',text:'   '}]).at(-1)?.text,'No response was recorded for the previous message.');
 });
 test('explicit timer commands set a timer on a selected or unambiguous timer widget',()=>{
   const {workspace}=fixture(),focus=workspace.widgets.find(widget=>widget.type==='focus');
