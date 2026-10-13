@@ -29,15 +29,18 @@ interface Props{
  setStartupEnabled:(enabled:boolean)=>void;
  shortcuts:WorkspaceShortcuts;
  openShortcuts:()=>void;
+ runTutorial:()=>void;
  update:(patch:{appShutdownBehavior?:AppShutdownBehavior;saveAppShortcutsOnAttach?:boolean;widgetRelaunchMode?:WidgetRelaunchMode;showAppAttachAction?:boolean;showAppDetachAction?:boolean;showAppSaveAction?:boolean;showWidgetRelaunchAction?:boolean;showWidgetExportPngAction?:boolean;passThroughTransparentBackground?:boolean;enableWholeWindowClickThrough?:boolean;canvasFrameRate?:CanvasFrameRate;followWidgetToWorkspace?:boolean;shortcuts?:WorkspaceShortcuts})=>void;
  setRelaunchColor:(color:WidgetTagColor,mode:WidgetRelaunchMode|null)=>void;
  applyRelaunchModeToAll:()=>void;
  toggleClickThrough:()=>void;
 }
 
-export default function GeneralSettings({appShutdownBehavior,saveAppShortcutsOnAttach,showAppAttachAction,showAppDetachAction,showAppSaveAction,showWidgetRelaunchAction,showWidgetExportPngAction,widgetRelaunchMode,widgetRelaunchColors,shortcuts,openShortcuts,background,passThroughTransparentBackground,enableWholeWindowClickThrough,clickThroughActive,canvasFrameRate,followWidgetToWorkspace,startup,startupLoading,setStartupEnabled,update,setRelaunchColor,applyRelaunchModeToAll,toggleClickThrough}:Props){
+export default function GeneralSettings({appShutdownBehavior,saveAppShortcutsOnAttach,showAppAttachAction,showAppDetachAction,showAppSaveAction,showWidgetRelaunchAction,showWidgetExportPngAction,widgetRelaunchMode,widgetRelaunchColors,shortcuts,openShortcuts,runTutorial,background,passThroughTransparentBackground,enableWholeWindowClickThrough,clickThroughActive,canvasFrameRate,followWidgetToWorkspace,startup,startupLoading,setStartupEnabled,update,setRelaunchColor,applyRelaunchModeToAll,toggleClickThrough}:Props){
  return <section className="settings-page general-settings" role="tabpanel" id="settings-general" aria-labelledby="settings-tab-general">
   <h3>General settings</h3>
+  <h4>Getting started</h4>
+  <div className="settings-row"><span>Still tutorial<small>Review widget movement, shortcuts, mouse gestures, and the AI assistant.</small></span><button type="button" onClick={runTutorial}>Run tutorial again</button></div>
   <h4>Still startup</h4>
   <label className="settings-row general-settings-toggle"><span>Launch Still when I sign in<small>{startup.supported?'Start Still automatically after you sign in to Windows.':'Available in the installed Windows app.'}</small></span><input aria-label="Launch Still when I sign in" type="checkbox" checked={startup.enabled} disabled={!startup.supported||startupLoading} onChange={event=>setStartupEnabled(event.target.checked)}/></label>
   <h4>Workspace performance</h4>
