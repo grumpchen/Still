@@ -265,6 +265,30 @@ function parseGroups(value:unknown):SavedGroup[]{
   return[{id:v.id,name:typeof v.name==='string'?v.name.trim().slice(0,60):'',shortcuts:parseWebShortcuts(v.shortcuts,[]),widgets:parseGroupEntries(v.widgets),expanded:v.expanded===true}];
  });
 }
+function migrateLegacyBrowserGroups(widgets:unknown[],existing:SavedGroup[]):SavedGroup[]{
+ const groups=[...existing],ids=new Set(groups.map(group=>group.id));
+ for(const [index,value] of widgets.entries()){
+  if(!value||typeof value!=='object'||Array.isArray(value))continue;
+  const browser=value as Record<string,unknown>;
+  if(browser.type!=='browser')continue;
+  const rawLinks=[...(Array.isArray(browser.bookmarks)?browser.bookmarks.slice(0,100):[]),...(Array.isArray(browser.shortcuts)?browser.shortcuts.slice(0,99):[])];
+  if(typeof browser.url==='string'&&browser.url.trim())rawLinks.push({name:typeof browser.title==='string'&&browser.title.trim()?browser.title:'Last open page',url:browser.url});
+  const shortcuts:WebShortcut[]=[],urls=new Set<string>();
+  for(const [linkIndex,rawLink] of rawLinks.entries()){
+   const parsed=parseWebShortcuts([rawLink],[])[0];
+   if(!parsed||urls.has(parsed.url))continue;
+   urls.add(parsed.url);shortcuts.push({...parsed,id:parsed.id||`legacy-${index}-${linkIndex}`});
+  }
+  if(!shortcuts.length||groups.length>=200)continue;
+  const sourceId=typeof browser.id==='string'?browser.id:`${index}`;
+  const baseId=('legacy-browser-'+sourceId.replace(/[^a-zA-Z0-9-]/g,'-')).slice(0,80)||`legacy-browser-${index}`;
+  let id=baseId,suffix=2;while(ids.has(id)){const tail=`-${suffix++}`;id=baseId.slice(0,80-tail.length)+tail}
+  ids.add(id);
+  const name=typeof browser.title==='string'?browser.title.trim().slice(0,60):'';
+  groups.push({id,name:name||'Imported browser links',shortcuts,widgets:[],expanded:false});
+ }
+ return groups;
+}
 export function createWidgetFromGroupEntry(entry:GroupWidgetEntry,widgets:WidgetInstance[],at?:{x:number;y:number},width?:number):WidgetInstance {
  if(entry.kind==='collected')throw new Error('Collected widgets must be restored as the same instance.');
  const checked=groupWidgetEntry(entry),widget=createWidget(checked.type);widget.title=checked.name;widget.instanceNumber=nextInstanceNumber(checked.type,widgets);if(checked.type==='apps')widget.appIconData=checked.iconData;
@@ -379,7 +403,7 @@ export function parseState(source: unknown): WorkspaceState {
     const widgets:WidgetInstance[]=[];
     for(const raw of workspace.widgets){if(raw&&typeof raw==='object'&&(raw as {type?:unknown}).type==='browser')continue;const widget=checkedWidget(raw);if(!(raw as WidgetInstance).placement)widget.placement=nextPlacement(widget.type,widgets);if(!(raw as WidgetInstance).instanceNumber || widgets.some(w=>w.type===widget.type&&w.instanceNumber===widget.instanceNumber))widget.instanceNumber=nextInstanceNumber(widget.type,widgets);widgets.push(widget)}
     for (const widget of widgets) { if (widgetIds.has(widget.id)) throw new Error('Duplicate widget instance'); widgetIds.add(widget.id); }
-    const groups=parseGroups(workspace.groups),collectedIds=new Set(widgets.map(item=>item.id));let iconBytes=0;
+    const groups=migrateLegacyBrowserGroups(workspace.widgets,parseGroups(workspace.groups)),collectedIds=new Set(widgets.map(item=>item.id));let iconBytes=0;
     for(const group of groups){
       group.widgets=group.widgets.filter(item=>{if(item.kind!=='collected')return true;if(collectedIds.has(item.id))return false;collectedIds.add(item.id);return true});
       group.widgets=group.widgets.map(item=>{const iconData=groupEntryIconData(item);if(!iconData)return item;if(iconBytes+iconData.length>GROUP_ICON_BUDGET){if(item.kind==='collected'&&item.instance){const {appIconData:_ignored,...instance}=item.instance;return{...item,instance}}const {iconData:_ignored,...fallback}=item;return fallback}iconBytes+=iconData.length;return item});
@@ -402,6 +426,7 @@ export function migratePreview(value: unknown): WorkspaceState {
     if (!Array.isArray(items)) throw new Error('Invalid original preview');
     const workspace = createWorkspace(name,[]);
     for(const item of items){if(item.type==='browser')continue;const widget=checkedWidget({...item,type:item.type==='calculator'?'desmos':item.type,span:item.wide?2:1});widget.placement=nextPlacement(widget.type,workspace.widgets);workspace.widgets.push(widget)}
+    workspace.groups=migrateLegacyBrowserGroups(items,workspace.groups);
     return workspace;
   });
   return parseState(JSON.stringify({version:2,workspaces,activeId:workspaces.find(w=>w.name===legacy.active)?.id??workspaces[0]?.id,theme:legacy.theme,density:legacy.density,background:legacy.background}));

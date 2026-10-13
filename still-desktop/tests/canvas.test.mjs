@@ -67,15 +67,15 @@ test('legacy saved overflow is clamped without changing widget content',()=>{
   assert.deepEqual(constrainPlacement('notes',saved[0].placement,canvasExtent(1000,saved),{},1500),{x:980,y:100,width:500,height:500});
   assert.equal(original.text,'Keep this note');assert.equal(original.id,'note-one');
 });
-test('version 2 browser migration preserves bookmarks, custom URL, notes, appearance and shortcuts',()=>{
-  const state=createInitialState();state.version=2;const w=state.workspaces[0];w.layout='lecture';
-  const web=w.widgets.find(w=>w.type==='browser');delete web.shortcuts;delete web.placement;
-  web.url='https://example.com/course';web.bookmarks=[{id:'course',name:'Course page',url:'https://example.com/lectures'}];
-  const note=w.widgets.find(w=>w.type==='notes');note.text='Do not lose this';delete note.placement;
-  const restored=parseState(JSON.stringify(state));const browser=restored.workspaces[0].widgets.find(w=>w.type==='browser');
-  assert.equal(restored.version,6);assert.equal(restored.workspaces[0].layout,'canvas');assert.equal(browser.id,web.id);
-  assert.ok(browser.shortcuts.some(s=>s.name==='Course page'));assert.ok(browser.shortcuts.some(s=>s.url===web.url));
-  assert.equal(restored.workspaces[0].widgets.find(w=>w.type==='notes').text,note.text);
+test('legacy Browser cards migrate bookmarks into Groups without losing other workspace data',()=>{
+  const state=createInitialState();state.version=6;const w=state.workspaces[0];
+  const web={id:'old-browser',type:'browser',title:'Course browser',url:'https://example.com/course',bookmarks:[{id:'course',name:'Course page',url:'https://example.com/lectures'}]};w.widgets.push(web);
+  const note=w.widgets.find(w=>w.type==='notes');note.text='Do not lose this';
+  const restored=parseState(JSON.stringify(state)),migrated=restored.workspaces[0];
+  assert.equal(restored.version,7);assert.equal(migrated.layout,'canvas');
+  assert.equal(migrated.widgets.some(w=>w.id===web.id),false);
+  assert.ok(migrated.groups[0].shortcuts.some(s=>s.name==='Course page'));assert.ok(migrated.groups[0].shortcuts.some(s=>s.url===web.url));
+  assert.equal(migrated.widgets.find(w=>w.type==='notes').text,note.text);
   assert.deepEqual(restored.glass,state.glass);assert.deepEqual(restored.shortcuts,state.shortcuts);
   assert.deepEqual(parseState(JSON.stringify(restored)),restored);
 });
