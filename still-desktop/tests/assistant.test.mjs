@@ -37,6 +37,24 @@ test('assistant receives only safe saved tray names and IDs and opens the actual
   assert.throws(()=>validateAssistantActionIntent('open 2 saved widgets',workspace,[{type:'open_saved',ids:['preset-preset-1']}],tray),/requested number/);
   assert.equal(applyAssistantWidgetActions(workspace,[{type:'open_saved',ids:['preset-preset-1']}],900,700,Date.now(),tray),workspace);
 });
+test('the assistant can rename the current workspace and manage built-in sidebar plugins safely',()=>{
+  const {workspace}=fixture();
+  const rename=resolveDirectAssistantActions('rename workspace to Revision',workspace,[]);
+  assert.deepEqual(rename,[{type:'rename_workspace',ids:[workspace.id],title:'Revision'}]);
+  assert.doesNotThrow(()=>validateAssistantActions(workspace,rename));
+  assert.doesNotThrow(()=>validateAssistantActionIntent('rename workspace to Revision',workspace,rename));
+  const plugin=resolveDirectAssistantActions('add Layout plugin',workspace,[]);
+  assert.deepEqual(plugin,[{type:'set_sidebar_plugin',ids:['layout'],enabled:true}]);
+  assert.doesNotThrow(()=>validateAssistantActions(workspace,plugin));
+  assert.doesNotThrow(()=>validateAssistantActionIntent('add Layout plugin',workspace,plugin));
+  const clock=resolveDirectAssistantActions('add Clock plugin to Notes',workspace,[workspace.widgets[0].id]);
+  assert.deepEqual(clock,[{type:'set_widget_plugin',ids:[workspace.widgets[0].id],plugin:'clock-timer',enabled:true}]);
+  assert.doesNotThrow(()=>validateAssistantActionIntent('add Clock plugin to Notes',workspace,clock));
+  assert.equal(applyAssistantWidgetActions(workspace,clock,900,700).widgets[0].clockPluginEnabled,true);
+  assert.deepEqual(parseAssistantReply({reply:'',layout:[],actions:[{type:'set_sidebar_plugin',ids:['stack'],enabled:true}]}).actions,[{type:'set_sidebar_plugin',ids:['stack'],enabled:true}]);
+  assert.throws(()=>validateAssistantActions(workspace,[{type:'set_sidebar_plugin',ids:['third-party-code'],enabled:true}]),/Stack or Layout/);
+  assert.equal(unsupportedAssistantRequest('delete this workspace'),'delete_workspace');
+});
 test('assistant rejects enormous batches before any model or workspace action and bounds workspace size',()=>{
   const {workspace}=fixture(),prompt='add 100000 widgets to current workspace';
   assert.match(assistantRequestLimitError(prompt),/at most 10 widgets/);
@@ -148,6 +166,12 @@ test('make notes widget is a permitted local creation command instead of a provi
   assert.equal(resolveDirectAssistantActions("don't make a notes widget",workspace,[]),null);
   assert.equal(resolveDirectAssistantActions('Write an email saying make notes widget',workspace,[]),null,'writing and explanation requests remain general chat');
   assert.deepEqual(assistantActionRequest('make all widgets smaller'),[],'make can request a change without meaning creation');
+});
+test('asking whether Still can edit a timetable must not create a timetable',()=>{
+  const {workspace}=fixture();
+  assert.deepEqual(assistantActionRequest('can you make edit to the timetable'),[]);
+  assert.equal(resolveDirectAssistantActions('can you make edit to the timetable',workspace,[]),null);
+  assert.deepEqual(assistantActionRequest('make edits to the timetable'),[]);
 });
 test('valid action-only responses do not require invented assistant prose',()=>{
   assert.deepEqual(parseAssistantReply({reply:'',layout:[],actions:[{type:'add_widget',ids:['notes']}]}),{

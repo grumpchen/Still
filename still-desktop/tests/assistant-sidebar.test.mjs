@@ -44,13 +44,14 @@ test('clear all-widget actions are resolved locally before any model request',()
  assert.ok(panel.indexOf('if(localActions){')<panel.indexOf('geminiAssistant.send('),'deterministic workspace actions must not depend on model output');
  assert.match(panel,/!directActions&&!confirmationRequest&&!directTimerRequest&&\(!configured\|\|!currentModels\.includes\(model\)\|\|!geminiAssistant\.available\)/,'local actions remain available without AI credentials');
  assert.match(panel,/result\.layout\.length&&assistantLayoutRequested\(prompt\)/,'only explicit layout requests may show a layout proposal');
- assert.match(panel,/confirmation==='clear_tray'\?'Clear saved tray items\?':confirmation==='delete_widgets'\?'Remove all workspace widgets\?':confirmation==='remove_widgets'\?'Remove selected widgets\?':'Open saved app shortcuts\?'/);
- assert.match(panel,/confirmation==='open_saved_apps'\?'Confirm open':'Confirm remove'/);
+ assert.match(panel,/confirmation==='delete_workspace'\?'Delete this workspace\?'/);
+ assert.match(panel,/confirmation==='open_saved_apps'\?'Confirm open':confirmation==='delete_workspace'\?'Confirm delete':'Confirm remove'/);
  assert.match(panel,/Confirm removing workspace widgets/);
  assert.match(panel,/deleteWidgets\(owner\.id\)/);
  assert.match(panel,/settleAssistantConfirmation\(current,receipt\)/,'confirmation result replaces the pending reply instead of breaking chat turn order');
  assert.match(app,/clearTray=\{clearAssistantTray\}/);
  assert.match(app,/deleteWidgets=\{deleteAssistantWidgets\}/);
+ assert.match(app,/deleteWorkspace=\{deleteAssistantWorkspace\}/);
  assert.match(app,/widgets:\[\]/,'bulk widget removal clears canvas cards without clearing saved tray groups');
  assert.match(app,/undo\.current=current;[\s\S]*presets:\[\],workspaces:/,'tray clearing records state for Undo');
 });
