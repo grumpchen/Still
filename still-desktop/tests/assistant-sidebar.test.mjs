@@ -38,6 +38,7 @@ test('AI assistant has one chat flow with Gemini and OpenAI providers',()=>{
  assert.match(backend,/credential_store::save\(provider,&key\)/,'connecting a key persists it');
  assert.match(backend,/credential_store::delete\(provider\)/,'Forget deletes the saved key');
  assert.match(panel,/stored securely in Windows Credential Manager/);
+ assert.match(protocol,/Never guess an edit when the requested change is vague/,'the model is told to clarify underspecified edits instead of inventing a change');
 });
 test('clear all-widget actions are resolved locally before any model request',()=>{
  assert.match(panel,/resolveDirectAssistantActions\(input,workspace,selectedIds,trayItems\)/);

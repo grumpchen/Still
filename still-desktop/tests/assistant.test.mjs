@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createWidget,createWorkspace} from '../src/domain/workspaces.ts';
 import {widgetTypes} from '../src/domain/widgetCatalog.ts';
-import {assistantActionRequest,assistantLayoutRequested,assistantRequestLimitError,assistantTrayItems,unsupportedAssistantRequest,extractAssistantTimerSeconds,resolveDirectAssistantActions,resolveAcceptedNotesOffer,addFocusForAssistantTimer,settleAssistantConfirmation,assistantKeyError,assistantWorkspaceContext,preferredModel,widgetContext,layoutContext,layoutFingerprint,parseAssistantReply,validateAssistantActionIntent,validateAssistantActions,applyAssistantWidgetActions,validateLayout,applyLayoutPlan,prepareAssistantHistory,assistantAddedWidgetReceipt,safeAssistantReceipt,MAX_ASSISTANT_BATCH,MAX_ASSISTANT_WIDGETS} from '../src/domain/assistant.ts';
+import {assistantActionRequest,assistantEditClarification,assistantReplyNeedsClarification,assistantLayoutRequested,assistantRequestLimitError,assistantTrayItems,unsupportedAssistantRequest,extractAssistantTimerSeconds,resolveDirectAssistantActions,resolveAcceptedNotesOffer,addFocusForAssistantTimer,settleAssistantConfirmation,assistantKeyError,assistantWorkspaceContext,preferredModel,widgetContext,layoutContext,layoutFingerprint,parseAssistantReply,validateAssistantActionIntent,validateAssistantActions,applyAssistantWidgetActions,validateLayout,applyLayoutPlan,prepareAssistantHistory,assistantAddedWidgetReceipt,safeAssistantReceipt,MAX_ASSISTANT_BATCH,MAX_ASSISTANT_WIDGETS} from '../src/domain/assistant.ts';
 
 function fixture(){
   const workspace=createWorkspace('Study',[]),note=createWidget('notes'),timer=createWidget('focus');
@@ -50,6 +50,17 @@ test('widget content edits work from workspace data without an @ selection',()=>
   validateAssistantActions(workspace,[action]);
   assert.doesNotThrow(()=>validateAssistantActionIntent('edit the Notes widget',workspace,[action]));
   assert.equal(applyAssistantWidgetActions(workspace,[action],900,700).widgets[0].text,action.text);
+});
+test('underspecified edits get a clarifying question before any widget action',()=>{
+  assert.match(assistantEditClarification('edit the timetable'),/what.*change.*timetable/i);
+  assert.match(assistantEditClarification('can you edit it?'),/what exact.*change/i);
+  assert.match(assistantEditClarification('make the notes better'),/what.*change/i);
+  assert.equal(assistantEditClarification('edit the timetable to add Chemistry on Monday at 9'),null);
+  assert.equal(assistantEditClarification('change the Notes title to Revision'),null);
+  assert.equal(assistantEditClarification('make a Notes widget'),null,'clear creation requests are not treated as vague edits');
+  assert.equal(assistantEditClarification('how do I edit a timetable?'),null,'how-to questions stay ordinary chat');
+  assert.equal(assistantReplyNeedsClarification('Which class should I add?'),true);
+  assert.equal(assistantReplyNeedsClarification('I updated the timetable.'),false);
 });
 test('assistant receives only safe saved tray names and IDs and opens the actual selected items',()=>{
   const {workspace}=fixture(),presets=[{id:'preset-1',type:'notes',name:'Lecture notes'}],groups=[{id:'group-1',name:'Study set',shortcuts:[],widgets:[],expanded:false}];

@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState,type ChangeEvent,type KeyboardEvent} from 'react';
 import type {Workspace,WidgetInstance,SidebarPlugin} from './domain/workspaces.ts';
-import {addFocusForAssistantTimer,applyLayoutPlan,assistantActionRequest,assistantActionsDescription,assistantLayoutRequested,assistantKeyError,assistantRequestLimitError,assistantWorkspaceContext,DEFAULT_MODELS,extractAssistantTimerSeconds,layoutFingerprint,prepareAssistantHistory,preferredModel,resolveAcceptedNotesOffer,resolveDirectAssistantActions,resolveNamedNotesCreation,safeAssistantReceipt,settleAssistantConfirmation,unsupportedAssistantRequest,validateAssistantActionIntent,validateAssistantActions,validateLayout,widgetLabel,type AssistantAction,type AssistantProvider,type AssistantTrayItem,type ChatMessage,type LayoutPlan} from './domain/assistant.ts';
+import {addFocusForAssistantTimer,applyLayoutPlan,assistantActionRequest,assistantActionsDescription,assistantEditClarification,assistantLayoutRequested,assistantKeyError,assistantReplyNeedsClarification,assistantRequestLimitError,assistantWorkspaceContext,DEFAULT_MODELS,extractAssistantTimerSeconds,layoutFingerprint,prepareAssistantHistory,preferredModel,resolveAcceptedNotesOffer,resolveDirectAssistantActions,resolveNamedNotesCreation,safeAssistantReceipt,settleAssistantConfirmation,unsupportedAssistantRequest,validateAssistantActionIntent,validateAssistantActions,validateLayout,widgetLabel,type AssistantAction,type AssistantProvider,type AssistantTrayItem,type ChatMessage,type LayoutPlan} from './domain/assistant.ts';
 import {geminiAssistant,widgetImage} from './platform/assistant.ts';
 import {readAssistantChat,saveAssistantChat} from './domain/assistantChat.ts';
 import {Icon} from './widgets.tsx';
@@ -99,7 +99,9 @@ export default function AssistantPanel({workspace,canDeleteWorkspace,sidebarPlug
   async function send(){
     if(sending.current||!input.trim())return;
     if(requestLimit)return;
-    const owner=latest.current,prompt=input.trim(),acceptedOffer=resolveAcceptedNotesOffer(prompt,messages),notesRequest=resolveNamedNotesCreation(prompt),localActions=acceptedOffer?[acceptedOffer.action]:resolveDirectAssistantActions(prompt,owner,selectedIds,trayItems),actionIntent=acceptedOffer?.intent??prompt,needsConfirmation=unsupportedAssistantRequest(prompt);
+    const owner=latest.current,prompt=input.trim(),clarification=assistantEditClarification(prompt);
+    if(clarification){setMessages(current=>[...current,{role:'user',text:prompt},{role:'model',text:clarification}]);setInput('');setMentions([]);setScreenshot(false);setError('');setPlan(null);return}
+    const acceptedOffer=resolveAcceptedNotesOffer(prompt,messages),notesRequest=resolveNamedNotesCreation(prompt),localActions=acceptedOffer?[acceptedOffer.action]:resolveDirectAssistantActions(prompt,owner,selectedIds,trayItems),actionIntent=acceptedOffer?.intent??prompt,needsConfirmation=unsupportedAssistantRequest(prompt);
     const requestedActions=assistantActionRequest(prompt,trayItems);
     if(requestedActions.includes('open_saved')&&!trayItems.length){setMessages(current=>[...current,{role:'user',text:prompt},{role:'model',text:'There are no saved shortcuts or Groups in the widget tray yet.'}]);setInput('');setMentions([]);return}
     const timerWidgets=owner.widgets.filter(widget=>widget.type==='focus'||widget.clockPluginEnabled),needsNewFocus=requestedActions.includes('set_timer')&&!localActions&&timerWidgets.length===0;
@@ -149,6 +151,9 @@ export default function AssistantPanel({workspace,canDeleteWorkspace,sidebarPlug
       const history=prepareAssistantHistory(messages);
       const result=await geminiAssistant.send({provider:requestProvider,model:requestModel,messages:[...history,{role:'user',text:prompt}],context:serialized,image});
       if(!alive.current)return;
+      if(result.actions.length&&assistantReplyNeedsClarification(result.reply)){
+        setMessages(current=>[...current,{role:'user',text:prompt},{role:'model',text:result.reply}]);setPlan(null);setInput('');setMentions([]);setScreenshot(false);return;
+      }
       if(result.actions.length){
         validateAssistantActions(owner,result.actions,trayItems);
         let reviewActions=!requestedActions.length;

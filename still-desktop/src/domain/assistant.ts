@@ -198,6 +198,24 @@ export function assistantActionRequest(text:string,savedTrayItems:AssistantTrayI
   if(/\b(?:set|start|begin)\b[\s\S]{0,40}\btimer\b/i.test(prompt)&&extractAssistantTimerSeconds(prompt)!==null)requested.push('set_timer');
   return [...new Set(requested)];
 }
+export function assistantEditClarification(text:string):string|null{
+  const prompt=text.trim();
+  const change=prompt.match(/\b(edit|modify|rewrite|change|update|adjust|revise|fix|make)\b/i);
+  if(!change||/^\s*(?:how|why|what does|explain)\b/i.test(prompt))return null;
+  const vague=/\b(?:better|nicer|more organized|more readable|more useful|properly|somehow)\b/i.test(prompt);
+  const changeDetails=/\b(?:to|as|with|about|into|from|by|on|at|for)\s+(?!the\b|my\b|me\b|it\b|this\b|that\b|be\b)[\w'“]/i.test(prompt.slice(change.index!+change[0].length));
+  const concreteOperation=/\b(?:add|remove|delete|replace|append|include|move|reschedule|set|clear|write)\b.{2,}/i.test(prompt.slice(change.index!+change[0].length));
+  const likelyCreation=assistantActionRequest(prompt).includes('add_widget')&&!vague;
+  if((changeDetails||concreteOperation)&&!vague||likelyCreation)return null;
+  const target=widgetTypes.find(type=>widgetNameMentioned(prompt,type));
+  if(target==='timetable')return 'Sure—what should I change in the timetable? Tell me which class or event and the new details.';
+  if(target==='notes')return 'Sure—what should I change in the note: its title, formatting, or text?';
+  if(target==='tagStatus')return 'Sure—which Tag Color Status setting should I change, and what should its new value be?';
+  return 'Sure—what exact change should I make, and in which widget?';
+}
+export function assistantReplyNeedsClarification(reply:string):boolean{
+  return reply.includes('?')&&/\b(?:what|which|where|when|who|how|do you mean|could you clarify|please specify|would you like me to|should I)\b/i.test(reply);
+}
 function widgetNameMentioned(text:string,type:WidgetType):boolean{
   const aliases:Partial<Record<WidgetType,string[]>>={notes:['note','notes'],focus:['focus','timer'],desmos:['calculator','calculators'],files:['file','files'],apps:['app','apps'],group:['group','groups'],timetable:['timetable','schedule'],ai:['assistant','ai'],tagStatus:['tag color status','tag status']};
   const names=[type,widgetCatalog[type].name,...(aliases[type]??[])];
