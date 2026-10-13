@@ -19,17 +19,23 @@ impl Bounds {
 #[derive(Clone,Serialize)]
 pub struct WindowInfo {pub hwnd:usize,pub pid:u32,pub title:String,#[serde(skip)]pub(crate) executable:Option<String>}
 #[derive(Clone)]
-struct Launch {pid:u32,executable:Option<String>,before:Vec<usize>}
+struct Launch {pid:u32,executable:Option<String>,before:Vec<usize>,profile_picker:bool,picker_hwnd:Option<usize>}
 fn same_path(a:&str,b:&str)->bool{a.trim_start_matches("\\\\?\\").eq_ignore_ascii_case(b.trim_start_matches("\\\\?\\"))}
 fn select_window<'a>(launch:&Launch,windows:&'a [WindowInfo],claimed:&[usize])->Option<&'a WindowInfo>{
  windows.iter().find(|w|!launch.before.contains(&w.hwnd)&&!claimed.contains(&w.hwnd)&&((launch.pid!=0&&w.pid==launch.pid)||launch.executable.as_ref().zip(w.executable.as_ref()).is_some_and(|(a,b)|same_path(a,b))))
 }
+fn selected_profile_window<'a>(picker_hwnd:usize,foreground_hwnd:usize,windows:&'a [WindowInfo],expected:&str,claimed:&[usize])->Option<&'a WindowInfo>{
+ if picker_hwnd==0||foreground_hwnd==0||foreground_hwnd==picker_hwnd{return None}
+ windows.iter().find(|window|window.hwnd==foreground_hwnd&&!claimed.contains(&window.hwnd)&&matches_executable(window,expected))
+}
 fn launch_arguments(executable:&Path,args:&str)->String{
  if executable.file_name().is_some_and(|n|n.to_string_lossy().eq_ignore_ascii_case("winword.exe")){format!("{} /n",args.trim()).trim().to_owned()}
  else if is_chrome(executable)&&has_chrome_profile_argument(args)&&!has_new_window_argument(args){format!("{} --new-window",args.trim()).trim().to_owned()}
+ else if is_chrome(executable)&&args.trim().is_empty(){"--new-window chrome://profile-picker/".to_owned()}
  else{args.to_owned()}
 }
 fn is_chrome(path:&Path)->bool{path.file_name().is_some_and(|name|name.to_string_lossy().eq_ignore_ascii_case("chrome.exe"))}
+fn opens_chrome_profile_picker(executable:&Path,args:&str)->bool{is_chrome(executable)&&args.trim().is_empty()}
 fn has_chrome_profile_argument(args:&str)->bool{args.split_whitespace().any(|arg|matches!(arg.trim_matches('"').split('=').next().unwrap_or("").to_ascii_lowercase().as_str(),"--profile-directory"|"--user-data-dir"))}
 fn has_new_window_argument(args:&str)->bool{args.split_whitespace().any(|arg|arg.trim_matches('"').eq_ignore_ascii_case("--new-window"))}
 fn explicit_chrome_profile_shortcut(path:&Path)->bool{
@@ -186,7 +192,7 @@ fn launch(path:&Path,before:Vec<usize>)->Result<Launch,String>{
  let _com=Com::initialize();
  let resolved=if path.extension().is_some_and(|e|e.eq_ignore_ascii_case("lnk")){shortcut_target(path)}else{Some((path.to_path_buf(),String::new(),None))};
  let (target,args,directory)=resolved.unwrap_or_else(||(path.to_path_buf(),String::new(),None));
- let args=launch_arguments(&target,&args);let file=os_wide(target.as_os_str());let parameters=wide(&args);let verb=wide("open");
+ let profile_picker=opens_chrome_profile_picker(&target,&args);let args=launch_arguments(&target,&args);let file=os_wide(target.as_os_str());let parameters=wide(&args);let verb=wide("open");
  let directory=directory.map(|p|os_wide(p.as_os_str()));
  let mut execute=SHELLEXECUTEINFOW{cbSize:std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,fMask:SEE_MASK_NOCLOSEPROCESS|SEE_MASK_NOASYNC|SEE_MASK_FLAG_NO_UI,
   lpVerb:PCWSTR(verb.as_ptr()),lpFile:PCWSTR(file.as_ptr()),lpParameters:if args.is_empty(){PCWSTR::null()}else{PCWSTR(parameters.as_ptr())},
@@ -194,7 +200,7 @@ fn launch(path:&Path,before:Vec<usize>)->Result<Launch,String>{
  unsafe{ShellExecuteExW(&mut execute).map_err(|e|format!("Unable to open the app: {e}"))?;}
  let process=if execute.hProcess.0.is_null(){0}else{let p=unsafe{GetProcessId(execute.hProcess)};unsafe{let _=CloseHandle(execute.hProcess);}p};
  let expected=target.extension().is_some_and(|e|e.eq_ignore_ascii_case("exe")).then(||target.to_string_lossy().into_owned());
- Ok(Launch{pid:process,executable:expected,before})
+ Ok(Launch{pid:process,executable:expected,before,profile_picker,picker_hwnd:None})
 }
 fn valid_window(entry:&Entry)->bool{(unsafe{IsWindow(Some(handle(entry.hwnd))).as_bool()})&&pid(handle(entry.hwnd))==entry.pid}
 fn attachment_identity(entry:Option<&Entry>)->Option<AttachmentIdentity>{entry.filter(|entry|valid_window(entry)).map(|entry|AttachmentIdentity{hwnd:entry.hwnd,pid:entry.pid})}
@@ -490,13 +496,32 @@ pub async fn app_panel_open(app:AppHandle,webview:Webview,id:String,source_id:St
    let launch=match pending{Some(p)=>p,None=>{
     let before=window_snapshot();let expected=expected_executable(&path);let explicit_profile=explicit_chrome_profile_shortcut(&path);
     let available=if reuse_existing==Some(true){windows()}else{Vec::new()};
-    let ticket=if let Some(window)=reuse_candidate_for_launch(&available,expected.as_deref(),explicit_profile)?{Launch{pid:window.pid,executable:expected,before:before.into_iter().filter(|h|*h!=window.hwnd).collect()}}else{launch(&path,before)?};
+    let profile_picker=expected.as_deref().is_some_and(|executable|opens_chrome_profile_picker(Path::new(executable),""));
+    let ticket=if let Some(window)=reuse_candidate_for_launch(&available,expected.as_deref(),explicit_profile||profile_picker)?{Launch{pid:window.pid,executable:expected,before:before.into_iter().filter(|h|*h!=window.hwnd).collect(),profile_picker:false,picker_hwnd:None}}else{launch(&path,before)?};
     state.0.lock().map_err(|_|"App panels are unavailable")?.pending.insert(id.clone(),ticket.clone());ticket
    }};
+   let mut launch=launch;
    let started=std::time::Instant::now();
    loop{
     let claimed={let s=state.0.lock().map_err(|_|"App panels are unavailable")?;if s.closed||s.generation.get(&id)!=Some(&epoch){return Err("App attachment was cancelled.".into())}s.items.values().map(|e|e.hwnd).collect::<Vec<_>>()};
-    let choices=windows();if let Some(candidate)=select_window(&launch,&choices,&claimed){
+    let choices=windows();
+    let candidate=if launch.profile_picker{
+     if launch.picker_hwnd.is_none(){
+      if let Some(picker)=select_window(&launch,&choices,&claimed){
+       launch.picker_hwnd=Some(picker.hwnd);
+       let picker_hwnd=handle(picker.hwnd);unsafe{let _=ShowWindow(picker_hwnd,SW_SHOW);let _=SetForegroundWindow(picker_hwnd);}
+       if let Ok(mut panels)=state.0.lock(){if let Some(pending)=panels.pending.get_mut(&id){pending.picker_hwnd=launch.picker_hwnd;}}
+      }
+      None
+     }else{
+      let picker_hwnd=launch.picker_hwnd.unwrap();
+      if unsafe{!IsWindow(Some(handle(picker_hwnd))).as_bool()||!IsWindowVisible(handle(picker_hwnd)).as_bool()}{
+       let foreground=unsafe{GetForegroundWindow()}.0 as usize;
+       launch.executable.as_deref().and_then(|expected|selected_profile_window(picker_hwnd,foreground,&choices,expected,&claimed))
+      }else{None}
+     }
+    }else{select_window(&launch,&choices,&claimed)};
+    if let Some(candidate)=candidate{
       let mut entry=attach(candidate,source_id.clone(),bounds.clone(),clip.clone(),grip.clone(),main,false)?;
      let mut origin=POINT::default();if !unsafe{ClientToScreen(main,&mut origin).as_bool()}{restore(&mut entry);return Err("Still window is unavailable".into())}
      let scale=unsafe{windows::Win32::UI::HiDpi::GetDpiForWindow(main)}.max(96) as f64/96.;
@@ -506,7 +531,11 @@ pub async fn app_panel_open(app:AppHandle,webview:Webview,id:String,source_id:St
      if let Some(mut old)=s.items.insert(id.clone(),entry){restore(&mut old)}s.pending.remove(&id);
      let _=app.emit_to("main","app-panel-state",serde_json::json!({"id":id,"open":true}));return Ok(information)
     }
-    if started.elapsed()>std::time::Duration::from_secs(12){return Err("The app opened, but its new window could not be identified. Use Attach open app to choose it without launching another copy.".into())}
+    let timeout=if launch.profile_picker{std::time::Duration::from_secs(120)}else{std::time::Duration::from_secs(12)};
+    if started.elapsed()>timeout{
+     if launch.profile_picker{if let Ok(mut panels)=state.0.lock(){panels.pending.remove(&id);}return Err("Chrome's profile chooser did not finish selecting a profile. Choose a profile and try again.".into())}
+     return Err("The app opened, but its new window could not be identified. Use Attach open app to choose it without launching another copy.".into())
+    }
     std::thread::sleep(std::time::Duration::from_millis(100));
    }
   })();if let Ok(mut s)=state.0.lock(){s.running.remove(&id);}result
@@ -642,7 +671,7 @@ pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
    assert_eq!(required_size((0,0,600,375),(0,0,900,600)),(true,true),"A genuine clamp above the request is a refusal");
   }
  #[test]fn discovery_never_claims_an_old_document_unrelated_app_or_already_managed_window(){
-  let launch=Launch{pid:22,executable:Some("C:\\Office\\WINWORD.EXE".into()),before:vec![101]};
+  let launch=Launch{pid:22,executable:Some("C:\\Office\\WINWORD.EXE".into()),before:vec![101],profile_picker:false,picker_hwnd:None};
   let window=|hwnd,pid,path:&str|WindowInfo{hwnd,pid,title:"Document".into(),executable:Some(path.into())};
   let choices=vec![window(101,22,"C:\\Office\\WINWORD.EXE"),window(102,90,"C:\\Apps\\other.exe"),window(103,22,"C:\\Office\\WINWORD.EXE"),window(104,33,"c:\\office\\winword.exe")];
   assert_eq!(select_window(&launch,&choices,&[103]).map(|w|w.hwnd),Some(104));
@@ -653,6 +682,16 @@ pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
   let windows=[chrome];let candidate=reuse_candidate_for_launch(&windows,Some("C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"),true).unwrap();
   assert!(candidate.is_none(),"a matching executable does not prove this is the profile named by the shortcut");
  }
+ #[test]fn profile_picker_is_never_selected_and_only_its_foreground_chrome_profile_can_attach(){
+  let expected="C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
+  let window=|hwnd,pid,path:&str|WindowInfo{hwnd,pid,title:"Chrome profile".into(),executable:Some(path.into())};
+  let choices=[window(51,100,expected),window(52,101,expected),window(53,102,"C:\\Apps\\Other.exe")];
+  assert!(selected_profile_window(51,51,&choices,expected,&[]).is_none());
+  assert!(selected_profile_window(51,0,&choices,expected,&[]).is_none());
+  assert_eq!(selected_profile_window(51,52,&choices,expected,&[]).map(|w|w.hwnd),Some(52));
+  assert!(selected_profile_window(51,53,&choices,expected,&[]).is_none());
+  assert!(selected_profile_window(51,52,&choices,expected,&[52]).is_none());
+ }
  #[test]fn word_uses_a_new_instance_switch_and_preserves_shortcut_arguments_without_shell_composition(){
   assert_eq!(launch_arguments(std::path::Path::new("C:\\Office\\WINWORD.EXE"),"/q"),"/q /n");
   assert_eq!(launch_arguments(std::path::Path::new("C:\\Apps\\Editor.exe"),"--profile \"Study Space\""),"--profile \"Study Space\"");
@@ -662,7 +701,9 @@ pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
   assert_eq!(launch_arguments(chrome,"--profile-directory=Default"),"--profile-directory=Default --new-window");
   assert_eq!(launch_arguments(chrome,"--user-data-dir \"C:\\Chrome Data\""),"--user-data-dir \"C:\\Chrome Data\" --new-window");
   assert_eq!(launch_arguments(chrome,"--profile-directory=Default --new-window"),"--profile-directory=Default --new-window");
-  assert_eq!(launch_arguments(chrome,""),"");
+  assert_eq!(launch_arguments(chrome,""),"--new-window chrome://profile-picker/");
+  assert_eq!(launch_arguments(chrome,"--new-window https://example.com"),"--new-window https://example.com");
+  assert!(!opens_chrome_profile_picker(chrome,"--new-window https://example.com"));
  }
  #[test]fn refreshing_a_window_region_preserves_its_shape(){unsafe{
   let target=Fixture::new("Still fixture region refresh");let original=CreateRectRgn(12,18,90,120);
