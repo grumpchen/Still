@@ -93,6 +93,27 @@ test('a saved Apps widget shows a reopen action and launches its app inside the 
  }
 });
 
+test('Chrome profile-picker success clears the saved open state and identifies the desktop window',async()=>{
+ const dom=new JSDOM('<div class="workspace-canvas"><div class="canvas-viewport"><div class="canvas-card" style="z-index:1"><div class="widget-content"><div id="root"></div><div class="widget-resize"></div></div></div></div></div>',{url:'http://localhost',pretendToBeVisual:true});
+ const oldGlobals=new Map();
+ for(const key of ['window','document','navigator','HTMLElement','Element','Node','MutationObserver','ResizeObserver','requestAnimationFrame','cancelAnimationFrame','getComputedStyle','isTauri','IS_REACT_ACT_ENVIRONMENT'])oldGlobals.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
+ const calls=[],updates=[],notifications=[];let root;
+ try{
+  const {window}=dom;setGlobal('window',window);setGlobal('document',window.document);setGlobal('navigator',window.navigator);setGlobal('HTMLElement',window.HTMLElement);setGlobal('Element',window.Element);setGlobal('Node',window.Node);setGlobal('MutationObserver',window.MutationObserver);setGlobal('ResizeObserver',class{observe(){}disconnect(){}});setGlobal('requestAnimationFrame',callback=>setTimeout(()=>callback(Date.now()),0));setGlobal('cancelAnimationFrame',clearTimeout);setGlobal('getComputedStyle',window.getComputedStyle.bind(window));setGlobal('isTauri',true);setGlobal('IS_REACT_ACT_ENVIRONMENT',true);
+  window.HTMLElement.prototype.getBoundingClientRect=function(){return rect(100,100,620,500)};
+  ({default:AppsWidget}=await vite.ssrLoadModule('/src/AppsWidget.tsx'));
+  mockIPC((command,args)=>{calls.push({command,args});if(command==='app_panel_open')return{hwnd:0,pid:0,minWidth:0,minHeight:0,requiredWidth:null,requiredHeight:null,measured:false,probing:false,shown:false,openedExternally:true};return null},{shouldMockEvents:true});
+  root=createRoot(window.document.querySelector('#root'));await act(async()=>{root.render(createElement(AppsWidget,{widget:{id:'chrome-profile',type:'apps',title:'Chrome',appName:'Google Chrome',appKey:'chrome',appPanelOpen:true,placement:{x:0,y:0,width:620,height:500}},update:patch=>updates.push(patch),notify:message=>notifications.push(message),obscured:false,workspaceActive:true}))});
+  await waitFor(()=>window.document.body.textContent.includes('Chrome is open in a separate Windows window, outside Still.'));
+  assert.deepEqual(updates,[{appPanelOpen:false}],'external Chrome does not leave a stale panel-open intent that would relaunch the picker');
+  assert.deepEqual(notifications,['Chrome opened in its own Windows window.']);
+  assert.equal(calls.filter(call=>call.command==='app_panel_present').length,0,'the external Chrome window is not positioned or managed as a Still panel');
+ }finally{
+  if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();
+  for(const [key,descriptor]of oldGlobals){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}
+ }
+});
+
 test('an already-open Apps widget does not show a relaunch action while its native attachment is being recovered',async()=>{
  const dom=new JSDOM('<div class="workspace-canvas"><div class="canvas-viewport"><div class="canvas-card" style="z-index:1"><div class="widget-content"><div id="root"></div><div class="widget-resize"></div></div></div></div></div>',{url:'http://localhost',pretendToBeVisual:true});
  const oldGlobals=new Map();

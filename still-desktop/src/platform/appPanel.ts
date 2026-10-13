@@ -7,7 +7,7 @@ import type {AppShutdownBehavior} from '../domain/appSettings.ts';
 export interface AppWindow {hwnd:number;pid:number;title:string}
 export interface AppAttachment {hwnd:number;pid:number;capture?:boolean}
 export function appImageUrl(bytes:number[]):string{let binary='';for(let offset=0;offset<bytes.length;offset+=8192)binary+=String.fromCharCode(...bytes.slice(offset,offset+8192));return'data:image/png;base64,'+btoa(binary)}
-export interface AppPanelInfo {hwnd:number;pid:number;minWidth:number;minHeight:number;requiredWidth:number|null;requiredHeight:number|null;measured:boolean;probing:boolean;shown:boolean}
+export interface AppPanelInfo {hwnd:number;pid:number;minWidth:number;minHeight:number;requiredWidth:number|null;requiredHeight:number|null;measured:boolean;probing:boolean;shown:boolean;openedExternally:boolean}
 const pending=new Map<string,Promise<unknown>>();
 const retainedForCollection=new Set<string>();
 function command<T>(id:string,name:string,args:Record<string,unknown>={}):Promise<T>{
