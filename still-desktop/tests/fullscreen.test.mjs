@@ -21,5 +21,6 @@ test('fullscreen is temporary and not stored in workspace preferences',()=>{
 
 test('fullscreen masks the transparent taskbar bleed-through without intercepting input',()=>{
  assert.match(app,/classList\.toggle\('fullscreen-taskbar-covered',fullscreen\)/);
- assert.match(canvasCss,/\.canvas-app\.fullscreen-taskbar-covered::after\{[^}]*position:fixed[^}]*pointer-events:none[^}]*background:var\(--canvas\)/);
+ assert.match(app,/screen\.height-screen\.availHeight/);
+ assert.match(canvasCss,/\.canvas-app\.fullscreen-taskbar-covered::after\{[^}]*height:var\(--fullscreen-taskbar-height,40px\)[^}]*pointer-events:none[^}]*background:linear-gradient\(to bottom,transparent,var\(--canvas\)\)/);
 });

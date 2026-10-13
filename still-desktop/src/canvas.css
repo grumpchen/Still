@@ -1,5 +1,5 @@
 .canvas-app{grid-template-columns:160px minmax(0,1fr);height:100dvh;min-height:0;overflow:hidden}
-.canvas-app.fullscreen-taskbar-covered::after{content:"";position:fixed;z-index:2147483646;inset:auto 0 0;height:56px;pointer-events:none;background:var(--canvas)}
+.canvas-app.fullscreen-taskbar-covered::after{content:"";position:fixed;z-index:2147483646;inset:auto 0 0;height:var(--fullscreen-taskbar-height,40px);pointer-events:none;background:linear-gradient(to bottom,transparent,var(--canvas))}
 .canvas-app .main{display:flex;flex-direction:column;height:100dvh;min-height:0;position:relative}
 .canvas-app .content,.compact .canvas-app .content{padding:8px 12px;max-width:none;min-height:0;flex:1;display:flex;flex-direction:column;width:100%}
 .canvas-app .topbar{height:44px;flex-shrink:0;padding:0 12px;gap:10px}.canvas-app .search{padding:5px 10px;width:auto;max-width:245px;min-width:0}
