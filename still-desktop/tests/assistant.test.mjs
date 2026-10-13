@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createWidget,createWorkspace} from '../src/domain/workspaces.ts';
+import {widgetTypes} from '../src/domain/widgetCatalog.ts';
 import {assistantActionRequest,assistantLayoutRequested,assistantRequestLimitError,assistantTrayItems,unsupportedAssistantRequest,extractAssistantTimerSeconds,resolveDirectAssistantActions,addFocusForAssistantTimer,settleAssistantConfirmation,assistantKeyError,assistantWorkspaceContext,preferredModel,widgetContext,layoutContext,layoutFingerprint,parseAssistantReply,validateAssistantActionIntent,validateAssistantActions,applyAssistantWidgetActions,validateLayout,applyLayoutPlan,prepareAssistantHistory,assistantAddedWidgetReceipt,safeAssistantReceipt,MAX_ASSISTANT_BATCH,MAX_ASSISTANT_WIDGETS} from '../src/domain/assistant.ts';
 
 function fixture(){
@@ -132,6 +133,42 @@ test('assistant keeps ordinary questions as chat and only marks direct workspace
   assert.deepEqual(assistantActionRequest('Restore the Notes widget.'),['restore']);
   assert.deepEqual(assistantActionRequest('add note'),['add_widget']);
   assert.deepEqual(assistantActionRequest('remove focus'),['remove_widget']);
+});
+test('make notes widget is a permitted local creation command instead of a provider-dependent chat',()=>{
+  const {workspace}=fixture();
+  assert.deepEqual(assistantActionRequest('make notes widget'),['add_widget']);
+  assert.deepEqual(resolveDirectAssistantActions('make notes widget',workspace,[]),[{type:'add_widget',ids:['notes']}]);
+  assert.deepEqual(assistantActionRequest('could you make me a focus widget?'),['add_widget']);
+  assert.match(assistantRequestLimitError('make 100000 notes widgets'),/at most 10/);
+  assert.match(assistantRequestLimitError('make 100000 notes'),/at most 10/);
+  assert.deepEqual(resolveDirectAssistantActions('make 3 notes',workspace,[]),[{type:'add_widget',ids:['notes','notes','notes']}]);
+  for(const verb of ['make','build','spawn','create','add','open','new'])assert.deepEqual(resolveDirectAssistantActions(`${verb} notes widget`,workspace,[]),[{type:'add_widget',ids:['notes']}]);
+  for(const type of widgetTypes)assert.deepEqual(resolveDirectAssistantActions(`make ${type} widget`,workspace,[]),[{type:'add_widget',ids:[type]}]);
+  assert.equal(resolveDirectAssistantActions('How do I make notes widgets?',workspace,[]),null);
+  assert.equal(resolveDirectAssistantActions("don't make a notes widget",workspace,[]),null);
+  assert.equal(resolveDirectAssistantActions('Write an email saying make notes widget',workspace,[]),null,'writing and explanation requests remain general chat');
+  assert.deepEqual(assistantActionRequest('make all widgets smaller'),[],'make can request a change without meaning creation');
+});
+test('valid action-only responses do not require invented assistant prose',()=>{
+  assert.deepEqual(parseAssistantReply({reply:'',layout:[],actions:[{type:'add_widget',ids:['notes']}]}),{
+    reply:'Workspace actions requested.',layout:[],actions:[{type:'add_widget',ids:['notes']}],
+  });
+  assert.throws(()=>parseAssistantReply({reply:'',layout:[],actions:[]}));
+});
+test('the model receives the full creation catalogue and can create named Notes with content',()=>{
+  const workspace=createWorkspace('Empty',[]),context=assistantWorkspaceContext(workspace,900,700,[]);
+  assert.ok(context.capabilities.creatableWidgets.some(item=>item.id==='notes'));
+  assert.ok(context.capabilities.creatableWidgets.some(item=>item.id==='apps'));
+  assert.ok(context.capabilities.actions.includes('remove_widget'));
+  assert.equal(context.capabilities.maxAddOrOpenItems,10);
+  const actions=parseAssistantReply({reply:'',layout:[],actions:[{type:'add_widget',ids:['notes'],title:'Revision',text:'Key ideas'}]}).actions;
+  const next=applyAssistantWidgetActions(workspace,actions,900,700);
+  assert.equal(next.widgets[0].title,'Revision');assert.equal(next.widgets[0].text,'Key ideas');
+  assert.equal(workspace.widgets.length,0,'creation is immutable and Undo can retain the previous state');
+  assert.equal(resolveDirectAssistantActions('make notes with content about chemistry',workspace,[]),null,'rich requests go to the model rather than dropping their details');
+  assert.throws(()=>parseAssistantReply({reply:'Ready',layout:[],actions:[{type:'add_widget',ids:['apps'],text:'unexpected'}]}),/only for Notes/);
+  assert.throws(()=>applyAssistantWidgetActions(workspace,[{type:'add_widget',ids:['notes'],text:'x'.repeat(12001)}],900,700),/12,000/);
+  assert.throws(()=>parseAssistantReply({reply:'Ready',layout:[],actions:[{type:'minimize',ids:['notes-1'],title:'unexpected'}]}),/names/);
 });
 test('explicit all-widget tray requests resolve to real workspace IDs without relying on the model',()=>{
   const {workspace}=fixture();

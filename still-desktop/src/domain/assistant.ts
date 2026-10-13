@@ -7,8 +7,9 @@ import {constrainPlacement,nextPlacement,type Placement} from './layout.ts';
 export type AssistantProvider = 'gemini' | 'openai';
 export type ChatMessage = {role:'user'|'model'; text:string};
 export type LayoutItem = Placement & {id:string};
-export type AssistantActionType = 'minimize'|'restore'|'save_to_tray'|'set_timer'|'add_widget'|'open_saved'|'remove_widget';
-export type AssistantAction = {type:AssistantActionType;ids:string[];seconds?:number};
+export const ASSISTANT_ACTION_TYPES=['minimize','restore','save_to_tray','set_timer','add_widget','open_saved','remove_widget'] as const;
+export type AssistantActionType = typeof ASSISTANT_ACTION_TYPES[number];
+export type AssistantAction = {type:AssistantActionType;ids:string[];seconds?:number;title?:string;text?:string};
 export type AssistantTrayItem={id:string;name:string;type:WidgetType;kind:'preset'|'group'};
 export const MAX_ASSISTANT_BATCH=10;
 export const MAX_ASSISTANT_WIDGETS=100;
@@ -53,6 +54,13 @@ export function assistantAddedWidgetReceipt(actions:AssistantAction[]):string{
 export function safeAssistantReceipt(text:string):string{
   return text.trim()?text:'Still could not confirm whether that action completed. Check the workspace before trying again.';
 }
+export function assistantActionsDescription(actions:AssistantAction[],workspace:Workspace,tray:AssistantTrayItem[]):string{
+  const labels:Record<AssistantActionType,string>={add_widget:'Create',open_saved:'Open saved',remove_widget:'Remove',minimize:'Minimize',restore:'Restore',save_to_tray:'Save to tray',set_timer:'Start timer on'};
+  return actions.map(action=>{
+    const names=action.ids.map(id=>action.type==='add_widget'?widgetCatalog[id as WidgetType]?.name:action.type==='open_saved'?tray.find(item=>item.id===id)?.name:workspace.widgets.find(item=>item.id===id)).map(value=>typeof value==='string'?value:value?widgetLabel(value):'widget');
+    return `${labels[action.type]} ${names.join(', ')}${action.title?` named “${action.title}”`:''}${action.text!==undefined?' with initial note text':''}${action.seconds!==undefined?` for ${action.seconds} seconds`:''}`;
+  }).join('; ');
+}
 
 export function widgetLabel(widget:WidgetInstance):string {
   return widget.title || widgetCatalog[widget.type].name+' '+widget.instanceNumber;
@@ -80,7 +88,7 @@ export function layoutContext(workspace:Workspace,width:number,height:number) {
 export function assistantWorkspaceContext(workspace:Workspace,width:number,height:number,selectedWidgetIds:string[],savedTrayItems:AssistantTrayItem[]=[]):Record<string,unknown> {
   const unique=[...new Set(selectedWidgetIds)];
   const selected=unique.map(id=>workspace.widgets.find(widget=>widget.id===id)).filter((widget):widget is WidgetInstance=>!!widget);
-  return {canvasAndWidgets:layoutContext(workspace,width,height),selectedWidgets:selected.map(widgetContext),savedTrayItems:savedTrayItems.map(({id,name,type,kind})=>({id,name,type,kind}))};
+  return {canvasAndWidgets:layoutContext(workspace,width,height),selectedWidgets:selected.map(widgetContext),savedTrayItems:savedTrayItems.map(({id,name,type,kind})=>({id,name,type,kind})),capabilities:{actions:[...ASSISTANT_ACTION_TYPES],creatableWidgets:widgetTypes.map(id=>({id,name:widgetCatalog[id].name})),creationFields:{titleMaxLength:60,notesTextMaxLength:12000},maxAddOrOpenItems:MAX_ASSISTANT_BATCH,maxWorkspaceWidgets:MAX_ASSISTANT_WIDGETS,confirmationRequired:['remove_widget','open_saved_apps','unclear_action_intent']}};
 }
 export function assistantTrayItems(presets:WidgetPreset[],groups:SavedGroup[]):AssistantTrayItem[]{
   return [
@@ -89,16 +97,21 @@ export function assistantTrayItems(presets:WidgetPreset[],groups:SavedGroup[]):A
   ];
 }
 export function assistantRequestLimitError(text:string,savedTrayItems:AssistantTrayItem[]=[]):string|null{
-  const types=assistantActionRequest(text,savedTrayItems),amount=text.match(/\b(\d+)\s+(?:saved\s+)?(?:[a-z-]+\s+)?widgets?\b/i);
-  if(types.includes('add_widget')&&amount&&Number(amount[1])>MAX_ASSISTANT_BATCH)return `Still AI can add at most ${MAX_ASSISTANT_BATCH} widgets in one request. Nothing was changed.`;
-  if(types.includes('open_saved')&&amount&&Number(amount[1])>MAX_ASSISTANT_BATCH)return `Still AI can open at most ${MAX_ASSISTANT_BATCH} saved items per request. Nothing was changed.`;
+  const types=assistantActionRequest(text,savedTrayItems),amount=assistantRequestedItemCount(text);
+  if((types.includes('add_widget')||types.includes('open_saved'))&&amount===0)return `Choose between 1 and ${MAX_ASSISTANT_BATCH} widgets. Nothing was changed.`;
+  if(types.includes('add_widget')&&amount!==null&&amount>MAX_ASSISTANT_BATCH)return `Still AI can add at most ${MAX_ASSISTANT_BATCH} widgets in one request. Nothing was changed.`;
+  if(types.includes('open_saved')&&amount!==null&&amount>MAX_ASSISTANT_BATCH)return `Still AI can open at most ${MAX_ASSISTANT_BATCH} saved items per request. Nothing was changed.`;
   if(types.includes('open_saved')&&/\b(?:all|every|each)\b/i.test(text)&&savedTrayItems.length>MAX_ASSISTANT_BATCH)return `Still AI can open at most ${MAX_ASSISTANT_BATCH} saved items per request. Open a smaller group at a time.`;
   return null;
+}
+function assistantRequestedItemCount(text:string):number|null{
+  const amount=text.match(/(?<![-.\d])\b(\d+)\s+(?:saved\s+)?(?:[a-z-]+\s+)?(?:widgets?|cards?)\b/i)??text.match(/(?<![-.\d])\b(\d+)\s+(?:notes?|focus|calculators?|files?|apps?|timetables?|groups?)\b/i);
+  return amount?Number(amount[1]):null;
 }
 export function parseAssistantReply(value:unknown):AssistantReply {
   if(!value||typeof value!=='object')throw new Error('The AI returned an invalid response. Try again.');
   const {reply,layout}=value as AssistantReply,rawActions=(value as Partial<AssistantReply>).actions??[];
-  if(typeof reply!=='string'||!reply.trim()||reply.length>24000||!Array.isArray(layout)||layout.length>100||!Array.isArray(rawActions)||rawActions.length>100)throw new Error('The AI returned an incomplete response. Try again.');
+  if(typeof reply!=='string'||reply.length>24000||!Array.isArray(layout)||layout.length>100||!Array.isArray(rawActions)||rawActions.length>100)throw new Error('The AI returned an incomplete response. Try again.');
   const items=layout.map(item=>{
     if(!item||typeof item.id!=='string'||item.id.length>80||[item.x,item.y,item.width,item.height].some(n=>!Number.isSafeInteger(n)))throw new Error('The AI returned an invalid layout. Try again.');
     return {id:item.id,x:item.x,y:item.y,width:item.width,height:item.height};
@@ -106,15 +119,21 @@ export function parseAssistantReply(value:unknown):AssistantReply {
   const actions:AssistantAction[]=rawActions.map(action=>{
     const newWidgets=action?.type==='add_widget',openSaved=action?.type==='open_saved';
     if(!action||!['minimize','restore','save_to_tray','set_timer','add_widget','open_saved','remove_widget'].includes(action.type)||!Array.isArray(action.ids)||!action.ids.length||action.ids.length>(newWidgets||openSaved?MAX_ASSISTANT_BATCH:100)||action.ids.some(id=>typeof id!=='string'||!/^[a-zA-Z0-9-]{1,80}$/.test(id))||(!newWidgets&&new Set(action.ids).size!==action.ids.length)||(newWidgets&&action.ids.some(id=>!widgetTypes.includes(id as WidgetType)))||(openSaved&&action.ids.some(id=>!id.startsWith('preset-')&&!id.startsWith('group-')))||(action.type==='set_timer'&&(!Number.isSafeInteger(action.seconds)||action.seconds!<1||action.seconds!>31536000))||(action.type!=='set_timer'&&action.seconds!==undefined))throw new Error('The AI returned an invalid workspace action. Nothing was changed. Try again.');
-    return {type:action.type,ids:[...action.ids],...(action.type==='set_timer'?{seconds:action.seconds}:{})};
+    validateAssistantCreationFields(action);
+    return {type:action.type,ids:[...action.ids],...(action.type==='set_timer'?{seconds:action.seconds}:{}),...(action.title!==undefined?{title:action.title.trim()}:{}),...(action.text!==undefined?{text:action.text}:{})};
   });
   if(actions.filter(action=>action.type==='add_widget'||action.type==='open_saved').reduce((total,action)=>total+action.ids.length,0)>MAX_ASSISTANT_BATCH)throw new Error('The AI returned too many widget actions. Nothing was changed. Try a smaller request.');
   if(items.length&&actions.length)throw new Error('The AI mixed a layout proposal with workspace actions. Nothing was changed. Try again.');
-  return {reply,layout:items,actions};
+  if(!reply.trim()&&!actions.length)throw new Error('The AI returned no reply or workspace action. Try again.');
+  return {reply:reply.trim()?reply:'Workspace actions requested.',layout:items,actions};
+}
+function validateAssistantCreationFields(action:AssistantAction):void{
+  if(action.title!==undefined&&(action.type!=='add_widget'||typeof action.title!=='string'||!action.title.trim()||action.title.length>60))throw new Error('New widget names must be between 1 and 60 characters. Nothing was changed.');
+  if(action.text!==undefined&&(action.type!=='add_widget'||typeof action.text!=='string'||action.text.length>12000||action.ids.some(id=>id!=='notes')))throw new Error('Initial text is supported only for Notes widgets, up to 12,000 characters. Nothing was changed.');
 }
 function isQuestionOrExplanation(text:string):boolean{
   const prompt=text.trim();
-  return !prompt||/^(?:what|why|how|where|when|which)\b/i.test(prompt)||/^(?:please\s+)?(?:explain|describe|teach me|tell me about|help me understand)\b/i.test(prompt)||/^(?:can|could|would) you (?:explain|describe|teach me|tell me about|help me understand)\b/i.test(prompt);
+  return !prompt||/\b(?:don't|do not|never)\s+(?:add|make|create|build|insert|spawn|open|remove|delete|close)\b/i.test(prompt)||/^(?:what|why|how|where|when|which)\b/i.test(prompt)||/^(?:please\s+)?(?:write|draft|summari[sz]e|translate|research|compare|discuss|explain|describe|teach me|tell me about|help me understand)\b/i.test(prompt)||/^(?:can|could|would) you (?:write|draft|summari[sz]e|translate|research|compare|discuss|explain|describe|teach me|tell me about|help me understand)\b/i.test(prompt);
 }
 export function extractAssistantTimerSeconds(text:string):number|null{
   const match=text.match(/\b(\d+(?:\.\d+)?)\s*(seconds?|secs?|s|minutes?|mins?|m|hours?|hrs?|h)\b/i);
@@ -133,13 +152,14 @@ export function assistantActionRequest(text:string,savedTrayItems:AssistantTrayI
   if(opensSaved)requested.push('open_saved');
   else if(/\b(?:save|put|move|send|store|copy|add|collect)\b[\s\S]{0,120}\btray\b/i.test(prompt))requested.push('save_to_tray');
   const namedTypes=widgetTypes.filter(type=>widgetNameMentioned(prompt,type));
-  if(!opensSaved&&/\b(?:add|create|insert)\b/i.test(prompt)&&(/\b(?:widgets?|cards?)\b/i.test(prompt)||namedTypes.length))requested.push('add_widget');
+  const clearCreation=/^(?:(?:please|can you|could you|would you|will you|I want you to|I'd like you to)\s+)*(?:add|create|make|build|insert|spawn|new|open)\b/i.test(prompt)&&!/\bmake\b[\s\S]*\b(?:smaller|larger|bigger|wider|narrower|shorter|taller|minimi[sz]ed|fullscreen)\b/i.test(prompt);
+  if(!opensSaved&&clearCreation&&(namedTypes.length||/\b(?:add|create|insert|spawn)\b[\s\S]*\b(?:widgets?|cards?)\b/i.test(prompt)||/\b(?:a|an|one|\d+)\s+(?:new\s+)?(?:widgets?|cards?)\b/i.test(prompt)))requested.push('add_widget');
   if(!unsupportedAssistantRequest(prompt)&&/\b(?:remove|delete|close)\b[\s\S]{0,60}\b(?:widgets?|cards?|notes?|focus|timer|calculator|apps?|files?|timetable|assistant|group)\b/i.test(prompt))requested.push('remove_widget');
   if(/\b(?:set|start|begin)\b[\s\S]{0,40}\btimer\b/i.test(prompt)&&extractAssistantTimerSeconds(prompt)!==null)requested.push('set_timer');
   return [...new Set(requested)];
 }
 function widgetNameMentioned(text:string,type:WidgetType):boolean{
-  const aliases:Partial<Record<WidgetType,string[]>>={notes:['note','notes'],focus:['focus','timer'],desmos:['calculator','calculators'],timetable:['timetable','schedule'],ai:['assistant','ai'],tagStatus:['tag color status','tag status']};
+  const aliases:Partial<Record<WidgetType,string[]>>={notes:['note','notes'],focus:['focus','timer'],desmos:['calculator','calculators'],files:['file','files'],apps:['app','apps'],group:['group','groups'],timetable:['timetable','schedule'],ai:['assistant','ai'],tagStatus:['tag color status','tag status']};
   const names=[type,widgetCatalog[type].name,...(aliases[type]??[])];
   return names.some(name=>new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}\\b`,'i').test(text));
 }
@@ -159,7 +179,7 @@ export function resolveDirectAssistantActions(text:string,workspace:Workspace,se
   const types=assistantActionRequest(text,savedTrayItems);
   if(!types.length)return null;
   const all=/\b(?:all|every|each)\b/i.test(text);
-  const amount=text.match(/\b(\d+)\s+(?:saved\s+)?(?:[a-z-]+\s+)?widgets?\b/i);
+  const amount=assistantRequestedItemCount(text);
   if(assistantRequestLimitError(text,savedTrayItems))return null;
   if(types.includes('open_saved')){
     const matched=all?savedTrayItems:savedTrayItems.filter(item=>text.toLocaleLowerCase().includes(item.name.toLocaleLowerCase()));
@@ -168,8 +188,9 @@ export function resolveDirectAssistantActions(text:string,workspace:Workspace,se
     return [{type:'open_saved',ids:matched.map(item=>item.id)}];
   }
   if(types.includes('add_widget')){
+    if(types.length>1||/\b(?:called|named|titled|containing|with|about|saying)\b/i.test(text))return null;
     const matched=widgetTypes.filter(type=>widgetNameMentioned(text,type));
-    if(matched.length){if(matched.length>MAX_ASSISTANT_BATCH)return null;const count=amount?Number(amount[1]):1;if(count>1&&matched.length===1)return [{type:'add_widget',ids:Array(count).fill(matched[0])}];return [{type:'add_widget',ids:matched}];}
+    if(matched.length){if(matched.length>MAX_ASSISTANT_BATCH)return null;const count=amount??1;if(count>1&&matched.length===1)return [{type:'add_widget',ids:Array(count).fill(matched[0])}];if(count>1&&matched.length>1)return null;return [{type:'add_widget',ids:matched}];}
   }
   if(types.includes('remove_widget')){
     const matchedTypes=widgetTypes.filter(type=>widgetNameMentioned(text,type));
@@ -197,6 +218,7 @@ export function validateAssistantActions(workspace:Workspace,actions:AssistantAc
   const batchSize=actions.filter(action=>action.type==='add_widget'||action.type==='open_saved').reduce((total,action)=>total+action.ids.length,0);
   if(batchSize>MAX_ASSISTANT_BATCH)throw new Error(`Still AI can add or open at most ${MAX_ASSISTANT_BATCH} items in one request. Nothing was changed.`);
   for(const action of actions){
+    validateAssistantCreationFields(action);
     if(action.type==='set_timer'&&(!Number.isSafeInteger(action.seconds)||action.seconds!<1||action.seconds!>31536000))throw new Error('Choose a timer duration between one second and one year. Nothing was changed.');
     if((action.type==='add_widget'||action.type==='open_saved')&&action.ids.length>MAX_ASSISTANT_BATCH)throw new Error(`Still AI can change at most ${MAX_ASSISTANT_BATCH} widgets in one request. Nothing was changed.`);
     for(const id of action.ids){if(action.type==='add_widget'){if(!widgetTypes.includes(id as WidgetType))throw new Error('Choose a widget type from Still’s built-in gallery. Nothing was changed.');continue}if(action.type==='open_saved'){if(!savedItems.has(id))throw new Error('A saved tray item changed before the action could run. Nothing was changed. Try again.');continue}const widget=widgets.get(id);if(!widget)throw new Error('A workspace widget changed before the action could run. Nothing was changed. Try again.');if(action.type==='set_timer'&&widget.type!=='focus'&&!widget.clockPluginEnabled)throw new Error('Add the Clock timer to that widget, or select a Focus widget. Nothing was changed.');}
@@ -212,7 +234,7 @@ export function applyAssistantWidgetActions(workspace:Workspace,actions:Assistan
     if(action.type==='add_widget'){
       if(next.widgets.length+action.ids.length>MAX_ASSISTANT_WIDGETS)throw new Error(`This workspace is limited to ${MAX_ASSISTANT_WIDGETS} widgets so it stays responsive. Nothing was changed.`);
       let widgets=[...next.widgets],groups=[...next.groups];
-      for(const id of action.ids){const type=id as WidgetType,widget=createWidget(type);widget.instanceNumber=nextInstanceNumber(type,widgets);widget.placement=constrainPlacement(type,nextPlacement(type,widgets,width),width,{},height);if(type==='group'){const groupId=crypto.randomUUID();widget.groupId=groupId;groups.push({id:groupId,name:'',shortcuts:[],widgets:[],expanded:false})}widgets.push(widget)}
+      for(const id of action.ids){const type=id as WidgetType,widget=createWidget(type);if(action.title!==undefined)widget.title=action.title.trim();if(action.text!==undefined)widget.text=action.text;widget.instanceNumber=nextInstanceNumber(type,widgets);widget.placement=constrainPlacement(type,nextPlacement(type,widgets,width),width,{},height);if(type==='group'){const groupId=crypto.randomUUID();widget.groupId=groupId;groups.push({id:groupId,name:action.title?.trim()??'',shortcuts:[],widgets:[],expanded:false})}widgets.push(widget)}
       next={...next,widgets,groups};continue;
     }
     const ids=new Set(action.ids);
@@ -239,15 +261,16 @@ export function validateAssistantActionIntent(prompt:string,workspace:Workspace,
   if(!expected.length)return;
   const supplied=new Set(actions.map(action=>action.type));
   if(expected.some(type=>!supplied.has(type)))throw new Error('No widgets were changed. The AI did not return every requested workspace action. Try again.');
+  if([...supplied].some(type=>!expected.includes(type)))throw new Error('The suggested actions include changes beyond the direct request. Review them before applying.');
   if(expected.includes('remove_widget')){
     const removal=actions.find(action=>action.type==='remove_widget');
     const namedTypes=widgetTypes.filter(type=>widgetNameMentioned(prompt,type));
     if(!removal||namedTypes.length&&removal.ids.some(id=>!workspace.widgets.some(widget=>widget.id===id&&namedTypes.includes(widget.type))))throw new Error('No widgets were removed. Still AI selected a widget that does not match your request. Try again.');
   }
-  const amount=prompt.match(/\b(\d+)\s+(?:saved\s+)?(?:[a-z-]+\s+)?widgets?\b/i);
-  if(amount)for(const type of ['add_widget','open_saved'] as const)if(expected.includes(type)){
+  const amount=assistantRequestedItemCount(prompt);
+  if(amount!==null)for(const type of ['add_widget','open_saved'] as const)if(expected.includes(type)){
     const action=actions.find(item=>item.type===type);
-    if(action&&action.ids.length!==Number(amount[1]))throw new Error('No widgets were changed. Still AI did not include the requested number of widgets. Try again.');
+    if(action&&action.ids.length!==amount)throw new Error('No widgets were changed. Still AI did not include the requested number of widgets. Try again.');
   }
   const asksForAll=/\b(?:all|every|each)\b/i.test(prompt);
   if(asksForAll)for(const type of expected){

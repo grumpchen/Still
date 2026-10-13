@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {ASSISTANT_ACTION_TYPES} from '../src/domain/assistant.ts';
 
 const app=readFileSync(new URL('../src/App.tsx',import.meta.url),'utf8');
 const panel=readFileSync(new URL('../src/AssistantPanel.tsx',import.meta.url),'utf8');
@@ -60,10 +61,15 @@ test('local widget actions always record a nonempty receipt and repair old blank
 });
 test('removing named widgets requires confirmation and applies only the selected IDs',()=>{
  assert.match(panel,/setConfirmation\('remove_widgets'\)/);
- assert.match(panel,/confirmation==='open_saved_apps'\|\|confirmation==='remove_widgets'\)\&\&pendingActions\.current/);
  assert.match(app,/action\.type==='remove_widget'/);
  assert.match(app,/removedIds\.includes\(widget\.id\)/);
  assert.match(app,/Undo change restores the widget/);
  const protocol=readFileSync(new URL('../src-tauri/src/assistant_protocol.rs',import.meta.url),'utf8');
  assert.match(protocol,/"remove_widget"/,'providers can return the bounded, ID-based remove action');
+});
+test('frontend and provider action catalogues agree',()=>{
+ const protocol=readFileSync(new URL('../src-tauri/src/assistant_protocol.rs',import.meta.url),'utf8');
+ const enums=protocol.match(/"type":\{"type":"STRING","enum":(\[[^\]]+\])/);
+ assert.ok(enums,'the provider schema advertises explicit supported actions');
+ assert.deepEqual(JSON.parse(enums[1]).sort(),[...ASSISTANT_ACTION_TYPES].sort());
 });
