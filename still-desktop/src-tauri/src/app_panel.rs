@@ -19,13 +19,16 @@ impl Bounds {
 #[derive(Clone,Serialize)]
 pub struct WindowInfo {pub hwnd:usize,pub pid:u32,pub title:String,#[serde(skip)]pub(crate) executable:Option<String>}
 #[derive(Clone)]
-struct Launch {pid:u32,executable:Option<String>,before:Vec<usize>,profile_picker:bool,picker_hwnd:Option<usize>}
+struct Launch {pid:u32,executable:Option<String>,before:Vec<usize>,profile_picker:bool,picker_hwnd:Option<usize>,picker_title:Option<String>}
 fn same_path(a:&str,b:&str)->bool{a.trim_start_matches("\\\\?\\").eq_ignore_ascii_case(b.trim_start_matches("\\\\?\\"))}
 fn select_window<'a>(launch:&Launch,windows:&'a [WindowInfo],claimed:&[usize])->Option<&'a WindowInfo>{
  windows.iter().find(|w|!launch.before.contains(&w.hwnd)&&!claimed.contains(&w.hwnd)&&((launch.pid!=0&&w.pid==launch.pid)||launch.executable.as_ref().zip(w.executable.as_ref()).is_some_and(|(a,b)|same_path(a,b))))
 }
-fn selected_profile_window<'a>(picker_hwnd:usize,foreground_hwnd:usize,windows:&'a [WindowInfo],expected:&str,claimed:&[usize])->Option<&'a WindowInfo>{
- if picker_hwnd==0||foreground_hwnd==0||foreground_hwnd==picker_hwnd{return None}
+fn selected_profile_window<'a>(picker_hwnd:usize,picker_title:Option<&str>,foreground_hwnd:usize,foreground_title:&str,windows:&'a [WindowInfo],expected:&str,claimed:&[usize])->Option<&'a WindowInfo>{
+ if picker_hwnd==0||foreground_hwnd==0{return None}
+ // Chrome may turn its chooser window into the selected profile's New Tab.
+ // The HWND is unchanged, so require its title to have moved on from the chooser.
+ if foreground_hwnd==picker_hwnd&&picker_title.is_none_or(|title|title==foreground_title){return None}
  windows.iter().find(|window|window.hwnd==foreground_hwnd&&!claimed.contains(&window.hwnd)&&matches_executable(window,expected))
 }
 fn launch_arguments(executable:&Path,args:&str)->String{
@@ -200,7 +203,7 @@ fn launch(path:&Path,before:Vec<usize>)->Result<Launch,String>{
  unsafe{ShellExecuteExW(&mut execute).map_err(|e|format!("Unable to open the app: {e}"))?;}
  let process=if execute.hProcess.0.is_null(){0}else{let p=unsafe{GetProcessId(execute.hProcess)};unsafe{let _=CloseHandle(execute.hProcess);}p};
  let expected=target.extension().is_some_and(|e|e.eq_ignore_ascii_case("exe")).then(||target.to_string_lossy().into_owned());
- Ok(Launch{pid:process,executable:expected,before,profile_picker,picker_hwnd:None})
+ Ok(Launch{pid:process,executable:expected,before,profile_picker,picker_hwnd:None,picker_title:None})
 }
 fn valid_window(entry:&Entry)->bool{(unsafe{IsWindow(Some(handle(entry.hwnd))).as_bool()})&&pid(handle(entry.hwnd))==entry.pid}
 fn attachment_identity(entry:Option<&Entry>)->Option<AttachmentIdentity>{entry.filter(|entry|valid_window(entry)).map(|entry|AttachmentIdentity{hwnd:entry.hwnd,pid:entry.pid})}
@@ -497,7 +500,7 @@ pub async fn app_panel_open(app:AppHandle,webview:Webview,id:String,source_id:St
     let before=window_snapshot();let expected=expected_executable(&path);let explicit_profile=explicit_chrome_profile_shortcut(&path);
     let available=if reuse_existing==Some(true){windows()}else{Vec::new()};
     let profile_picker=expected.as_deref().is_some_and(|executable|opens_chrome_profile_picker(Path::new(executable),""));
-    let ticket=if let Some(window)=reuse_candidate_for_launch(&available,expected.as_deref(),explicit_profile||profile_picker)?{Launch{pid:window.pid,executable:expected,before:before.into_iter().filter(|h|*h!=window.hwnd).collect(),profile_picker:false,picker_hwnd:None}}else{launch(&path,before)?};
+    let ticket=if let Some(window)=reuse_candidate_for_launch(&available,expected.as_deref(),explicit_profile||profile_picker)?{Launch{pid:window.pid,executable:expected,before:before.into_iter().filter(|h|*h!=window.hwnd).collect(),profile_picker:false,picker_hwnd:None,picker_title:None}}else{launch(&path,before)?};
     state.0.lock().map_err(|_|"App panels are unavailable")?.pending.insert(id.clone(),ticket.clone());ticket
    }};
    let mut launch=launch;
@@ -509,16 +512,16 @@ pub async fn app_panel_open(app:AppHandle,webview:Webview,id:String,source_id:St
      if launch.picker_hwnd.is_none(){
       if let Some(picker)=select_window(&launch,&choices,&claimed){
        launch.picker_hwnd=Some(picker.hwnd);
+        launch.picker_title=Some(picker.title.clone());
        let picker_hwnd=handle(picker.hwnd);unsafe{let _=ShowWindow(picker_hwnd,SW_SHOW);let _=SetForegroundWindow(picker_hwnd);}
-       if let Ok(mut panels)=state.0.lock(){if let Some(pending)=panels.pending.get_mut(&id){pending.picker_hwnd=launch.picker_hwnd;}}
+        if let Ok(mut panels)=state.0.lock(){if let Some(pending)=panels.pending.get_mut(&id){pending.picker_hwnd=launch.picker_hwnd;pending.picker_title=launch.picker_title.clone();}}
       }
       None
      }else{
       let picker_hwnd=launch.picker_hwnd.unwrap();
-      if unsafe{!IsWindow(Some(handle(picker_hwnd))).as_bool()||!IsWindowVisible(handle(picker_hwnd)).as_bool()}{
        let foreground=unsafe{GetForegroundWindow()}.0 as usize;
-       launch.executable.as_deref().and_then(|expected|selected_profile_window(picker_hwnd,foreground,&choices,expected,&claimed))
-      }else{None}
+       let foreground_title=if foreground==picker_hwnd{window_title(handle(foreground))}else{String::new()};
+       launch.executable.as_deref().and_then(|expected|selected_profile_window(picker_hwnd,launch.picker_title.as_deref(),foreground,&foreground_title,&choices,expected,&claimed))
      }
     }else{select_window(&launch,&choices,&claimed)};
     if let Some(candidate)=candidate{
@@ -671,7 +674,7 @@ pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
    assert_eq!(required_size((0,0,600,375),(0,0,900,600)),(true,true),"A genuine clamp above the request is a refusal");
   }
  #[test]fn discovery_never_claims_an_old_document_unrelated_app_or_already_managed_window(){
-  let launch=Launch{pid:22,executable:Some("C:\\Office\\WINWORD.EXE".into()),before:vec![101],profile_picker:false,picker_hwnd:None};
+  let launch=Launch{pid:22,executable:Some("C:\\Office\\WINWORD.EXE".into()),before:vec![101],profile_picker:false,picker_hwnd:None,picker_title:None};
   let window=|hwnd,pid,path:&str|WindowInfo{hwnd,pid,title:"Document".into(),executable:Some(path.into())};
   let choices=vec![window(101,22,"C:\\Office\\WINWORD.EXE"),window(102,90,"C:\\Apps\\other.exe"),window(103,22,"C:\\Office\\WINWORD.EXE"),window(104,33,"c:\\office\\winword.exe")];
   assert_eq!(select_window(&launch,&choices,&[103]).map(|w|w.hwnd),Some(104));
@@ -686,11 +689,13 @@ pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
   let expected="C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
   let window=|hwnd,pid,path:&str|WindowInfo{hwnd,pid,title:"Chrome profile".into(),executable:Some(path.into())};
   let choices=[window(51,100,expected),window(52,101,expected),window(53,102,"C:\\Apps\\Other.exe")];
-  assert!(selected_profile_window(51,51,&choices,expected,&[]).is_none());
-  assert!(selected_profile_window(51,0,&choices,expected,&[]).is_none());
-  assert_eq!(selected_profile_window(51,52,&choices,expected,&[]).map(|w|w.hwnd),Some(52));
-  assert!(selected_profile_window(51,53,&choices,expected,&[]).is_none());
-  assert!(selected_profile_window(51,52,&choices,expected,&[52]).is_none());
+  assert!(selected_profile_window(51,Some("Google Chrome"),51,"Google Chrome",&choices,expected,&[]).is_none());
+  assert!(selected_profile_window(51,Some("Google Chrome"),0,"",&choices,expected,&[]).is_none());
+  assert_eq!(selected_profile_window(51,Some("Google Chrome"),52,"",&choices,expected,&[]).map(|w|w.hwnd),Some(52));
+  assert!(selected_profile_window(51,Some("Google Chrome"),53,"",&choices,expected,&[]).is_none());
+  assert!(selected_profile_window(51,Some("Google Chrome"),52,"",&choices,expected,&[52]).is_none());
+  assert_eq!(selected_profile_window(51,Some("Google Chrome"),51,"New tab - Google Chrome",&choices,expected,&[]).map(|w|w.hwnd),Some(51));
+  assert!(selected_profile_window(51,None,51,"New tab - Google Chrome",&choices,expected,&[]).is_none());
  }
  #[test]fn word_uses_a_new_instance_switch_and_preserves_shortcut_arguments_without_shell_composition(){
   assert_eq!(launch_arguments(std::path::Path::new("C:\\Office\\WINWORD.EXE"),"/q"),"/q /n");
