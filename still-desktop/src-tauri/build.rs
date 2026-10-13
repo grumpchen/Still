@@ -4,8 +4,8 @@ fn main() {
             tauri_build::AppManifest::new().commands(&[
                 "assistant_configured", "assistant_models", "assistant_set_key", "assistant_chat", "assistant_key_setup",
                 "chrome_open", "widget_capture", "widget_export",
-                "files_choose", "files_list", "files_open", "files_reuse",
-                "document_open", "document_choose",
+                "files_choose", "files_list", "files_open", "files_reuse", "files_preview",
+                "document_open", "document_choose", "document_preview",
                 "app_open", "app_choose",
                 "app_panel_open", "app_panel_windows", "app_panel_attach", "app_panel_present", "app_panel_release", "app_panel_configure_shutdown",
                 "app_capture_enable",

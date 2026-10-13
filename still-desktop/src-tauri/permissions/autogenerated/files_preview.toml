@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-files-preview"
+description = "Enables the files_preview command without any pre-configured scope."
+commands.allow = ["files_preview"]
+
+[[permission]]
+identifier = "deny-files-preview"
+description = "Denies the files_preview command without any pre-configured scope."
+commands.deny = ["files_preview"]
