@@ -3,7 +3,7 @@ import type {WidgetRelaunchMode,WidgetRelaunchPluginStatus} from './widgetRelaun
 import type {ScreenshotPluginMode} from './screenshotPlugin.ts';
 import type {ClockPluginMode} from './clockPlugin.ts';
 import type {WidgetInstance,WidgetTagColor} from './workspaces.ts';
-import {ClockTimerSettingsControl,RelaunchGlobalModeControl,RelaunchTagColorsControl,ScreenshotSettingsControl,widgetColorSettingCatalog} from '../WidgetPluginStatusControls.tsx';
+import {ClockTimerSettingsControl,LockWidgetControl,RelaunchGlobalModeControl,RelaunchTagColorsControl,ScreenshotSettingsControl,widgetColorSettingCatalog} from '../WidgetPluginStatusControls.tsx';
 
 export interface WidgetPluginContext{
  relaunchPluginStatus:WidgetRelaunchPluginStatus;
@@ -49,6 +49,8 @@ export const widgetPluginCatalog:BuiltInWidgetPluginDefinition[]=[{
   {id:'screenshot.settings',pluginId:'screenshot',label:'Screenshot settings',StatusControl:ScreenshotSettingsControl,available:alwaysAvailable},
 ]} ,{id:'clock-timer',name:'Clock Timer',description:'Show or limit the Clock timer add-on globally or by tag color.',controls:[
  {id:'clock-timer.settings',pluginId:'clock-timer',label:'Clock timer settings',StatusControl:ClockTimerSettingsControl,available:alwaysAvailable},
+]}, {id:'lock',name:'Lock',description:'Lock a widget in place and disable its close control until it is unlocked.',controls:[
+ {id:'lock.widget',pluginId:'lock',label:'Widget lock',StatusControl:LockWidgetControl,available:alwaysAvailable},
 ]}];
 export {widgetColorSettingCatalog};
 export function availableStatusControls(status:WidgetRelaunchPluginStatus):WidgetPluginControlDefinition[]{

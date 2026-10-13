@@ -2,6 +2,7 @@ import {useState} from 'react';
 import {widgetTagColors,type WidgetTagColor} from './domain/widgetTags.ts';
 import type {ClockPluginMode} from './domain/clockPlugin.ts';
 import type {WidgetPluginColorSettingDefinition,WidgetPluginColorSettingProps,WidgetPluginControlProps} from './domain/widgetPlugins.ts';
+import {Icon} from './Icon.tsx';
 
 const colorControlPrefix='widget-relaunch.color.';
 const colorRulePrefix='widget-color-rule.';
@@ -94,4 +95,9 @@ export function ClockTimerColorSettingControl({context,color}:WidgetPluginColorS
 
 export function ClockTimerSettingsControl({context}:WidgetPluginControlProps){
  return <fieldset className="status-plugin-settings"><legend>Clock timer add-on</legend><label className="settings-row"><span>Show for</span><select aria-label="Status card clock timer scope" value={context?.clockMode??'global'} onChange={event=>context?.setClockMode(event.target.value as ClockPluginMode)}><option value="global">All tagged and untagged widgets</option><option value="tag-colors">Selected tag colors</option><option value="off">Off</option></select></label>{context?.clockMode==='tag-colors'&&<div className="status-plugin-colors">{widgetTagColors.map(color=><label key={color}><input type="checkbox" aria-label={'Status card '+color+' clock timer color'} checked={context.clockColors.includes(color)} onChange={event=>context.setClockColor(color,event.target.checked)}/>{color[0].toUpperCase()+color.slice(1)}</label>)}</div>}<p className="notice">Add Clock timer to an individual card with its + button. Color rules can override this setting.</p></fieldset>;
+}
+
+export function LockWidgetControl({widget,update}:WidgetPluginControlProps){
+ if(!widget.lockPluginEnabled)return <div className="settings-row"><span>Widget Lock<small>Add the Lock plugin from a widget’s + menu.</small></span></div>;
+ return <div className="settings-row"><span>Widget Lock<small>{widget.locked?'Movement and close are disabled.':'Widget can be moved and closed.'}</small></span><button type="button" aria-label={widget.locked?'Unlock widget':'Lock widget'} aria-pressed={widget.locked} onClick={()=>update({locked:!widget.locked})}><Icon name="lock"/>{widget.locked?'Unlock':'Lock'}</button></div>;
 }

@@ -7,6 +7,14 @@ import {widgetTagColors} from './widgetTags.ts';
 
 export type AssistantProvider = 'gemini' | 'openai';
 export type ChatMessage = {role:'user'|'model'; text:string};
+export function resolveAcceptedNotesOffer(prompt:string,messages:ChatMessage[]):{action:AssistantAction;intent:string}|null{
+  if(!/^(?:yes|yeah|yep|sure|ok|okay|please|do it|go ahead|yes please)[.!?]*$/i.test(prompt.trim()))return null;
+  const previousAssistant=messages.at(-1);
+  if(previousAssistant?.role!=='model'||!/would you like me to add a new Notes widget with that text instead\?\s*$/i.test(previousAssistant.text.trim()))return null;
+  const previousUser=[...messages.slice(0,-1)].reverse().find(message=>message.role==='user')?.text.trim();
+  if(!previousUser||previousUser.length>12000)return null;
+  return{action:{type:'add_widget',ids:['notes'],text:previousUser},intent:'Add a Notes widget with the previous message text.'};
+}
 export type LayoutItem = Placement & {id:string};
 export const ASSISTANT_ACTION_TYPES=['minimize','restore','save_to_tray','set_timer','add_widget','open_saved','remove_widget','edit_widget','set_widget_plugin','set_sidebar_plugin','rename_workspace'] as const;
 export type AssistantActionType = typeof ASSISTANT_ACTION_TYPES[number];
@@ -14,6 +22,13 @@ export type AssistantAction = {type:AssistantActionType;ids:string[];seconds?:nu
 export type AssistantTrayItem={id:string;name:string;type:WidgetType;kind:'preset'|'group'};
 export const MAX_ASSISTANT_BATCH=10;
 export const MAX_ASSISTANT_WIDGETS=100;
+export function resolveNamedNotesCreation(prompt:string):{title:string;topic:string}|null{
+  const details=prompt.trim().match(/^(?:(?:please|can|could|would|will)\s+)*(?:you\s+)?(?:make|create|add)\s+(?:a\s+)?(?:new\s+)?notes?\s+(?:widget\s+)?(?:named|called|titled)\s+["'“]?([^,"'”\n]+?)\s*["'”]?(?:\s*,?\s*(?:and\s+)?(?:write|put|add|include)\s+(?:some\s+)?notes?\s+(?:about|on|for|covering)\s+([\s\S]+?))?[.!?]*$/i);
+  if(!details)return null;
+  const title=details[1].trim(),topic=details[2]?.trim().replace(/[.!?]+$/,'').trim()??'';
+  if(!title||title.length>60||topic.length>12000)return null;
+  return {title,topic};
+}
 export type AssistantReply = {reply:string; layout:LayoutItem[]; actions:AssistantAction[]};
 export type LayoutPlan = {workspaceId:string; fingerprint:string; width:number; height:number; items:LayoutItem[]};
 export const DEFAULT_MODEL = 'gemini-2.5-flash';
@@ -72,11 +87,12 @@ export function widgetContext(widget:WidgetInstance):Record<string,unknown> {
   if(widget.type==='notes'||widget.type==='ai')result.text=widget.text.slice(0,12000);
   if(widget.type==='timetable')result.schedule=widget.schedule.slice(0,80);
   if(widget.type==='focus')result.remainingSeconds=widget.end?Math.max(0,Math.ceil((widget.end-Date.now())/1000)):widget.remaining;
+  if(widget.clockPluginEnabled)result.clockTimerEnabled=true;
   if(widget.type==='apps'||widget.type==='desmos'||widget.type==='files')result.reading='Only metadata is available unless a visible screenshot is included. Do not infer unseen window or file contents.';
   return result;
 }
 export function layoutFingerprint(workspace:Workspace):string {
-  return JSON.stringify(workspace.widgets.map(w=>[w.id,w.type,w.minimized,w.placement,w.appPanelOpen,w.appMinWidth,w.appMinHeight]));
+  return JSON.stringify(workspace.widgets.map(w=>[w.id,w.type,w.minimized,w.placement,w.appPanelOpen,w.appMinWidth,w.appMinHeight,w.lockPluginEnabled,w.locked]));
 }
 export function layoutContext(workspace:Workspace,width:number,height:number) {
   return {canvas:{width,height,padding:20},widgets:workspace.widgets.map(w=>({
@@ -85,11 +101,20 @@ export function layoutContext(workspace:Workspace,width:number,height:number) {
     minimumHeight:Math.max(widgetCatalog[w.type].minHeight,w.appPanelOpen?w.appMinHeight??0:0),
   }))};
 }
-/** Layout metadata is always available for arrangement requests; widget contents are shared only by explicit @ mention. */
+/** Workspace widget data is available to answer and edit requests; @ marks widgets the user wants to point out. */
 export function assistantWorkspaceContext(workspace:Workspace,width:number,height:number,selectedWidgetIds:string[],savedTrayItems:AssistantTrayItem[]=[],installedSidebarPlugins:string[]=[]):Record<string,unknown> {
   const unique=[...new Set(selectedWidgetIds)];
-  const selected=unique.map(id=>workspace.widgets.find(widget=>widget.id===id)).filter((widget):widget is WidgetInstance=>!!widget);
-  return {canvasAndWidgets:layoutContext(workspace,width,height),selectedWidgets:selected.map(widgetContext),savedTrayItems:savedTrayItems.map(({id,name,type,kind})=>({id,name,type,kind})),installedSidebarPlugins,capabilities:{actions:[...ASSISTANT_ACTION_TYPES],creatableWidgets:widgetTypes.map(id=>({id,name:widgetCatalog[id].name})),editableFields:{allWidgets:['title','tagColor'],notes:['text'],timetable:['schedule'],tagStatus:['pluginControls'],focusAndClock:['timer'],limits:{titleMaxLength:60,notesTextMaxLength:12000,scheduleEntriesMax:80,groupControlsMax:20}},plugins:{widget:['clock-timer'],sidebar:['stack','layout'],tagStatus:['widget-relaunch.global-mode','widget-relaunch.tag-colors','screenshot.settings','clock-timer.settings']},contentEditingRequiresWidgetSelection:true,externalContentEditing:['apps','files','calculator'],maxBatchItems:MAX_ASSISTANT_BATCH,maxAddOrOpenItems:MAX_ASSISTANT_BATCH,maxWorkspaceWidgets:MAX_ASSISTANT_WIDGETS,confirmationRequired:['remove_widget','open_saved_apps','delete_workspace','unclear_action_intent']}};
+  const selected=new Set(unique);
+  const widgetData:Record<string,unknown>[]=workspace.widgets.map(widget=>({id:widget.id,...widgetContext(widget),quickSelected:selected.has(widget.id)}));
+  const context:Record<string,unknown>={canvasAndWidgets:layoutContext(workspace,width,height),widgetData,savedTrayItems:savedTrayItems.map(({id,name,type,kind})=>({id,name,type,kind})),installedSidebarPlugins,capabilities:{actions:[...ASSISTANT_ACTION_TYPES],creatableWidgets:widgetTypes.map(id=>({id,name:widgetCatalog[id].name})),editableFields:{allWidgets:['title','tagColor'],notes:['text'],timetable:['schedule'],tagStatus:['pluginControls'],focusAndClock:['timer'],limits:{titleMaxLength:60,notesTextMaxLength:12000,scheduleEntriesMax:80,groupControlsMax:20}},plugins:{widget:['clock-timer'],sidebar:['stack','layout'],tagStatus:['widget-relaunch.global-mode','widget-relaunch.tag-colors','screenshot.settings','clock-timer.settings']},contentEditingRequiresWidgetSelection:false,externalContentEditing:['apps','files','calculator'],maxBatchItems:MAX_ASSISTANT_BATCH,maxAddOrOpenItems:MAX_ASSISTANT_BATCH,maxWorkspaceWidgets:MAX_ASSISTANT_WIDGETS,confirmationRequired:['remove_widget','open_saved_apps','delete_workspace','unclear_action_intent']}};
+  const lowerPriority=[...widgetData.filter(item=>!item.quickSelected).reverse(),...widgetData.filter(item=>item.quickSelected).reverse()];
+  for(const item of lowerPriority){
+    if(JSON.stringify(context).length<=60000)break;
+    const omitted=['text','schedule'].filter(field=>field in item);
+    for(const field of omitted)delete item[field];
+    if(omitted.length)item.contentOmitted=true;
+  }
+  return context;
 }
 export function assistantTrayItems(presets:WidgetPreset[],groups:SavedGroup[]):AssistantTrayItem[]{
   return [
@@ -167,7 +192,7 @@ export function assistantActionRequest(text:string,savedTrayItems:AssistantTrayI
   if(opensSaved)requested.push('open_saved');
   else if(/\b(?:save|put|move|send|store|copy|add|collect)\b[\s\S]{0,120}\btray\b/i.test(prompt))requested.push('save_to_tray');
   const namedTypes=widgetTypes.filter(type=>widgetNameMentioned(prompt,type));
-  const clearCreation=/^(?:(?:please|can you|could you|would you|will you|I want you to|I'd like you to)\s+)*(?:add|create|make|build|insert|spawn|new|open)\b/i.test(prompt)&&!/\bmake\b[\s\S]*\b(?:smaller|larger|bigger|wider|narrower|shorter|taller|minimi[sz]ed|fullscreen)\b/i.test(prompt);
+  const clearCreation=/^(?:(?:please|can(?:\s+you)?|could(?:\s+you)?|would(?:\s+you)?|will(?:\s+you)?|I want you to|I'd like you to)\s+)*(?:add|create|make|build|insert|spawn|new|open)\b/i.test(prompt)&&!/\bmake\b[\s\S]*\b(?:smaller|larger|bigger|wider|narrower|shorter|taller|minimi[sz]ed|fullscreen)\b/i.test(prompt);
   if(!opensSaved&&!requested.includes('set_widget_plugin')&&!requested.includes('set_sidebar_plugin')&&!requested.includes('rename_workspace')&&clearCreation&&(namedTypes.length||/\b(?:add|create|insert|spawn)\b[\s\S]*\b(?:widgets?|cards?)\b/i.test(prompt)||/\b(?:a|an|one|\d+)\s+(?:new\s+)?(?:widgets?|cards?)\b/i.test(prompt)))requested.push('add_widget');
   if(!requested.includes('set_widget_plugin')&&!unsupportedAssistantRequest(prompt)&&/\b(?:remove|delete|close)\b[\s\S]{0,60}\b(?:widgets?|cards?|notes?|focus|timer|calculator|apps?|files?|timetable|assistant|group)\b/i.test(prompt))requested.push('remove_widget');
   if(/\b(?:set|start|begin)\b[\s\S]{0,40}\btimer\b/i.test(prompt)&&extractAssistantTimerSeconds(prompt)!==null)requested.push('set_timer');
@@ -224,8 +249,15 @@ export function resolveDirectAssistantActions(text:string,workspace:Workspace,se
     return [{type:'set_widget_plugin',ids:targets.map(widget=>widget.id),plugin:'clock-timer',enabled}];
   }
   if(types.includes('add_widget')){
-    if(types.length>1||/\b(?:called|named|titled|containing|with|about|saying)\b/i.test(text))return null;
     const matched=widgetTypes.filter(type=>widgetNameMentioned(text,type));
+    if(types.length>1)return null;
+    if(matched.length===1&&matched[0]==='notes'){
+      const details=resolveNamedNotesCreation(text);
+      if(details){
+        return [{type:'add_widget',ids:['notes'],title:details.title,...(details.topic?{text:details.topic}:{})}];
+      }
+    }
+    if(/\b(?:called|named|titled|containing|with|about|saying)\b/i.test(text))return null;
     if(matched.length){if(matched.length>MAX_ASSISTANT_BATCH)return null;const count=amount??1;if(count>1&&matched.length===1)return [{type:'add_widget',ids:Array(count).fill(matched[0])}];if(count>1&&matched.length>1)return null;return [{type:'add_widget',ids:matched}];}
   }
   if(types.includes('remove_widget')){
@@ -260,7 +292,7 @@ export function validateAssistantActions(workspace:Workspace,actions:AssistantAc
     validateAssistantActionFields(action);
     if(action.type==='set_timer'&&(!Number.isSafeInteger(action.seconds)||action.seconds!<1||action.seconds!>31536000))throw new Error('Choose a timer duration between one second and one year. Nothing was changed.');
     if((action.type==='add_widget'||action.type==='open_saved')&&action.ids.length>MAX_ASSISTANT_BATCH)throw new Error(`Still AI can change at most ${MAX_ASSISTANT_BATCH} widgets in one request. Nothing was changed.`);
-    for(const id of action.ids){if(action.type==='add_widget'){if(!widgetTypes.includes(id as WidgetType))throw new Error('Choose a widget type from Still’s built-in gallery. Nothing was changed.');continue}if(action.type==='open_saved'){if(!savedItems.has(id))throw new Error('A saved tray item changed before the action could run. Nothing was changed. Try again.');continue}if(action.type==='rename_workspace'){if(id!==workspace.id)throw new Error('Still can rename only the current workspace from this chat. Nothing was changed.');continue}if(action.type==='set_sidebar_plugin')continue;const widget=widgets.get(id);if(!widget)throw new Error('A workspace widget changed before the action could run. Nothing was changed. Try again.');if(action.type==='set_timer'&&widget.type!=='focus'&&!widget.clockPluginEnabled)throw new Error('Add the Clock timer to that widget, or select a Focus widget. Nothing was changed.');if(action.type==='set_widget_plugin'&&action.plugin==='clock-timer'&&widget.type==='group')throw new Error('Clock cannot be added to a Group collection. Nothing was changed.');if(action.type==='edit_widget'&&(action.text!==undefined&&widget.type!=='notes'||action.schedule!==undefined&&widget.type!=='timetable'||action.pluginControls!==undefined&&widget.type!=='tagStatus'))throw new Error('That field cannot be edited on this widget. Nothing was changed.');}
+    for(const id of action.ids){if(action.type==='add_widget'){if(!widgetTypes.includes(id as WidgetType))throw new Error('Choose a widget type from Still’s built-in gallery. Nothing was changed.');continue}if(action.type==='open_saved'){if(!savedItems.has(id))throw new Error('A saved tray item changed before the action could run. Nothing was changed. Try again.');continue}if(action.type==='rename_workspace'){if(id!==workspace.id)throw new Error('Still can rename only the current workspace from this chat. Nothing was changed.');continue}if(action.type==='set_sidebar_plugin')continue;const widget=widgets.get(id);if(!widget)throw new Error('A workspace widget changed before the action could run. Nothing was changed. Try again.');if(action.type==='remove_widget'&&widget.lockPluginEnabled&&widget.locked)throw new Error('Unlock a locked widget before removing it. Nothing was changed.');if(action.type==='set_timer'&&widget.type!=='focus'&&!widget.clockPluginEnabled)throw new Error('Add the Clock timer to that widget, or select a Focus widget. Nothing was changed.');if(action.type==='set_widget_plugin'&&action.plugin==='clock-timer'&&widget.type==='group')throw new Error('Clock cannot be added to a Group collection. Nothing was changed.');if(action.type==='edit_widget'&&(action.text!==undefined&&widget.type!=='notes'||action.schedule!==undefined&&widget.type!=='timetable'||action.pluginControls!==undefined&&widget.type!=='tagStatus'))throw new Error('That field cannot be edited on this widget. Nothing was changed.');}
   }
 }
 export function applyAssistantWidgetActions(workspace:Workspace,actions:AssistantAction[],width:number,height:number,now=Date.now(),savedTrayItems:AssistantTrayItem[]=[]):Workspace{
@@ -350,6 +382,7 @@ export function validateLayout(workspace:Workspace,items:LayoutItem[],width:numb
     if(!widget||ids.has(item.id))throw new Error('The proposal contains a missing or duplicate widget.');
     ids.add(item.id);
     const meta=widgetCatalog[widget.type],minimumWidth=Math.max(meta.minWidth,widget.appPanelOpen?widget.appMinWidth??0:0),minimumHeight=Math.max(meta.minHeight,widget.appPanelOpen?widget.appMinHeight??0:0);
+    if(widget.lockPluginEnabled&&widget.locked&&(item.x!==widget.placement.x||item.y!==widget.placement.y))throw new Error('Unlock locked widgets before moving them in a layout. Nothing was changed.');
     if([item.x,item.y,item.width,item.height].some(n=>!Number.isSafeInteger(n))||item.x<0||item.y<0||item.width<minimumWidth||item.height<minimumHeight||item.width>3000||item.height>3000||item.x+item.width>width-20||item.y+item.height>height-20)throw new Error('The proposed layout does not fit the canvas or widget minimum sizes. Try requesting a different arrangement.');
   }
   const rectangles=[...items,...workspace.widgets.filter(w=>w.minimized).map(w=>({...w.placement,id:w.id}))];

@@ -2,7 +2,7 @@
 
 ## Still AI assistant
 
-The current AI sidebar uses one chat flow for Gemini and OpenAI API models. Type `@` to select one or all widgets for explicit content sharing; ordinary layout requests include workspace geometry and produce reviewable proposals with Apply/Undo. Choose the model from the chat footer and connect each provider once per Still session in AI settings. API keys remain in desktop memory until Still closes; OpenAI API usage requires separate billing from a ChatGPT subscription. Browser previews do not send AI requests. Setup, privacy limits, and verification steps are in [the AI assistant notes](docs/plans/2026-10-11-gemini-sidebar.md).
+The current AI sidebar uses one chat flow for Gemini and OpenAI API models. Workspace widget data is available for relevant questions and edits without selecting it; type `@` to quickly point the assistant at one or all widgets. Ordinary layout requests include workspace geometry and produce reviewable proposals with Apply/Undo. Choose the model from the chat footer and connect each provider once per Still session in AI settings. API keys remain in desktop memory until Still closes; OpenAI API usage requires separate billing from a ChatGPT subscription. Browser previews do not send AI requests. Setup, privacy limits, and verification steps are in [the AI assistant notes](docs/plans/2026-10-11-gemini-sidebar.md).
 
 ## Existing desktop release
 

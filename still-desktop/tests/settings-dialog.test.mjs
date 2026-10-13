@@ -25,8 +25,9 @@ test('sidebar Settings opens a tabbed dialog with General, Appearance, and Plugi
  assert.match(general,/className="shortcut-settings-link" onClick=\{openShortcuts\}/);
  assert.doesNotMatch(appearance,/shortcut-settings-link|Keyboard shortcuts/);
  assert.match(app,/settingsTab==='plugins'[\s\S]*?Sidebar plugins[\s\S]*?<WidgetPluginsSettings/);
- for(const [id,name] of [['color-tag','Color Tag'],['clock-timer','Clock Timer'],['screenshot','Screenshot'],['widget-relaunch','Widget Relaunch']])assert.ok(widgetPluginCatalog.includes("id:'"+id+"',name:'"+name+"'"),name+' is registered');
+ for(const [id,name] of [['color-tag','Color Tag'],['clock-timer','Clock Timer'],['screenshot','Screenshot'],['widget-relaunch','Widget Relaunch'],['lock','Lock']])assert.ok(widgetPluginCatalog.includes("id:'"+id+"',name:'"+name+"'"),name+' is registered');
  assert.match(widgetPlugins,/widgetPluginCatalog\.map\(plugin/,'registered widget plugins automatically get a settings section');
+ assert.match(widgetPlugins,/plugin\.id==='lock'[\s\S]*?Add Lock from a widget’s \+ menu/);
  for(const id of ['color-tag','clock-timer','screenshot','widget-relaunch'])assert.ok(widgetPlugins.includes("plugin.id==='"+id+"'"),id+' settings are handled');
  assert.match(widgetPlugins,/Clock plugin scope[\s\S]*?Apply by tag color[\s\S]*?Closed/);
  assert.match(widgetPlugins,/Screenshot plugin scope[\s\S]*?Apply by tag color[\s\S]*?Closed/);

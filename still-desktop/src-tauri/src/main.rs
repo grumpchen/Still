@@ -1,3 +1,4 @@
+#![recursion_limit = "256"]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod security;
 mod files;
@@ -8,6 +9,7 @@ mod chrome;
 mod capture;
 mod assistant;
 mod assistant_protocol;
+mod credential_store;
 mod startup;
 #[cfg(windows)] mod app_panel;
 #[cfg(windows)] mod native_panels;
@@ -44,8 +46,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             assistant::assistant_configured, assistant::assistant_models, assistant::assistant_set_key, assistant::assistant_chat, assistant::assistant_key_setup,
             chrome::chrome_open, capture::widget_capture, capture::widget_export,
-            files::files_choose, files::files_list, files::files_open,files::files_reuse,
-            dropped_files::document_open, dropped_files::document_choose,
+            files::files_choose, files::files_list, files::files_open,files::files_reuse,files::files_preview,
+            dropped_files::document_open, dropped_files::document_choose,dropped_files::document_preview,
             dropped_files::app_open, dropped_files::app_choose,
             app_panel::app_panel_open,app_panel::app_panel_windows,app_panel::app_panel_identity,app_panel::app_panel_attach,app_panel::app_panel_present,app_panel::app_panel_release,app_panel::app_panel_suspend,app_panel::app_panel_resume,app_panel::app_panel_configure_shutdown,
             app_capture::app_capture_enable,

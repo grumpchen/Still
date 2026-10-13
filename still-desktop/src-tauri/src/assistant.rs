@@ -3,14 +3,22 @@ use tauri::{State, Webview};
 use crate::assistant_protocol::{self, Provider, Reply, Request};
 use tauri_plugin_opener::OpenerExt;
 
-// Session-only: never serialize a credential into layouts, frontend storage, or logs.
+// Keys live only in memory here; Windows Credential Manager owns persisted copies.
 #[derive(Default)]
 pub struct AssistantState { keys: Mutex<HashMap<Provider,String>> }
 impl AssistantState {
     pub fn from_environment() -> Self {
         let mut keys=HashMap::new();
-        if let Ok(key)=std::env::var("GEMINI_API_KEY"){keys.insert(Provider::Gemini,key);}
-        if let Ok(key)=std::env::var("OPENAI_API_KEY"){keys.insert(Provider::Openai,key);}
+        for (provider,environment) in [(Provider::Gemini,"GEMINI_API_KEY"),(Provider::Openai,"OPENAI_API_KEY")] {
+            let environment_key=std::env::var(environment).ok();
+            let key=initial_key(environment_key.clone(),None).or_else(||{
+                match crate::credential_store::load(provider){
+                    Ok(saved)=>initial_key(None,saved),
+                    Err(_)=>{eprintln!("Still AI could not load a saved key from Windows Credential Manager.");None}
+                }
+            });
+            if let Some(key)=key {keys.insert(provider,key);}
+        }
         Self {keys:Mutex::new(keys)}
     }
 }
@@ -22,14 +30,35 @@ fn validate_api_key(key:&str)->Result<String,&'static str> {
     }
     Ok(key.into())
 }
+fn initial_key(environment:Option<String>,saved:Option<String>)->Option<String>{
+    environment.into_iter().chain(saved).filter_map(|key|validate_api_key(&key).ok()).find(|key|!key.is_empty())
+}
 async fn fetch_models(client:&reqwest::Client,key:&str)->Result<Vec<String>,String> {
     fetch_models_at(client,"https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000",key).await
+}
+async fn read_error_body(mut response:reqwest::Response)->String {
+    let mut bytes=Vec::new();
+    while bytes.len()<8192 {
+        match response.chunk().await {
+            Ok(Some(chunk))=>{
+                let count=(8192-bytes.len()).min(chunk.len());
+                bytes.extend_from_slice(&chunk[..count]);
+                if count<chunk.len(){break;}
+            }
+            _=>break,
+        }
+    }
+    String::from_utf8_lossy(&bytes).into_owned()
 }
 async fn fetch_models_at(client:&reqwest::Client,endpoint:&str,key:&str)->Result<Vec<String>,String> {
     let response=client.get(endpoint)
         .header("x-goog-api-key",key).send().await
         .map_err(|_|"Could not reach Google Gemini. Check your connection and try again.".to_string())?;
-    if !response.status().is_success() { return Err(crate::assistant_protocol::http_error(response.status().as_u16())); }
+    if !response.status().is_success() {
+        let status=response.status().as_u16();
+        let detail=read_error_body(response).await;
+        return Err(crate::assistant_protocol::http_error_with_details(status,&detail,key));
+    }
     let mut bytes=Vec::new();
     let mut response=response;
     while let Some(chunk)=response.chunk().await.map_err(|_|"Gemini's model list could not be read.".to_string())? {
@@ -101,6 +130,7 @@ pub async fn assistant_set_key(webview:Webview,state:State<'_,AssistantState>,pr
             .map_err(|_|"Could not start the AI connection.".to_string())?;
         list_provider_models(&client,provider,&key).await?
     } else { Vec::new() };
+    if key.is_empty(){crate::credential_store::delete(provider)?;}else{crate::credential_store::save(provider,&key)?;}
     let mut keys=state.keys.lock().map_err(|_|"AI settings are unavailable.")?;
     if key.is_empty(){keys.remove(&provider);}else{keys.insert(provider,key);}
     Ok(models)
@@ -116,9 +146,15 @@ pub async fn assistant_chat(webview:Webview,state:State<'_,AssistantState>,reque
         .redirect(reqwest::redirect::Policy::none()).build().map_err(|_|"Could not start the AI connection.")?;
     let endpoint=match provider {Provider::Gemini=>format!("https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",request.model),Provider::Openai=>"https://api.openai.com/v1/chat/completions".into()};
     let builder=client.post(endpoint).json(&body);
-    let builder=match provider {Provider::Gemini=>builder.header("x-goog-api-key",key),Provider::Openai=>builder.bearer_auth(key)};
+    let builder=match provider {Provider::Gemini=>builder.header("x-goog-api-key",&key),Provider::Openai=>builder.bearer_auth(&key)};
     let mut response=builder.send().await.map_err(|_|match provider {Provider::Gemini=>"Gemini could not be reached or the request timed out. Check your connection and try again.",Provider::Openai=>"OpenAI could not be reached or the request timed out. Check your connection and try again."})?;
-    if !response.status().is_success(){return Err(match provider {Provider::Gemini=>assistant_protocol::http_error(response.status().as_u16()),Provider::Openai=>openai_http_error(response.status().as_u16())});}
+    if !response.status().is_success(){
+        let status=response.status().as_u16();
+        return Err(match provider {
+            Provider::Gemini=>{let detail=read_error_body(response).await;assistant_protocol::http_error_with_details(status,&detail,&key)}
+            Provider::Openai=>openai_http_error(status),
+        });
+    }
     let mut bytes=Vec::new();
     while let Some(chunk)=response.chunk().await.map_err(|_|"The AI response could not be read.")? {
         if bytes.len()+chunk.len()>256000 { return Err("The AI answer is too large. Try a shorter message.".into()); }
@@ -133,7 +169,7 @@ pub async fn assistant_chat(webview:Webview,state:State<'_,AssistantState>,reque
 
 #[cfg(test)]
 mod tests {
-    use super::{validate_api_key,fetch_models_at,fetch_openai_models_at};
+    use super::{initial_key,validate_api_key,fetch_models_at,fetch_openai_models_at};
     use std::io::{Read,Write};
     use std::net::TcpListener;
 
@@ -149,6 +185,14 @@ mod tests {
         assert_eq!(validate_api_key("short").unwrap(), "short");
         assert!(validate_api_key(&"k".repeat(257)).is_err());
         assert!(validate_api_key("valid-key-with\r\ninjection").is_err());
+    }
+
+    #[test]
+    fn startup_uses_saved_credentials_when_no_environment_key_is_set() {
+        assert_eq!(initial_key(None,Some("saved-key-123".into())).as_deref(),Some("saved-key-123"));
+        assert_eq!(initial_key(Some("environment-key-123".into()),Some("saved-key-123".into())).as_deref(),Some("environment-key-123"));
+        assert_eq!(initial_key(Some(String::new()),Some("saved-key-123".into())).as_deref(),Some("saved-key-123"));
+        assert_eq!(initial_key(None,Some("unsafe\nkey".into())),None);
     }
 
     #[test]

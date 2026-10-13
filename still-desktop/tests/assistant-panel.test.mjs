@@ -15,7 +15,7 @@ function setReactValue(node,value,elementType,caret){Object.getOwnPropertyDescri
 function setReactChecked(node,value){Object.getOwnPropertyDescriptor(node.ownerDocument.defaultView.HTMLInputElement.prototype,'checked').set.call(node,value);const props=node[Object.keys(node).find(key=>key.startsWith('__reactProps$'))];props?.onChange?.({target:node,currentTarget:node})}
 async function waitFor(predicate){const deadline=Date.now()+3000;while(Date.now()<deadline){if(predicate())return;await new Promise(resolve=>setTimeout(resolve,10))}assert.ok(predicate(),'Timed out waiting for assistant UI')}
 
-test('the single chat shares @-selected widgets, carries layout context and lists provider models at the bottom',async()=>{
+test('the single chat can use workspace widgets; @ is optional quick selection and screenshot target',async()=>{
  const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true}),{window}=dom,old=new Map();
  for(const key of ['window','document','navigator','HTMLElement','Element','Node','MutationObserver','requestAnimationFrame','cancelAnimationFrame','IS_REACT_ACT_ENVIRONMENT','isTauri'])old.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
  const calls=[];let root;
@@ -32,7 +32,7 @@ test('the single chat shares @-selected widgets, carries layout context and list
    return null;
   },{shouldMockEvents:true});
   const {default:AssistantPanel}=await vite.ssrLoadModule('/src/AssistantPanel.tsx');
-  const workspace=createWorkspace('Study',[]),note=createWidget('notes'),timer=createWidget('focus'),app=createWidget('apps');note.text='My private note';note.placement={x:0,y:0,width:300,height:250};timer.placement={x:330,y:0,width:300,height:350};app.placement={x:660,y:0,width:300,height:350};app.title='Chrome';workspace.widgets=[note,timer,app];
+  const workspace=createWorkspace('Study',[]),note=createWidget('notes'),timer=createWidget('focus'),app=createWidget('apps'),timetable=createWidget('timetable');note.text='My private note';note.placement={x:0,y:0,width:300,height:250};timer.placement={x:330,y:0,width:300,height:350};app.placement={x:660,y:0,width:300,height:350};app.title='Microsoft Edge';workspace.widgets=[note,timer,app,timetable];
   root=createRoot(window.document.querySelector('#root'));
   await act(async()=>root.render(createElement(AssistantPanel,{workspace,open:true,close(){},dimensions:()=>({width:900,height:700}),apply(){},undo(){}})));
   await waitFor(()=>window.document.querySelector('#ai-model')?.querySelector('option[value="gemini::gemini-2.5-flash"]'));
@@ -48,12 +48,17 @@ test('the single chat shares @-selected widgets, carries layout context and list
   await act(async()=>window.document.querySelector('.assistant-compose').requestSubmit());
   await waitFor(()=>calls.some(call=>call.command==='assistant_chat'));
   const geminiRequest=calls.find(call=>call.command==='assistant_chat').args.request,context=JSON.parse(geminiRequest.context);
-  assert.equal(context.canvasAndWidgets.widgets.length,3,'layout requests always include all widget geometry');
-  assert.equal(context.selectedWidgets.length,1,'ordinary chat shares only the chosen widget contents');
-  assert.equal(context.selectedWidgets[0].text,'My private note');
-  assert.ok(!JSON.stringify(context.selectedWidgets).includes('88'));
+  assert.equal(context.canvasAndWidgets.widgets.length,4,'layout requests always include all widget geometry');
+  assert.equal(context.widgetData.length,4,'all current workspace widget data is available for assistant requests');
+  assert.equal(context.widgetData.find(widget=>widget.type==='notes').text,'My private note');
+  assert.equal(context.widgetData.find(widget=>widget.type==='focus').remainingSeconds,1500,'the assistant can access Focus state without requiring @');
+  assert.equal(context.widgetData.find(widget=>widget.title==='Microsoft Edge').quickSelected,false);
   assert.equal(window.document.querySelector('[aria-label="Read widget"]'),null);
   assert.equal(window.document.querySelector('[aria-label="Arrange layout"]'),null);
+
+  await act(async()=>setReactValue(input,'@Microsoft Edge @Timetable can you create timetable according to my edge','HTMLTextAreaElement'));
+  assert.deepEqual([...window.document.querySelectorAll('.assistant-mentions button')].map(button=>button.textContent.trim()),['@ Microsoft Edge ×','@ Timetable 1 ×']);
+  assert.ok(window.document.querySelector('.assistant-check input[type="checkbox"]'),'the Edge screenshot stays selectable alongside the Timetable content');
 
   await act(async()=>window.document.querySelector('[aria-label="AI settings"]').click());
   const provider=window.document.querySelector('.assistant-settings select');
@@ -70,7 +75,7 @@ test('the single chat shares @-selected widgets, carries layout context and list
   const visualComposer=window.document.querySelector('#ai-message');
   await act(async()=>setReactValue(visualComposer,'@','HTMLTextAreaElement',1));
   await waitFor(()=>window.document.querySelector('[role="listbox"]'));
-  const appOption=[...window.document.querySelectorAll('[role="option"]')].find(item=>item.textContent.includes('Chrome'));
+  const appOption=[...window.document.querySelectorAll('[role="option"]')].find(item=>item.textContent.includes('Microsoft Edge'));
   assert.ok(appOption,'the app widget is available in the @ picker');
   await act(async()=>appOption.click());
   const visualToggle=window.document.querySelector('.assistant-check input[type="checkbox"]');

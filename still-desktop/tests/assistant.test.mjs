@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createWidget,createWorkspace} from '../src/domain/workspaces.ts';
 import {widgetTypes} from '../src/domain/widgetCatalog.ts';
-import {assistantActionRequest,assistantLayoutRequested,assistantRequestLimitError,assistantTrayItems,unsupportedAssistantRequest,extractAssistantTimerSeconds,resolveDirectAssistantActions,addFocusForAssistantTimer,settleAssistantConfirmation,assistantKeyError,assistantWorkspaceContext,preferredModel,widgetContext,layoutContext,layoutFingerprint,parseAssistantReply,validateAssistantActionIntent,validateAssistantActions,applyAssistantWidgetActions,validateLayout,applyLayoutPlan,prepareAssistantHistory,assistantAddedWidgetReceipt,safeAssistantReceipt,MAX_ASSISTANT_BATCH,MAX_ASSISTANT_WIDGETS} from '../src/domain/assistant.ts';
+import {assistantActionRequest,assistantLayoutRequested,assistantRequestLimitError,assistantTrayItems,unsupportedAssistantRequest,extractAssistantTimerSeconds,resolveDirectAssistantActions,resolveAcceptedNotesOffer,addFocusForAssistantTimer,settleAssistantConfirmation,assistantKeyError,assistantWorkspaceContext,preferredModel,widgetContext,layoutContext,layoutFingerprint,parseAssistantReply,validateAssistantActionIntent,validateAssistantActions,applyAssistantWidgetActions,validateLayout,applyLayoutPlan,prepareAssistantHistory,assistantAddedWidgetReceipt,safeAssistantReceipt,MAX_ASSISTANT_BATCH,MAX_ASSISTANT_WIDGETS} from '../src/domain/assistant.ts';
 
 function fixture(){
   const workspace=createWorkspace('Study',[]),note=createWidget('notes'),timer=createWidget('focus');
@@ -10,21 +10,46 @@ function fixture(){
   const items=workspace.widgets.map(w=>({id:w.id,...w.placement}));
   return {workspace,items};
 }
+test('accepting an offer to create a Notes widget adds the exact previous user text locally',()=>{
+  const {workspace}=fixture(),messages=[{role:'user',text:'I love chicken'},{role:'model',text:'I cannot add text to a Group widget. Would you like me to add a new Notes widget with that text instead?'}];
+  const accepted=resolveAcceptedNotesOffer('yes',messages);
+  assert.deepEqual(accepted,{action:{type:'add_widget',ids:['notes'],text:'I love chicken'},intent:'Add a Notes widget with the previous message text.'});
+  assert.equal(resolveAcceptedNotesOffer('yes',[{role:'model',text:'Would you like to arrange the widgets?'}]),null);
+  assert.equal(resolveAcceptedNotesOffer('tell me more',messages),null);
+  validateAssistantActions(workspace,[accepted.action]);
+  validateAssistantActionIntent(accepted.intent,workspace,[accepted.action]);
+  assert.equal(applyAssistantWidgetActions(workspace,[accepted.action],900,700).widgets.at(-1).text,'I love chicken');
+});
 test('sharing a selected widget omits grants, URLs, bookmarks, and unrelated content',()=>{
   const note=createWidget('notes');note.text='Only this note';note.fileKey='secret-grant';note.url='https://example.org/private';
   assert.deepEqual(widgetContext(note),{type:'notes',title:'Notes 1',text:'Only this note'});
   const app=createWidget('apps');app.appKey='secret-app';assert.ok(!JSON.stringify(widgetContext(app)).includes('secret-app'));
   const {workspace}=fixture();workspace.widgets[0].text='private note';assert.ok(!JSON.stringify(layoutContext(workspace,900,700)).includes('private note'));
 });
-test('workspace context always exposes layout metadata and reads only @-selected widgets',()=>{
+test('workspace context exposes current widget data; @ only marks quick selections',()=>{
   const {workspace}=fixture(),note=workspace.widgets[0],timer=workspace.widgets[1];note.text='private note';timer.remaining=88;
   const context=assistantWorkspaceContext(workspace,900,700,[note.id]);
   assert.equal(context.canvasAndWidgets.widgets.length,2);
-  assert.deepEqual(context.selectedWidgets,[widgetContext(note)]);
-  assert.equal(JSON.stringify(context.selectedWidgets).includes('private note'),true);
-  assert.ok(!JSON.stringify(context.selectedWidgets).includes(String(timer.remaining)));
-  assert.deepEqual(assistantWorkspaceContext(workspace,900,700,[note.id,note.id]).selectedWidgets,[widgetContext(note)]);
-  assert.equal(assistantWorkspaceContext(workspace,900,700,workspace.widgets.map(widget=>widget.id)).selectedWidgets.length,2);
+  assert.deepEqual(context.widgetData,[{id:note.id,...widgetContext(note),quickSelected:true},{id:timer.id,...widgetContext(timer),quickSelected:false}]);
+  assert.equal(JSON.stringify(context.widgetData).includes('private note'),true);
+  assert.ok(JSON.stringify(context.widgetData).includes(String(timer.remaining)));
+  assert.equal(context.capabilities.contentEditingRequiresWidgetSelection,false);
+  assert.equal(assistantWorkspaceContext(workspace,900,700,[note.id,note.id]).widgetData.filter(item=>item.quickSelected).length,1);
+  assert.equal(assistantWorkspaceContext(workspace,900,700,workspace.widgets.map(widget=>widget.id)).widgetData.filter(item=>item.quickSelected).length,2);
+});
+test('large workspace context keeps the @-pointed data within the request budget',()=>{
+  const {workspace}=fixture(),notes=Array.from({length:8},()=>{const note=createWidget('notes');note.text='n'.repeat(12000);return note;});
+  workspace.widgets=notes;
+  const context=assistantWorkspaceContext(workspace,900,700,[notes.at(-1).id]);
+  assert.ok(JSON.stringify(context).length<=60000);
+  assert.equal(context.widgetData.find(item=>item.id===notes.at(-1).id).text,'n'.repeat(12000));
+  assert.ok(context.widgetData.some(item=>item.contentOmitted),'less relevant note bodies are trimmed when the provider context budget is tight');
+});
+test('widget content edits work from workspace data without an @ selection',()=>{
+  const {workspace}=fixture(),note=workspace.widgets[0],action={type:'edit_widget',ids:[note.id],text:'Updated without an explicit selection'};
+  validateAssistantActions(workspace,[action]);
+  assert.doesNotThrow(()=>validateAssistantActionIntent('edit the Notes widget',workspace,[action]));
+  assert.equal(applyAssistantWidgetActions(workspace,[action],900,700).widgets[0].text,action.text);
 });
 test('assistant receives only safe saved tray names and IDs and opens the actual selected items',()=>{
   const {workspace}=fixture(),presets=[{id:'preset-1',type:'notes',name:'Lecture notes'}],groups=[{id:'group-1',name:'Study set',shortcuts:[],widgets:[],expanded:false}];
@@ -193,6 +218,16 @@ test('the model receives the full creation catalogue and can create named Notes 
   assert.throws(()=>parseAssistantReply({reply:'Ready',layout:[],actions:[{type:'add_widget',ids:['apps'],text:'unexpected'}]}),/only for Notes/);
   assert.throws(()=>applyAssistantWidgetActions(workspace,[{type:'add_widget',ids:['notes'],text:'x'.repeat(12001)}],900,700),/12,000/);
   assert.throws(()=>parseAssistantReply({reply:'Ready',layout:[],actions:[{type:'minimize',ids:['notes-1'],title:'unexpected'}]}),/names/);
+});
+test('named Notes requests with explicit writing instructions resolve without model-generated workspace actions',()=>{
+  const workspace=createWorkspace('Empty',[]),prompt='can make note named chem11, and write notes about kinetics and equilllibrium';
+  const actions=resolveDirectAssistantActions(prompt,workspace,[]);
+  assert.deepEqual(actions,[{type:'add_widget',ids:['notes'],title:'chem11',text:'kinetics and equilllibrium'}]);
+  validateAssistantActions(workspace,actions);
+  validateAssistantActionIntent(prompt,workspace,actions);
+  const next=applyAssistantWidgetActions(workspace,actions,900,700);
+  assert.equal(next.widgets[0].title,'chem11');
+  assert.equal(next.widgets[0].text,'kinetics and equilllibrium');
 });
 test('explicit all-widget tray requests resolve to real workspace IDs without relying on the model',()=>{
   const {workspace}=fixture();

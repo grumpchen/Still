@@ -16,7 +16,7 @@ const app=(id,{open=true,update=()=>{}}={})=>createElement(AppsWidget,{widget:{i
 let AppsWidget;
 
 test('rendered AppsWidgets hide only lower native content under a higher card and recover without reattaching',async()=>{
- const dom=new JSDOM('<div class="workspace-canvas"><div class="canvas-viewport" data-test="viewport"><div class="canvas-card" data-test="app-a" style="z-index:1"><div class="widget-content"><div id="root-a"></div><div class="widget-resize"></div></div></div><div class="canvas-card" data-test="app-b" style="z-index:2"><div class="widget-content"><div id="root-b"></div><div class="widget-resize"></div></div></div></div></div>',{url:'http://localhost',pretendToBeVisual:true});
+ const dom=new JSDOM('<div class="canvas-view-shell"><div class="canvas-viewport" data-test="viewport"><div class="workspace-canvas"><div class="canvas-card" data-test="app-a" style="z-index:1"><div class="widget-content"><div id="root-a"></div><div class="widget-resize"></div></div></div><div class="canvas-card" data-test="app-b" style="z-index:2"><div class="widget-content"><div id="root-b"></div><div class="widget-resize"></div></div></div></div></div></div>',{url:'http://localhost',pretendToBeVisual:true});
  const oldGlobals=new Map();
  for(const key of ['window','document','navigator','HTMLElement','Element','Node','MutationObserver','ResizeObserver','requestAnimationFrame','cancelAnimationFrame','getComputedStyle','isTauri','IS_REACT_ACT_ENVIRONMENT'])oldGlobals.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
  const calls=[];let rootA,rootB,appARect=rect(100,100,620,500),appBRect=rect(300,220,620,500);
@@ -24,6 +24,7 @@ test('rendered AppsWidgets hide only lower native content under a higher card an
   const {window}=dom;setGlobal('window',window);setGlobal('document',window.document);setGlobal('navigator',window.navigator);setGlobal('HTMLElement',window.HTMLElement);setGlobal('Element',window.Element);setGlobal('Node',window.Node);setGlobal('MutationObserver',window.MutationObserver);setGlobal('ResizeObserver',class{observe(){}disconnect(){}});setGlobal('requestAnimationFrame',callback=>setTimeout(()=>callback(Date.now()),0));setGlobal('cancelAnimationFrame',clearTimeout);setGlobal('getComputedStyle',window.getComputedStyle.bind(window));setGlobal('isTauri',true);setGlobal('IS_REACT_ACT_ENVIRONMENT',true);
   window.HTMLElement.prototype.getBoundingClientRect=function(){
    if(this.dataset.test==='viewport')return rect(100,0,900,700);
+   if(this.hasAttribute('data-app-panel-occlusion'))return rect(420,300,180,110);
    const card=this.closest('.canvas-card'),id=card?.dataset.test;
    if(this.dataset.test==='app-a')return appARect;
    if(this.dataset.test==='app-b')return appBRect;
@@ -53,6 +54,15 @@ test('rendered AppsWidgets hide only lower native content under a higher card an
   assert.equal(await moveLower(rect(100,100,620,500)),true,'native app pixels reappear when the content clears the sidebar edge');
   assert.equal(await moveLower(rect(500,100,620,500)),false,'native app pixels hide when the content crosses the opposite viewport edge');
   assert.equal(await moveLower(rect(100,100,620,500)),true,'native app pixels reappear when both horizontal edges are clear');
+  appBRect=rect(300,220,620,500);const higher=window.document.querySelector('[data-test="app-b"]'),beforeMove=presentations('app-b').length;higher.style.left='300px';higher.style.top='220px';higher.style.setProperty('--test-revision','layout');
+  await waitFor(()=>presentations('app-b').length>beforeMove);
+  const layoutPanel=window.document.createElement('section');layoutPanel.setAttribute('data-app-panel-occlusion','');window.document.querySelector('.canvas-view-shell').append(layoutPanel);
+  await waitFor(()=>presentations('app-b').at(-1).args.occlusions?.length===1);
+  assert.equal(presentations('app-b').at(-1).args.visible,true,'the app stays visible beside the layout panel while Windows leaves a native cutout for it');
+  assert.deepEqual(presentations('app-b').at(-1).args.occlusions,[{x:420,y:300,width:180,height:110}]);
+  const beforeRemove=presentations('app-b').length;layoutPanel.remove();await waitFor(()=>presentations('app-b').length>beforeRemove);
+  assert.deepEqual(presentations('app-b').at(-1).args.occlusions,[],'removing a layout panel removes its native cutout');
+  assert.equal(presentations('app-b').at(-1).args.visible,true,'removing the layout panel restores the complete app region');
   assert.deepEqual(calls.filter(call=>call.command==='app_panel_open').map(call=>call.args.id).sort(),['app-a','app-b'],'visibility changes do not attach another window');
   assert.equal(calls.filter(call=>call.command==='app_panel_release').length,0,'visibility changes do not release either attached window');
  }finally{

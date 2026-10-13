@@ -1,13 +1,14 @@
 import {widgetCatalog,type WidgetType} from './widgetCatalog.ts';
 import type {WidgetInstance} from './workspaces.ts';
+import {checkedFileNotes} from './fileNotes.ts';
 export type FileKind='pdf'|'image'|'media'|'document';
 export type PresetType=Exclude<WidgetType,'group'>;
 export type GenericPresetType=Exclude<PresetType,'files'|'apps'>;
 export interface PresetScheduleEntry {id:string;day:number;time:string;title:string;location:string}
-export type WidgetPreset={id:string;type:'files';name:string;resourceKind?:'folder';folderSourceId:string;folderName:string;remaining?:number;clockPluginEnabled?:boolean}
- |{id:string;type:'files';name:string;resourceKind:'document';fileSourceId:string;fileName:string;fileKind:FileKind;remaining?:number;clockPluginEnabled?:boolean}
+export type WidgetPreset={id:string;type:'files';name:string;resourceKind?:'folder';folderSourceId:string;folderName:string;fileNotes?:Record<string,string>;remaining?:number;clockPluginEnabled?:boolean}
+ |{id:string;type:'files';name:string;resourceKind:'document';fileSourceId:string;fileName:string;fileKind:FileKind;fileNotes?:Record<string,string>;remaining?:number;clockPluginEnabled?:boolean}
  |{id:string;type:'apps';name:string;appSourceId:string;appName:string;iconData?:string;remaining?:number;clockPluginEnabled?:boolean}
- |{id:string;type:GenericPresetType;name:string;text?:string;remaining?:number;schedule?:PresetScheduleEntry[];pluginControls?:string[];clockPluginEnabled?:boolean};
+ |{id:string;type:GenericPresetType;name:string;text?:string;noteFont?:'sans'|'serif'|'mono';noteFontSize?:number;remaining?:number;schedule?:PresetScheduleEntry[];pluginControls?:string[];clockPluginEnabled?:boolean};
 export function fileKind(value:unknown):value is FileKind{return value==='pdf'||value==='image'||value==='media'||value==='document'}
 export function fileName(value:unknown):value is string{return typeof value==='string'&&value.length>0&&value.length<=260&&!/[\\/\x00-\x1f]/.test(value)&&value!=='.'&&value!=='..'}
 function checkedIconData(value:unknown):string|undefined{return typeof value==='string'&&value.length<=32*1024&&/^data:image\/png;base64,iVBORw0KGgo[A-Za-z0-9+/]*={0,2}$/.test(value)?value:undefined}
@@ -28,11 +29,11 @@ export function widgetPreset(value:WidgetPreset):WidgetPreset {
   if(value.resourceKind==='document'){
    if(typeof value.fileSourceId!=='string'||!/^[a-zA-Z0-9-]{1,80}$/.test(value.fileSourceId))throw new Error('Choose a file for this saved shortcut.');
    if(!fileName(value.fileName)||!fileKind(value.fileKind))throw new Error('Use a supported file shortcut.');
-   return{id:value.id,type:'files',resourceKind:'document',name,fileSourceId:value.fileSourceId,fileName:value.fileName,fileKind:value.fileKind,...remaining,...(clockPluginEnabled?{clockPluginEnabled}:{})};
+   return{id:value.id,type:'files',resourceKind:'document',name,fileSourceId:value.fileSourceId,fileName:value.fileName,fileKind:value.fileKind,...(value.fileNotes?{fileNotes:checkedFileNotes(value.fileNotes)}:{}),...remaining,...(clockPluginEnabled?{clockPluginEnabled}:{})};
   }
   if(value.resourceKind!==undefined&&value.resourceKind!=='folder')throw new Error('Use a folder or file shortcut.');
   if(typeof value.folderSourceId!=='string'||!/^[a-zA-Z0-9-]{1,80}$/.test(value.folderSourceId))throw new Error('Choose a folder for this saved Files widget.');
-  return{id:value.id,type:'files',...(value.resourceKind==='folder'?{resourceKind:'folder' as const}:{}),name,folderSourceId:value.folderSourceId,folderName:typeof value.folderName==='string'?value.folderName.slice(0,200):'Selected folder',...remaining,...(clockPluginEnabled?{clockPluginEnabled}:{})};
+  return{id:value.id,type:'files',...(value.resourceKind==='folder'?{resourceKind:'folder' as const}:{}),name,folderSourceId:value.folderSourceId,folderName:typeof value.folderName==='string'?value.folderName.slice(0,200):'Selected folder',...(value.fileNotes?{fileNotes:checkedFileNotes(value.fileNotes)}:{}),...remaining,...(clockPluginEnabled?{clockPluginEnabled}:{})};
  }
  if(value.type==='apps'){
   if(typeof value.appSourceId!=='string'||!/^[a-zA-Z0-9-]{1,80}$/.test(value.appSourceId)||!fileName(value.appName))throw new Error('Choose an application shortcut before saving this Apps widget.');
@@ -41,7 +42,9 @@ export function widgetPreset(value:WidgetPreset):WidgetPreset {
  }
  if(value.type==='notes'||value.type==='ai'){
   if(value.text!==undefined&&(typeof value.text!=='string'||value.text.length>2*1024*1024))throw new Error('Use valid saved text.');
-  return{id:value.id,type:value.type,name,...(value.text===undefined?{}:{text:value.text}),...remaining,...(clockPluginEnabled?{clockPluginEnabled}:{})};
+  const noteFont=value.type==='notes'&&(value.noteFont==='serif'||value.noteFont==='mono'||value.noteFont==='sans')?value.noteFont:undefined;
+  const noteFontSize=value.type==='notes'&&typeof value.noteFontSize==='number'&&Number.isFinite(value.noteFontSize)?Math.max(12,Math.min(28,Math.round(value.noteFontSize/2)*2)):undefined;
+  return{id:value.id,type:value.type,name,...(value.text===undefined?{}:{text:value.text}),...(noteFont?{noteFont}:{}),...(noteFontSize?{noteFontSize}:{}),...remaining,...(clockPluginEnabled?{clockPluginEnabled}:{})};
  }
  if(value.type==='focus'){
   return{id:value.id,type:value.type,name,...remaining,...(clockPluginEnabled?{clockPluginEnabled}:{})};
@@ -55,8 +58,8 @@ export function presetFromWidget(widget:WidgetInstance):WidgetPreset {
  const id=crypto.randomUUID(),name=widget.title.trim()||widgetCatalog[widget.type].name;
  const remaining=widget.end?Math.max(0,Math.ceil((widget.end-Date.now())/1000)):widget.remaining;
  if(widget.type==='files'){
-  if(widget.fileKey&&widget.fileName&&widget.fileKind)return widgetPreset({id,type:'files',resourceKind:'document',name,fileSourceId:widget.fileKey,fileName:widget.fileName,fileKind:widget.fileKind,...(widget.clockPluginEnabled?{remaining}:{}),clockPluginEnabled:widget.clockPluginEnabled});
-  if(widget.folderKey||widget.folderName)return widgetPreset({id,type:'files',name,folderSourceId:widget.folderKey||widget.id,folderName:widget.folderName||'Selected folder',...(widget.clockPluginEnabled?{remaining}:{}),clockPluginEnabled:widget.clockPluginEnabled});
+  if(widget.fileKey&&widget.fileName&&widget.fileKind)return widgetPreset({id,type:'files',resourceKind:'document',name,fileSourceId:widget.fileKey,fileName:widget.fileName,fileKind:widget.fileKind,fileNotes:widget.fileNotes,...(widget.clockPluginEnabled?{remaining}:{}),clockPluginEnabled:widget.clockPluginEnabled});
+  if(widget.folderKey||widget.folderName)return widgetPreset({id,type:'files',name,folderSourceId:widget.folderKey||widget.id,folderName:widget.folderName||'Selected folder',fileNotes:widget.fileNotes,...(widget.clockPluginEnabled?{remaining}:{}),clockPluginEnabled:widget.clockPluginEnabled});
   throw new Error('Choose a folder or file before saving this Files widget.');
  }
  if(widget.type==='apps'){
@@ -67,6 +70,7 @@ export function presetFromWidget(widget:WidgetInstance):WidgetPreset {
  return widgetPreset({id,type:widget.type,name,
   ...(widget.clockPluginEnabled?{clockPluginEnabled:true}:{}),
   ...(widget.type==='notes'||widget.type==='ai'?{text:widget.text}:{}),
+  ...(widget.type==='notes'?{noteFont:widget.noteFont,noteFontSize:widget.noteFontSize}:{}),
   ...(widget.type==='focus'||widget.clockPluginEnabled?{remaining}:{}),
   ...(widget.type==='timetable'?{schedule:widget.schedule}:{}),
   ...(widget.type==='tagStatus'?{pluginControls:widget.pluginControls}:{})});

@@ -37,16 +37,12 @@ export function assignSnapZone(layout:SnapLayout,assigned:SnapAssignments,widget
 export interface SnapWidget {id:string;type:WidgetType;placement:Placement;minimized?:boolean;groupCollapsed?:boolean}
 export interface SnapCascadeResult {assignments:SnapAssignments;placements:Record<string,Placement>;overflowIds:string[]}
 const overlaps=(a:Placement,b:Placement)=>a.x<b.x+b.width&&a.x+a.width>b.x&&a.y<b.y+b.height&&a.y+a.height>b.y;
-function availableZone(layout:SnapLayout,assigned:SnapAssignments,after:number):number{
- for(let offset=1;offset<=layout.zones.length;offset++){const index=(after+offset)%layout.zones.length;if(!assigned[index])return index}
- return -1;
-}
-function overflowPlacement(widget:SnapWidget,widgets:SnapWidget[],positions:Record<string,Placement>,viewport:{width:number;height:number},scroll:{x:number;y:number},workspace:{width:number;height:number},stackIndex:number):Placement|null{
+function overflowPlacement(widget:SnapWidget,widgets:SnapWidget[],positions:Record<string,Placement>,reserved:Placement[],viewport:{width:number;height:number},scroll:{x:number;y:number},workspace:{width:number;height:number},stackIndex:number):Placement|null{
  const width=Math.min(widget.placement.width,Math.max(1,workspace.width-20)),height=Math.min(widget.placement.height,Math.max(1,workspace.height-20));
  const left=Math.max(0,Math.ceil(scroll.x+6)),top=Math.max(0,Math.ceil(scroll.y+6));
  const right=Math.min(workspace.width-width-14,Math.floor(scroll.x+viewport.width-width-14));
  const bottom=Math.min(workspace.height-height-14,Math.floor(scroll.y+viewport.height-height-14));
- const blocked=(x:number,y:number)=>widgets.some(other=>other.id!==widget.id&&!other.minimized&&!(other.type==='group'&&other.groupCollapsed)&&overlaps({x,y,width,height},positions[other.id]));
+ const blocked=(x:number,y:number)=>{const candidate={x,y,width,height};return reserved.some(area=>overlaps(candidate,area))||widgets.some(other=>other.id!==widget.id&&overlaps(candidate,positions[other.id]))};
  if(right>=left&&bottom>=top){
   // First use a genuinely empty spot, but keep it on the currently visible page.
   for(let y=top;y<=bottom;y+=24){for(let x=left;x<=right;x+=24){if(!blocked(x,y))return{x,y,width,height}}}
@@ -63,28 +59,25 @@ function overflowPlacement(widget:SnapWidget,widgets:SnapWidget[],positions:Reco
  return null;
 }
 
-/** Place a widget in a snap zone and cascade any cards occupying the destination
- * through the remaining zones. Extra cards stay within the currently visible
- * page, using free space first and a raised, staggered stack when the grid fills it. */
+/** Place the chosen widget in a snap zone and move every blocker into visible
+ * free canvas space. Blockers are left unassigned so Snap Assist can offer them
+ * individually instead of silently filling the rest of the layout. */
 export function cascadeSnapZone(layout:SnapLayout,assigned:SnapAssignments,widgets:SnapWidget[],widgetId:string,zoneIndex:number,viewport:{width:number;height:number},scroll={x:0,y:0},workspace={width:Math.ceil(viewport.width*1.5),height:viewport.height}):SnapCascadeResult{
  if(!layout.zones[zoneIndex])throw new RangeError('Unknown snap layout zone.');
  const selected=widgets.find(widget=>widget.id===widgetId);if(!selected||selected.minimized||selected.type==='group'&&selected.groupCollapsed)return{assignments:{...assigned},placements:Object.fromEntries(widgets.map(widget=>[widget.id,{...widget.placement}])),overflowIds:[]};
- const eligible=widgets.filter(widget=>!widget.minimized&&!(widget.type==='group'&&widget.groupCollapsed));
- const ids=new Set(eligible.map(widget=>widget.id)),nextAssignments=Object.fromEntries(Object.entries(assigned).filter(([index,id])=>layout.zones[Number(index)]&&ids.has(id))) as SnapAssignments;
+ const selectable=widgets.filter(widget=>!widget.minimized&&!(widget.type==='group'&&widget.groupCollapsed));
+ const ids=new Set(selectable.map(widget=>widget.id)),nextAssignments=Object.fromEntries(Object.entries(assigned).filter(([index,id])=>layout.zones[Number(index)]&&ids.has(id))) as SnapAssignments;
  for(const [index,id]of Object.entries(nextAssignments))if(id===widgetId)delete nextAssignments[Number(index)];
  const positions=Object.fromEntries(widgets.map(widget=>[widget.id,{...widget.placement}]));
  const target=snapPlacement(selected.type,layout,zoneIndex,viewport,scroll);positions[widgetId]=target;
- const queue:SnapWidget[]=[],queued=new Set<string>(),completed=new Set([widgetId]),overflowIds:string[]=[];
- const enqueue=(widget:SnapWidget)=>{if(widget.id===widgetId||queued.has(widget.id)||completed.has(widget.id))return;for(const [index,id]of Object.entries(nextAssignments))if(id===widget.id)delete nextAssignments[Number(index)];queued.add(widget.id);queue.push(widget)};
- for(const other of eligible){if(other.id!==widgetId&&(nextAssignments[zoneIndex]===other.id||overlaps(other.placement,target)))enqueue(other)}
- for(const [index,id]of Object.entries(nextAssignments))if(Number(index)===zoneIndex&&id!==widgetId){const occupant=eligible.find(widget=>widget.id===id);if(occupant)enqueue(occupant)}
+ // Snap labels sit at the top-left of each highlighted region. Treat their
+ // visible footprint as occupied so displaced cards never land on the prompt.
+ const promptAreas=layout.zones.map(zone=>({x:Math.round(scroll.x+zone.x*viewport.width)+10,y:Math.round(scroll.y+zone.y*viewport.height)+10,width:Math.max(1,Math.min(180,Math.floor(zone.width*viewport.width)-16)),height:42}));
+ const overflowIds:string[]=[];
+ const blockerIds=new Set(widgets.filter(other=>other.id!==widgetId&&overlaps(positions[other.id],target)).map(other=>other.id));
+ for(const [index,id]of Object.entries(nextAssignments))if(Number(index)===zoneIndex&&id!==widgetId)blockerIds.add(id);
+ for(const [index,id]of Object.entries(nextAssignments))if(id===widgetId||blockerIds.has(id))delete nextAssignments[Number(index)];
  nextAssignments[zoneIndex]=widgetId;
- while(queue.length){const widget=queue.shift()!;const next=availableZone(layout,nextAssignments,zoneIndex);
-  if(next<0){const overflow=overflowPlacement(widget,widgets,positions,viewport,scroll,workspace,overflowIds.length);if(overflow){positions[widget.id]=overflow;overflowIds.push(widget.id)}completed.add(widget.id);continue}
-  const destination=snapPlacement(widget.type,layout,next,viewport,scroll);positions[widget.id]=destination;
-  for(const other of eligible){if(other.id!==widget.id&&other.id!==widgetId&&overlaps(positions[other.id],destination))enqueue(other)}
-  for(const [index,id]of Object.entries(nextAssignments))if(Number(index)===next&&id!==widget.id){const occupant=eligible.find(item=>item.id===id);if(occupant)enqueue(occupant)}
-  nextAssignments[next]=widget.id;completed.add(widget.id);
- }
+ for(const id of blockerIds){const blocker=widgets.find(other=>other.id===id);if(!blocker)continue;const free=overflowPlacement(blocker,widgets,positions,promptAreas,viewport,scroll,workspace,overflowIds.length);if(free){positions[id]=free;overflowIds.push(id)}}
  return{assignments:nextAssignments,placements:positions,overflowIds};
 }

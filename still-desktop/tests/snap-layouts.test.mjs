@@ -24,15 +24,29 @@ test('symmetric layouts give every zone equal widget dimensions while Focus-left
  assert.equal(large.width,small.width);assert.equal(large.height,small.height*2+12,'Focus-left keeps its larger left zone and two half-height right zones');
 });
 
-test('placing into an occupied zone cascades the blocker to the next open zone',()=>{
+test('placing into an occupied zone moves the blocker to visible empty canvas space for Snap Assist',()=>{
  const layout=snapLayout('halves'),widgets=[
   {id:'notes',type:'notes',placement:{x:20,y:20,width:400,height:300}},
   {id:'apps',type:'apps',placement:{x:80,y:80,width:400,height:300}},
  ];
- const result=cascadeSnapZone(layout,{0:'apps'},widgets,'notes',0,{width:1200,height:800});
- assert.deepEqual(result.assignments,{0:'notes',1:'apps'});
+ const result=cascadeSnapZone(layout,{0:'apps'},widgets,'notes',0,{width:1200,height:800},{x:0,y:0},{width:1200,height:800});
+ assert.deepEqual(result.assignments,{0:'notes'});
  assert.deepEqual(result.placements.notes,snapPlacement('notes',layout,0,{width:1200,height:800}));
- assert.deepEqual(result.placements.apps,snapPlacement('apps',layout,1,{width:1200,height:800}));
+ assert.notDeepEqual(result.placements.apps,snapPlacement('apps',layout,1,{width:1200,height:800}),'blockers must not be auto-arranged into another layout zone');
+ assert.ok(result.placements.apps.x+result.placements.apps.width<=1200&&result.placements.apps.y+result.placements.apps.height<=800,'the moved blocker stays on the current visible page');
+ assert.equal(overlap(result.placements.notes,result.placements.apps),false,'the blocker has a genuinely empty visible position');
+ assert.equal(layout.zones.some(zone=>overlap(result.placements.apps,{x:zone.x*1200+10,y:zone.y*800+10,width:180,height:42})),false,'the moved blocker never covers a Drop a widget here zone label');
+ assert.deepEqual(result.overflowIds,['apps']);
+});
+
+test('minimized widgets that block a chosen zone move into visible space as compact cards',()=>{
+ const layout=snapLayout('halves'),size={width:1200,height:800},minimized={id:'notes',type:'notes',minimized:true,placement:{x:24,y:24,width:136,height:42}},apps={id:'apps',type:'apps',placement:{x:20,y:20,width:400,height:300}};
+ const result=cascadeSnapZone(layout,{},[minimized,apps],'apps',0,size,{x:0,y:0},{width:1200,height:800});
+ assert.deepEqual(result.assignments,{0:'apps'});
+ assert.equal(overlap(result.placements.apps,result.placements.notes),false,'a minimized card is moved away from the chosen zone');
+ assert.equal(result.placements.notes.width,minimized.placement.width,'the minimized card stays compact');
+ assert.equal(result.placements.notes.height,minimized.placement.height,'the minimized card stays compact');
+ assert.deepEqual(result.overflowIds,['notes']);
 });
 
 test('when all snap zones are occupied, overflow stays inside the currently visible scrolled page',()=>{

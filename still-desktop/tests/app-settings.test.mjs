@@ -24,6 +24,7 @@ test('app behavior settings default to automatic shortcut saving and preserve th
  assert.equal(state.screenshotPluginMode,'global');
  assert.deepEqual(state.screenshotPluginColors,[]);
  assert.deepEqual(state.screenshotPluginColorOverrides,{});
+ assert.equal(state.followWidgetToWorkspace,true);
 });
 
 test('click-through preferences are optional General settings with transparent-background gating and a restore shortcut',()=>{
@@ -36,6 +37,15 @@ test('click-through preferences are optional General settings with transparent-b
  assert.match(app,/shortcutAction/);
  assert.match(windowInput,/window_input_update_regions/);
  assert.match(app,/interactiveHitRegions/);
+});
+
+test('moving a widget between workspaces follows it when enabled and can be disabled in General settings',()=>{
+ assert.match(general,/Follow a widget to its workspace/);
+ assert.match(app,/activeId:s\.followWidgetToWorkspace\?destinationId:s\.activeId/);
+ const state=createInitialState();state.followWidgetToWorkspace=false;
+ assert.equal(parseState(JSON.stringify(state)).followWidgetToWorkspace,false);
+ delete state.followWidgetToWorkspace;
+ assert.equal(parseState(JSON.stringify(state)).followWidgetToWorkspace,true,'existing saves follow moved widgets by default');
 });
 
 test('app behavior settings persist and invalid shutdown values safely fall back',()=>{

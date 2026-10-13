@@ -62,6 +62,15 @@ test('Apps hides only its native content under a higher card and restores it whe
  assert.equal(appPanelGeometry(rect(140,200,800,500),rect(170,180,1000,620),true,true).visible,false);
  assert.equal(appPanelGeometry(rect(-900,200,800,500),rect(170,180,1000,620),true,false).visible,false);
 });
+test('Apps leaves a native cutout for layout controls without hiding the rest of the attached app',()=>{
+ const panel=rect(0,0,800,600),content=rect(0,0,800,600),layoutPanel=rect(8,8,300,120);
+ const result=appPanelGeometry(panel,content,true,false,null,[],800,0,[layoutPanel]);
+ assert.equal(result.visible,true,'layout controls reserve a hole but do not hide the attached app');
+ assert.deepEqual(result.occlusions,[{x:8,y:8,width:300,height:120}]);
+ const blocked=appPanelGeometry(panel,content,true,false,null,[rect(20,20,80,80)],800,0,[layoutPanel]);
+ assert.equal(blocked.visible,false,'normal higher-widget overlap still hides the native app');
+ assert.deepEqual(blocked.occlusions,[{x:20,y:20,width:80,height:80},{x:8,y:8,width:300,height:120}]);
+});
 test('app panel geometry preserves the resize grip bounds for native-region exclusion',()=>{
  const result=appPanelGeometry(rect(140,200,800,500),rect(170,180,1000,620),true,false,rect(900,640,32,32));
  assert.deepEqual(result.grip,{x:900,y:640,width:32,height:32});

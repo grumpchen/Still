@@ -3586,6 +3586,7 @@ name = "still-desktop"
 version = "0.20.0"
 dependencies = [
  "arboard",
+ "base64 0.22.1",
  "image",
  "reqwest 0.12.28",
  "serde",

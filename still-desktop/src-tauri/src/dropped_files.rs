@@ -245,6 +245,13 @@ pub async fn document_open(webview: Webview, grants: State<'_, DocumentGrants>, 
 }
 
 #[tauri::command]
+pub async fn document_preview(webview:Webview,grants:State<'_,DocumentGrants>,source_id:String)->Result<crate::files::FilePreview,String>{
+    crate::security::authorize(&webview)?;
+    let target=grants.target(&source_id)?;
+    tauri::async_runtime::spawn_blocking(move||crate::files::read_preview(&target)).await.map_err(|_|"Could not read this file")?
+}
+
+#[tauri::command]
 pub async fn document_choose(app: AppHandle, webview: Webview, grants: State<'_, DocumentGrants>, source_id: Option<String>) -> Result<Option<DropEntry>, String> {
     crate::security::authorize(&webview)?;
     if let Some(id) = &source_id { crate::files::valid_id(id)?; }

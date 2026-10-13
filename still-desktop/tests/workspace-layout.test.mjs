@@ -4,7 +4,7 @@ import {createElement,act,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {JSDOM} from 'jsdom';
 import {mockIPC,clearMocks} from '@tauri-apps/api/mocks';
-import {createWidget} from '../src/domain/workspaces.ts';
+import {createWidget,minimizeWidgetInstance} from '../src/domain/workspaces.ts';
 import {createServer} from 'vite';
 
 const rect=(left,top,width,height)=>({x:left,y:top,left,top,right:left+width,bottom:top+height,width,height,toJSON(){return this}});
@@ -61,11 +61,13 @@ test('a dragged widget snaps to a highlighted zone and Snap Assist places anothe
   const snappedApps=app.currentState.widgets.find(widget=>widget.id==='apps');
   assert.deepEqual([snappedApps.placement.x,snappedApps.placement.width],[6,588]);
   assert.equal(snappedApps.minimized,false);
-  assert.match(app.window.document.querySelector('.snap-assist-heading').textContent,/All areas are filled/);
+  assert.equal(app.currentState.mode,null,'finishing the last zone exits layout mode');
+  assert.equal(app.window.document.querySelector('.canvas-viewport').classList.contains('layout-scroll-locked'),false,'canvas scrolling is restored when the layout is complete');
+  assert.equal(app.window.document.querySelector('[data-snap-zone]'),null,'completed layout highlights are dismissed');
  }finally{await app.cleanup()}
 });
 
-test('dragging into an occupied snap zone moves the blocking widget into the next zone',async()=>{
+test('dragging into an occupied zone leaves the blocker in empty space until the user chooses it in Snap Assist',async()=>{
  const notes=createWidget('notes');notes.id='notes';notes.placement={x:20,y:20,width:400,height:300};
  const apps=createWidget('apps');apps.id='apps';apps.placement={x:80,y:80,width:400,height:300};
  const app=await setup([notes,apps]);
@@ -76,9 +78,51 @@ test('dragging into an occupied snap zone moves the blocking widget into the nex
   await act(async()=>{header.dispatchEvent(app.pointer('pointermove',120,180));await new Promise(resolve=>setTimeout(resolve,10))});
   await act(async()=>header.dispatchEvent(app.pointer('pointerup',120,180)));
   assert.deepEqual([app.currentState.widgets.find(widget=>widget.id==='notes').placement.x,app.currentState.widgets.find(widget=>widget.id==='notes').placement.width],[6,588]);
+  const movedApps=app.currentState.widgets.find(widget=>widget.id==='apps');
+  assert.equal(movedApps.placement.width,400,'displaced widgets keep their original size until selected');
+  assert.notDeepEqual([movedApps.placement.x,movedApps.placement.y,movedApps.placement.width,movedApps.placement.height],[606,6,588,688],'the displaced widget is not auto-arranged into the next layout zone');
+  const snappedNotes=app.currentState.widgets.find(widget=>widget.id==='notes');
+  assert.equal(movedApps.placement.x<snappedNotes.placement.x+snappedNotes.placement.width&&movedApps.placement.x+movedApps.placement.width>snappedNotes.placement.x&&movedApps.placement.y<snappedNotes.placement.y+snappedNotes.placement.height&&movedApps.placement.y+movedApps.placement.height>snappedNotes.placement.y,false,'the blocker moves into empty visible space');
+  assert.equal(app.window.document.querySelector('.snap-assist-widgets button')?.textContent,'Apps','the blocker stays available for the user to choose next');
+  assert.equal(app.currentState.mode,'halves','layout stays active while there is still an unfilled zone');
+  await act(async()=>app.window.document.querySelector('.snap-assist-widgets button').click());
   assert.deepEqual([app.currentState.widgets.find(widget=>widget.id==='apps').placement.x,app.currentState.widgets.find(widget=>widget.id==='apps').placement.width],[606,588]);
-  assert.equal(app.window.document.querySelector('[data-snap-zone="0"]').classList.contains('snap-layout-zone-filled'),true);
-  assert.equal(app.window.document.querySelector('[data-snap-zone="1"]').classList.contains('snap-layout-zone-filled'),true);
+  assert.equal(app.currentState.mode,null,'choosing the final widget exits layout mode');
+  assert.equal(app.window.document.querySelector('.canvas-viewport').classList.contains('layout-scroll-locked'),false,'scrolling resumes after the layout is complete');
+ }finally{await app.cleanup()}
+});
+
+test('a minimized widget remains draggable while layout mode is active',async()=>{
+ const notes=createWidget('notes');notes.id='notes';const minimized=minimizeWidgetInstance(notes,1200,700);minimized.placement={x:20,y:20,width:136,height:42};minimized.restorePlacement={...notes.placement,x:20,y:20};
+ const app=await setup([minimized]);
+ try{
+  await act(async()=>app.window.document.querySelector('[aria-label="Side by side"]').click());
+  const button=app.window.document.querySelector('#widget-notes .widget-minimized-button');
+  await act(async()=>button.dispatchEvent(app.pointer('pointerdown',20,20)));
+  await act(async()=>{button.dispatchEvent(app.pointer('pointermove',140,100));await new Promise(resolve=>setTimeout(resolve,10))});
+  await act(async()=>button.dispatchEvent(app.pointer('pointerup',140,100)));
+  assert.deepEqual([app.currentState.widgets[0].placement.x,app.currentState.widgets[0].placement.y],[140,100]);
+  assert.deepEqual([app.currentState.widgets[0].restorePlacement.x,app.currentState.widgets[0].restorePlacement.y],[140,100]);
+  assert.equal(app.currentState.mode,'halves','moving a minimized card does not consume a layout zone or end layout mode');
+ }finally{await app.cleanup()}
+});
+
+test('layout moves a minimized blocker and keeps its restore position in sync',async()=>{
+ const notes=createWidget('notes');notes.id='notes';const minimized=minimizeWidgetInstance(notes,1200,700);minimized.placement={x:20,y:20,width:136,height:42};
+ const apps=createWidget('apps');apps.id='apps';apps.placement={x:20,y:20,width:400,height:300};
+ const app=await setup([minimized,apps]);
+ try{
+  await act(async()=>app.window.document.querySelector('[aria-label="Side by side"]').click());
+  const header=app.window.document.querySelector('#widget-apps .widget-move');
+  await act(async()=>header.dispatchEvent(app.pointer('pointerdown',20,20)));
+  await act(async()=>{header.dispatchEvent(app.pointer('pointermove',300,300));await new Promise(resolve=>setTimeout(resolve,10))});
+  await act(async()=>header.dispatchEvent(app.pointer('pointerup',300,300)));
+  const moved=app.currentState.widgets.find(widget=>widget.id==='notes'),snapped=app.currentState.widgets.find(widget=>widget.id==='apps');
+  assert.equal(moved.minimized,true);
+  assert.equal(moved.placement.width,136);
+  assert.deepEqual([moved.restorePlacement.x,moved.restorePlacement.y],[moved.placement.x,moved.placement.y],'restoring the widget keeps it at the visible moved location');
+  assert.equal(moved.placement.x<snapped.placement.x+snapped.placement.width&&moved.placement.x+moved.placement.width>snapped.placement.x&&moved.placement.y<snapped.placement.y+snapped.placement.height&&moved.placement.y+moved.placement.height>snapped.placement.y,false,'the compact blocker is placed outside the chosen zone');
+  assert.equal(app.window.document.querySelector('#widget-notes .widget-minimized-button')!==null,true,'the minimized widget remains available to drag');
  }finally{await app.cleanup()}
 });
 
@@ -87,9 +131,12 @@ test('choosing a layout temporarily disables canvas scrolling until layout mode 
  try{
   const viewport=app.window.document.querySelector('.canvas-viewport');
   assert.equal(viewport.classList.contains('layout-scroll-locked'),false);
+  assert.equal(app.window.document.querySelector('.canvas-overview'),null,'the layout picker keeps the map out of the control area');
   await act(async()=>app.window.document.querySelector('[aria-label="Side by side"]').click());
   assert.equal(viewport.classList.contains('layout-scroll-locked'),true);
+  assert.equal(app.window.document.querySelector('.canvas-overview'),null,'the workspace map is hidden so it cannot cover Snap Assist');
   await act(async()=>app.window.document.querySelector('[aria-label="Exit layout mode"]').click());
   assert.equal(viewport.classList.contains('layout-scroll-locked'),false);
+  assert.notEqual(app.window.document.querySelector('.canvas-overview'),null,'the workspace map returns after layout mode closes');
  }finally{await app.cleanup()}
 });

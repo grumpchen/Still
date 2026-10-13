@@ -1,8 +1,9 @@
 use serde::Serialize;
-use std::{collections::HashMap, fs, path::{Component, Path, PathBuf}, sync::Mutex};
+use std::{collections::HashMap, fs, io::Read, path::{Component, Path, PathBuf}, sync::Mutex};
 use tauri::{AppHandle, Manager, State, Webview};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 
 pub struct FolderRoots(Mutex<HashMap<String, PathBuf>>);
 impl FolderRoots {
@@ -29,6 +30,9 @@ impl FolderRoots {
 pub struct FileEntry { name: String, path: String, directory: bool, size: u64, blocked: bool }
 #[derive(Serialize)]
 #[serde(rename_all="camelCase")]
+pub(crate) struct FilePreview { mime_type: String, base64: String }
+#[derive(Serialize)]
+#[serde(rename_all="camelCase")]
 pub struct FolderListing { root_name: String, location: String, entries: Vec<FileEntry>, truncated: bool }
 pub(crate) fn valid_id(id: &str) -> Result<(), String> {
     if id.is_empty() || id.len()>80 || !id.bytes().all(|c| c.is_ascii_alphanumeric()||c==b'-') { return Err("Invalid Files widget".into()); }
@@ -46,6 +50,26 @@ fn resolve(root: &Path, relative: &str) -> Result<PathBuf, String> {
 pub(crate) fn blocked(path: &Path) -> bool {
     matches!(path.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase().as_str(),
         "exe"|"com"|"bat"|"cmd"|"msi"|"ps1"|"psm1"|"vbs"|"vbe"|"js"|"jse"|"wsf"|"wsh"|"scr"|"lnk"|"url"|"reg"|"hta"|"sh"|"app"|"desktop")
+}
+pub(crate) fn read_preview(path:&Path)->Result<FilePreview,String>{
+    const MAX_PREVIEW_BYTES:u64=20*1024*1024;
+    let extension=path.extension().and_then(|value|value.to_str()).unwrap_or("").to_ascii_lowercase();
+    let mime_type=match extension.as_str(){
+        "pdf"=>"application/pdf","txt"|"md"|"csv"|"log"=>"text/plain",
+        "png"=>"image/png","jpg"|"jpeg"=>"image/jpeg","gif"=>"image/gif","webp"=>"image/webp","bmp"=>"image/bmp",
+        "mp4"|"m4v"=>"video/mp4","webm"=>"video/webm","mp3"=>"audio/mpeg","wav"=>"audio/wav","ogg"=>"audio/ogg",
+        _=>return Err("Preview supports PDF, text, common image and audio/video files.".into()),
+    };
+    let metadata=fs::metadata(path).map_err(|_|"This file is no longer available")?;
+    if !metadata.is_file(){return Err("Choose a file to preview.".into())}
+    if metadata.len()>MAX_PREVIEW_BYTES{return Err("This file is larger than the 20 MB preview limit. Open it in your default app instead.".into())}
+    // The file can grow after the metadata check. Keep the actual read bounded too.
+    let mut bytes=Vec::with_capacity(metadata.len() as usize);
+    fs::File::open(path).map_err(|_|"Could not read this file")?.take(MAX_PREVIEW_BYTES+1)
+        .read_to_end(&mut bytes).map_err(|_|"Could not read this file")?;
+    if bytes.len() as u64>MAX_PREVIEW_BYTES{return Err("This file is larger than the 20 MB preview limit. Open it in your default app instead.".into())}
+    if mime_type=="text/plain"&&std::str::from_utf8(&bytes).is_err(){return Err("This text file is not valid UTF-8, so it cannot be previewed.".into())}
+    Ok(FilePreview{mime_type:mime_type.into(),base64:STANDARD.encode(bytes)})
 }
 fn listing(root: &Path, location: &str) -> Result<FolderListing,String> {
     let directory=resolve(root,location)?;
@@ -108,6 +132,13 @@ pub async fn files_open(app: AppHandle, webview: Webview, roots: State<'_,Folder
     if !target.is_file() || blocked(&target) { return Err("Choose a document, image or media file to open".into()); }
     app.opener().open_path(target.to_string_lossy(),None::<&str>).map_err(|e| e.to_string())
 }
+#[tauri::command]
+pub async fn files_preview(webview:Webview,roots:State<'_,FolderRoots>,id:String,path:String)->Result<FilePreview,String>{
+    crate::security::authorize(&webview)?;valid_id(&id)?;
+    let target=resolve(&roots.root(&id)?,&path)?;
+    if blocked(&target){return Err("Programs and shortcuts cannot be previewed.".into())}
+    tauri::async_runtime::spawn_blocking(move||read_preview(&target)).await.map_err(|_|"Could not read this file")?
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -121,6 +152,15 @@ mod tests {
         assert!(result.entries.iter().find(|f|f.name=="launch.CMD").unwrap().blocked);
         assert!(resolve(&root,"../outside.txt").is_err());assert!(resolve(&root,fixture.join("outside.txt").to_str().unwrap()).is_err());
         assert!(resolve(&root,"notes.txt:stream").is_err());assert!(valid_id("../main").is_err());
+        fs::remove_dir_all(fixture).unwrap();
+    }
+    #[test] fn previews_only_allowlisted_types_with_a_bounded_size(){
+        let fixture=std::env::temp_dir().join(format!("still-preview-test-{}-{}",std::process::id(),std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        fs::create_dir_all(&fixture).unwrap();
+        let text=fixture.join("lecture.MD");fs::write(&text,"local lecture notes").unwrap();
+        let preview=read_preview(&text).unwrap();assert_eq!(preview.mime_type,"text/plain");assert_eq!(base64::engine::general_purpose::STANDARD.decode(preview.base64).unwrap(),b"local lecture notes");
+        let html=fixture.join("active.html");fs::write(&html,"<script>alert(1)</script>").unwrap();assert!(read_preview(&html).is_err());
+        let binary=fixture.join("broken.txt");fs::write(&binary,[0xff,0xfe]).unwrap();assert!(read_preview(&binary).is_err());
         fs::remove_dir_all(fixture).unwrap();
     }
     #[test]fn reuses_only_selected_folders_and_keeps_instance_changes_independent(){
