@@ -734,8 +734,9 @@ pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
   assert!(selected_profile_window(51,Some("Google Chrome"),0,&ambiguous,expected,&[]).is_none());
   assert!(selected_profile_window(51,Some("Google Chrome"),52,&closed,expected,&[52]).is_none());
  }
- #[test]fn profile_picker_selection_opens_on_the_desktop_while_other_apps_attach_to_the_panel(){
-  assert_eq!(selected_window_disposition(true),SelectedWindowDisposition::ShowOnDesktop);
+ #[test]fn managed_profile_picker_selection_attaches_to_the_panel(){
+  assert_eq!(selected_window_disposition(true),SelectedWindowDisposition::AttachToPanel,
+   "A profile chosen while opening a managed Apps card must attach to that card");
   assert_eq!(selected_window_disposition(false),SelectedWindowDisposition::AttachToPanel);
  }
  #[test]fn hidden_windows_are_considered_only_for_profile_picker_recovery(){

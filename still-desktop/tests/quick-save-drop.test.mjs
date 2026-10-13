@@ -85,9 +85,10 @@ test('dragging a captured Chrome or Edge Apps widget onto Saved + creates a reus
   const widget=createWidget('apps');widget.title='Google Chrome';widget.appName='Google Chrome';widget.appPanelOpen=true;widget.placement={x:100,y:150,width:360,height:300};
   const updates=[],attachment={hwnd:101,pid:202},props={workspaceId:'workspace',transferWidget(){},setWorkspaceDropTarget(){},openAppsDialog(){},editTray(){throw new Error('Saved + opened the editor instead of quick-saving')},presets:[],openPreset(){},editPreset(){},removePreset(){},renamePreset(){},renameGroup(){},widgets:[widget],groups:[],updateGroup(){},saveToGroup(){},openGroup(){},editGroup(){},removeGroup(){},openGroupWidget(){},update:(id,patch)=>updates.push({id,patch}),add(){},remove(){},begin(){},bringToFront(){},notify(){},obscured:false,openResource(){},openDropped(){},pickApp(){},saveApp(){},appAttachments:{},appAttachmentHandled(){}};
   const {default:WorkspaceCanvas}=await vite.ssrLoadModule('/src/WorkspaceCanvas.tsx');
-  const {appPanel}=await vite.ssrLoadModule('/src/platform/appPanel.ts');const originalPrepare=appPanel.prepare,originalIdentity=appPanel.identity;restorePrepare=()=>{appPanel.prepare=originalPrepare;appPanel.identity=originalIdentity};
+  const {appPanel}=await vite.ssrLoadModule('/src/platform/appPanel.ts');const originalPrepare=appPanel.prepare,originalIdentity=appPanel.identity,originalRelease=appPanel.release;restorePrepare=()=>{appPanel.prepare=originalPrepare;appPanel.identity=originalIdentity;appPanel.release=originalRelease};
   let identifiedWidget;appPanel.identity=async id=>{identifiedWidget=id;return attachment};
   let preparedAttachment;appPanel.prepare=async value=>{preparedAttachment=value;return{sourceId:'app-chrome',name:'Google Chrome',kind:'app',extension:'exe'}};
+  let releases=0;appPanel.release=async()=>{releases++};
   let currentPresets=[],notifications=[];
   function Host(){const [presets,setPresets]=useState([]);currentPresets=presets;return createElement(WorkspaceCanvas,{...props,presets,notify:message=>notifications.push(message),savePresets:items=>setPresets(existing=>upsertSavedPresets(existing,items))})}
   root=createRoot(window.document.querySelector('#root'));await act(async()=>root.render(createElement(Host)));
@@ -100,6 +101,9 @@ test('dragging a captured Chrome or Edge Apps widget onto Saved + creates a reus
   assert.equal(identifiedWidget,widget.id,'the current native manager supplies the identity after the one-time attach handoff is consumed');
   assert.equal(preparedAttachment,attachment,'the shortcut grant is derived from the exact still-attached HWND/PID');
   assert.equal(updates.some(({patch})=>'appKey'in patch),false,'saving does not change appKey and restart the attached HWND');
+  assert.equal(releases,0,'quick-save must not release the attached Chrome HWND');
+  assert.ok(window.document.querySelector('.canvas-card'),'quick-save keeps the existing Apps card on the canvas');
+  assert.equal(widget.appPanelOpen,true,'quick-save keeps the existing panel open');
   assert.deepEqual(notifications,[],'the captured Chrome window is not rejected as an unsaved transient app');
  }finally{
   restorePrepare?.();if(root)await act(async()=>root.unmount());dom.window.close();
