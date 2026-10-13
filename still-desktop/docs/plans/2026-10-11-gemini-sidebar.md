@@ -4,7 +4,7 @@ Still AI is one chat panel available from the sidebar. It supports Gemini and Op
 
 ## Use
 
-1. Open **AI assistant** from the sidebar. Open the settings button, choose Gemini or OpenAI, and connect that provider's API key once for the current Still session. Gemini keys come from Google AI Studio. OpenAI API access requires a separate API key and is billed independently of a ChatGPT subscription.
+1. Open **AI assistant** from the sidebar. Open the settings button, choose Gemini or OpenAI, and connect that provider's API key. Still remembers connected keys in Windows Credential Manager on this device. Gemini keys come from Google AI Studio. OpenAI API access requires a separate API key and is billed independently of a ChatGPT subscription.
 2. Pick an available model in the selector at the bottom of the chat. The choice is remembered locally across workspace changes and restarts.
 3. Chat normally to ask questions or request a layout. Still always sends workspace dimensions, widget names, IDs, geometry and minimum sizes so the assistant can propose a layout. The proposal is validated and shown for review; **Apply layout** changes positions and **Undo layout** restores the previous state.
 4. Type `@` to open a picker containing all workspace widget names. Select one or **All widgets** to share their supported text/metadata with the current message. Repeated `@` mentions can add several widgets. Content is shared only for widgets explicitly selected. Notes and timetables share bounded text/entries; Focus shares timer state; other widgets provide metadata. When exactly one attached app, calculator or Files widget is selected, an optional per-message toggle can include its visible screenshot with Gemini or OpenAI. The selected model must support image input.
@@ -14,10 +14,11 @@ The browser preview exposes the UI but does not send AI requests or accept keys.
 ## Safety and limits
 
 - Tauri uses fixed provider HTTPS endpoints, no redirects, bounded requests/responses, and provider-specific errors. It does not accept arbitrary base URLs.
-- Widget text, names, images and model replies are untrusted data. The assistant cannot execute code, open files/URLs, create/delete widgets or switch workspaces.
+- Widget text, names, images and model replies are untrusted data. The assistant can chat, read explicitly @-selected widget contents, propose/apply a validated layout, create built-in widgets, reopen saved tray items, minimize/restore cards, save reusable shortcuts, and start timers. Saved app shortcuts require confirmation before opening. Clearing the tray or removing all canvas widgets also requires confirmation and can be undone. It cannot execute arbitrary code or operate outside Still.
+- One assistant request can create or open at most 10 items total, and a workspace cannot exceed 100 widget cards through assistant actions. Oversized requests are rejected locally before reaching the model; responses are validated again before any workspace update. A rejected or over-cap batch leaves the workspace unchanged.
 - Layout proposals must include every expanded widget exactly once and pass ID, integer geometry, minimum size, edge, overlap, workspace fingerprint and canvas-size checks before application.
 - Only explicitly @-selected widget content is sent. The complete workspace's positional metadata is sent so arrangement prompts work in the same chat. Attached native windows and file contents are not read except when the user explicitly enables screenshot sharing for the current message and an eligible visible widget.
-- OpenAI model discovery filters the account's available models to chat-capable `gpt-` IDs. Image input availability depends on the selected model. Persistent secure credential storage is not implemented. Keys must be re-entered after Still closes unless supplied through the respective environment variable.
+- OpenAI model discovery filters the account's available models to chat-capable `gpt-` IDs. Image input availability depends on the selected model. Secure credential storage depends on Windows Credential Manager being available on the device.
 
 ## Verification
 
