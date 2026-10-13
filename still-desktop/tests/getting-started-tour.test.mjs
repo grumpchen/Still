@@ -43,3 +43,12 @@ test('first launch opens the tour and General Settings can run it again',async()
  assert.match(app,/modal==='tutorial'[\s\S]*?<GettingStartedTour/);
  assert.match(settings,/Run tutorial again/);
 });
+
+test('tutorial text stays inside its larger dialog at desktop and narrow widths',async()=>{
+ const {readFileSync}=await import('node:fs');
+ const styles=readFileSync(new URL('../src/styles.css',import.meta.url),'utf8');
+ assert.match(styles,/dialog:has\(\.getting-started-tour\)\{width:min\(720px,calc\(100vw - 48px\)\)/);
+ assert.match(styles,/\.getting-started-tour\{width:100%;max-width:100%;min-width:0/);
+ assert.match(styles,/\.tour-page>p:not\(\.tour-eyebrow\)\{[^}]*overflow-wrap:anywhere/);
+ assert.match(styles,/@media\(max-width:520px\)\{dialog:has\(\.getting-started-tour\)\{width:calc\(100vw - 24px\)\}\.getting-started-tour\{width:100%;max-width:100%/);
+});
