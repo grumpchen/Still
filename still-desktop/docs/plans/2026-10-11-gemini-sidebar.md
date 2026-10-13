@@ -11,6 +11,8 @@ Still AI is one chat panel available from the sidebar. It supports Gemini and Op
 5. Use ordinary wording such as **make notes widget**, **build a Focus widget**, or **create Notes named Revision with text about chemistry**. Simple gallery commands run locally; named widgets and generated note text can use the selected AI model. The model receives the full built-in catalogue even when no widgets are open. Vague edit requests are stopped locally and ask what change is wanted; if the model asks a clarification question alongside an action, Still discards that action. Requests outside the local wording rules can offer validated actions for review, and clarifying questions remain normal chat replies.
 6. Still AI can also edit widget names, tag colors, Notes text and Timetable entries using current workspace data; toggle the Clock plugin on eligible widgets; add or remove the built-in Stack and Layout sidebar plugins; and rename the current workspace. Use `@` when you want to quickly identify a specific widget; it is not required for content edits. Layout responses remain proposals with an explicit Apply step.
 
+Standalone greetings, check-ins, thanks and goodbyes are chat-only turns. Any workspace actions or layout proposals accidentally included by the model are ignored for these conversational prompts.
+
 The browser preview exposes the UI but does not send AI requests or accept keys. Native transport requires the trusted main webview; remote child webviews cannot access AI commands. Messages and proposals live in memory for the current workspace session. Switching workspaces clears them; closing/reopening the assistant in the same workspace retains them. No AI requests run automatically.
 
 ## Safety and limits

@@ -55,6 +55,10 @@ export function prepareAssistantHistory(messages:ChatMessage[]):ChatMessage[]{
     text:message.text.trim()?message.text.slice(0,message.role==='model'?6000:8000):message.role==='model'?'No response was recorded for the previous message.':'No message text was recorded.',
   }));
 }
+/** Greetings and other standalone social turns are chat only, even if the model invents workspace operations. */
+export function assistantIsConversationalOnly(prompt:string):boolean{
+  return /^(?:hi|hello|hey|hiya|how are you(?: doing)?|how(?:'s| is) it going|how you going|good morning|good afternoon|good evening|thanks|thank you|bye|goodbye|see you)[.!?,\s]*$/i.test(prompt.trim());
+}
 /** Give locally applied add-widget actions a user-visible receipt. */
 export function assistantAddedWidgetReceipt(actions:AssistantAction[]):string{
   const added=actions.filter(action=>action.type==='add_widget').flatMap(action=>action.ids);
@@ -134,10 +138,16 @@ function assistantRequestedItemCount(text:string):number|null{
   const amount=text.match(/(?<![-.\d])\b(\d+)\s+(?:saved\s+)?(?:[a-z-]+\s+)?(?:widgets?|cards?)\b/i)??text.match(/(?<![-.\d])\b(\d+)\s+(?:notes?|focus|calculators?|files?|apps?|timetables?|groups?)\b/i);
   return amount?Number(amount[1]):null;
 }
-export function parseAssistantReply(value:unknown):AssistantReply {
+export function parseAssistantReply(value:unknown,options:{ignoreWorkspaceChanges?:boolean}={}):AssistantReply {
   if(!value||typeof value!=='object')throw new Error('The AI returned an invalid response. Try again.');
-  const {reply,layout}=value as AssistantReply,rawActions=(value as Partial<AssistantReply>).actions??[];
-  if(typeof reply!=='string'||reply.length>24000||!Array.isArray(layout)||layout.length>100||!Array.isArray(rawActions)||rawActions.length>100)throw new Error('The AI returned an incomplete response. Try again.');
+  const {reply}=value as Partial<AssistantReply>;
+  if(typeof reply!=='string'||reply.length>24000)throw new Error('The AI returned an incomplete response. Try again.');
+  if(options.ignoreWorkspaceChanges){
+    if(!reply.trim())throw new Error('The AI returned no reply. Try again.');
+    return {reply:reply.trim(),layout:[],actions:[]};
+  }
+  const {layout}=value as Partial<AssistantReply>,rawActions=(value as Partial<AssistantReply>).actions??[];
+  if(!Array.isArray(layout)||layout.length>100||!Array.isArray(rawActions)||rawActions.length>100)throw new Error('The AI returned an incomplete response. Try again.');
   const items=layout.map(item=>{
     if(!item||typeof item.id!=='string'||item.id.length>80||[item.x,item.y,item.width,item.height].some(n=>!Number.isSafeInteger(n)))throw new Error('The AI returned an invalid layout. Try again.');
     return {id:item.id,x:item.x,y:item.y,width:item.width,height:item.height};
