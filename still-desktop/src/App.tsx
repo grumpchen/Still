@@ -90,6 +90,7 @@ export default function App(){
   useEffect(()=>{if(!appPanel.available)return;void appPanel.configureShutdown(state.appShutdownBehavior).catch(()=>notify('App shutdown behavior could not be updated.'))},[state.appShutdownBehavior]);
   async function toggleFullscreen(){if(!isTauri())return;try{const win=getCurrentWindow(),next=!(await win.isFullscreen());await win.setFullscreen(next);setFullscreen(next)}catch(error){notify('Fullscreen could not be changed: '+String(error))}}
   useEffect(()=>{if(!fullscreen||modal)return;const onKey=(event:KeyboardEvent)=>{if(event.key==='Escape'){event.preventDefault();void toggleFullscreen()}};document.addEventListener('keydown',onKey);return()=>document.removeEventListener('keydown',onKey)},[fullscreen,modal]);
+  useEffect(()=>{document.querySelector('.canvas-app')?.classList.toggle('fullscreen-taskbar-covered',fullscreen)},[fullscreen]);
   useEffect(()=>{
     document.body.classList.toggle('dark',state.theme==='dark');document.body.classList.toggle('compact',state.density==='compact');document.body.classList.toggle('dots',state.background==='dots');document.body.classList.toggle('transparent-background',state.background==='transparent');document.body.classList.toggle('liquid-glass',state.appearance==='liquid-glass');
     document.body.style.setProperty('--wallpaper-blur',state.glass.blur+'px');

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 const app=readFileSync(new URL('../src/App.tsx',import.meta.url),'utf8');
 const capability=readFileSync(new URL('../src-tauri/capabilities/main.json',import.meta.url),'utf8');
+const canvasCss=readFileSync(new URL('../src/canvas.css',import.meta.url),'utf8');
 
 test('whole-workspace fullscreen uses the native Still window and exposes an exit control',()=>{
  assert.match(app,/win\.setFullscreen\(next\)/);
@@ -16,4 +17,9 @@ test('whole-workspace fullscreen uses the native Still window and exposes an exi
 test('fullscreen is temporary and not stored in workspace preferences',()=>{
  const stateModule=readFileSync(new URL('../src/domain/workspaces.ts',import.meta.url),'utf8');
  assert.doesNotMatch(stateModule,/fullscreen\??:/i);
+});
+
+test('fullscreen masks the transparent taskbar bleed-through without intercepting input',()=>{
+ assert.match(app,/classList\.toggle\('fullscreen-taskbar-covered',fullscreen\)/);
+ assert.match(canvasCss,/\.canvas-app\.fullscreen-taskbar-covered::after\{[^}]*position:fixed[^}]*pointer-events:none[^}]*background:var\(--canvas\)/);
 });
