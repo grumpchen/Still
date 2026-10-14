@@ -36,6 +36,7 @@ test('the single chat can use workspace widgets; @ is optional quick selection a
   },{shouldMockEvents:true});
   const {default:AssistantPanel}=await vite.ssrLoadModule('/src/AssistantPanel.tsx');
   const workspace=createWorkspace('Study',[]),note=createWidget('notes'),timer=createWidget('focus'),app=createWidget('apps'),timetable=createWidget('timetable');note.text='My private note';note.placement={x:0,y:0,width:300,height:250};timer.placement={x:330,y:0,width:300,height:350};app.placement={x:660,y:0,width:300,height:350};app.title='Microsoft Edge';workspace.widgets=[note,timer,app,timetable];
+  const appCard=window.document.createElement('article');appCard.id='widget-'+app.id;appCard.className='canvas-card';appCard.getBoundingClientRect=()=>({left:100,top:100,right:400,bottom:300,width:300,height:200,x:100,y:100,toJSON(){}});const nativeHost=window.document.createElement('div');nativeHost.dataset.nativeAppId=app.id;nativeHost.dataset.nativeVisible='true';nativeHost.getBoundingClientRect=()=>({left:110,top:130,right:390,bottom:290,width:280,height:160,x:110,y:130,toJSON(){}});appCard.append(nativeHost);canvas.append(appCard);
   root=createRoot(window.document.querySelector('#root'));
   await act(async()=>root.render(createElement(AssistantPanel,{workspace,open:true,close(){},dimensions:()=>({width:900,height:700}),apply(){},undo(){}})));
   await waitFor(()=>window.document.querySelector('#ai-model')?.querySelector('option[value="gemini::gemini-2.5-flash"]'));
@@ -88,9 +89,14 @@ test('the single chat can use workspace widgets; @ is optional quick selection a
   await act(async()=>appOption.click());
   const visualToggle=window.document.querySelector('.assistant-check input[type="checkbox"]');
   assert.ok(visualToggle,'the per-message visual toggle is available with OpenAI selected');
-  await act(async()=>setReactChecked(visualToggle,true));
-  assert.equal(visualToggle.checked,true,'the screenshot can be opted in for this message');
+  await act(async()=>setReactChecked(visualToggle,false));
+  assert.equal(visualToggle.checked,false,'a selected app image is not required when workspace visual sharing is on');
   assert.equal(calls.filter(call=>call.command==='assistant_chat').length,1,'toggling visual sharing never sends a request on its own');
+  await act(async()=>window.document.querySelector('.assistant-compose').requestSubmit());
+  await waitFor(()=>calls.filter(call=>call.command==='assistant_chat').length===2);
+  const appCapture=calls.filter(call=>call.command==='widget_capture').at(-1);
+  assert.deepEqual(appCapture.args.appRegion,{id:app.id,x:110,y:130,width:280,height:160},'@-selecting an attached app automatically includes its visible native pixels');
+  assert.equal(calls.filter(call=>call.command==='assistant_chat').at(-1).args.request.image,'/9j/AA==');
  }finally{
   if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();
   for(const key of old.keys()){const descriptor=old.get(key);if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}

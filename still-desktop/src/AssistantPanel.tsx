@@ -41,7 +41,7 @@ export default function AssistantPanel({workspace,canDeleteWorkspace,sidebarPlug
   }
   const selectedIds=resolveAssistantWidgetMentions(input,workspace,mentions.map(item=>item.id));
   const selectedWidgets=selectedIds.map(id=>workspace.widgets.find(widget=>widget.id===id)).filter((widget):widget is WidgetInstance=>!!widget);
-  const screenshotWidgets=selectedWidgets.filter(canScreenshot),screenshotWidget=screenshotWidgets.length===1?screenshotWidgets[0]:null;
+  const screenshotWidgets=mentions.some(item=>item.id==='__all__')?[]:selectedWidgets.filter(canScreenshot),screenshotWidget=screenshotWidgets.length===1?screenshotWidgets[0]:null;
   const selectedMentions=mentions.some(item=>item.id==='__all__')?[{id:'__all__',label:'All widgets'}]:selectedIds.map(id=>workspace.widgets.find(widget=>widget.id===id)).filter((widget):widget is WidgetInstance=>!!widget).map(widget=>({id:widget.id,label:widgetLabel(widget)}));
   const requestLimit=assistantRequestLimitError(input,trayItems),directActions=resolveDirectAssistantActions(input,workspace,selectedIds,trayItems);
   const confirmationRequest=unsupportedAssistantRequest(input);
@@ -151,7 +151,7 @@ export default function AssistantPanel({workspace,canDeleteWorkspace,sidebarPlug
       }
       const context=assistantWorkspaceContext(owner,size.width,size.height,selectedIds,trayItems,sidebarPlugins),serialized=JSON.stringify(context);
       if(serialized.length>64000)throw new Error('This workspace has unusually large widget data. Type @ to prioritize the widget you want Still to use.');
-      image=shareWorkspaceImage?await workspaceImage():screenshot&&screenshotWidget?await widgetImage(screenshotWidget.id):undefined;
+      image=shareWorkspaceImage?(screenshotWidget?await widgetImage(screenshotWidget.id):await workspaceImage()):screenshot&&screenshotWidget?await widgetImage(screenshotWidget.id):undefined;
       const history=prepareAssistantHistory(messages);
       let result=await geminiAssistant.send({provider:requestProvider,model:requestModel,messages:[...history,{role:'user',text:prompt}],context:serialized,image,session_id:owner.id});
       if(!alive.current)return;
@@ -218,7 +218,7 @@ export default function AssistantPanel({workspace,canDeleteWorkspace,sidebarPlug
       <label>{PROVIDER_NAMES[provider]} API key<input type="password" autoComplete="off" spellCheck={false} value={key} onChange={event=>setKey(event.target.value)} placeholder={`Enter ${PROVIDER_NAMES[provider]} key`} disabled={!geminiAssistant.available||busy}/></label>
       <small>Still remembers keys you connect here, stored securely in Windows Credential Manager on this device. Select Forget to remove a saved key. Keys are never stored in chat or workspace data.</small>
       <label className="assistant-check"><input type="checkbox" aria-label="Share workspace screenshot with Still AI" checked={shareWorkspaceImage} disabled={busy} onChange={event=>{setShareWorkspaceImage(event.target.checked);saveWorkspaceImagePreference(event.target.checked)}}/>Share the visible workspace with AI messages</label>
-      <small>When enabled, Still sends only the visible workspace canvas with each AI request. Still does not save it in chat or workspace data and drops it after the request. The selected AI provider receives it, and its data-retention policy applies. Some models may not support images.</small>
+      <small>When enabled, Still sends the visible workspace with each AI request. If one app or file widget is @-selected, Still sends that widget’s screenshot instead, including its attached app when available. Still does not save screenshots in chat or workspace data and drops them after the request. The selected AI provider receives it, and its data-retention policy applies. Some models may not support images.</small>
       <div className="assistant-row"><button type="button" disabled={!geminiAssistant.available||busy} onClick={()=>void geminiAssistant.keySetup(provider).catch(()=>setError(`Could not open ${PROVIDER_NAMES[provider]} API settings.`))}>Get API key</button><button className="primary" disabled={!key.trim()||busy||!geminiAssistant.available}>Connect</button>{configured&&<button type="button" disabled={busy} onClick={()=>void disconnect()}>Forget</button>}</div>
     </form>}
     <div ref={log} className="assistant-log" role="log" aria-label="AI conversation" aria-live="polite" aria-busy={busy}>

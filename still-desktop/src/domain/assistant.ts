@@ -89,7 +89,7 @@ export function widgetContext(widget:WidgetInstance):Record<string,unknown> {
   if(widget.type==='timetable')result.schedule=widget.schedule.slice(0,80);
   if(widget.type==='focus')result.remainingSeconds=widget.end?Math.max(0,Math.ceil((widget.end-Date.now())/1000)):widget.remaining;
   if(widget.clockPluginEnabled)result.clockTimerEnabled=true;
-  if(widget.type==='apps'||widget.type==='desmos'||widget.type==='files')result.reading='Only metadata is available unless a visible screenshot is included. Do not infer unseen window or file contents.';
+  if(widget.type==='apps'||widget.type==='desmos'||widget.type==='files')result.reading='Without a screenshot, only metadata is available. When a visible screenshot is included, describe only content that is legible in that image; otherwise do not infer unseen window or file contents.';
   return result;
 }
 export function layoutFingerprint(workspace:Workspace):string {
