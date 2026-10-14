@@ -17,6 +17,8 @@ pub struct Request {
     pub messages: Vec<Message>,
     pub context: String,
     pub image: Option<String>,
+    #[serde(default)]
+    pub session_id: Option<String>,
 }
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -107,7 +109,7 @@ pub fn openai_models(value: Value) -> Vec<String> {
     result
 }
 
-/// OpenCode Zen lists models that use several API protocols. Still currently
+/// OpenCode Go lists models that use several API protocols. Still currently
 /// supports the OpenAI-compatible chat-completions route only.
 pub fn opencode_models(value: Value) -> Vec<String> {
     let Some(models)=value["data"].as_array() else { return Vec::new(); };
@@ -121,9 +123,9 @@ pub fn opencode_models(value: Value) -> Vec<String> {
 }
 
 fn opencode_model_uses_other_protocol(model:&str)->bool {
-    ["gpt-","claude-","jev-","qwen3.5-","qwen3.6-","qwen3.7-","gemini-","grok-","muse-spark-"]
+    ["gpt-","claude-","jev-","qwen","minimax-","gemini-","grok-","muse-spark-"]
         .iter().any(|prefix|model.starts_with(prefix))
-        ||["qwen3.8-flash","muse-spark-1.3-contributor-free"].contains(&model)
+        ||["muse-spark-1.3-contributor-free"].contains(&model)
 }
 
 fn valid_model(model:&str,provider:Provider)->bool {
@@ -141,7 +143,7 @@ pub fn opencode_body(request:&Request)->Result<Value,String> {
 }
 
 fn compatible_chat_body(request:&Request,provider:Provider)->Result<Value,String> {
-    let name=match provider {Provider::Openai=>"OpenAI",Provider::Opencode=>"OpenCode Zen",Provider::Gemini=>"Gemini"};
+    let name=match provider {Provider::Openai=>"OpenAI",Provider::Opencode=>"OpenCode Go",Provider::Gemini=>"Gemini"};
     if request.provider!=provider||!valid_model(&request.model,provider) { return Err(format!("Choose a valid {name} chat model.")); }
     if request.messages.is_empty()||request.messages.len()>13||request.context.len()>64000 { return Err("This conversation or widget context is too large. Clear chat and try again.".into()); }
     let mut total=0;
@@ -237,7 +239,7 @@ pub fn parse_response(value: Value) -> Result<Reply, String> {
     validate_reply(reply,"Gemini")
 }
 pub fn parse_openai_response(value:Value)->Result<Reply,String>{ parse_compatible_response(value,"OpenAI") }
-pub fn parse_opencode_response(value:Value)->Result<Reply,String>{ parse_compatible_response(value,"OpenCode Zen") }
+pub fn parse_opencode_response(value:Value)->Result<Reply,String>{ parse_compatible_response(value,"OpenCode Go") }
 fn parse_compatible_response(value:Value,provider:&str)->Result<Reply,String>{
     let content=value["choices"][0]["message"]["content"].as_str().ok_or_else(||format!("{provider} returned no readable answer."))?;
     let reply:Reply=serde_json::from_str(content).map_err(|_|format!("{provider} returned an invalid answer. Try again."))?;
@@ -330,7 +332,7 @@ mod tests {
         let empty=json!({"reply":"","layout":[],"actions":[]});
         assert!(parse_openai_response(json!({"choices":[{"message":{"content":empty.to_string()}}]})).err().unwrap().contains("no reply or workspace action"));
     }
-    fn request() -> Request { Request {provider:Provider::Gemini,model:"gemini-2.5-flash".into(),messages:vec![Message {role:"user".into(),text:"Hello".into()}],context:String::new(),image:None} }
+    fn request() -> Request { Request {provider:Provider::Gemini,model:"gemini-2.5-flash".into(),messages:vec![Message {role:"user".into(),text:"Hello".into()}],context:String::new(),image:None,session_id:None} }
     #[test] fn only_lists_project_models_that_support_content_generation() {
         let models=available_models(json!({"models":[
             {"name":"models/gemini-3.8-flash","supportedGenerationMethods":["generateContent"]},
@@ -369,17 +371,17 @@ mod tests {
         assert_eq!(parse_openai_response(response).unwrap().reply,"Ready");
         assert!(parse_openai_response(json!({"choices":[]})).is_err());
     }
-    #[test] fn opencode_zen_lists_only_supported_chat_models_and_uses_its_route() {
+    #[test] fn opencode_go_lists_only_supported_chat_models_and_uses_its_route() {
         assert_eq!(opencode_models(json!({"data":[
-            {"id":"big-pickle"},{"id":"glm-5.3-flash"},{"id":"kimi-k2.6"},{"id":"big-pickle"},
-            {"id":"gpt-6-sol"},{"id":"claude-sonnet-5"},{"id":"qwen3.8-flash"},{"id":"jev-1.13"},{"id":"gemini-3.8-flash"},{"id":"grok-4.7"},{"id":"muse-spark-1.3"},
+            {"id":"mimo-v2.6-flash"},{"id":"glm-5.3-flash"},{"id":"kimi-k3"},{"id":"mimo-v2.6-flash"},
+            {"id":"gpt-6-luna"},{"id":"qwen3.8-max"},{"id":"qwen3.8-flash"},{"id":"minimax-m3"},{"id":"grok-4.7"},{"id":"muse-spark-1.3-contributor"},
             {"id":"bad/model"},{"id":""}
-        ]})),vec!["big-pickle","glm-5.3-flash","kimi-k2.6"]);
-        let mut r=request();r.provider=Provider::Opencode;r.model="big-pickle".into();
+        ]})),vec!["glm-5.3-flash","kimi-k3","mimo-v2.6-flash"]);
+        let mut r=request();r.provider=Provider::Opencode;r.model="mimo-v2.6-flash".into();
         let payload=opencode_body(&r).unwrap();
-        assert_eq!(payload["model"],"big-pickle");
+        assert_eq!(payload["model"],"mimo-v2.6-flash");
         assert_eq!(payload["response_format"]["type"],"json_object");
-        r.model="gpt-6-sol".into();assert!(opencode_body(&r).unwrap_err().contains("OpenCode Zen"));
+        r.model="gpt-6-luna".into();assert!(opencode_body(&r).unwrap_err().contains("OpenCode Go"));
         let response=json!({"choices":[{"message":{"content":"{\"reply\":\"Ready\",\"layout\":[],\"actions\":[]}"}}]});
         assert_eq!(parse_opencode_response(response).unwrap().reply,"Ready");
     }
@@ -394,7 +396,7 @@ mod tests {
         r.context="selected notes".into();r.image=Some("/9j/AA==".into());let payload=body(&r).unwrap();
         assert_eq!(payload["contents"][0]["parts"].as_array().unwrap().len(),1);
         assert_eq!(payload["contents"][2]["parts"][2]["inlineData"]["mimeType"],"image/jpeg");
-        let openai=openai_body(&Request{provider:Provider::Openai,model:"gpt-4o-mini".into(),messages:r.messages.clone(),context:r.context.clone(),image:r.image.clone()}).unwrap();
+        let openai=openai_body(&Request{provider:Provider::Openai,model:"gpt-4o-mini".into(),messages:r.messages.clone(),context:r.context.clone(),image:r.image.clone(),session_id:None}).unwrap();
         assert!(openai["messages"][1]["content"].is_string());
         assert!(openai["messages"][3]["content"].is_array());
         assert_eq!(openai["messages"][3]["content"][1]["type"],"image_url");

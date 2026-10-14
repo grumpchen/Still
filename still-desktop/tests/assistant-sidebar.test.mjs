@@ -26,7 +26,7 @@ test('Gemini assistant is reachable from the sidebar and native commands are reg
   assert.ok(capabilities.includes('allow-'+command.replaceAll('_','-')),command+' is allowed on the local UI capability');
  }
 });
-test('AI assistant has Gemini, OpenAI, and OpenCode Zen providers',()=>{
+test('AI assistant has Gemini, OpenAI, and OpenCode Go providers',()=>{
  const protocol=readFileSync(new URL('../src-tauri/src/assistant_protocol.rs',import.meta.url),'utf8');
  const backend=readFileSync(new URL('../src-tauri/src/assistant.rs',import.meta.url),'utf8');
  assert.match(panel,/PROVIDERS:AssistantProvider\[\]=\['gemini','openai','opencode'\]/);
@@ -34,9 +34,12 @@ test('AI assistant has Gemini, OpenAI, and OpenCode Zen providers',()=>{
  assert.match(protocol,/pub fn openai_body/);
  assert.match(backend,/https:\/\/api\.openai\.com\/v1\/chat\/completions/);
  assert.match(backend,/OPENAI_API_KEY/);
- assert.match(panel,/OpenCode Zen/);
+ assert.match(panel,/OpenCode Go/);
  assert.match(backend,/OPENCODE_API_KEY/);
- assert.match(backend,/https:\/\/opencode\.ai\/zen\/v1\/chat\/completions/);
+ assert.match(backend,/https:\/\/opencode\.ai\/zen\/go\/v1\/models/);
+ assert.match(backend,/https:\/\/opencode\.ai\/zen\/go\/v1\/chat\/completions/);
+ assert.match(backend,/x-opencode-session/);
+ assert.match(panel,/session_id:owner\.id/);
  assert.match(backend,/credential_store::load\(provider\)/,'saved keys load when Still starts');
  assert.match(backend,/credential_store::save\(provider,&key\)/,'connecting a key persists it');
  assert.match(backend,/credential_store::delete\(provider\)/,'Forget deletes the saved key');
@@ -47,7 +50,7 @@ test('clear all-widget actions are resolved locally before any model request',()
  assert.match(panel,/resolveDirectAssistantActions\(input,workspace,selectedIds,trayItems\)/);
  assert.ok(panel.indexOf('if(localActions){')<panel.indexOf('geminiAssistant.send('),'deterministic workspace actions must not depend on model output');
  assert.match(panel,/!directActions&&!confirmationRequest&&!directTimerRequest&&\(!configured\|\|!currentModels\.includes\(model\)\|\|!geminiAssistant\.available\)/,'local actions remain available without AI credentials');
- assert.match(panel,/result\.layout\.length&&assistantLayoutRequested\(prompt\)/,'only explicit layout requests may show a layout proposal');
+ assert.match(panel,/result\.layout\.length&&\(result\.intent==='layout'\|\|assistantLayoutRequested\(prompt\)\)/,'only explicit layout requests may show a layout proposal');
  assert.match(panel,/confirmation==='delete_workspace'\?'Delete this workspace\?'/);
  assert.match(panel,/confirmation==='open_saved_apps'\?'Confirm open':confirmation==='delete_workspace'\?'Confirm delete':'Confirm remove'/);
  assert.match(panel,/Confirm removing workspace widgets/);

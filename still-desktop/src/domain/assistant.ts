@@ -33,7 +33,7 @@ export function resolveNamedNotesCreation(prompt:string):{title:string;topic:str
 export type AssistantReply = {intent?:AssistantResponseIntent;reply:string; layout:LayoutItem[]; actions:AssistantAction[]};
 export type LayoutPlan = {workspaceId:string; fingerprint:string; width:number; height:number; items:LayoutItem[]};
 export const DEFAULT_MODEL = 'gemini-2.5-flash';
-export const DEFAULT_MODELS:Record<AssistantProvider,string> = {gemini:DEFAULT_MODEL,openai:'gpt-4o-mini',opencode:'big-pickle'};
+export const DEFAULT_MODELS:Record<AssistantProvider,string> = {gemini:DEFAULT_MODEL,openai:'gpt-4o-mini',opencode:'mimo-v2.6-flash'};
 export const HISTORY_LIMIT = 12;
 export function preferredModel(models:string[],provider:AssistantProvider='gemini'):string {
   const preferred=DEFAULT_MODELS[provider];

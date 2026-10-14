@@ -2,7 +2,7 @@ import {invoke,isTauri} from '@tauri-apps/api/core';
 import {captureWidget} from './capture.ts';
 import {parseAssistantReply,type AssistantProvider,type ChatMessage} from '../domain/assistant.ts';
 
-export type AssistantRequest = {provider:AssistantProvider;model:string;messages:ChatMessage[];context:string;image?:string};
+export type AssistantRequest = {provider:AssistantProvider;model:string;messages:ChatMessage[];context:string;image?:string;session_id?:string};
 export const geminiAssistant = {
   available:isTauri(),
   configured:(provider:AssistantProvider)=>invoke<boolean>('assistant_configured',{provider}),

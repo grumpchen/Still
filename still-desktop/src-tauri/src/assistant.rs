@@ -71,20 +71,20 @@ async fn fetch_models_at(client:&reqwest::Client,endpoint:&str,key:&str)->Result
     Ok(models)
 }
 async fn fetch_opencode_models(client:&reqwest::Client,key:&str)->Result<Vec<String>,String> {
-    fetch_opencode_models_at(client,"https://opencode.ai/zen/v1/models",key).await
+    fetch_opencode_models_at(client,"https://opencode.ai/zen/go/v1/models",key).await
 }
 async fn fetch_opencode_models_at(client:&reqwest::Client,endpoint:&str,key:&str)->Result<Vec<String>,String> {
     let response=client.get(endpoint).bearer_auth(key).send().await
-        .map_err(|_|"Could not reach OpenCode Zen. Check your connection and try again.".to_string())?;
+        .map_err(|_|"Could not reach OpenCode Go. Check your connection and try again.".to_string())?;
     if !response.status().is_success(){return Err(opencode_http_error(response.status().as_u16()));}
     let mut bytes=Vec::new();let mut response=response;
-    while let Some(chunk)=response.chunk().await.map_err(|_|"OpenCode Zen's model list could not be read.".to_string())?{
-        if bytes.len()+chunk.len()>512_000{return Err("OpenCode Zen returned an oversized model list.".into());}
+    while let Some(chunk)=response.chunk().await.map_err(|_|"OpenCode Go's model list could not be read.".to_string())?{
+        if bytes.len()+chunk.len()>512_000{return Err("OpenCode Go returned an oversized model list.".into());}
         bytes.extend_from_slice(&chunk);
     }
-    let value=serde_json::from_slice(&bytes).map_err(|_|"OpenCode Zen returned an unreadable model list.".to_string())?;
+    let value=serde_json::from_slice(&bytes).map_err(|_|"OpenCode Go returned an unreadable model list.".to_string())?;
     let models=assistant_protocol::opencode_models(value);
-    if models.is_empty(){return Err("No OpenCode Zen models supported by Still are available for this API key.".into());}
+    if models.is_empty(){return Err("No OpenCode Go models supported by Still are available for this API key.".into());}
     Ok(models)
 }
 async fn fetch_openai_models(client:&reqwest::Client,key:&str)->Result<Vec<String>,String> {
@@ -106,11 +106,11 @@ async fn fetch_openai_models_at(client:&reqwest::Client,endpoint:&str,key:&str)-
 }
 fn opencode_http_error(status:u16)->String {
     match status {
-        401|403=>"OpenCode Zen could not authorize this key. Check your OpenCode account and reconnect.",
-        404=>"The OpenCode Zen model list is unavailable.",
-        429=>"OpenCode Zen is busy or its request limit was reached. Wait a little and try again.",
-        500..=599=>"OpenCode Zen is temporarily unavailable. Try again later.",
-        _=>"OpenCode Zen could not complete this request. Check your API key and connection.",
+        401|403=>"OpenCode Go could not authorize this key. Check your OpenCode account and reconnect.",
+        404=>"The OpenCode Go model list is unavailable.",
+        429=>"OpenCode Go is busy or its request limit was reached. Wait a little and try again.",
+        500..=599=>"OpenCode Go is temporarily unavailable. Try again later.",
+        _=>"OpenCode Go could not complete this request. Check your API key and connection.",
     }.into()
 }
 fn openai_http_error(status:u16)->String {
@@ -128,7 +128,7 @@ async fn list_provider_models(client:&reqwest::Client,provider:Provider,key:&str
 #[tauri::command]
 pub fn assistant_key_setup(app:tauri::AppHandle,webview:Webview,provider:Provider) -> Result<(),String> {
     crate::security::authorize(&webview)?;
-    let (url,error)=match provider {Provider::Gemini=>("https://aistudio.google.com/apikey","Could not open Google AI Studio. Visit aistudio.google.com/apikey in your browser."),Provider::Openai=>("https://platform.openai.com/api-keys","Could not open OpenAI API settings. Visit platform.openai.com/api-keys in your browser."),Provider::Opencode=>("https://opencode.ai/auth","Could not open OpenCode Zen. Visit opencode.ai/auth in your browser.")};
+    let (url,error)=match provider {Provider::Gemini=>("https://aistudio.google.com/apikey","Could not open Google AI Studio. Visit aistudio.google.com/apikey in your browser."),Provider::Openai=>("https://platform.openai.com/api-keys","Could not open OpenAI API settings. Visit platform.openai.com/api-keys in your browser."),Provider::Opencode=>("https://opencode.ai/auth","Could not open OpenCode Go. Visit opencode.ai/auth in your browser.")};
     app.opener().open_url(url,None::<String>).map_err(|_|error.into())
 }
 #[tauri::command]
@@ -166,14 +166,22 @@ pub async fn assistant_chat(webview:Webview,state:State<'_,AssistantState>,reque
     crate::security::authorize(&webview)?;
     let provider=request.provider;
     let key=state.keys.lock().map_err(|_|"AI settings are unavailable.")?.get(&provider).cloned().unwrap_or_default();
-    if key.trim().is_empty() { return Err(format!("Connect an {} API key in AI settings first.",match provider {Provider::Gemini=>"Gemini",Provider::Openai=>"OpenAI",Provider::Opencode=>"OpenCode Zen"})); }
+    if key.trim().is_empty() { return Err(format!("Connect an {} API key in AI settings first.",match provider {Provider::Gemini=>"Gemini",Provider::Openai=>"OpenAI",Provider::Opencode=>"OpenCode Go"})); }
     let body=match provider {Provider::Gemini=>assistant_protocol::body(&request)?,Provider::Openai=>assistant_protocol::openai_body(&request)?,Provider::Opencode=>assistant_protocol::opencode_body(&request)?};
     let client=reqwest::Client::builder().timeout(std::time::Duration::from_secs(45))
         .redirect(reqwest::redirect::Policy::none()).build().map_err(|_|"Could not start the AI connection.")?;
-    let endpoint=match provider {Provider::Gemini=>format!("https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",request.model),Provider::Openai=>"https://api.openai.com/v1/chat/completions".into(),Provider::Opencode=>"https://opencode.ai/zen/v1/chat/completions".into()};
+    let endpoint=match provider {Provider::Gemini=>format!("https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",request.model),Provider::Openai=>"https://api.openai.com/v1/chat/completions".into(),Provider::Opencode=>"https://opencode.ai/zen/go/v1/chat/completions".into()};
     let builder=client.post(endpoint).json(&body);
-    let builder=match provider {Provider::Gemini=>builder.header("x-goog-api-key",&key),Provider::Openai|Provider::Opencode=>builder.bearer_auth(&key)};
-    let mut response=builder.send().await.map_err(|_|match provider {Provider::Gemini=>"Gemini could not be reached or the request timed out. Check your connection and try again.",Provider::Openai=>"OpenAI could not be reached or the request timed out. Check your connection and try again.",Provider::Opencode=>"OpenCode Zen could not be reached or the request timed out. Check your connection and try again."})?;
+    let builder=match provider {
+        Provider::Gemini=>builder.header("x-goog-api-key",&key),
+        Provider::Openai=>builder.bearer_auth(&key),
+        Provider::Opencode=>{
+            let session_id=request.session_id.as_deref().filter(|id|!id.is_empty()&&id.len()<=128&&id.bytes().all(|byte|byte.is_ascii_alphanumeric()||matches!(byte,b'-'|b'_')))
+                .ok_or("OpenCode Go needs a valid workspace session ID. Restart Still and try again.")?;
+            builder.bearer_auth(&key).header("user-agent","Still-Desktop").header("x-opencode-session",session_id)
+        }
+    };
+    let mut response=builder.send().await.map_err(|_|match provider {Provider::Gemini=>"Gemini could not be reached or the request timed out. Check your connection and try again.",Provider::Openai=>"OpenAI could not be reached or the request timed out. Check your connection and try again.",Provider::Opencode=>"OpenCode Go could not be reached or the request timed out. Check your connection and try again."})?;
     if !response.status().is_success(){
         let status=response.status().as_u16();
         return Err(match provider {
@@ -206,19 +214,19 @@ mod tests {
     }
 
     #[test]
-    fn discovers_opencode_zen_models_with_the_saved_key() {
+    fn discovers_opencode_go_models_with_the_saved_key() {
         let listener=TcpListener::bind("127.0.0.1:0").unwrap();let address=listener.local_addr().unwrap();
         let server=std::thread::spawn(move||{
             let (mut stream,_)=listener.accept().unwrap();let mut request=[0u8;2048];let size=stream.read(&mut request).unwrap();
             let request=String::from_utf8_lossy(&request[..size]).to_ascii_lowercase();
             assert!(request.contains("authorization: bearer test-opencode-key-123"));
-            assert!(request.contains("/zen/v1/models"));
-            let body=r#"{"data":[{"id":"big-pickle"},{"id":"gpt-6-sol"},{"id":"claude-sonnet-5"}]}"#;
+            assert!(request.contains("/zen/go/v1/models"));
+            let body=r#"{"data":[{"id":"mimo-v2.6-flash"},{"id":"mimo-v2.6-pro"},{"id":"gpt-6-luna"},{"id":"qwen3.8-max"}]}"#;
             write!(stream,"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",body.len(),body).unwrap();
         });
-        let client=reqwest::Client::new();let endpoint=format!("http://{address}/zen/v1/models");
+        let client=reqwest::Client::new();let endpoint=format!("http://{address}/zen/go/v1/models");
         let models=tauri::async_runtime::block_on(fetch_opencode_models_at(&client,&endpoint,"test-opencode-key-123")).unwrap();server.join().unwrap();
-        assert_eq!(models,vec!["big-pickle"]);
+        assert_eq!(models,vec!["mimo-v2.6-flash","mimo-v2.6-pro"]);
     }
     #[test]
     fn allows_clearing_and_rejects_short_oversized_or_unsafe_values() {
