@@ -166,7 +166,7 @@ export default function WorkspaceCanvas({workspaceId,canvasFrameRate='display',m
     // then persist stacking after releasing the pointer.
      gesture.current=null;setActive(null);setOverTray(false);setSaveTarget(null);setCanvasGroupDropId(null);setWorkspaceDropTarget(null);setHoveredSnapZone(null);
      const workspaceRow=document.elementFromPoint(e.clientX,e.clientY)?.closest<HTMLElement>('[data-workspace-drop-target]'),destination=workspaceRow?.dataset.workspaceDropTarget;
-     if(!cancel&&g.mode==='move'&&destination&&destination!==workspaceId&&distance>4){transferWidget(workspaceId,g.id,destination);return}
+     if(!cancel&&g.mode==='move'&&destination&&destination!==workspaceId&&distance>4){if(g.type==='apps')appPanel.finishDrag(g.id);transferWidget(workspaceId,g.id,destination);return}
     const original=currentWidget?(currentWidget.minimized?moveMinimizedWidgetInstance(currentWidget,{x:g.p.x,y:g.p.y},extent,height):{...currentWidget,placement:g.p}):undefined;
     if(!cancel&&g.mode==='move'&&distance>4&&canvasTarget&&original){void saveToGroup(original,canvasTarget,true);return}
     const target=trayTarget(e.clientX,e.clientY),action=trayDropDecision({source:'widget',widgetType:g.type,...target});
@@ -174,9 +174,9 @@ export default function WorkspaceCanvas({workspaceId,canvasFrameRate='display',m
     else if(g.mode==='move'&&distance>4&&target.insideTray){
      if(original)update(g.id,{placement:original.placement,restorePlacement:original.restorePlacement});
      if(action==='remove')remove(g.id,true);
-     else if(action==='save'&&original)void saveWidgetToTray(original).catch(error=>notify(String((error as Error).message??error)));
+     else if(action==='save'&&original){if(g.type==='apps')appPanel.finishDrag(g.id);void saveWidgetToTray(original).catch(error=>notify(String((error as Error).message??error)))}
      else try{if((action==='create-group'||action==='save-group')&&original){const groupId=target.groupTarget?.kind==='existing'?target.groupTarget.groupId:undefined;saveToGroup(original,groupId,true)}}catch(error){notify(String((error as Error).message??error))}
-    }else{const snapZone=!cancel&&g.mode==='move'&&distance>4?snapZoneAtClient(e.clientX,e.clientY):null;if(snapZone!==null&&currentWidget&&!currentWidget.minimized&&!(currentWidget.type==='group'&&currentWidget.groupCollapsed))snapWidgetToZone(g.id,snapZone);else bringToFront(g.id)}
+    }else{const snapZone=!cancel&&g.mode==='move'&&distance>4?snapZoneAtClient(e.clientX,e.clientY):null;if(snapZone!==null&&currentWidget&&!currentWidget.minimized&&!(currentWidget.type==='group'&&currentWidget.groupCollapsed))snapWidgetToZone(g.id,snapZone);else bringToFront(g.id);if(g.type==='apps')appPanel.finishDrag(g.id)}
   }
   function key(e:KeyboardEvent<HTMLElement>,w:WidgetInstance,mode:'move'|'resize'){
     const delta:Record<string,[number,number]>={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]};

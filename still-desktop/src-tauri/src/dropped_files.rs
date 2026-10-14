@@ -40,32 +40,63 @@ impl DocumentGrants {
 }
 
 /// App shortcuts have a separate grant registry and can only launch after an
-/// explicit Open action. Classification and receiving a drop never execute apps.
-pub struct AppGrants(Mutex<HashMap<String, PathBuf>>);
+/// explicit Open action. Captured Chrome windows may retain Chrome's exact
+/// per-window profile arguments so reopening a saved app skips its chooser.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AppLaunchTarget {
+    pub path: PathBuf,
+    #[serde(default)]
+    pub arguments: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum StoredAppGrant {
+    Legacy(PathBuf),
+    Current(AppLaunchTarget),
+}
+
+pub struct AppGrants(Mutex<HashMap<String, AppLaunchTarget>>);
 impl AppGrants {
     pub fn load(app: &AppHandle) -> Self {
         let grants = app.path().app_data_dir().ok()
-            .and_then(|directory| read_grants(&directory.join("app-shortcuts.json")).ok())
+            .and_then(|directory| read_app_grants(&directory.join("app-shortcuts.json")).ok())
             .unwrap_or_default();
         Self(Mutex::new(grants))
     }
     pub(crate) fn register(&self, id: &str, path: &Path) -> Result<DropEntry, String> {
+        self.register_with_args(id, path, Vec::new())
+    }
+    pub(crate) fn register_with_args(&self, id: &str, path: &Path, arguments: Vec<String>) -> Result<DropEntry, String> {
         crate::files::valid_id(id)?;
         let (path, mut entry) = classify(path)?;
         if entry.kind != "app" { return Err("Choose a Windows .exe app or .lnk app shortcut".into()); }
-        self.0.lock().map_err(|_| "App shortcuts are unavailable")?.insert(id.into(), path);
+        validate_app_arguments(&path, &arguments)?;
+        self.0.lock().map_err(|_| "App shortcuts are unavailable")?.insert(id.into(), AppLaunchTarget { path, arguments });
         entry.source_id = Some(id.into());
         Ok(entry)
     }
     pub(crate) fn target(&self, id: &str) -> Result<PathBuf, String> {
+        Ok(self.target_launch(id)?.path)
+    }
+    pub(crate) fn target_launch(&self, id: &str) -> Result<AppLaunchTarget, String> {
         crate::files::valid_id(id)?;
         let selected = self.0.lock().map_err(|_| "App shortcuts are unavailable")?
             .get(id).cloned().ok_or("Choose the app again to reconnect its shortcut.")?;
-        let (current, entry) = classify(&selected)?;
-        if current != selected || entry.kind != "app" {
+        let (current, entry) = classify(&selected.path)?;
+        if current != selected.path || entry.kind != "app" {
             return Err("This app shortcut has changed. Choose the app again to reconnect it.".into());
         }
-        Ok(current)
+        validate_app_arguments(&selected.path, &selected.arguments)?;
+        Ok(selected)
+    }
+    pub(crate) fn set_chrome_profile(&self, id: &str, arguments: Vec<String>) -> Result<(), String> {
+        let mut grants = self.0.lock().map_err(|_| "App shortcuts are unavailable")?;
+        let target = grants.get_mut(id).ok_or("Choose the app again to reconnect its shortcut.")?;
+        validate_app_arguments(&target.path, &arguments)?;
+        target.arguments = arguments;
+        Ok(())
     }
     pub(crate) fn persist(&self, directory: &Path) -> Result<(), String> {
         let grants = self.0.lock().map_err(|_| "App shortcuts are unavailable")?;
@@ -73,6 +104,38 @@ impl AppGrants {
         fs::write(directory.join("app-shortcuts.json"), serde_json::to_vec(&*grants).map_err(|error| error.to_string())?)
             .map_err(|error| error.to_string())
     }
+}
+
+fn read_app_grants(path: &Path) -> Result<HashMap<String, AppLaunchTarget>, String> {
+    let bytes = fs::read(path).map_err(|error| error.to_string())?;
+    if bytes.len() > 1_000_000 { return Err("The shortcut registry is too large".into()); }
+    let stored: HashMap<String, StoredAppGrant> = serde_json::from_slice(&bytes).map_err(|error| error.to_string())?;
+    Ok(stored.into_iter().filter_map(|(id, grant)| {
+        if crate::files::valid_id(&id).is_err() { return None; }
+        let target = match grant { StoredAppGrant::Legacy(path) => AppLaunchTarget { path, arguments: Vec::new() }, StoredAppGrant::Current(target) => target };
+        (target.path.is_absolute() && validate_app_arguments(&target.path, &target.arguments).is_ok()).then_some((id, target))
+    }).collect())
+}
+
+pub(crate) fn validate_app_arguments(path: &Path, arguments: &[String]) -> Result<(), String> {
+    if arguments.is_empty() { return Ok(()); }
+    if !path.file_name().is_some_and(|name| name.to_string_lossy().eq_ignore_ascii_case("chrome.exe")) {
+        return Err("Only Chrome profile shortcuts can store launch arguments.".into());
+    }
+    let mut profile_directory = false;
+    let mut user_data_directory = false;
+    for argument in arguments {
+        let Some((name, value)) = argument.split_once('=') else { return Err("Invalid Chrome profile shortcut arguments.".into()); };
+        let found = if name.eq_ignore_ascii_case("--profile-directory") { &mut profile_directory }
+            else if name.eq_ignore_ascii_case("--user-data-dir") { &mut user_data_directory }
+            else { return Err("Invalid Chrome profile shortcut arguments.".into()); };
+        if *found || value.trim().is_empty() || value.len() > 1024 || value.chars().any(char::is_control) || value.contains('"') {
+            return Err("Invalid Chrome profile shortcut arguments.".into());
+        }
+        *found = true;
+    }
+    if !profile_directory && !user_data_directory { return Err("Invalid Chrome profile shortcut arguments.".into()); }
+    Ok(())
 }
 
 fn read_grants(path: &Path) -> Result<HashMap<String, PathBuf>, String> {
@@ -385,7 +448,7 @@ mod tests {
         assert!(documents.target(app_id).is_err()); assert!(apps.target(document_id).is_err());
         assert!(documents.register("app-as-document", &app).is_err()); assert!(apps.register("document-as-app", &document).is_err());
         apps.persist(&fixture.0.join("registry")).unwrap(); documents.persist(&fixture.0.join("registry")).unwrap();
-        let restored_apps = AppGrants(Mutex::new(read_grants(&fixture.0.join("registry/app-shortcuts.json")).unwrap()));
+        let restored_apps = AppGrants(Mutex::new(read_app_grants(&fixture.0.join("registry/app-shortcuts.json")).unwrap()));
         let restored_documents = DocumentGrants(Mutex::new(read_grants(&fixture.0.join("registry/document-shortcuts.json")).unwrap()));
         assert_eq!(restored_apps.target(app_id).unwrap(), app.canonicalize().unwrap());
         assert!(restored_documents.target(app_id).is_err()); assert!(restored_apps.target(document_id).is_err());
@@ -393,11 +456,30 @@ mod tests {
         fs::remove_file(&app).unwrap(); assert!(restored_apps.target(app_id).is_err()); fs::create_dir(&app).unwrap(); assert!(restored_apps.target(app_id).is_err());
     }
     #[test]
+    fn saved_chrome_profile_arguments_survive_reload_and_legacy_grants_still_load() {
+        let fixture = Fixture::new(); let chrome = fixture.0.join("chrome.exe");
+        fs::write(&chrome, "fixture, deliberately not an executable").unwrap();
+        let arguments = vec!["--profile-directory=Profile 3".to_owned()];
+        let grants = AppGrants(Mutex::new(HashMap::new()));
+        grants.register_with_args("chrome-profile", &chrome, arguments.clone()).unwrap();
+        assert_eq!(grants.target_launch("chrome-profile").unwrap().arguments, arguments);
+        grants.persist(&fixture.0.join("registry")).unwrap();
+        let restored = AppGrants(Mutex::new(read_app_grants(&fixture.0.join("registry/app-shortcuts.json")).unwrap()));
+        assert_eq!(restored.target_launch("chrome-profile").unwrap().arguments, arguments);
+
+        let legacy_path = fixture.0.join("legacy.json");
+        fs::write(&legacy_path, serde_json::json!({"legacy": chrome.canonicalize().unwrap()}).to_string()).unwrap();
+        let legacy = AppGrants(Mutex::new(read_app_grants(&legacy_path).unwrap()));
+        assert!(legacy.target_launch("legacy").unwrap().arguments.is_empty());
+        assert!(validate_app_arguments(&fixture.0.join("other.exe"), &arguments).is_err());
+        assert!(validate_app_arguments(&chrome, &["--disable-web-security".into()]).is_err());
+    }
+    #[test]
     fn app_and_document_target_rechecks_reject_wrong_grant_kinds_and_scripts() {
         let fixture = Fixture::new(); let app = fixture.0.join("tool.exe"); let document = fixture.0.join("notes.txt");
         fs::write(&app, "app fixture").unwrap(); fs::write(&document, "document fixture").unwrap();
         let documents = DocumentGrants(Mutex::new(HashMap::from([("wrong-kind".into(), app.canonicalize().unwrap())])));
-        let apps = AppGrants(Mutex::new(HashMap::from([("wrong-kind".into(), document.canonicalize().unwrap())])));
+        let apps = AppGrants(Mutex::new(HashMap::from([("wrong-kind".into(), AppLaunchTarget{path:document.canonicalize().unwrap(),arguments:Vec::new()})])));
         assert!(documents.target("wrong-kind").is_err()); assert!(apps.target("wrong-kind").is_err());
         for extension in ["cmd", "bat", "com", "ps1", "vbs", "msi", "scr", "hta", "reg"] {
             let script = fixture.0.join(format!("run.{extension}")); fs::write(&script, "script fixture").unwrap();

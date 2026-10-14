@@ -20,9 +20,11 @@ impl Bounds {
 pub struct WindowInfo {pub hwnd:usize,pub pid:u32,pub title:String,#[serde(skip)]pub(crate) executable:Option<String>}
 #[derive(Clone)]
 struct Launch {pid:u32,executable:Option<String>,before:Vec<usize>,profile_picker:bool,picker_hwnd:Option<usize>,picker_title:Option<String>}
+#[cfg(test)]
 #[derive(Clone,Copy,Debug,Eq,PartialEq)]
-enum SelectedWindowDisposition{AttachToPanel,ShowOnDesktop}
-fn selected_window_disposition(profile_picker:bool)->SelectedWindowDisposition{if profile_picker{SelectedWindowDisposition::ShowOnDesktop}else{SelectedWindowDisposition::AttachToPanel}}
+enum SelectedWindowDisposition{AttachToPanel}
+#[cfg(test)]
+fn selected_window_disposition(_profile_picker:bool)->SelectedWindowDisposition{SelectedWindowDisposition::AttachToPanel}
 fn same_path(a:&str,b:&str)->bool{a.trim_start_matches("\\\\?\\").eq_ignore_ascii_case(b.trim_start_matches("\\\\?\\"))}
 fn select_window<'a>(launch:&Launch,windows:&'a [WindowInfo],claimed:&[usize])->Option<&'a WindowInfo>{
  windows.iter().find(|w|!launch.before.contains(&w.hwnd)&&!claimed.contains(&w.hwnd)&&((launch.pid!=0&&w.pid==launch.pid)||launch.executable.as_ref().zip(w.executable.as_ref()).is_some_and(|(a,b)|same_path(a,b))))
@@ -56,6 +58,52 @@ fn launch_arguments(executable:&Path,args:&str)->String{
  else if is_chrome(executable)&&args.trim().is_empty(){"--new-window chrome://profile-picker/".to_owned()}
  else{args.to_owned()}
 }
+fn profile_arguments_string(arguments:&[String])->String{
+ arguments.iter().map(|argument|{
+  let (name,value)=argument.split_once('=').expect("validated Chrome profile argument");
+  format!("{name}=\"{value}\"")
+ }).collect::<Vec<_>>().join(" ")
+}
+pub(crate) fn chrome_profile_arguments(hwnd:usize,expected_executable:&str)->Option<Vec<String>>{unsafe{
+ let store:windows::Win32::UI::Shell::PropertiesSystem::IPropertyStore=
+  windows::Win32::UI::Shell::PropertiesSystem::SHGetPropertyStoreForWindow(handle(hwnd)).ok()?;
+ let mut property=store.GetValue(&windows::Win32::Storage::EnhancedStorage::PKEY_AppUserModel_RelaunchCommand).ok()?;
+ let command=windows::Win32::System::Com::StructuredStorage::PropVariantToStringAlloc(&property).ok()?;
+ let raw=command.0;
+ if raw.is_null(){let _=windows::Win32::System::Com::StructuredStorage::PropVariantClear(&mut property);return None}
+ let length=(0..32768).find(|index|*raw.add(*index)==0).unwrap_or(32768);
+ let command_line=String::from_utf16_lossy(std::slice::from_raw_parts(raw,length));
+ let _=windows::Win32::System::Com::CoTaskMemFree(Some(raw.cast()));
+ let _=windows::Win32::System::Com::StructuredStorage::PropVariantClear(&mut property);
+ let wide_line=wide(&command_line);let mut count=0;
+ let argv=windows::Win32::UI::Shell::CommandLineToArgvW(PCWSTR(wide_line.as_ptr()),&mut count);
+ if argv.is_null(){return None}
+ if count<1||count>128{let _=windows::Win32::Foundation::LocalFree(Some(windows::Win32::Foundation::HLOCAL(argv.cast())));return None}
+ let values=std::slice::from_raw_parts(argv,count as usize).iter().map(|value|{
+  let pointer=value.0;
+  if pointer.is_null(){return String::new()}
+  let length=(0..32768).find(|index|*pointer.add(*index)==0).unwrap_or(32768);
+  String::from_utf16_lossy(std::slice::from_raw_parts(pointer,length))
+ }).collect::<Vec<_>>();
+ let _=windows::Win32::Foundation::LocalFree(Some(windows::Win32::Foundation::HLOCAL(argv.cast())));
+ let first=values.first()?;
+ let executable=Path::new(first).canonicalize().ok()?;
+ let expected=Path::new(expected_executable).canonicalize().ok()?;
+ if !same_path(&executable.to_string_lossy(),&expected.to_string_lossy()){return None}
+ let mut result=Vec::new();let mut index=1;
+ while index<values.len(){
+  let value=&values[index];
+  if let Some((name,value))=value.split_once('='){
+   if name.eq_ignore_ascii_case("--profile-directory")||name.eq_ignore_ascii_case("--user-data-dir"){
+    result.push(format!("{name}={value}"));
+   }
+  }else if value.eq_ignore_ascii_case("--profile-directory")||value.eq_ignore_ascii_case("--user-data-dir"){
+   let next=values.get(index+1)?;result.push(format!("{value}={next}"));index+=1;
+  }
+  index+=1;
+ }
+ (!result.is_empty()&&crate::dropped_files::validate_app_arguments(&expected,&result).is_ok()).then_some(result)
+}}
 fn is_chrome(path:&Path)->bool{path.file_name().is_some_and(|name|name.to_string_lossy().eq_ignore_ascii_case("chrome.exe"))}
 fn opens_chrome_profile_picker(executable:&Path,args:&str)->bool{is_chrome(executable)&&args.trim().is_empty()}
 fn has_chrome_profile_argument(args:&str)->bool{args.split_whitespace().any(|arg|matches!(arg.trim_matches('"').split('=').next().unwrap_or("").to_ascii_lowercase().as_str(),"--profile-directory"|"--user-data-dir"))}
@@ -101,7 +149,6 @@ fn info_at(entry:&Entry,scale:f64,measured:bool)->Info{
  let required_height=if entry.probing_height{entry.declared_height}else{maximum(entry.declared_height,entry.measured_height)};
  Info{hwnd:entry.hwnd,pid:entry.pid,min_width:size.2 as f64/scale,min_height:size.3 as f64/scale,required_width,required_height,measured,probing:entry.probing_width||entry.probing_height,shown:entry.shown,opened_externally:false}
 }
-fn external_open_info()->Info{Info{hwnd:0,pid:0,min_width:0.,min_height:0.,required_width:None,required_height:None,measured:false,probing:false,shown:false,opened_externally:true}}
 fn minimum_query_due(entry:&Entry,dpi:(u32,u32),wants_smaller:bool,now:std::time::Instant)->bool{
  entry.minimum_query_after.is_none_or(|after|now>=after)&&(entry.minimum_dpi!=Some(dpi)||wants_smaller)
 }
@@ -216,10 +263,11 @@ pub(crate) fn shortcut_target(path:&Path)->Option<(PathBuf,String,Option<PathBuf
  let directory=(end>0).then(||PathBuf::from(std::ffi::OsString::from_wide(&directory[..end])));
  Some((target,from_wide(&args),directory))
 }}
-fn launch(path:&Path,before:Vec<usize>)->Result<Launch,String>{
+fn launch(path:&Path,before:Vec<usize>,profile_arguments:&[String])->Result<Launch,String>{
  let _com=Com::initialize();
  let resolved=if path.extension().is_some_and(|e|e.eq_ignore_ascii_case("lnk")){shortcut_target(path)}else{Some((path.to_path_buf(),String::new(),None))};
- let (target,args,directory)=resolved.unwrap_or_else(||(path.to_path_buf(),String::new(),None));
+ let (target,mut args,directory)=resolved.unwrap_or_else(||(path.to_path_buf(),String::new(),None));
+ if !profile_arguments.is_empty(){args=format!("{} {}",args.trim(),profile_arguments_string(profile_arguments)).trim().to_owned();}
  let profile_picker=opens_chrome_profile_picker(&target,&args);let args=launch_arguments(&target,&args);let file=os_wide(target.as_os_str());let parameters=wide(&args);let verb=wide("open");
  let directory=directory.map(|p|os_wide(p.as_os_str()));
  let mut execute=SHELLEXECUTEINFOW{cbSize:std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,fMask:SEE_MASK_NOCLOSEPROCESS|SEE_MASK_NOASYNC|SEE_MASK_FLAG_NO_UI,
@@ -239,14 +287,15 @@ fn foreground_in(items:&HashMap<String,Entry>,front:HWND)->bool{
 pub fn is_managed_foreground(app:&AppHandle,hwnd:HWND)->bool{app.state::<AppPanelState>().0.try_lock().map(|s|foreground_in(&s.items,hwnd)).unwrap_or(false)}
 fn parent_context(items:&HashMap<String,Entry>,main:HWND)->bool{let front=unsafe{GetForegroundWindow()};front.0.is_null()||pid(front)==std::process::id()||foreground_in(items,front)||front==main}
 
-fn attach(window:&WindowInfo,source_id:String,bounds:Bounds,clip:Bounds,grip:Option<Bounds>,main:HWND,preserve_focus:bool)->Result<Entry,String>{unsafe{
+fn attach(window:&WindowInfo,source_id:String,bounds:Bounds,clip:Bounds,grip:Option<Bounds>,main:HWND,preserve_focus:bool,restore_hidden_as_visible:bool)->Result<Entry,String>{unsafe{
  let hwnd=handle(window.hwnd);
  if !IsWindow(Some(hwnd)).as_bool()||pid(hwnd)!=window.pid||window.pid==std::process::id()||!GetPropW(hwnd,PCWSTR(marker().as_ptr())).0.is_null(){return Err("This window is no longer available for attachment.".into())}
  let original_owner=GetWindowLongPtrW(hwnd,GWLP_HWNDPARENT) as usize;
  let mut original_placement=WINDOWPLACEMENT{length:std::mem::size_of::<WINDOWPLACEMENT>() as u32,..Default::default()};
  GetWindowPlacement(hwnd,&mut original_placement).map_err(|e|e.to_string())?;
  let region=CreateRectRgn(0,0,0,0);let original_region=if GetWindowRgn(hwnd,region)!=RGN_ERROR{region.0 as usize}else{let _=DeleteObject(HGDIOBJ(region.0));0};
-  let original_visible=IsWindowVisible(hwnd).as_bool();
+  let original_visible=IsWindowVisible(hwnd).as_bool()||restore_hidden_as_visible;
+  if restore_hidden_as_visible&&!IsWindowVisible(hwnd).as_bool()&&original_placement.showCmd==SW_HIDE.0 as u32{original_placement.showCmd=SW_SHOWNORMAL.0 as u32;}
   let mut entry=Entry{hwnd:window.hwnd,pid:window.pid,source_id,bounds,clip,grip,occlusions:Vec::new(),viewport_right:None,visible:preserve_focus&&original_visible,shown:preserve_focus&&original_visible,edge_hidden:false,preserve_focus,collection_marker:None,collection_was_visible:None,stacking_rank:0,revision:0,resize_guard:None,original_owner,original_placement,original_region,original_visible,declared_width:None,declared_height:None,measured_width:None,measured_height:None,pending_width:None,pending_height:None,probing_width:false,probing_height:false,minimum_dpi:None,minimum_query_after:None,fresh:false,last:None,error:String::new()};
  // Top-level ownership, never SetParent/WS_CHILD. Restore it before Still closes.
  SetWindowLongPtrW(hwnd,GWLP_HWNDPARENT,main.0 as isize);
@@ -502,7 +551,7 @@ pub async fn app_panel_resume(app:AppHandle,webview:Webview,id:String,cancel_col
  let candidate=candidates.pop().unwrap();let owner_property=unsafe{GetPropW(handle(candidate.hwnd),PCWSTR(marker().as_ptr()))};
  if !owner_property.0.is_null(){let previous_owner=handle(owner_property.0 as usize);if previous_owner!=main&&unsafe{IsWindow(Some(previous_owner)).as_bool()}{return Err("This app window is still managed by another Still window. Close that Still session before restoring it here.".into())}unsafe{let _=RemovePropW(handle(candidate.hwnd),PCWSTR(marker().as_ptr()));}}
  if panels.items.values().any(|entry|entry.hwnd==candidate.hwnd&&entry.pid==candidate.pid){return Err("This app window is already attached to another widget in Still.".into())}
- let initial=Bounds{x:0.,y:0.,width:640.,height:400.};let mut entry=attach(&candidate,String::new(),initial.clone(),initial,None,main,false)?;entry.collection_marker=Some(id.clone());
+ let initial=Bounds{x:0.,y:0.,width:640.,height:400.};let mut entry=attach(&candidate,String::new(),initial.clone(),initial,None,main,false,false)?;entry.collection_marker=Some(id.clone());
  let information=info(&entry,main,false);let token=collection_marker(&id);let _=unsafe{RemovePropW(handle(candidate.hwnd),PCWSTR(token.as_ptr()))};entry.collection_marker=None;entry.collection_was_visible=None;
  if let Some(mut replaced)=panels.items.insert(id,entry){restore(&mut replaced)}
  Ok(information)
@@ -511,7 +560,8 @@ pub async fn app_panel_resume(app:AppHandle,webview:Webview,id:String,cancel_col
 #[tauri::command]
 pub async fn app_panel_open(app:AppHandle,webview:Webview,id:String,source_id:String,bounds:Bounds,clip:Bounds,grip:Option<Bounds>,reuse_existing:Option<bool>)->Result<Info,String>{
  crate::security::authorize(&webview)?;instance(&id)?;bounds.validate()?;clip.validate()?;if let Some(grip)=&grip{grip.validate()?}
- let path=app.state::<crate::dropped_files::AppGrants>().target(&source_id)?;
+ let app_target=app.state::<crate::dropped_files::AppGrants>().target_launch(&source_id)?;
+ let path=app_target.path.clone();let profile_arguments=app_target.arguments.clone();
  tauri::async_runtime::spawn_blocking(move||{
   let main=owner()?;let state=app.state::<AppPanelState>();
   let (epoch,pending)={let mut s=state.0.lock().map_err(|_|"App panels are unavailable")?;
@@ -522,10 +572,11 @@ pub async fn app_panel_open(app:AppHandle,webview:Webview,id:String,source_id:St
   };
   let result=(||{
    let launch=match pending{Some(p)=>p,None=>{
-    let before=window_snapshot();let expected=expected_executable(&path);let explicit_profile=explicit_chrome_profile_shortcut(&path);
+    let before=window_snapshot();let expected=expected_executable(&path);let explicit_profile=!profile_arguments.is_empty()||explicit_chrome_profile_shortcut(&path);
     let available=if reuse_existing==Some(true){windows()}else{Vec::new()};
-    let profile_picker=expected.as_deref().is_some_and(|executable|opens_chrome_profile_picker(Path::new(executable),""));
-    let ticket=if let Some(window)=reuse_candidate_for_launch(&available,expected.as_deref(),explicit_profile||profile_picker)?{Launch{pid:window.pid,executable:expected,before:before.into_iter().filter(|h|*h!=window.hwnd).collect(),profile_picker:false,picker_hwnd:None,picker_title:None}}else{launch(&path,before)?};
+    let launch_args=profile_arguments_string(&profile_arguments);
+    let profile_picker=expected.as_deref().is_some_and(|executable|opens_chrome_profile_picker(Path::new(executable),&launch_args));
+    let ticket=if let Some(window)=reuse_candidate_for_launch(&available,expected.as_deref(),explicit_profile||profile_picker)?{Launch{pid:window.pid,executable:expected,before:before.into_iter().filter(|h|*h!=window.hwnd).collect(),profile_picker:false,picker_hwnd:None,picker_title:None}}else{launch(&path,before,&profile_arguments)?};
     state.0.lock().map_err(|_|"App panels are unavailable")?.pending.insert(id.clone(),ticket.clone());ticket
    }};
    let mut launch=launch;
@@ -549,16 +600,13 @@ pub async fn app_panel_open(app:AppHandle,webview:Webview,id:String,source_id:St
      }
     }else{select_window(&launch,&choices,&claimed)};
     if let Some(candidate)=candidate{
-     if selected_window_disposition(launch.profile_picker)==SelectedWindowDisposition::ShowOnDesktop{
-      let target=handle(candidate.hwnd);
-      unsafe{let _=ShowWindow(target,SW_RESTORE);let _=SetForegroundWindow(target);}
-      if !unsafe{IsWindowVisible(target).as_bool()}{return Err("Chrome selected the profile, but Windows could not show its window.".into())}
-      let mut s=state.0.lock().map_err(|_|"App panels are unavailable")?;
-      if s.closed||s.generation.get(&id)!=Some(&epoch){return Err("Chrome opened, but the Still action was cancelled.".into())}
-      s.pending.remove(&id);
-      return Ok(external_open_info())
+     if launch.profile_picker {
+      if let Some(arguments)=chrome_profile_arguments(candidate.hwnd,&path.to_string_lossy()) {
+       let grants=app.state::<crate::dropped_files::AppGrants>();
+       if grants.set_chrome_profile(&source_id,arguments).is_ok(){if let Ok(directory)=app.path().app_data_dir(){let _=grants.persist(&directory);}}
+      }
      }
-      let mut entry=attach(candidate,source_id.clone(),bounds.clone(),clip.clone(),grip.clone(),main,false)?;
+      let mut entry=attach(candidate,source_id.clone(),bounds.clone(),clip.clone(),grip.clone(),main,false,launch.profile_picker)?;
      let mut origin=POINT::default();if !unsafe{ClientToScreen(main,&mut origin).as_bool()}{restore(&mut entry);return Err("Still window is unavailable".into())}
      let scale=unsafe{windows::Win32::UI::HiDpi::GetDpiForWindow(main)}.max(96) as f64/96.;
      let measured=match position(&mut entry,main,origin,scale){Ok(measured)=>measured,Err(error)=>{restore(&mut entry);return Err(error)}};
@@ -596,7 +644,7 @@ pub async fn app_panel_attach(app:AppHandle,webview:Webview,id:String,hwnd:usize
   let result=(||{
    let main=owner()?;
    let candidate=if preserve_focus{direct_candidate(hwnd,pid)?}else{windows().into_iter().find(|w|w.hwnd==hwnd&&w.pid==pid).ok_or("This window is no longer available. Refresh the app list.")?};
-   let mut entry=attach(&candidate,String::new(),bounds,clip,grip,main,preserve_focus)?;
+   let mut entry=attach(&candidate,String::new(),bounds,clip,grip,main,preserve_focus,false)?;
    let mut origin=POINT::default();if !unsafe{ClientToScreen(main,&mut origin).as_bool()}{restore(&mut entry);return Err("Still window is unavailable".into())}
    let scale=unsafe{windows::Win32::UI::HiDpi::GetDpiForWindow(main)}.max(96) as f64/96.;let measured=match position(&mut entry,main,origin,scale){Ok(measured)=>measured,Err(e)=>{restore(&mut entry);return Err(e)}};
    let information=info(&entry,main,measured);let mut panels=state.0.lock().map_err(|_|"App panels unavailable")?;

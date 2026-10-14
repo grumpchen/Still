@@ -170,7 +170,8 @@ pub async fn app_picker_select_installed(app:AppHandle,webview:Webview,id:String
 pub async fn app_picker_prepare(app:AppHandle,webview:Webview,hwnd:usize,pid:u32)->Result<crate::dropped_files::DropEntry,String>{
  crate::security::authorize(&webview)?;
  tauri::async_runtime::spawn_blocking(move||{let window=selected_for_prepare(&app,hwnd,pid)?;let path=window.executable.ok_or("Windows could not identify this app's executable. It may run at a different permission level.")?;
-  let state=app.state::<crate::dropped_files::AppGrants>();let mut entry=state.register(&crate::dropped_files::source_id()?,Path::new(&path))?;
+  let profile_arguments=crate::app_panel::chrome_profile_arguments(hwnd,&path).unwrap_or_default();
+  let state=app.state::<crate::dropped_files::AppGrants>();let mut entry=state.register_with_args(&crate::dropped_files::source_id()?,Path::new(&path),profile_arguments)?;
   entry.name=version_name(&path).unwrap_or_else(||clean_name(&Path::new(&path).file_stem().unwrap_or_default().to_string_lossy()));
   state.persist(&app.path().app_data_dir().map_err(|e|e.to_string())?)?;Ok(entry)
  }).await.map_err(|e|e.to_string())?
