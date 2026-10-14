@@ -22,15 +22,18 @@ test('accepting an offer to create a Notes widget adds the exact previous user t
 });
 test('sharing a selected widget omits grants, URLs, bookmarks, and unrelated content',()=>{
   const note=createWidget('notes');note.text='Only this note';note.fileKey='secret-grant';note.url='https://example.org/private';
-  assert.deepEqual(widgetContext(note),{type:'notes',title:'Notes 1',text:'Only this note'});
+  assert.deepEqual(widgetContext(note),{type:'notes',title:'Notes 1',tagColor:null,text:'Only this note'});
   const app=createWidget('apps');app.appKey='secret-app';assert.ok(!JSON.stringify(widgetContext(app)).includes('secret-app'));
   const {workspace}=fixture();workspace.widgets[0].text='private note';assert.ok(!JSON.stringify(layoutContext(workspace,900,700)).includes('private note'));
 });
 test('workspace context exposes current widget data; @ only marks quick selections',()=>{
   const {workspace}=fixture(),note=workspace.widgets[0],timer=workspace.widgets[1];note.text='private note';timer.remaining=88;
+  note.tagColor='blue';timer.tagColor='green';
   const context=assistantWorkspaceContext(workspace,900,700,[note.id]);
   assert.equal(context.canvasAndWidgets.widgets.length,2);
+  assert.deepEqual(context.canvasAndWidgets.widgets.map(widget=>widget.tagColor),['blue','green']);
   assert.deepEqual(context.widgetData,[{id:note.id,...widgetContext(note),quickSelected:true},{id:timer.id,...widgetContext(timer),quickSelected:false}]);
+  assert.deepEqual(context.widgetData.map(widget=>widget.tagColor),['blue','green']);
   assert.equal(JSON.stringify(context.widgetData).includes('private note'),true);
   assert.ok(JSON.stringify(context.widgetData).includes(String(timer.remaining)));
   assert.equal(context.capabilities.contentEditingRequiresWidgetSelection,false);

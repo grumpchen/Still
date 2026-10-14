@@ -84,7 +84,7 @@ export function widgetLabel(widget:WidgetInstance):string {
 }
 // No resource grants, local paths, bookmarks, or content from other widgets.
 export function widgetContext(widget:WidgetInstance):Record<string,unknown> {
-  const result:Record<string,unknown> = {type:widget.type, title:widgetLabel(widget)};
+  const result:Record<string,unknown> = {type:widget.type, title:widgetLabel(widget),tagColor:widget.tagColor??null};
   if(widget.type==='notes'||widget.type==='ai')result.text=widget.text.slice(0,12000);
   if(widget.type==='timetable')result.schedule=widget.schedule.slice(0,80);
   if(widget.type==='focus')result.remainingSeconds=widget.end?Math.max(0,Math.ceil((widget.end-Date.now())/1000)):widget.remaining;
@@ -97,7 +97,7 @@ export function layoutFingerprint(workspace:Workspace):string {
 }
 export function layoutContext(workspace:Workspace,width:number,height:number) {
   return {canvas:{width,height,padding:20},widgets:workspace.widgets.map(w=>({
-    id:w.id,title:widgetLabel(w),type:w.type,placement:w.placement,minimized:w.minimized,
+    id:w.id,title:widgetLabel(w),type:w.type,tagColor:w.tagColor??null,placement:w.placement,minimized:w.minimized,
     minimumWidth:Math.max(widgetCatalog[w.type].minWidth,w.appPanelOpen?w.appMinWidth??0:0),
     minimumHeight:Math.max(widgetCatalog[w.type].minHeight,w.appPanelOpen?w.appMinHeight??0:0),
   }))};
