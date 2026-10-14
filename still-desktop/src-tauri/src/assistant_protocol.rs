@@ -5,7 +5,7 @@ const GENERAL_ASSISTANT_GUIDANCE:&str="Be a helpful general-purpose AI: answer q
 
 #[derive(Deserialize, Serialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
-pub enum Provider { Gemini, Openai }
+pub enum Provider { Gemini, Openai, Opencode }
 #[derive(Deserialize, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct Message { pub role: String, pub text: String }
@@ -107,13 +107,42 @@ pub fn openai_models(value: Value) -> Vec<String> {
     result
 }
 
+/// OpenCode Zen lists models that use several API protocols. Still currently
+/// supports the OpenAI-compatible chat-completions route only.
+pub fn opencode_models(value: Value) -> Vec<String> {
+    let Some(models)=value["data"].as_array() else { return Vec::new(); };
+    let mut result=Vec::new();
+    for model in models {
+        let Some(name)=model["id"].as_str() else { continue; };
+        if valid_model(name,Provider::Opencode) && !result.iter().any(|existing|existing==name) { result.push(name.to_string()); }
+    }
+    result.sort();
+    result
+}
+
+fn opencode_model_uses_other_protocol(model:&str)->bool {
+    ["gpt-","claude-","jev-","qwen3.5-","qwen3.6-","qwen3.7-","gemini-","grok-","muse-spark-"]
+        .iter().any(|prefix|model.starts_with(prefix))
+        ||["qwen3.8-flash","muse-spark-1.3-contributor-free"].contains(&model)
+}
+
 fn valid_model(model:&str,provider:Provider)->bool {
-    let prefix=match provider {Provider::Gemini=>"gemini-",Provider::Openai=>"gpt-"};
-    model.starts_with(prefix)&&model.len()<=80&&model.bytes().all(|b|b.is_ascii_alphanumeric()||b==b'-'||b==b'.')
+    let prefix=match provider {Provider::Gemini=>"gemini-",Provider::Openai=>"gpt-",Provider::Opencode=>""};
+    let safe=model.len()<=80&&model.bytes().all(|b|b.is_ascii_alphanumeric()||b==b'-'||b==b'.');
+    safe&&match provider {Provider::Gemini|Provider::Openai=>model.starts_with(prefix),Provider::Opencode=>!model.is_empty()&&!opencode_model_uses_other_protocol(model)}
 }
 
 pub fn openai_body(request:&Request)->Result<Value,String> {
-    if request.provider!=Provider::Openai||!valid_model(&request.model,Provider::Openai) { return Err("Choose a valid OpenAI model.".into()); }
+    compatible_chat_body(request,Provider::Openai)
+}
+
+pub fn opencode_body(request:&Request)->Result<Value,String> {
+    compatible_chat_body(request,Provider::Opencode)
+}
+
+fn compatible_chat_body(request:&Request,provider:Provider)->Result<Value,String> {
+    let name=match provider {Provider::Openai=>"OpenAI",Provider::Opencode=>"OpenCode Zen",Provider::Gemini=>"Gemini"};
+    if request.provider!=provider||!valid_model(&request.model,provider) { return Err(format!("Choose a valid {name} chat model.")); }
     if request.messages.is_empty()||request.messages.len()>13||request.context.len()>64000 { return Err("This conversation or widget context is too large. Clear chat and try again.".into()); }
     let mut total=0;
     let last_message=request.messages.len().saturating_sub(1);
@@ -207,10 +236,12 @@ pub fn parse_response(value: Value) -> Result<Reply, String> {
     let reply: Reply = serde_json::from_str(&text).map_err(|_| "Gemini returned an invalid reply or unsupported action format. Nothing was changed. Try again.")?;
     validate_reply(reply,"Gemini")
 }
-pub fn parse_openai_response(value:Value)->Result<Reply,String>{
-    let content=value["choices"][0]["message"]["content"].as_str().ok_or("OpenAI returned no readable answer.")?;
-    let reply:Reply=serde_json::from_str(content).map_err(|_|"OpenAI returned an invalid answer. Try again.")?;
-    validate_reply(reply,"OpenAI")
+pub fn parse_openai_response(value:Value)->Result<Reply,String>{ parse_compatible_response(value,"OpenAI") }
+pub fn parse_opencode_response(value:Value)->Result<Reply,String>{ parse_compatible_response(value,"OpenCode Zen") }
+fn parse_compatible_response(value:Value,provider:&str)->Result<Reply,String>{
+    let content=value["choices"][0]["message"]["content"].as_str().ok_or_else(||format!("{provider} returned no readable answer."))?;
+    let reply:Reply=serde_json::from_str(content).map_err(|_|format!("{provider} returned an invalid answer. Try again."))?;
+    validate_reply(reply,provider)
 }
 fn validate_reply(mut reply:Reply,provider:&str)->Result<Reply,String>{
     if reply.reply.len()>24000||reply.layout.len()>100||reply.actions.len()>100{return Err(format!("{provider} returned too much content. Nothing was changed. Try a smaller request."));}
@@ -225,7 +256,7 @@ fn validate_reply(mut reply:Reply,provider:&str)->Result<Reply,String>{
     if reply.reply.trim().is_empty(){
         if !reply.actions.is_empty(){reply.reply="Workspace actions requested.".into();}
         else if !reply.layout.is_empty(){reply.reply="Workspace layout proposal.".into();}
-        else{return Err(format!("{provider} returned no reply. Try again."));}
+        else{return Err(format!("{provider} returned no reply or workspace action. Try again."));}
     }
     Ok(reply)
 }
@@ -337,6 +368,20 @@ mod tests {
         let response=json!({"choices":[{"message":{"content":"{\"reply\":\"Ready\",\"layout\":[],\"actions\":[{\"type\":\"minimize\",\"ids\":[\"notes-1\"]}]}"}}]});
         assert_eq!(parse_openai_response(response).unwrap().reply,"Ready");
         assert!(parse_openai_response(json!({"choices":[]})).is_err());
+    }
+    #[test] fn opencode_zen_lists_only_supported_chat_models_and_uses_its_route() {
+        assert_eq!(opencode_models(json!({"data":[
+            {"id":"big-pickle"},{"id":"glm-5.3-flash"},{"id":"kimi-k2.6"},{"id":"big-pickle"},
+            {"id":"gpt-6-sol"},{"id":"claude-sonnet-5"},{"id":"qwen3.8-flash"},{"id":"jev-1.13"},{"id":"gemini-3.8-flash"},{"id":"grok-4.7"},{"id":"muse-spark-1.3"},
+            {"id":"bad/model"},{"id":""}
+        ]})),vec!["big-pickle","glm-5.3-flash","kimi-k2.6"]);
+        let mut r=request();r.provider=Provider::Opencode;r.model="big-pickle".into();
+        let payload=opencode_body(&r).unwrap();
+        assert_eq!(payload["model"],"big-pickle");
+        assert_eq!(payload["response_format"]["type"],"json_object");
+        r.model="gpt-6-sol".into();assert!(opencode_body(&r).unwrap_err().contains("OpenCode Zen"));
+        let response=json!({"choices":[{"message":{"content":"{\"reply\":\"Ready\",\"layout\":[],\"actions\":[]}"}}]});
+        assert_eq!(parse_opencode_response(response).unwrap().reply,"Ready");
     }
     #[test] fn rejects_endpoint_injection_and_bad_history() {
         let mut r=request();r.model="gemini-test?key=secret".into();assert!(body(&r).is_err());

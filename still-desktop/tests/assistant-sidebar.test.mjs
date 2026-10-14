@@ -26,14 +26,17 @@ test('Gemini assistant is reachable from the sidebar and native commands are reg
   assert.ok(capabilities.includes('allow-'+command.replaceAll('_','-')),command+' is allowed on the local UI capability');
  }
 });
-test('AI assistant has one chat flow with Gemini and OpenAI providers',()=>{
+test('AI assistant has Gemini, OpenAI, and OpenCode Zen providers',()=>{
  const protocol=readFileSync(new URL('../src-tauri/src/assistant_protocol.rs',import.meta.url),'utf8');
  const backend=readFileSync(new URL('../src-tauri/src/assistant.rs',import.meta.url),'utf8');
- assert.match(panel,/PROVIDERS:AssistantProvider\[\]=\['gemini','openai'\]/);
- assert.match(protocol,/pub enum Provider \{ Gemini, Openai \}/);
+ assert.match(panel,/PROVIDERS:AssistantProvider\[\]=\['gemini','openai','opencode'\]/);
+ assert.match(protocol,/pub enum Provider \{ Gemini, Openai, Opencode \}/);
  assert.match(protocol,/pub fn openai_body/);
  assert.match(backend,/https:\/\/api\.openai\.com\/v1\/chat\/completions/);
  assert.match(backend,/OPENAI_API_KEY/);
+ assert.match(panel,/OpenCode Zen/);
+ assert.match(backend,/OPENCODE_API_KEY/);
+ assert.match(backend,/https:\/\/opencode\.ai\/zen\/v1\/chat\/completions/);
  assert.match(backend,/credential_store::load\(provider\)/,'saved keys load when Still starts');
  assert.match(backend,/credential_store::save\(provider,&key\)/,'connecting a key persists it');
  assert.match(backend,/credential_store::delete\(provider\)/,'Forget deletes the saved key');

@@ -4,6 +4,7 @@ fn target_name(provider: Provider) -> &'static str {
     match provider {
         Provider::Gemini => "Still.AI.Gemini.v1",
         Provider::Openai => "Still.AI.OpenAI.v1",
+        Provider::Opencode => "Still.AI.OpenCode.v1",
     }
 }
 
@@ -52,7 +53,7 @@ pub fn save(provider: Provider, key: &str) -> Result<(), String> {
     };
 
     let mut name = target_name(provider).encode_utf16().chain(Some(0)).collect::<Vec<_>>();
-    let mut username = format!("Still AI {}", match provider { Provider::Gemini => "Gemini", Provider::Openai => "OpenAI" })
+    let mut username = format!("Still AI {}", match provider { Provider::Gemini => "Gemini", Provider::Openai => "OpenAI", Provider::Opencode => "OpenCode" })
         .encode_utf16().chain(Some(0)).collect::<Vec<_>>();
     let mut credential = CREDENTIALW::default();
     credential.Type = CRED_TYPE_GENERIC;
@@ -95,5 +96,8 @@ mod tests {
         assert_ne!(target_name(Provider::Gemini), target_name(Provider::Openai));
         assert!(target_name(Provider::Gemini).starts_with("Still.AI."));
         assert!(target_name(Provider::Openai).starts_with("Still.AI."));
+        assert_ne!(target_name(Provider::Gemini), target_name(Provider::Opencode));
+        assert_ne!(target_name(Provider::Openai), target_name(Provider::Opencode));
+        assert!(target_name(Provider::Opencode).starts_with("Still.AI."));
     }
 }
