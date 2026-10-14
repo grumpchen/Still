@@ -1,10 +1,10 @@
 import {invoke,isTauri} from '@tauri-apps/api/core';
 import {toBlob} from 'html-to-image';
-export async function captureWidget(node:HTMLElement,copy:boolean):Promise<Blob> {
+export async function captureWidget(node:HTMLElement,copy:boolean,includeNativeApp=true):Promise<Blob> {
   if(isTauri()){
     const rect=node.getBoundingClientRect();
     if(rect.left<0||rect.top<0||rect.right>innerWidth||rect.bottom>innerHeight)throw new Error('Bring the whole widget into view before capturing it.');
-    const host=node.querySelector<HTMLElement>('[data-native-app-id]');
+    const host=includeNativeApp?node.querySelector<HTMLElement>('[data-native-app-id]'):null;
     if(host)for(let attempt=0;attempt<30&&host.dataset.nativeVisible!=='true';attempt++)await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));
     if(host&&host.dataset.nativeVisible!=='true')throw new Error('Let the app finish opening and bring the whole widget into view before capturing it.');
     const appRect=host?.getBoundingClientRect();

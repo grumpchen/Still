@@ -16,7 +16,18 @@ export async function widgetImage(id:string):Promise<string> {
   if(!node||node.closest('[hidden]'))throw new Error('This widget is no longer visible.');
   const viewport=node.closest('.canvas-viewport')?.getBoundingClientRect(),bounds=node.getBoundingClientRect();
   if(!viewport||bounds.left<viewport.left||bounds.top<viewport.top||bounds.right>viewport.right||bounds.bottom>viewport.bottom)throw new Error('Bring the whole widget into the visible canvas before sharing a screenshot.');
-  const image=await createImageBitmap(await captureWidget(node,false));
+  return imageData(await captureWidget(node,false));
+}
+/** Capture only the active Still canvas viewport; native app windows and the assistant panel are excluded. */
+export async function workspaceImage():Promise<string> {
+  const node=[...document.querySelectorAll<HTMLElement>('.canvas-viewport')].find(item=>!item.closest('[hidden]'));
+  if(!node)throw new Error('The workspace canvas is not visible.');
+  const bounds=node.getBoundingClientRect();
+  if(bounds.width<1||bounds.height<1)throw new Error('The workspace canvas is not ready to capture.');
+  return imageData(await captureWidget(node,false,false));
+}
+async function imageData(blob:Blob):Promise<string>{
+  const image=await createImageBitmap(blob);
   try{
     const scale=Math.min(1,1280/image.width,1280/image.height),canvas=document.createElement('canvas');
     canvas.width=Math.max(1,Math.round(image.width*scale));canvas.height=Math.max(1,Math.round(image.height*scale));

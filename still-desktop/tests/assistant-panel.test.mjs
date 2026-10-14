@@ -13,22 +13,25 @@ after(()=>vite.close());
 function setGlobal(key,value){Object.defineProperty(globalThis,key,{configurable:true,writable:true,value})}
 function setReactValue(node,value,elementType,caret){Object.getOwnPropertyDescriptor(node.ownerDocument.defaultView[elementType].prototype,'value').set.call(node,value);if(caret!==undefined)node.setSelectionRange(caret,caret);const props=node[Object.keys(node).find(key=>key.startsWith('__reactProps$'))];props?.onChange?.({target:node,currentTarget:node})}
 function setReactChecked(node,value){Object.getOwnPropertyDescriptor(node.ownerDocument.defaultView.HTMLInputElement.prototype,'checked').set.call(node,value);const props=node[Object.keys(node).find(key=>key.startsWith('__reactProps$'))];props?.onChange?.({target:node,currentTarget:node})}
-async function waitFor(predicate){const deadline=Date.now()+3000;while(Date.now()<deadline){if(predicate())return;await new Promise(resolve=>setTimeout(resolve,10))}assert.ok(predicate(),'Timed out waiting for assistant UI')}
+async function waitFor(predicate){const deadline=Date.now()+3000;while(Date.now()<deadline){if(predicate())return;await new Promise(resolve=>setTimeout(resolve,10))}assert.ok(predicate(),`Timed out waiting for assistant UI; visible error: ${globalThis.document?.querySelector('.assistant-error')?.textContent??'none'}`)}
 
 test('the single chat can use workspace widgets; @ is optional quick selection and screenshot target',async()=>{
  const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true}),{window}=dom,old=new Map();
- for(const key of ['window','document','navigator','HTMLElement','Element','Node','MutationObserver','requestAnimationFrame','cancelAnimationFrame','IS_REACT_ACT_ENVIRONMENT','isTauri'])old.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
+ for(const key of ['window','document','navigator','localStorage','innerWidth','innerHeight','HTMLElement','Element','Node','MutationObserver','requestAnimationFrame','cancelAnimationFrame','IS_REACT_ACT_ENVIRONMENT','isTauri','createImageBitmap'])old.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
  const calls=[];let root;
  try{
-  for(const [key,value] of Object.entries({window,document:window.document,navigator:window.navigator,HTMLElement:window.HTMLElement,Element:window.Element,Node:window.Node,MutationObserver:window.MutationObserver,requestAnimationFrame:callback=>setTimeout(()=>callback(Date.now()),0),cancelAnimationFrame:clearTimeout,IS_REACT_ACT_ENVIRONMENT:true,isTauri:true}))setGlobal(key,value);
+  for(const [key,value] of Object.entries({window,document:window.document,navigator:window.navigator,localStorage:window.localStorage,innerWidth:window.innerWidth,innerHeight:window.innerHeight,HTMLElement:window.HTMLElement,Element:window.Element,Node:window.Node,MutationObserver:window.MutationObserver,requestAnimationFrame:callback=>setTimeout(()=>callback(Date.now()),0),cancelAnimationFrame:clearTimeout,IS_REACT_ACT_ENVIRONMENT:true,isTauri:true,createImageBitmap:async()=>({width:640,height:480,close(){}})}))setGlobal(key,value);
   window.HTMLElement.prototype.scrollTo=function(){};
   window.HTMLTextAreaElement.prototype.focus=function(){};
+  window.HTMLCanvasElement.prototype.getContext=function(){return{drawImage(){}}};window.HTMLCanvasElement.prototype.toDataURL=()=> 'data:image/jpeg;base64,/9j/AA==';
   window.__TAURI_INTERNALS__={};
+  const canvas=window.document.createElement('div');canvas.className='canvas-viewport';canvas.getBoundingClientRect=()=>({left:0,top:0,right:800,bottom:600,width:800,height:600,x:0,y:0,toJSON(){}});window.document.body.append(canvas);
   mockIPC((command,args)=>{calls.push({command,args});
    if(command==='assistant_configured')return args.provider==='gemini';
    if(command==='assistant_models')return args.provider==='gemini'?['gemini-2.5-flash']:[];
    if(command==='assistant_set_key')return args.provider==='openai'?['gpt-4o-mini']:['gemini-2.5-flash'];
    if(command==='assistant_chat')return{reply:'I can help with that.',layout:[]};
+   if(command==='widget_capture')return[137,80,78,71];
    return null;
   },{shouldMockEvents:true});
   const {default:AssistantPanel}=await vite.ssrLoadModule('/src/AssistantPanel.tsx');
@@ -48,6 +51,8 @@ test('the single chat can use workspace widgets; @ is optional quick selection a
   await act(async()=>window.document.querySelector('.assistant-compose').requestSubmit());
   await waitFor(()=>calls.some(call=>call.command==='assistant_chat'));
   const geminiRequest=calls.find(call=>call.command==='assistant_chat').args.request,context=JSON.parse(geminiRequest.context);
+  assert.equal(geminiRequest.image,'/9j/AA==','the default workspace screenshot is attached to the current request');
+  assert.equal(window.localStorage.getItem('still-assistant-chat-v1:'+encodeURIComponent(workspace.id)).includes('/9j/AA=='),false,'the screenshot is excluded from saved chat history');
   assert.equal(context.canvasAndWidgets.widgets.length,4,'layout requests always include all widget geometry');
   assert.equal(context.widgetData.length,4,'all current workspace widget data is available for assistant requests');
   assert.equal(context.widgetData.find(widget=>widget.type==='notes').text,'My private note');
@@ -61,6 +66,9 @@ test('the single chat can use workspace widgets; @ is optional quick selection a
   assert.ok(window.document.querySelector('.assistant-check input[type="checkbox"]'),'the Edge screenshot stays selectable alongside the Timetable content');
 
   await act(async()=>window.document.querySelector('[aria-label="AI settings"]').click());
+  const workspaceImageSetting=window.document.querySelector('[aria-label="Share workspace screenshot with Still AI"]');assert.ok(workspaceImageSetting?.checked,'workspace image sharing is enabled by default in Still AI settings');
+  await act(async()=>setReactChecked(workspaceImageSetting,false));assert.equal(window.localStorage.getItem('still-assistant-share-workspace-image'),'false','the setting remembers when sharing is turned off');
+  await act(async()=>setReactChecked(workspaceImageSetting,true));
   const provider=window.document.querySelector('.assistant-settings select');
   await act(async()=>{provider.value='openai';provider.dispatchEvent(new window.Event('change',{bubbles:true}))});
   await waitFor(()=>calls.some(call=>call.command==='assistant_configured'&&call.args.provider==='openai'));
@@ -91,11 +99,12 @@ test('the single chat can use workspace widgets; @ is optional quick selection a
 
 test('widget add commands show replies and provider chat carries complete action history',async()=>{
  const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true}),{window}=dom,old=new Map();
- for(const key of ['window','document','navigator','HTMLElement','Element','Node','MutationObserver','requestAnimationFrame','cancelAnimationFrame','IS_REACT_ACT_ENVIRONMENT','isTauri'])old.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
+ for(const key of ['window','document','navigator','localStorage','HTMLElement','Element','Node','MutationObserver','requestAnimationFrame','cancelAnimationFrame','IS_REACT_ACT_ENVIRONMENT','isTauri'])old.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
  const calls=[],actions=[];let root;
  try{
-  for(const [key,value] of Object.entries({window,document:window.document,navigator:window.navigator,HTMLElement:window.HTMLElement,Element:window.Element,Node:window.Node,MutationObserver:window.MutationObserver,requestAnimationFrame:callback=>setTimeout(()=>callback(Date.now()),0),cancelAnimationFrame:clearTimeout,IS_REACT_ACT_ENVIRONMENT:true,isTauri:true}))setGlobal(key,value);
+  for(const [key,value] of Object.entries({window,document:window.document,navigator:window.navigator,localStorage:window.localStorage,HTMLElement:window.HTMLElement,Element:window.Element,Node:window.Node,MutationObserver:window.MutationObserver,requestAnimationFrame:callback=>setTimeout(()=>callback(Date.now()),0),cancelAnimationFrame:clearTimeout,IS_REACT_ACT_ENVIRONMENT:true,isTauri:true}))setGlobal(key,value);
   window.HTMLElement.prototype.scrollTo=function(){};window.HTMLTextAreaElement.prototype.focus=function(){};window.__TAURI_INTERNALS__={};
+  window.localStorage.setItem('still-assistant-share-workspace-image','false');
   mockIPC((command,args)=>{calls.push({command,args});if(command==='assistant_configured')return true;if(command==='assistant_models')return['gemini-2.5-flash'];if(command==='assistant_chat'){
     const prompt=args.request.messages.at(-1).text;
     if(prompt==='hi')return{intent:'chat',reply:'Hello! I am here to help.',layout:[{id:timetable.id,x:0,y:0,width:350,height:400}],actions:[{type:'edit_widget',ids:[timetable.id],title:'Unexpected edit'}]};

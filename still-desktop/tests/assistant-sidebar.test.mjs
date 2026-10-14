@@ -45,12 +45,14 @@ test('AI assistant has Gemini, OpenAI, and OpenCode Go providers',()=>{
  assert.match(backend,/credential_store::delete\(provider\)/,'Forget deletes the saved key');
  assert.match(panel,/stored securely in Windows Credential Manager/);
  assert.match(protocol,/Never guess an edit when the requested change is vague/,'the model is told to clarify underspecified edits instead of inventing a change');
+ assert.match(protocol,/visible Still workspace canvas only/,'a shared image is explicitly scoped to the workspace canvas');
+ assert.match(protocol,/image alone is not permission to change anything/,'visual context never authorizes workspace edits by itself');
 });
 test('clear all-widget actions are resolved locally before any model request',()=>{
  assert.match(panel,/resolveDirectAssistantActions\(input,workspace,selectedIds,trayItems\)/);
  assert.ok(panel.indexOf('if(localActions){')<panel.indexOf('geminiAssistant.send('),'deterministic workspace actions must not depend on model output');
  assert.match(panel,/!directActions&&!confirmationRequest&&!directTimerRequest&&\(!configured\|\|!currentModels\.includes\(model\)\|\|!geminiAssistant\.available\)/,'local actions remain available without AI credentials');
- assert.match(panel,/result\.layout\.length&&\(result\.intent==='layout'\|\|assistantLayoutRequested\(prompt\)\)/,'only explicit layout requests may show a layout proposal');
+ assert.match(panel,/result\.layout\.length&&assistantLayoutRequested\(prompt\)/,'only explicit layout requests may show a layout proposal');
  assert.match(panel,/confirmation==='delete_workspace'\?'Delete this workspace\?'/);
  assert.match(panel,/confirmation==='open_saved_apps'\?'Confirm open':confirmation==='delete_workspace'\?'Confirm delete':'Confirm remove'/);
  assert.match(panel,/Confirm removing workspace widgets/);

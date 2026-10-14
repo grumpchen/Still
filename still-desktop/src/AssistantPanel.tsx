@@ -1,7 +1,7 @@
 import {useEffect,useRef,useState,type ChangeEvent,type KeyboardEvent} from 'react';
 import type {Workspace,WidgetInstance,SidebarPlugin} from './domain/workspaces.ts';
 import {addFocusForAssistantTimer,applyLayoutPlan,assistantActionRequest,assistantActionsDescription,assistantEditClarification,assistantLayoutRequested,assistantKeyError,assistantReplyNeedsClarification,assistantRequestLimitError,assistantWorkspaceContext,DEFAULT_MODELS,extractAssistantTimerSeconds,layoutFingerprint,prepareAssistantHistory,preferredModel,resolveAcceptedNotesOffer,resolveDirectAssistantActions,resolveNamedNotesCreation,safeAssistantReceipt,settleAssistantConfirmation,unsupportedAssistantRequest,validateAssistantActionIntent,validateAssistantActions,validateLayout,widgetLabel,type AssistantAction,type AssistantProvider,type AssistantTrayItem,type ChatMessage,type LayoutPlan} from './domain/assistant.ts';
-import {geminiAssistant,widgetImage} from './platform/assistant.ts';
+import {geminiAssistant,widgetImage,workspaceImage} from './platform/assistant.ts';
 import {readAssistantChat,saveAssistantChat} from './domain/assistantChat.ts';
 import {Icon} from './widgets.tsx';
 import './assistant.css';
@@ -12,11 +12,14 @@ type Mention={id:string;label:string};
 const PROVIDERS:AssistantProvider[]=['gemini','openai','opencode'];
 const PROVIDER_NAMES:Record<AssistantProvider,string>={gemini:'Gemini',openai:'OpenAI',opencode:'OpenCode Go'};
 const PREFERENCE_KEY='still-assistant-model';
+const WORKSPACE_IMAGE_PREFERENCE_KEY='still-assistant-share-workspace-image';
 function readPreference():{provider:AssistantProvider;model:string}{
   try{const [provider,model]=localStorage.getItem(PREFERENCE_KEY)?.split('::')??[];if((provider==='gemini'||provider==='openai'||provider==='opencode')&&model)return{provider,model}}catch{/* preview storage can be disabled */}
   return{provider:'gemini',model:DEFAULT_MODELS.gemini};
 }
 function savePreference(provider:AssistantProvider,model:string){try{localStorage.setItem(PREFERENCE_KEY,`${provider}::${model}`)}catch{/* preference is optional */}}
+function readWorkspaceImagePreference(){try{return localStorage.getItem(WORKSPACE_IMAGE_PREFERENCE_KEY)!=='false'}catch{return true}}
+function saveWorkspaceImagePreference(enabled:boolean){try{localStorage.setItem(WORKSPACE_IMAGE_PREFERENCE_KEY,String(enabled))}catch{/* preference is optional */}}
 function canScreenshot(widget:WidgetInstance){return widget.type==='apps'||widget.type==='desmos'||widget.type==='files'}
 import {removeAssistantWidgetMention,resolveAssistantWidgetMentions} from './domain/assistantMentions.ts';
 
@@ -25,7 +28,7 @@ export default function AssistantPanel({workspace,canDeleteWorkspace,sidebarPlug
   const [configured,setConfigured]=useState(false),[settings,setSettings]=useState(false),[key,setKey]=useState('');
   const [provider,setProvider]=useState<AssistantProvider>(initial.provider),[model,setModel]=useState(initial.model),[modelsByProvider,setModelsByProvider]=useState<Record<AssistantProvider,string[]>>({gemini:[],openai:[],opencode:[]});
   const [input,setInput]=useState(''),[mentions,setMentions]=useState<Mention[]>([]),[mentionOpen,setMentionOpen]=useState(false),[mentionQuery,setMentionQuery]=useState(''),[mentionRange,setMentionRange]=useState({start:0,end:0}),[mentionIndex,setMentionIndex]=useState(0);
-  const [screenshot,setScreenshot]=useState(false),[chatState,setChatState]=useState(()=>({workspaceId:workspace.id,messages:readAssistantChat(workspace.id)})),[busy,setBusy]=useState(false),[error,setError]=useState(''),[pending,setPending]=useState(''),[plan,setPlan]=useState<LayoutPlan|null>(null),[confirmation,setConfirmation]=useState<AssistantConfirmation|null>(null);
+  const [screenshot,setScreenshot]=useState(false),[shareWorkspaceImage,setShareWorkspaceImage]=useState(readWorkspaceImagePreference),[chatState,setChatState]=useState(()=>({workspaceId:workspace.id,messages:readAssistantChat(workspace.id)})),[busy,setBusy]=useState(false),[error,setError]=useState(''),[pending,setPending]=useState(''),[plan,setPlan]=useState<LayoutPlan|null>(null),[confirmation,setConfirmation]=useState<AssistantConfirmation|null>(null);
   const alive=useRef(true),sending=useRef(false),latest=useRef(workspace),textarea=useRef<HTMLTextAreaElement>(null),log=useRef<HTMLDivElement>(null),pendingActions=useRef<AssistantAction[]|null>(null),pendingPrompt=useRef('');
   latest.current=workspace;
   const messages=chatState.workspaceId===workspace.id?chatState.messages:readAssistantChat(workspace.id);
@@ -109,6 +112,7 @@ export default function AssistantPanel({workspace,canDeleteWorkspace,sidebarPlug
     if(!localActions&&!needsConfirmation&&!needsNewFocus&&(!configured||!currentModels.includes(model)||!geminiAssistant.available))return;
     const size=dimensions(),requestProvider=provider,requestModel=model;
     sending.current=true;setBusy(true);setPending(prompt);setError('');setPlan(null);setMentionOpen(false);
+    let image:string|undefined;
     try{
       if(needsConfirmation){
         if(needsConfirmation==='delete_workspace'&&!canDeleteWorkspace){setMessages(current=>[...current,{role:'user',text:prompt},{role:'model',text:'Still must keep at least one workspace. Nothing was deleted.'}]);setInput('');setMentions([]);return}
@@ -147,9 +151,9 @@ export default function AssistantPanel({workspace,canDeleteWorkspace,sidebarPlug
       }
       const context=assistantWorkspaceContext(owner,size.width,size.height,selectedIds,trayItems,sidebarPlugins),serialized=JSON.stringify(context);
       if(serialized.length>64000)throw new Error('This workspace has unusually large widget data. Type @ to prioritize the widget you want Still to use.');
-      const image=screenshot&&screenshotWidget?await widgetImage(screenshotWidget.id):undefined;
+      image=shareWorkspaceImage?await workspaceImage():screenshot&&screenshotWidget?await widgetImage(screenshotWidget.id):undefined;
       const history=prepareAssistantHistory(messages);
-      const result=await geminiAssistant.send({provider:requestProvider,model:requestModel,messages:[...history,{role:'user',text:prompt}],context:serialized,image,session_id:owner.id});
+      let result=await geminiAssistant.send({provider:requestProvider,model:requestModel,messages:[...history,{role:'user',text:prompt}],context:serialized,image,session_id:owner.id});
       if(!alive.current)return;
       if(result.actions.length&&assistantReplyNeedsClarification(result.reply)){
         setMessages(current=>[...current,{role:'user',text:prompt},{role:'model',text:result.reply}]);setPlan(null);setInput('');setMentions([]);setScreenshot(false);return;
@@ -174,11 +178,26 @@ export default function AssistantPanel({workspace,canDeleteWorkspace,sidebarPlug
         const receipt=safeAssistantReceipt(await act(owner.id,result.actions,prompt));if(!alive.current)return;
         setMessages(current=>[...current,{role:'user',text:prompt},{role:'model',text:receipt}]);setPlan(null);setInput('');setMentions([]);setScreenshot(false);return;
       }
-      const reply=requestedActions.length&&result.intent!=='chat'&&result.intent!=='clarification'?`${result.reply}\n\nNo workspace changes were made.`:result.reply;
-      setMessages(current=>[...current,{role:'user',text:prompt},{role:'model',text:reply}]);setInput('');setMentions([]);setScreenshot(false);
-      if(result.layout.length&&(result.intent==='layout'||assistantLayoutRequested(prompt))){validateLayout(owner,result.layout,size.width,size.height);setPlan({workspaceId:owner.id,fingerprint:layoutFingerprint(owner),width:size.width,height:size.height,items:result.layout})}
+      let layoutPlan:LayoutPlan|null=null;
+      if(result.layout.length&&assistantLayoutRequested(prompt)){
+        try{validateLayout(owner,result.layout,size.width,size.height);layoutPlan={workspaceId:owner.id,fingerprint:layoutFingerprint(owner),width:size.width,height:size.height,items:result.layout}}
+        catch(firstFailure){
+          const reason=firstFailure instanceof Error?firstFailure.message:'The proposed layout was invalid.';
+          const correction=`Still rejected your previous layout because: ${reason} No changes were applied. Recreate the layout for the original request using the current widget positions and sizes in the workspace context. Keep widgets the user asked to leave in place at their original positions. Include every expanded widget exactly once, preserve widget sizes, respect canvas bounds and minimum sizes, keep at least 16 pixels between widgets, and avoid all overlap with expanded or minimized widgets. Return no actions.`;
+          result=await geminiAssistant.send({provider:requestProvider,model:requestModel,messages:[...history,{role:'user',text:prompt},{role:'model',text:result.reply},{role:'user',text:correction}],context:serialized,image,session_id:owner.id});
+          if(!alive.current)return;
+          if(result.layout.length&&assistantLayoutRequested(prompt)){
+            try{validateLayout(owner,result.layout,size.width,size.height);layoutPlan={workspaceId:owner.id,fingerprint:layoutFingerprint(owner),width:size.width,height:size.height,items:result.layout}}
+            catch{throw new Error('Still could not create a valid layout after retrying once. Nothing was changed. Try a simpler arrangement.')}
+          }else if(result.intent==='clarification'||assistantReplyNeedsClarification(result.reply)){
+            setMessages(current=>[...current,{role:'user',text:prompt},{role:'model',text:result.reply}]);setPlan(null);setInput('');setMentions([]);setScreenshot(false);return;
+          }else throw new Error('Still could not create a valid layout after retrying once. Nothing was changed. Try a simpler arrangement.');
+        }
+      }
+      const reply=layoutPlan?'I prepared a valid layout proposal. Review it below and apply it if it looks right.':requestedActions.length&&result.intent!=='chat'&&result.intent!=='clarification'?`${result.reply}\n\nNo workspace changes were made.`:result.reply;
+      setMessages(current=>[...current,{role:'user',text:prompt},{role:'model',text:reply}]);setInput('');setMentions([]);setScreenshot(false);setPlan(layoutPlan);
     }catch(reason){if(alive.current)setError(reason instanceof Error?reason.message:String(reason))}
-    finally{sending.current=false;if(alive.current){setBusy(false);setPending('')}}
+    finally{image=undefined;sending.current=false;if(alive.current){setBusy(false);setPending('');setScreenshot(false)}}
   }
   async function confirmPendingAction(){
     if(sending.current||!confirmation)return;
@@ -198,6 +217,8 @@ export default function AssistantPanel({workspace,canDeleteWorkspace,sidebarPlug
       <p>{provider==='gemini'?<>Create a Gemini key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" onClick={event=>{if(geminiAssistant.available){event.preventDefault();void geminiAssistant.keySetup(provider).catch(()=>setError('Open Google AI Studio to create a Gemini key.'))}}}>Google AI Studio</a>.</>:provider==='openai'?<>Create an OpenAI API key at <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer" onClick={event=>{if(geminiAssistant.available){event.preventDefault();void geminiAssistant.keySetup(provider).catch(()=>setError('Open OpenAI API settings to create an API key.'))}}}>OpenAI API settings</a>. API usage is billed separately from ChatGPT.</>:<>Connect <a href="https://opencode.ai/auth" target="_blank" rel="noreferrer" onClick={event=>{if(geminiAssistant.available){event.preventDefault();void geminiAssistant.keySetup(provider).catch(()=>setError('Open OpenCode Go to connect your key.'))}}}>OpenCode Go</a> and paste its API key. Available models depend on your Go plan.</>}</p>
       <label>{PROVIDER_NAMES[provider]} API key<input type="password" autoComplete="off" spellCheck={false} value={key} onChange={event=>setKey(event.target.value)} placeholder={`Enter ${PROVIDER_NAMES[provider]} key`} disabled={!geminiAssistant.available||busy}/></label>
       <small>Still remembers keys you connect here, stored securely in Windows Credential Manager on this device. Select Forget to remove a saved key. Keys are never stored in chat or workspace data.</small>
+      <label className="assistant-check"><input type="checkbox" aria-label="Share workspace screenshot with Still AI" checked={shareWorkspaceImage} disabled={busy} onChange={event=>{setShareWorkspaceImage(event.target.checked);saveWorkspaceImagePreference(event.target.checked)}}/>Share the visible workspace with AI messages</label>
+      <small>When enabled, Still sends only the visible workspace canvas with each AI request. Still does not save it in chat or workspace data and drops it after the request. The selected AI provider receives it, and its data-retention policy applies. Some models may not support images.</small>
       <div className="assistant-row"><button type="button" disabled={!geminiAssistant.available||busy} onClick={()=>void geminiAssistant.keySetup(provider).catch(()=>setError(`Could not open ${PROVIDER_NAMES[provider]} API settings.`))}>Get API key</button><button className="primary" disabled={!key.trim()||busy||!geminiAssistant.available}>Connect</button>{configured&&<button type="button" disabled={busy} onClick={()=>void disconnect()}>Forget</button>}</div>
     </form>}
     <div ref={log} className="assistant-log" role="log" aria-label="AI conversation" aria-live="polite" aria-busy={busy}>
