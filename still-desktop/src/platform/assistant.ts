@@ -3,6 +3,9 @@ import {captureWidget} from './capture.ts';
 import {parseAssistantReply,type AssistantProvider,type ChatMessage} from '../domain/assistant.ts';
 
 export type AssistantRequest = {provider:AssistantProvider;model:string;messages:ChatMessage[];context:string;image?:string;session_id?:string};
+const ASSISTANT_IMAGE_MAX_DIMENSION=2560;
+const ASSISTANT_IMAGE_JPEG_QUALITY=0.92;
+const ASSISTANT_IMAGE_MAX_BASE64_LENGTH=2_800_000;
 export const geminiAssistant = {
   available:isTauri(),
   configured:(provider:AssistantProvider)=>invoke<boolean>('assistant_configured',{provider}),
@@ -29,12 +32,18 @@ export async function workspaceImage():Promise<string> {
 async function imageData(blob:Blob):Promise<string>{
   const image=await createImageBitmap(blob);
   try{
-    const scale=Math.min(1,1280/image.width,1280/image.height),canvas=document.createElement('canvas');
-    canvas.width=Math.max(1,Math.round(image.width*scale));canvas.height=Math.max(1,Math.round(image.height*scale));
+    const scale=Math.min(1,ASSISTANT_IMAGE_MAX_DIMENSION/image.width,ASSISTANT_IMAGE_MAX_DIMENSION/image.height),canvas=document.createElement('canvas');
+    let width=Math.max(1,Math.round(image.width*scale)),height=Math.max(1,Math.round(image.height*scale));
     const context=canvas.getContext('2d');if(!context)throw new Error('Could not prepare the widget screenshot.');
-    context.drawImage(image,0,0,canvas.width,canvas.height);
-    const base64=canvas.toDataURL('image/jpeg',0.8).split(',')[1];
-    if(base64.length>2800000)throw new Error('This screenshot is too large to share.');
-    return base64;
+    for(let attempt=0;attempt<8;attempt++){
+      canvas.width=width;canvas.height=height;context.drawImage(image,0,0,width,height);
+      for(const quality of [ASSISTANT_IMAGE_JPEG_QUALITY,0.88,0.84,0.8]){
+        const base64=canvas.toDataURL('image/jpeg',quality).split(',')[1];
+        if(base64.length<=ASSISTANT_IMAGE_MAX_BASE64_LENGTH)return base64;
+      }
+      if(Math.max(width,height)<=1280)break;
+      width=Math.max(1,Math.round(width*0.85));height=Math.max(1,Math.round(height*0.85));
+    }
+    throw new Error('This screenshot is too large to share.');
   }finally{image.close();}
 }

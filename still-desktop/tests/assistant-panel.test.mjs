@@ -18,12 +18,12 @@ async function waitFor(predicate){const deadline=Date.now()+3000;while(Date.now(
 test('the single chat can use workspace widgets; @ is optional quick selection and screenshot target',async()=>{
  const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true}),{window}=dom,old=new Map();
  for(const key of ['window','document','navigator','localStorage','innerWidth','innerHeight','HTMLElement','Element','Node','MutationObserver','requestAnimationFrame','cancelAnimationFrame','IS_REACT_ACT_ENVIRONMENT','isTauri','createImageBitmap'])old.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
- const calls=[];let root;
+ const calls=[],encodedImages=[];let root;
  try{
-  for(const [key,value] of Object.entries({window,document:window.document,navigator:window.navigator,localStorage:window.localStorage,innerWidth:window.innerWidth,innerHeight:window.innerHeight,HTMLElement:window.HTMLElement,Element:window.Element,Node:window.Node,MutationObserver:window.MutationObserver,requestAnimationFrame:callback=>setTimeout(()=>callback(Date.now()),0),cancelAnimationFrame:clearTimeout,IS_REACT_ACT_ENVIRONMENT:true,isTauri:true,createImageBitmap:async()=>({width:640,height:480,close(){}})}))setGlobal(key,value);
+  for(const [key,value] of Object.entries({window,document:window.document,navigator:window.navigator,localStorage:window.localStorage,innerWidth:window.innerWidth,innerHeight:window.innerHeight,HTMLElement:window.HTMLElement,Element:window.Element,Node:window.Node,MutationObserver:window.MutationObserver,requestAnimationFrame:callback=>setTimeout(()=>callback(Date.now()),0),cancelAnimationFrame:clearTimeout,IS_REACT_ACT_ENVIRONMENT:true,isTauri:true,createImageBitmap:async()=>({width:3840,height:2160,close(){}})}))setGlobal(key,value);
   window.HTMLElement.prototype.scrollTo=function(){};
   window.HTMLTextAreaElement.prototype.focus=function(){};
-  window.HTMLCanvasElement.prototype.getContext=function(){return{drawImage(){}}};window.HTMLCanvasElement.prototype.toDataURL=()=> 'data:image/jpeg;base64,/9j/AA==';
+  window.HTMLCanvasElement.prototype.getContext=function(){return{drawImage(){}}};window.HTMLCanvasElement.prototype.toDataURL=function(type,quality){encodedImages.push({width:this.width,height:this.height,type,quality});return 'data:image/jpeg;base64,/9j/AA=='};
   window.__TAURI_INTERNALS__={};
   const canvas=window.document.createElement('div');canvas.className='canvas-viewport';canvas.getBoundingClientRect=()=>({left:0,top:0,right:800,bottom:600,width:800,height:600,x:0,y:0,toJSON(){}});window.document.body.append(canvas);
   mockIPC((command,args)=>{calls.push({command,args});
@@ -53,6 +53,7 @@ test('the single chat can use workspace widgets; @ is optional quick selection a
   await waitFor(()=>calls.some(call=>call.command==='assistant_chat'));
   const geminiRequest=calls.find(call=>call.command==='assistant_chat').args.request,context=JSON.parse(geminiRequest.context);
   assert.equal(geminiRequest.image,'/9j/AA==','the default workspace screenshot is attached to the current request');
+  assert.deepEqual(encodedImages[0],{width:2560,height:1440,type:'image/jpeg',quality:0.92},'workspace screenshots retain high-resolution, high-quality color detail');
   assert.equal(window.localStorage.getItem('still-assistant-chat-v1:'+encodeURIComponent(workspace.id)).includes('/9j/AA=='),false,'the screenshot is excluded from saved chat history');
   assert.equal(context.canvasAndWidgets.widgets.length,4,'layout requests always include all widget geometry');
   assert.equal(context.widgetData.length,4,'all current workspace widget data is available for assistant requests');
@@ -97,6 +98,7 @@ test('the single chat can use workspace widgets; @ is optional quick selection a
   const appCapture=calls.filter(call=>call.command==='widget_capture').at(-1);
   assert.deepEqual(appCapture.args.appRegion,{id:app.id,x:110,y:130,width:280,height:160},'@-selecting an attached app automatically includes its visible native pixels');
   assert.equal(calls.filter(call=>call.command==='assistant_chat').at(-1).args.request.image,'/9j/AA==');
+  assert.deepEqual(encodedImages[1],{width:2560,height:1440,type:'image/jpeg',quality:0.92},'widget screenshots use the same high-quality encoding');
  }finally{
   if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();
   for(const key of old.keys()){const descriptor=old.get(key);if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}
