@@ -11,6 +11,7 @@ import {type ClockPluginColorOverrides,type ClockPluginMode} from './clockPlugin
 import {widgetTagColors,type WidgetTagColor} from './widgetTags.ts';
 import {type CanvasFrameRate} from './performance.ts';
 import {checkedFileNotes} from './fileNotes.ts';
+import {checkedNoteDocuments,createNoteDocument,noteDocument,type NoteDocument} from './noteDocuments.ts';
 export {widgetTypes, type WidgetType} from './widgetCatalog.ts';
 export {widgetTagColors,type WidgetTagColor} from './widgetTags.ts';
 export const DESMOS_URL = 'https://www.desmos.com/scientific';
@@ -32,6 +33,7 @@ export interface WidgetInstance {
   clockPluginEnabled:boolean;
   lockPluginEnabled:boolean;locked:boolean;
   noteFont:'sans'|'serif'|'mono';noteFontSize:number;
+  noteDocuments:NoteDocument[];activeNoteDocumentId:string;
   fileNotes:Record<string,string>;
   text: string;
   remaining: number; end: number | null;
@@ -60,8 +62,9 @@ export interface WorkspaceState {
   followWidgetToWorkspace:boolean;
 }
 export function createWidget(type: WidgetType): WidgetInstance {
-  return { id: crypto.randomUUID(), type, instanceNumber:1, title:'', tagColor:null, relaunchOverride:'follow',pluginControls:type==='tagStatus'?['widget-relaunch.tag-colors']:[], span: type === 'ai' ? 2 : 1,
-    clockPluginEnabled:false,lockPluginEnabled:false,locked:false,noteFont:'sans',noteFontSize:14,fileNotes:{},text: type === 'notes' ? 'A clear space, a clear mind.\n\nStart with one important thing.\nLeave room for a new idea.' : '',
+  const id=crypto.randomUUID(),initialText='A clear space, a clear mind.\n\nStart with one important thing.\nLeave room for a new idea.',initialNote=createNoteDocument();initialNote.text=initialText;
+  return { id, type, instanceNumber:1, title:'', tagColor:null, relaunchOverride:'follow',pluginControls:type==='tagStatus'?['widget-relaunch.tag-colors']:[], span: type === 'ai' ? 2 : 1,
+    clockPluginEnabled:false,lockPluginEnabled:false,locked:false,noteFont:'sans',noteFontSize:14,noteDocuments:type==='notes'?[initialNote]:[],activeNoteDocumentId:type==='notes'?initialNote.id:'',fileNotes:{},text: type === 'notes' ? initialText : '',
     remaining: 1500, end: null, placement:placement(type,null), shortcuts:[], schedule:[],groupId:null,folderKey:null,fileKey:null,appKey:null,appPanelOpen:false,appReuseExisting:false,
     minimized:false,restorePlacement:null,groupCollapsed:false,groupExpandedPlacement:null };
 }
@@ -249,7 +252,7 @@ function parseGroupEntries(value:unknown):GroupWidgetEntry[]{
   const item=groupWidgetEntry({id:typeof v.id==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(v.id)&&!ids.has(v.id)?v.id:undefined,type:v.type,name:v.name,icon:typeof v.icon==='string'?v.icon:undefined,iconData:typeof v.iconData==='string'?v.iconData:undefined});ids.add(item.id);return[item];
  }catch{return []}});
 }
-const PERSISTED_WIDGET_FIELDS:(keyof WidgetInstance)[]=['id','type','span','instanceNumber','title','tagColor','relaunchOverride','pluginControls','clockPluginEnabled','lockPluginEnabled','locked','noteFont','noteFontSize','fileNotes','text','remaining','end','folderName','folderKey','fileKey','fileName','fileKind','appKey','appName','appIconData','appPanelOpen','appWasCollected','appReuseExisting','appMinWidth','appMinHeight','placement','minimized','restorePlacement','shortcuts','schedule','groupId'];
+const PERSISTED_WIDGET_FIELDS:(keyof WidgetInstance)[]=['id','type','span','instanceNumber','title','tagColor','relaunchOverride','pluginControls','clockPluginEnabled','lockPluginEnabled','locked','noteFont','noteFontSize','noteDocuments','activeNoteDocumentId','fileNotes','text','remaining','end','folderName','folderKey','fileKey','fileName','fileKind','appKey','appName','appIconData','appPanelOpen','appWasCollected','appReuseExisting','appMinWidth','appMinHeight','placement','minimized','restorePlacement','shortcuts','schedule','groupId'];
 function persistentWidgetSnapshot(value:unknown):WidgetInstance {
  if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('Invalid collected widget.');
  const source=value as Record<string,unknown>,filtered=Object.fromEntries(PERSISTED_WIDGET_FIELDS.filter(key=>key in source).map(key=>[key,source[key]]));
@@ -300,6 +303,7 @@ export function createWidgetFromPreset(preset:WidgetPreset,widgets:WidgetInstanc
  else if(checked.type==='files'){widget.folderName=checked.folderName;widget.folderKey=checked.folderSourceId;widget.fileNotes=checked.fileNotes??{}}
   else if(checked.type==='apps'){widget.appKey=checked.appSourceId;widget.appName=checked.appName;widget.appIconData=checked.iconData}
   else if(checked.type==='notes'||checked.type==='ai')widget.text=checked.text??widget.text;
+  if(checked.type==='notes'&&checked.noteDocuments){widget.noteDocuments=structuredClone(checked.noteDocuments);const active=noteDocument(widget.noteDocuments,checked.activeNoteDocumentId);widget.activeNoteDocumentId=active.id;widget.title=active.title;widget.text=active.text}
   if(checked.type==='notes'){widget.noteFont=checked.noteFont??widget.noteFont;widget.noteFontSize=checked.noteFontSize??widget.noteFontSize}
   else if(checked.type==='tagStatus')widget.pluginControls=checked.pluginControls??widget.pluginControls;
  else if(checked.type==='focus')widget.remaining=checked.remaining??widget.remaining;
@@ -367,14 +371,18 @@ function checkedWidget(value: unknown): WidgetInstance {
   const checkedPlacement=minimized?compactPlacement(item.placement):groupCollapsed?constrainGroupCollapsedPlacement(item.placement as Placement,20000,20000):placement(item.type as WidgetType,item.placement);
   if(checkedAppPanelOpen&&!minimized){if(appMinWidth!==undefined)checkedPlacement.width=Math.max(checkedPlacement.width,appMinWidth);if(appMinHeight!==undefined)checkedPlacement.height=Math.max(checkedPlacement.height,appMinHeight)}
   if (item.text !== undefined && typeof item.text !== 'string') throw new Error('Invalid note');
+  const noteDocuments=item.type==='notes'?checkedNoteDocuments(item.noteDocuments,{id:`legacy-${item.id.slice(0,70)}`,title:typeof item.title==='string'?item.title:'',text:typeof item.text==='string'?item.text:defaults.text}):[];
+  const activeNote=noteDocument(noteDocuments,typeof item.activeNoteDocumentId==='string'?item.activeNoteDocumentId:undefined);
   return {...defaults,...item,type:item.type as WidgetType,span:item.span===2?2:item.span===3?3:1,
-    title:typeof item.title==='string'?item.title.trim().slice(0,60):'',
+    title:item.type==='notes'?activeNote.title:typeof item.title==='string'?item.title.trim().slice(0,60):'',
+    text:item.type==='notes'?activeNote.text:typeof item.text==='string'?item.text:defaults.text,
     tagColor:widgetTagColors.includes(item.tagColor as WidgetTagColor)?item.tagColor as WidgetTagColor:null,
     relaunchOverride:item.relaunchOverride==='automatic'||item.relaunchOverride==='manual'?item.relaunchOverride:'follow',
     pluginControls:Array.isArray(item.pluginControls)?[...new Set(item.pluginControls.filter((control):control is string=>typeof control==='string'&&/^[a-z0-9.-]{1,80}$/.test(control)))].slice(0,20):defaults.pluginControls,
     clockPluginEnabled:item.clockPluginEnabled===true,
     lockPluginEnabled:item.lockPluginEnabled===true,locked:item.lockPluginEnabled===true&&item.locked===true,
     noteFont:item.noteFont==='serif'||item.noteFont==='mono'?item.noteFont:'sans',noteFontSize:typeof item.noteFontSize==='number'&&Number.isFinite(item.noteFontSize)?Math.max(12,Math.min(28,Math.round(item.noteFontSize/2)*2)):14,
+    noteDocuments,activeNoteDocumentId:item.type==='notes'?activeNote.id:'',
     fileNotes:checkedFileNotes(item.fileNotes),
     groupId:item.type==='group'&&typeof item.groupId==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(item.groupId)?item.groupId:null,
     folderName:typeof item.folderName==='string'?item.folderName:undefined,

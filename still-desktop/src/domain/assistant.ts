@@ -1,5 +1,6 @@
 import {createWidget,minimizeWidgetInstance,nextInstanceNumber,restoreWidgetInstance,type WidgetInstance,type Workspace,type ScheduleEntry} from './workspaces.ts';
 import {widgetCatalog,widgetTypes,type WidgetType} from './widgetCatalog.ts';
+import {updatedNoteDocument} from './noteDocuments.ts';
 import type {WidgetPreset} from './presets.ts';
 import type {SavedGroup} from './workspaces.ts';
 import {constrainPlacement,nextPlacement,type Placement} from './layout.ts';
@@ -331,7 +332,7 @@ export function applyAssistantWidgetActions(workspace:Workspace,actions:Assistan
     if(action.type==='add_widget'){
       if(next.widgets.length+action.ids.length>MAX_ASSISTANT_WIDGETS)throw new Error(`This workspace is limited to ${MAX_ASSISTANT_WIDGETS} widgets so it stays responsive. Nothing was changed.`);
       let widgets=[...next.widgets],groups=[...next.groups];
-      for(const id of action.ids){const type=id as WidgetType,widget=createWidget(type);if(action.title!==undefined)widget.title=action.title.trim();if(action.text!==undefined)widget.text=action.text;widget.instanceNumber=nextInstanceNumber(type,widgets);widget.placement=constrainPlacement(type,nextPlacement(type,widgets,width),width,{},height);if(type==='group'){const groupId=crypto.randomUUID();widget.groupId=groupId;groups.push({id:groupId,name:action.title?.trim()??'',shortcuts:[],widgets:[],expanded:false})}widgets.push(widget)}
+      for(const id of action.ids){const type=id as WidgetType,widget=createWidget(type);if(action.title!==undefined)widget.title=action.title.trim();if(action.text!==undefined){widget.text=action.text;if(type==='notes')widget.noteDocuments=updatedNoteDocument(widget.noteDocuments,widget.activeNoteDocumentId,{text:action.text,title:widget.title})}if(type==='notes'&&action.title!==undefined)widget.noteDocuments=updatedNoteDocument(widget.noteDocuments,widget.activeNoteDocumentId,{title:widget.title});widget.instanceNumber=nextInstanceNumber(type,widgets);widget.placement=constrainPlacement(type,nextPlacement(type,widgets,width),width,{},height);if(type==='group'){const groupId=crypto.randomUUID();widget.groupId=groupId;groups.push({id:groupId,name:action.title?.trim()??'',shortcuts:[],widgets:[],expanded:false})}widgets.push(widget)}
       next={...next,widgets,groups};continue;
     }
     const ids=new Set(action.ids);
@@ -340,7 +341,7 @@ export function applyAssistantWidgetActions(workspace:Workspace,actions:Assistan
       if(!ids.has(widget.id)||(action.type==='minimize'&&widget.minimized)||(action.type==='restore'&&!widget.minimized)||(action.type==='set_timer'&&widget.end!==null&&widget.end>now&&Math.ceil((widget.end-now)/1000)===action.seconds))return widget;
       if(action.type==='set_timer')return {...widget,remaining:action.seconds!,end:now+action.seconds!*1000};
       if(action.type==='set_widget_plugin')return action.plugin==='clock-timer'?{...widget,clockPluginEnabled:action.enabled!}:widget;
-      if(action.type==='edit_widget')return {...widget,...(action.title!==undefined?{title:action.title.trim()}:{}),...(action.text!==undefined?{text:action.text}:{}),...(action.schedule!==undefined?{schedule:structuredClone(action.schedule)}:{}),...(action.tagColor!==undefined?{tagColor:action.tagColor==='none'?null:action.tagColor as WidgetInstance['tagColor']}:{}),...(action.pluginControls!==undefined?{pluginControls:[...action.pluginControls]}:{})};
+      if(action.type==='edit_widget'){const updated={...widget,...(action.title!==undefined?{title:action.title.trim()}:{}),...(action.text!==undefined?{text:action.text}:{}),...(action.schedule!==undefined?{schedule:structuredClone(action.schedule)}:{}),...(action.tagColor!==undefined?{tagColor:action.tagColor==='none'?null:action.tagColor as WidgetInstance['tagColor']}:{}),...(action.pluginControls!==undefined?{pluginControls:[...action.pluginControls]}:{})};if(widget.type==='notes'&&(action.title!==undefined||action.text!==undefined))updated.noteDocuments=updatedNoteDocument(widget.noteDocuments,widget.activeNoteDocumentId,{...(action.title!==undefined?{title:action.title.trim()}:{}),...(action.text!==undefined?{text:action.text}:{})});return updated}
       return action.type==='minimize'?minimizeWidgetInstance(widget,width,height):restoreWidgetInstance(widget,width,height);
     });
     if(widgets.some((widget,index)=>widget!==next.widgets[index]))next={...next,widgets};

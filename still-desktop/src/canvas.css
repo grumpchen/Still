@@ -348,6 +348,10 @@ dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
 .canvas-card .widget-lock-toggle svg,.widget-minimized-lock svg{width:15px;height:15px}
 .canvas-card .widget-controls>button:disabled{opacity:.45;cursor:not-allowed}
 .widget-minimized-lock{position:absolute;z-index:2;top:7px;right:38px;cursor:pointer}
+.note-tabs{display:flex;align-items:center;gap:4px;min-height:34px;padding:4px 10px 0;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;border-bottom:1px solid var(--border)}
+.note-tab,.note-tab-add{flex:0 0 auto;max-width:150px;min-width:52px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:6px 10px;border:1px solid transparent;border-radius:9px 9px 0 0;background:transparent;color:var(--muted);font-size:11px}
+.note-tab[aria-selected=true]{border-color:var(--border);border-bottom-color:var(--surface);background:var(--surface);color:var(--text)}
+.note-tab-add{min-width:28px;width:28px;padding:4px;font-size:16px;line-height:1}
 .note-editor{display:flex;flex:1;flex-direction:column;gap:8px;min-height:0;padding:14px}
 .note-heading-input{width:100%;min-height:34px;border:0;border-bottom:1px solid var(--border);border-radius:0;background:transparent;color:var(--text);font-size:20px;font-weight:650;outline:none}
 .note-format-toolbar{display:flex;gap:8px;align-items:center}

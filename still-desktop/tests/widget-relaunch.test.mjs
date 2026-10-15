@@ -78,6 +78,19 @@ test('Apps header actions are hidden by default and can be enabled individually'
  try{for(const label of ['Attach open app to Attached app','Detach app from Attached app','Save Attached app to tray'])assert.ok(visible.window.document.querySelector(`[aria-label="${label}"]`),label+' can be shown')}finally{await visible.cleanup()}
 });
 
+test('Notes opens a second tab and switching tabs keeps each page text separate',async()=>{
+ const widget=createWidget('notes'),original=widget.noteDocuments[0],app=await setup([widget]);
+ try{
+  const add=app.window.document.querySelector('[aria-label="New note"]');assert.ok(add);
+  await act(async()=>add.click());
+  assert.equal(app.currentState.workspaces[0].widgets[0].noteDocuments.length,2);
+  const tabs=[...app.window.document.querySelectorAll('[role="tab"]')];assert.equal(tabs.length,2);assert.equal(tabs[1].getAttribute('aria-selected'),'true');
+  assert.equal(app.window.document.querySelector('[aria-label="Note text"]').value,'');
+  await act(async()=>tabs[0].click());assert.equal(app.window.document.querySelector('[aria-label="Note text"]').value,original.text);
+  await act(async()=>tabs[1].click());assert.equal(app.window.document.querySelector('[aria-label="Note text"]').value,'');
+ }finally{await app.cleanup()}
+});
+
 test('Screenshot widget plugin supports global, selected-tag, and off scopes in rendered headers',async()=>{
  const red=createWidget('notes');red.id='red-note';red.tagColor='red';const blue=createWidget('notes');blue.id='blue-note';blue.tagColor='blue';const untagged=createWidget('notes');untagged.id='plain-note';
  const global=await setup([red,blue,untagged]);

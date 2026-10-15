@@ -20,6 +20,13 @@ test('accepting an offer to create a Notes widget adds the exact previous user t
   validateAssistantActionIntent(accepted.intent,workspace,[accepted.action]);
   assert.equal(applyAssistantWidgetActions(workspace,[accepted.action],900,700).widgets.at(-1).text,'I love chicken');
 });
+test('Still AI note edits update the active page so changes survive a workspace reload',()=>{
+ const {workspace}=fixture(),note=workspace.widgets[0];
+ const edited=applyAssistantWidgetActions(workspace,[{type:'edit_widget',ids:[note.id],title:'Kinetics',text:'Rate laws'}],900,700).widgets[0];
+ assert.equal(edited.noteDocuments[0].title,'Kinetics');assert.equal(edited.noteDocuments[0].text,'Rate laws');
+ const added=applyAssistantWidgetActions(workspace,[{type:'add_widget',ids:['notes'],title:'Equilibrium',text:'Le Chatelier'}],900,700).widgets.at(-1);
+ assert.equal(added.noteDocuments[0].title,'Equilibrium');assert.equal(added.noteDocuments[0].text,'Le Chatelier');
+});
 test('sharing a selected widget omits grants, URLs, bookmarks, and unrelated content',()=>{
   const note=createWidget('notes');note.text='Only this note';note.fileKey='secret-grant';note.url='https://example.org/private';
   assert.deepEqual(widgetContext(note),{type:'notes',title:'Notes 1',tagColor:null,text:'Only this note'});
