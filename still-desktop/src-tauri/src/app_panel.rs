@@ -18,18 +18,21 @@ impl Bounds {
 }
 #[derive(Clone,Serialize)]
 pub struct WindowInfo {pub hwnd:usize,pub pid:u32,pub title:String,#[serde(skip)]pub(crate) executable:Option<String>}
+#[derive(Clone,Copy,Debug,Eq,PartialEq)]
+struct WindowIdentity{hwnd:usize,pid:u32}
 #[derive(Clone)]
-struct Launch {pid:u32,executable:Option<String>,before:Vec<usize>,profile_picker:bool,picker_hwnd:Option<usize>,picker_title:Option<String>}
+struct Launch {pid:u32,executable:Option<String>,before:Vec<WindowIdentity>,profile_picker:bool,picker_hwnd:Option<usize>,picker_title:Option<String>}
 #[cfg(test)]
 #[derive(Clone,Copy,Debug,Eq,PartialEq)]
 enum SelectedWindowDisposition{AttachToPanel}
 #[cfg(test)]
 fn selected_window_disposition(_profile_picker:bool)->SelectedWindowDisposition{SelectedWindowDisposition::AttachToPanel}
 fn same_path(a:&str,b:&str)->bool{a.trim_start_matches("\\\\?\\").eq_ignore_ascii_case(b.trim_start_matches("\\\\?\\"))}
+fn existed_before(before:&[WindowIdentity],window:&WindowInfo)->bool{before.contains(&WindowIdentity{hwnd:window.hwnd,pid:window.pid})}
 fn select_window<'a>(launch:&Launch,windows:&'a [WindowInfo],claimed:&[usize])->Option<&'a WindowInfo>{
- windows.iter().find(|w|!launch.before.contains(&w.hwnd)&&!claimed.contains(&w.hwnd)&&((launch.pid!=0&&w.pid==launch.pid)||launch.executable.as_ref().zip(w.executable.as_ref()).is_some_and(|(a,b)|same_path(a,b))))
+ windows.iter().find(|w|!existed_before(&launch.before,w)&&!claimed.contains(&w.hwnd)&&((launch.pid!=0&&w.pid==launch.pid)||launch.executable.as_ref().zip(w.executable.as_ref()).is_some_and(|(a,b)|same_path(a,b))))
 }
-fn selected_profile_window<'a>(picker_hwnd:usize,picker_title:Option<&str>,foreground_hwnd:usize,windows:&'a [WindowInfo],expected:&str,claimed:&[usize])->Option<&'a WindowInfo>{
+fn selected_profile_window<'a>(picker_hwnd:usize,picker_title:Option<&str>,foreground_hwnd:usize,windows:&'a [WindowInfo],expected:&str,claimed:&[usize],before:&[WindowIdentity])->Option<&'a WindowInfo>{
  if picker_hwnd==0{return None}
  // Chrome may turn its chooser window into the selected profile's New Tab.
  if let Some(picker)=windows.iter().find(|window|window.hwnd==picker_hwnd){
@@ -40,15 +43,15 @@ fn selected_profile_window<'a>(picker_hwnd:usize,picker_title:Option<&str>,foreg
   if foreground_hwnd!=0&&foreground_hwnd!=picker_hwnd{
    if let Some(window)=windows.iter().find(|window|window.hwnd==foreground_hwnd&&!claimed.contains(&window.hwnd)&&matches_executable(window,expected)){return Some(window)}
   }
-  return None
  }
  // Once the chooser is gone, prefer the selected profile's foreground window.
- if foreground_hwnd!=0{
+ if foreground_hwnd!=0&&!windows.iter().any(|window|window.hwnd==picker_hwnd){
   if let Some(window)=windows.iter().find(|window|window.hwnd==foreground_hwnd&&!claimed.contains(&window.hwnd)&&matches_executable(window,expected)){return Some(window)}
  }
- // Chrome sometimes reuses a hidden window or activates it after a delay.
- // Recover only when there is one unclaimed Chrome window to avoid guessing.
- let mut candidates=windows.iter().filter(|window|window.hwnd!=picker_hwnd&&!claimed.contains(&window.hwnd)&&matches_executable(window,expected));
+ // Chrome can finish the selection without foregrounding the replacement
+ // window. Accept it only if its HWND/PID identity appeared after Still
+ // launched the chooser, and only when that leaves one unambiguous candidate.
+ let mut candidates=windows.iter().filter(|window|window.hwnd!=picker_hwnd&&!claimed.contains(&window.hwnd)&&!existed_before(before,window)&&matches_executable(window,expected));
  let candidate=candidates.next()?;
  candidates.next().is_none().then_some(candidate)
 }
@@ -240,8 +243,8 @@ fn reuse_candidate_for_launch<'a>(windows:&'a [WindowInfo],expected:Option<&str>
  if explicit_chrome_profile{return Ok(None)}
  reuse_candidate(windows,expected)
 }
-fn window_snapshot()->Vec<usize>{
- unsafe extern "system" fn collect(hwnd:HWND,param:LPARAM)->windows::core::BOOL{(*(param.0 as *mut Vec<usize>)).push(hwnd.0 as usize);windows::core::BOOL(1)}
+fn window_snapshot()->Vec<WindowIdentity>{
+ unsafe extern "system" fn collect(hwnd:HWND,param:LPARAM)->windows::core::BOOL{let items=&mut *(param.0 as *mut Vec<WindowIdentity>);let process=pid(hwnd);if process!=0{items.push(WindowIdentity{hwnd:hwnd.0 as usize,pid:process});}windows::core::BOOL(1)}
  let mut items=Vec::new();unsafe{let _=EnumWindows(Some(collect),LPARAM(&mut items as *mut _ as isize));}items
 }
 
@@ -263,7 +266,7 @@ pub(crate) fn shortcut_target(path:&Path)->Option<(PathBuf,String,Option<PathBuf
  let directory=(end>0).then(||PathBuf::from(std::ffi::OsString::from_wide(&directory[..end])));
  Some((target,from_wide(&args),directory))
 }}
-fn launch(path:&Path,before:Vec<usize>,profile_arguments:&[String])->Result<Launch,String>{
+fn launch(path:&Path,before:Vec<WindowIdentity>,profile_arguments:&[String])->Result<Launch,String>{
  let _com=Com::initialize();
  let resolved=if path.extension().is_some_and(|e|e.eq_ignore_ascii_case("lnk")){shortcut_target(path)}else{Some((path.to_path_buf(),String::new(),None))};
  let (target,mut args,directory)=resolved.unwrap_or_else(||(path.to_path_buf(),String::new(),None));
@@ -576,7 +579,7 @@ pub async fn app_panel_open(app:AppHandle,webview:Webview,id:String,source_id:St
     let available=if reuse_existing==Some(true){windows()}else{Vec::new()};
     let launch_args=profile_arguments_string(&profile_arguments);
     let profile_picker=expected.as_deref().is_some_and(|executable|opens_chrome_profile_picker(Path::new(executable),&launch_args));
-    let ticket=if let Some(window)=reuse_candidate_for_launch(&available,expected.as_deref(),explicit_profile||profile_picker)?{Launch{pid:window.pid,executable:expected,before:before.into_iter().filter(|h|*h!=window.hwnd).collect(),profile_picker:false,picker_hwnd:None,picker_title:None}}else{launch(&path,before,&profile_arguments)?};
+    let ticket=if let Some(window)=reuse_candidate_for_launch(&available,expected.as_deref(),explicit_profile||profile_picker)?{Launch{pid:window.pid,executable:expected,before:before.into_iter().filter(|identity|identity.hwnd!=window.hwnd).collect(),profile_picker:false,picker_hwnd:None,picker_title:None}}else{launch(&path,before,&profile_arguments)?};
     state.0.lock().map_err(|_|"App panels are unavailable")?.pending.insert(id.clone(),ticket.clone());ticket
    }};
    let mut launch=launch;
@@ -596,7 +599,7 @@ pub async fn app_panel_open(app:AppHandle,webview:Webview,id:String,source_id:St
      }else{
       let picker_hwnd=launch.picker_hwnd.unwrap();
        let foreground=unsafe{GetForegroundWindow()}.0 as usize;
-       launch.executable.as_deref().and_then(|expected|selected_profile_window(picker_hwnd,launch.picker_title.as_deref(),foreground,&choices,expected,&claimed))
+       launch.executable.as_deref().and_then(|expected|selected_profile_window(picker_hwnd,launch.picker_title.as_deref(),foreground,&choices,expected,&claimed,&launch.before))
      }
     }else{select_window(&launch,&choices,&claimed)};
     if let Some(candidate)=candidate{
@@ -755,7 +758,7 @@ pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
    assert_eq!(required_size((0,0,600,375),(0,0,900,600)),(true,true),"A genuine clamp above the request is a refusal");
   }
  #[test]fn discovery_never_claims_an_old_document_unrelated_app_or_already_managed_window(){
-  let launch=Launch{pid:22,executable:Some("C:\\Office\\WINWORD.EXE".into()),before:vec![101],profile_picker:false,picker_hwnd:None,picker_title:None};
+  let launch=Launch{pid:22,executable:Some("C:\\Office\\WINWORD.EXE".into()),before:vec![WindowIdentity{hwnd:101,pid:22}],profile_picker:false,picker_hwnd:None,picker_title:None};
   let window=|hwnd,pid,path:&str|WindowInfo{hwnd,pid,title:"Document".into(),executable:Some(path.into())};
   let choices=vec![window(101,22,"C:\\Office\\WINWORD.EXE"),window(102,90,"C:\\Apps\\other.exe"),window(103,22,"C:\\Office\\WINWORD.EXE"),window(104,33,"c:\\office\\winword.exe")];
   assert_eq!(select_window(&launch,&choices,&[103]).map(|w|w.hwnd),Some(104));
@@ -770,17 +773,21 @@ pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
   let expected="C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
   let window=|hwnd,pid,title:&str,path:&str|WindowInfo{hwnd,pid,title:title.into(),executable:Some(path.into())};
   let choices=[window(51,100,"Google Chrome",expected),window(52,101,"Chrome profile",expected),window(53,102,"Other app","C:\\Apps\\Other.exe")];
-  assert!(selected_profile_window(51,Some("Google Chrome"),51,&choices,expected,&[]).is_none());
-  assert!(selected_profile_window(51,Some("Google Chrome"),0,&choices,expected,&[]).is_none(),"Do not choose another window until Chrome foregrounds a profile or replaces the chooser");
+  let before=[WindowIdentity{hwnd:52,pid:101}];
+  assert!(selected_profile_window(51,Some("Google Chrome"),51,&choices,expected,&[],&before).is_none());
+  assert!(selected_profile_window(51,Some("Google Chrome"),0,&choices,expected,&[],&before).is_none(),"Do not attach a Chrome window that existed before Still opened the profile picker");
   let transformed=[WindowInfo{hwnd:51,pid:100,title:"New Tab - Google Chrome".into(),executable:Some(expected.into())}];
-  assert_eq!(selected_profile_window(51,Some("Google Chrome"),0,&transformed,expected,&[]).map(|w|w.hwnd),Some(51));
+  assert_eq!(selected_profile_window(51,Some("Google Chrome"),0,&transformed,expected,&[],&before).map(|w|w.hwnd),Some(51));
   let chooser_remains=[window(51,100,"Google Chrome",expected),window(52,101,"New Tab - Google Chrome",expected)];
-  assert_eq!(selected_profile_window(51,Some("Google Chrome"),52,&chooser_remains,expected,&[]).map(|w|w.hwnd),Some(52),"a foreground selected-profile window is accepted even if Chrome keeps the chooser window alive");
+  assert_eq!(selected_profile_window(51,Some("Google Chrome"),52,&chooser_remains,expected,&[],&before).map(|w|w.hwnd),Some(52),"a foreground selected-profile window is accepted even if Chrome keeps the chooser window alive");
   let closed=[window(52,101,"Chrome profile",expected)];
-  assert_eq!(selected_profile_window(51,Some("Google Chrome"),0,&closed,expected,&[]).map(|w|w.hwnd),Some(52));
-  let ambiguous=[window(52,101,"Chrome profile",expected),window(54,103,"Another profile",expected)];
-  assert!(selected_profile_window(51,Some("Google Chrome"),0,&ambiguous,expected,&[]).is_none());
-  assert!(selected_profile_window(51,Some("Google Chrome"),52,&closed,expected,&[52]).is_none());
+  assert_eq!(selected_profile_window(51,Some("Google Chrome"),0,&closed,expected,&[],&before).is_none(),true,"closing the picker must not adopt a pre-existing unrelated Chrome window");
+  assert_eq!(selected_profile_window(51,Some("Google Chrome"),0,&closed,expected,&[],&[]).map(|w|w.hwnd),Some(52));
+  let picker_stays_while_selected_window_is_backgrounded=[window(51,100,"Google Chrome",expected),window(54,103,"New Tab - Google Chrome",expected)];
+  assert_eq!(selected_profile_window(51,Some("Google Chrome"),0,&picker_stays_while_selected_window_is_backgrounded,expected,&[],&before).map(|w|w.hwnd),Some(54),"a newly created profile window should replace a chooser even when Chrome has not foregrounded it yet");
+  let ambiguous=[window(54,103,"Chrome profile",expected),window(55,104,"Another profile",expected)];
+  assert!(selected_profile_window(51,Some("Google Chrome"),0,&ambiguous,expected,&[],&before).is_none());
+  assert!(selected_profile_window(51,Some("Google Chrome"),52,&closed,expected,&[52],&before).is_none());
  }
  #[test]fn managed_profile_picker_selection_attaches_to_the_panel(){
   assert_eq!(selected_window_disposition(true),SelectedWindowDisposition::AttachToPanel,
