@@ -16,6 +16,19 @@ impl AppCaptureRegion {
         Ok(())
     }
 }
+const MAX_APP_REGIONS:usize=12;
+const MAX_TOTAL_APP_PIXELS:f64=16_000_000.0;
+fn validate_app_regions(regions:&[AppCaptureRegion],bounds:&CaptureBounds)->Result<(),String>{
+    if regions.len()>MAX_APP_REGIONS {return Err(format!("A screenshot can include up to {MAX_APP_REGIONS} attached apps."));}
+    let mut total_pixels=0.0;
+    for (index,region) in regions.iter().enumerate(){
+        region.validate(bounds)?;
+        if regions[..index].iter().any(|prior|prior.id==region.id){return Err("An attached app was included more than once.".into());}
+        total_pixels+=region.width*region.height;
+        if total_pixels>MAX_TOTAL_APP_PIXELS{return Err("The attached app screenshot is too large to capture safely.".into());}
+    }
+    Ok(())
+}
 impl CaptureBounds {
     fn validate(&self) -> Result<(), String> {
         if [self.x,self.y,self.width,self.height,self.viewport_width,self.viewport_height].iter().any(|v| !v.is_finite())
@@ -38,9 +51,9 @@ fn crop(bytes:&[u8],bounds:&CaptureBounds) -> Result<image::RgbaImage,String> {
     if width==0 || height==0 {return Err("This widget is outside the capture area.".into());}
     Ok(frame.crop_imm(x,y,width,height).to_rgba8())
 }
-fn compose(bytes:&[u8],bounds:&CaptureBounds,app_region:Option<(&AppCaptureRegion,&[u8])>)->Result<image::RgbaImage,String>{
+fn compose(bytes:&[u8],bounds:&CaptureBounds,app_regions:&[(&AppCaptureRegion,&[u8])])->Result<image::RgbaImage,String>{
     let mut result=crop(bytes,bounds)?;
-    if let Some((region,png))=app_region {
+    for (region,png) in app_regions {
         region.validate(bounds)?;
         let sx=result.width() as f64/bounds.width;let sy=result.height() as f64/bounds.height;
         let child=image::load_from_memory(png).map_err(|e|e.to_string())?.to_rgba8();
@@ -77,20 +90,22 @@ async fn preview(webview:&Webview) -> Result<Vec<u8>,String> {
 }
 
 #[tauri::command]
-pub async fn widget_capture(app:tauri::AppHandle,webview:Webview,bounds:CaptureBounds,app_region:Option<AppCaptureRegion>,copy:bool) -> Result<Vec<u8>,String> {
+pub async fn widget_capture(app:tauri::AppHandle,webview:Webview,bounds:CaptureBounds,app_regions:Vec<AppCaptureRegion>,copy:bool) -> Result<Vec<u8>,String> {
     crate::security::authorize(&webview)?;bounds.validate()?;
+    validate_app_regions(&app_regions,&bounds)?;
     #[cfg(target_os="windows")]
     {
         let size=webview.window().inner_size().map_err(|e|e.to_string())?;
         if bounds.viewport_width*bounds.viewport_height>size.width as f64*size.height as f64*16.0 {return Err("Invalid viewport dimensions.".into());}
         let bytes=preview(&webview).await?;
-        let child=if let Some(region)=app_region {region.validate(&bounds)?;
-            let native_app=app.clone();let id=region.id.clone();
-            let png=tauri::async_runtime::spawn_blocking(move||crate::app_panel::capture(&native_app,&id)).await.map_err(|e|e.to_string())??;
-            Some((region,png))
-        }else{None};
+        let native_app=app.clone();
+        let children=tauri::async_runtime::spawn_blocking(move||app_regions.into_iter().map(|region|{
+            let png=crate::app_panel::capture(&native_app,&region.id)?;
+            Ok((region,png))
+        }).collect::<Result<Vec<_>,String>>()).await.map_err(|e|e.to_string())??;
         tauri::async_runtime::spawn_blocking(move || {
-            let image=compose(&bytes,&bounds,child.as_ref().map(|(region,png)|(region,png.as_slice())))?;
+            let regions=children.iter().map(|(region,png)|(region,png.as_slice())).collect::<Vec<_>>();
+            let image=compose(&bytes,&bounds,&regions)?;
             if copy {let data=arboard::ImageData{width:image.width() as usize,height:image.height() as usize,bytes:std::borrow::Cow::Borrowed(image.as_raw())};
                 arboard::Clipboard::new().and_then(|mut c|c.set_image(data)).map_err(|e|format!("Clipboard unavailable: {e}. Use Export PNG."))?;}
             let mut png=Cursor::new(Vec::new());image::DynamicImage::ImageRgba8(image).write_to(&mut png,image::ImageFormat::Png).map_err(|e|e.to_string())?;
@@ -98,7 +113,7 @@ pub async fn widget_capture(app:tauri::AppHandle,webview:Webview,bounds:CaptureB
         }).await.map_err(|e|e.to_string())?
     }
     #[cfg(not(target_os="windows"))]
-    {let _=(app,app_region,copy);Err("Native widget capture is available in the Windows build.".into())}
+    {let _=(app,app_regions,copy);Err("Native widget capture is available in the Windows build.".into())}
 }
 
 #[cfg(test)]
@@ -116,9 +131,21 @@ mod tests {
         let bounds=CaptureBounds{x:20.0,y:10.0,width:80.0,height:50.0,viewport_width:200.0,viewport_height:100.0};
         let mut app=AppCaptureRegion{id:"test".into(),x:25.0,y:20.0,width:60.0,height:30.0};
         let main=png([20,40,60,255],400,200);let child=png([200,100,50,255],120,60);
-        let result=compose(&main,&bounds,Some((&app,&child))).unwrap();
+        let result=compose(&main,&bounds,&[(&app,&child)]).unwrap();
         assert_eq!((result.width(),result.height()),(160,100));assert_eq!(result.get_pixel(0,0).0,[20,40,60,255]);assert_eq!(result.get_pixel(10,20).0,[200,100,50,255]);assert_eq!(result.get_pixel(129,79).0,[200,100,50,255]);assert_eq!(result.get_pixel(130,80).0,[20,40,60,255]);
-        app.x=0.0;assert!(compose(&main,&bounds,Some((&app,&child))).is_err());
+        app.x=0.0;assert!(compose(&main,&bounds,&[(&app,&child)]).is_err());
+    }
+    #[test] fn multiple_attached_apps_are_composited_and_bounded(){
+        fn png(color:[u8;4],width:u32,height:u32)->Vec<u8>{let mut bytes=Cursor::new(Vec::new());image::DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(width,height,image::Rgba(color))).write_to(&mut bytes,image::ImageFormat::Png).unwrap();bytes.into_inner()}
+        let bounds=CaptureBounds{x:0.0,y:0.0,width:100.0,height:100.0,viewport_width:100.0,viewport_height:100.0};
+        let first=AppCaptureRegion{id:"first".into(),x:10.0,y:10.0,width:20.0,height:20.0};
+        let second=AppCaptureRegion{id:"second".into(),x:60.0,y:60.0,width:20.0,height:20.0};
+        let base=png([20,40,60,255],100,100);let red=png([200,10,10,255],10,10);let blue=png([10,10,200,255],10,10);
+        let result=compose(&base,&bounds,&[(&first,&red),(&second,&blue)]).unwrap();
+        assert_eq!(result.get_pixel(10,10).0,[200,10,10,255]);assert_eq!(result.get_pixel(60,60).0,[10,10,200,255]);
+        assert!(validate_app_regions(&[first.clone(),first],&bounds).is_err());
+        let excessive=(0..13).map(|n|AppCaptureRegion{id:n.to_string(),x:0.0,y:0.0,width:1.0,height:1.0}).collect::<Vec<_>>();
+        assert!(validate_app_regions(&excessive,&bounds).is_err());
     }
 }
 

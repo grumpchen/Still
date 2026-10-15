@@ -21,13 +21,13 @@ export async function widgetImage(id:string):Promise<string> {
   if(!viewport||bounds.left<viewport.left||bounds.top<viewport.top||bounds.right>viewport.right||bounds.bottom>viewport.bottom)throw new Error('Bring the whole widget into the visible canvas before sharing a screenshot.');
   return imageData(await captureWidget(node,false));
 }
-/** Capture only the active Still canvas viewport; native app windows and the assistant panel are excluded. */
+/** Capture the active Still canvas and visible attached app panels inside it; detached desktop windows and the assistant panel are excluded. */
 export async function workspaceImage():Promise<string> {
   const node=[...document.querySelectorAll<HTMLElement>('.canvas-viewport')].find(item=>!item.closest('[hidden]'));
   if(!node)throw new Error('The workspace canvas is not visible.');
   const bounds=node.getBoundingClientRect();
   if(bounds.width<1||bounds.height<1)throw new Error('The workspace canvas is not ready to capture.');
-  return imageData(await captureWidget(node,false,false));
+  return imageData(await captureWidget(node,false,true,false));
 }
 async function imageData(blob:Blob):Promise<string>{
   const image=await createImageBitmap(blob);

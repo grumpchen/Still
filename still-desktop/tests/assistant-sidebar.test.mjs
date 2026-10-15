@@ -45,7 +45,7 @@ test('AI assistant has Gemini, OpenAI, and OpenCode Go providers',()=>{
  assert.match(backend,/credential_store::delete\(provider\)/,'Forget deletes the saved key');
  assert.match(panel,/stored securely in Windows Credential Manager/);
  assert.match(protocol,/Never guess an edit when the requested change is vague/,'the model is told to clarify underspecified edits instead of inventing a change');
- assert.match(protocol,/visible Still workspace canvas only/,'a shared image is explicitly scoped to the workspace canvas');
+ assert.match(protocol,/visible Still workspace canvas, including visible app panels attached inside it/,'a shared image includes attached app panels but remains scoped to the workspace canvas');
  assert.match(protocol,/image alone is not permission to change anything/,'visual context never authorizes workspace edits by itself');
 });
 test('clear all-widget actions are resolved locally before any model request',()=>{

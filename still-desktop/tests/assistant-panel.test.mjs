@@ -53,6 +53,7 @@ test('the single chat can use workspace widgets; @ is optional quick selection a
   await waitFor(()=>calls.some(call=>call.command==='assistant_chat'));
   const geminiRequest=calls.find(call=>call.command==='assistant_chat').args.request,context=JSON.parse(geminiRequest.context);
   assert.equal(geminiRequest.image,'/9j/AA==','the default workspace screenshot is attached to the current request');
+  assert.deepEqual(calls.find(call=>call.command==='widget_capture').args.appRegions,[{id:app.id,x:110,y:130,width:280,height:160}], 'workspace screenshots include visible attached app content');
   assert.deepEqual(encodedImages[0],{width:2560,height:1440,type:'image/jpeg',quality:0.92},'workspace screenshots retain high-resolution, high-quality color detail');
   assert.equal(window.localStorage.getItem('still-assistant-chat-v1:'+encodeURIComponent(workspace.id)).includes('/9j/AA=='),false,'the screenshot is excluded from saved chat history');
   assert.equal(context.canvasAndWidgets.widgets.length,4,'layout requests always include all widget geometry');
@@ -96,7 +97,7 @@ test('the single chat can use workspace widgets; @ is optional quick selection a
   await act(async()=>window.document.querySelector('.assistant-compose').requestSubmit());
   await waitFor(()=>calls.filter(call=>call.command==='assistant_chat').length===2);
   const appCapture=calls.filter(call=>call.command==='widget_capture').at(-1);
-  assert.deepEqual(appCapture.args.appRegion,{id:app.id,x:110,y:130,width:280,height:160},'@-selecting an attached app automatically includes its visible native pixels');
+  assert.deepEqual(appCapture.args.appRegions,[{id:app.id,x:110,y:130,width:280,height:160}], '@-selecting an attached app automatically includes its visible native pixels');
   assert.equal(calls.filter(call=>call.command==='assistant_chat').at(-1).args.request.image,'/9j/AA==');
   assert.deepEqual(encodedImages[1],{width:2560,height:1440,type:'image/jpeg',quality:0.92},'widget screenshots use the same high-quality encoding');
  }finally{
