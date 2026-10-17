@@ -350,7 +350,12 @@ dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
 .widget-minimized-lock{position:absolute;z-index:2;top:7px;right:38px;cursor:pointer}
 .note-tabs{display:flex;align-items:center;gap:4px;min-height:34px;padding:4px 10px 0;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;border-bottom:1px solid var(--border)}
 .note-tab,.note-tab-add{flex:0 0 auto;max-width:150px;min-width:52px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:6px 10px;border:1px solid transparent;border-radius:9px 9px 0 0;background:transparent;color:var(--muted);font-size:11px}
-.note-tab[aria-selected=true]{border-color:var(--border);border-bottom-color:var(--surface);background:var(--surface);color:var(--text)}
+.note-tab-item{display:flex;align-items:center;flex:0 0 auto;max-width:180px;min-width:0;border:1px solid transparent;border-radius:9px 9px 0 0}
+.note-tab-item:has(.note-tab[aria-selected=true]){border-color:var(--border);background:var(--surface)}
+.note-tab-item .note-tab{min-width:0;border:0;border-radius:9px 0 0 0}
+.note-tab-close{flex:0 0 auto;padding:4px 7px;border:0;border-radius:0 9px 0 0;background:transparent;color:var(--muted);font-size:13px}
+.note-tab-close:hover{background:var(--surface-hover);color:var(--text)}
+.note-tab[aria-selected=true]{background:transparent;color:var(--text)}
 .note-tab-add{min-width:28px;width:28px;padding:4px;font-size:16px;line-height:1}
 .note-library-toggle{flex:0 0 auto;max-width:135px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-left:auto;padding:5px 9px;border:1px solid var(--border);border-radius:9px;background:var(--surface);color:var(--muted);font-size:11px}
 .note-library{display:flex;flex-direction:column;min-height:0;max-height:100%;padding:9px 12px;gap:8px;overflow:hidden;border-bottom:1px solid var(--border);background:var(--surface)}

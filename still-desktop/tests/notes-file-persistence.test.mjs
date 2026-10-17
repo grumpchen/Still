@@ -4,7 +4,7 @@ import {createInitialState,createWidget,createWidgetFromPreset,parseState} from 
 import {presetFromWidget} from '../src/domain/presets.ts';
 import {checkedFileNotes,FILE_NOTE_LIMIT,FILE_NOTE_TOTAL_LIMIT} from '../src/domain/fileNotes.ts';
 import {pendingNoteText} from '../src/domain/noteAutosave.ts';
-import {detachNoteLibraryDocuments} from '../src/domain/noteDocuments.ts';
+import {checkedNoteDocuments,detachNoteLibraryDocuments} from '../src/domain/noteDocuments.ts';
 
 test('Notes typography and document annotations survive saving and reopening a widget preset',()=>{
  const note=createWidget('notes');note.title='Revision';note.noteFont='serif';note.noteFontSize=24;
@@ -52,6 +52,13 @@ test('an intentional empty library edit remains pending instead of falling back 
 test('changing the selected library detaches old file tabs while keeping their text as local notes',()=>{
  const tabs=[{id:'file-tab',title:'kinetics.md',text:'unsaved snapshot',sourcePath:'Chemistry/kinetics.md'},{id:'local-tab',title:'Idea',text:'keep'}];
  assert.deepEqual(detachNoteLibraryDocuments(tabs),[{id:'file-tab',title:'kinetics.md',text:'unsaved snapshot'},{id:'local-tab',title:'Idea',text:'keep'}]);
+});
+
+test('truncating a cached library note also detaches it so blur cannot overwrite the source file',()=>{
+ const documents=checkedNoteDocuments([{id:'large-file',title:'Large.md',text:'x'.repeat(300000),sourcePath:'Large.md'}],{id:'fallback',title:'',text:''});
+ assert.equal(documents[0].text.length,256000);assert.equal(documents[0].sourcePath,undefined);
+ const bounded=checkedNoteDocuments([{id:'within-limit',title:'Small.md',text:'x'.repeat(10),sourcePath:'Small.md'}],{id:'fallback',title:'',text:''});
+ assert.equal(bounded[0].sourcePath,'Small.md');
 });
 
 test('file note state has per-note, count, and aggregate bounds',()=>{

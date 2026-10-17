@@ -9,6 +9,7 @@
 - Reused the native selected-folder grant model. Library operations are constrained to the selected root and allow only `.md`, `.markdown`, and `.txt`; note reads/writes are capped at 1 MB.
 - Bounded directory scans to 500 files, 2,000 folders, 10,000 entries, and 24 levels; symlinks are skipped.
 - Changing libraries waits for pending saves and blocks on save failure; previous file tabs become local snapshots after a successful folder change. Saved tray copies retain text but discard file paths and folder grants.
+- Added a close control for open tabs and requires an edit before blur can trigger a save. File saves now compare against the last-read/saved text to reject external changes; oversized/truncated cached documents lose their file link to prevent overwriting the original. The UI can reload a conflicted file.
 
 ## Files
 - `src/NotesWidget.tsx`, `src/platform/notesLibrary.ts`, `src/domain/noteAutosave.ts`, `src/domain/noteDocuments.ts`, `src/domain/workspaces.ts`, `src/domain/presets.ts`, `src/widgets.tsx`, `src/canvas.css`
@@ -18,13 +19,14 @@
 ## Checks
 - `pnpm check` — passed.
 - `pnpm build` — passed; Vite emitted the existing bundle-size warning (largest minified JS chunk is about 553 kB).
-- `node --test tests/notes-file-persistence.test.mjs` — passed, 7/7.
+- `node --test tests/notes-file-persistence.test.mjs` — passed, 8/8.
 - `node --test --test-name-pattern="Notes library" tests/widget-relaunch.test.mjs` — passed, 1/1.
 - `cargo check --offline` — passed.
-- `cargo test --offline --bin still-desktop notes_library_lists_reads_creates_and_safely_replaces_supported_files -- --nocapture` — passed, 1/1.
+- `cargo test --offline --bin still-desktop notes_library_lists_reads_creates_and_safely_replaces_supported_files` — passed, including outside-edit conflict rejection and oversized-note protection.
+- `cargo test --offline failed_notes_library_grant_persistence_restores_previous_root` — passed, 1/1.
 - Full frontend suite was interrupted after concurrent Vite runs collided on its shared port; its partial output included failures outside Notes and is not a valid full-suite result.
 
 ## Handoff
 - New local file access is available only in the Tauri desktop app; the browser preview reports that limitation.
 - Existing tray presets intentionally store file-backed note text as a detached local copy; they do not persist selected folder grants.
-- The UI provides plain-text editing for Markdown and does not render Markdown formatting or include a preview pane.
+- The UI provides plain-text editing for Markdown and does not render Markdown formatting or include a preview pane. Still refuses library note editing above 256,000 characters to keep storage limits aligned and avoid truncation.

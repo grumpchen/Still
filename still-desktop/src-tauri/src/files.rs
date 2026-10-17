@@ -25,6 +25,33 @@ impl FolderRoots {
     #[cfg(test)] pub(crate) fn empty_for_tests() -> Self { Self(Mutex::new(HashMap::new())) }
     #[cfg(test)] pub(crate) fn root_for_tests(&self, id: &str) -> Result<PathBuf, String> { self.root(id) }
 }
+fn set_root_and_persist(
+    roots: &FolderRoots,
+    id: &str,
+    path: PathBuf,
+    persist: impl FnOnce(&FolderRoots) -> Result<(), String>,
+) -> Result<(), String> {
+    let previous = roots
+        .0
+        .lock()
+        .map_err(|_| "Folder state is unavailable")?
+        .insert(id.to_owned(), path.clone());
+    if let Err(error) = persist(roots) {
+        // Keep the in-memory grant aligned with the persisted grant. Avoid
+        // overwriting a newer selection if another command changed it while
+        // persistence was in progress.
+        if let Ok(mut folders) = roots.0.lock() {
+            if folders.get(id) == Some(&path) {
+                match previous {
+                    Some(previous) => { folders.insert(id.to_owned(), previous); }
+                    None => { folders.remove(id); }
+                }
+            }
+        }
+        return Err(error);
+    }
+    Ok(())
+}
 #[derive(Serialize)]
 #[serde(rename_all="camelCase")]
 pub struct FileEntry { name: String, path: String, directory: bool, size: u64, blocked: bool }
@@ -91,6 +118,7 @@ fn listing(root: &Path, location: &str) -> Result<FolderListing,String> {
 
 const NOTE_LIBRARY_MAX_FILES:usize=500;
 const NOTE_LIBRARY_MAX_BYTES:u64=1_000_000;
+const NOTE_LIBRARY_MAX_CHARS:usize=256_000;
 const NOTE_LIBRARY_MAX_DIRECTORIES:usize=2000;
 const NOTE_LIBRARY_MAX_DEPTH:usize=24;
 const NOTE_LIBRARY_MAX_SCANNED_ENTRIES:usize=10000;
@@ -131,11 +159,16 @@ fn read_note_file(roots:&FolderRoots,id:&str,relative:&str)->Result<String,Strin
     let target=note_target(roots,id,relative)?;
     let metadata=fs::metadata(&target).map_err(|_|"This note is no longer available")?;
     if metadata.len()>NOTE_LIBRARY_MAX_BYTES{return Err("This note exceeds the 1 MB editing limit.".into())}
-    String::from_utf8(fs::read(target).map_err(|_|"Could not read this note")?).map_err(|_|"This note is not valid UTF-8 and cannot be edited here.".into())
+    let text=String::from_utf8(fs::read(target).map_err(|_|"Could not read this note")?).map_err(|_|"This note is not valid UTF-8 and cannot be edited here.")?;
+    if text.chars().count()>NOTE_LIBRARY_MAX_CHARS{return Err("This note is larger than Still's 256,000-character editing limit.".into())}
+    Ok(text)
 }
-fn write_note_file(roots:&FolderRoots,id:&str,relative:&str,text:&str)->Result<(),String>{
+fn write_note_file(roots:&FolderRoots,id:&str,relative:&str,text:&str,expected:&str)->Result<(),String>{
     if text.len() as u64>NOTE_LIBRARY_MAX_BYTES{return Err("This note exceeds the 1 MB editing limit.".into())}
+    if text.chars().count()>NOTE_LIBRARY_MAX_CHARS{return Err("This note is larger than Still's 256,000-character editing limit.".into())}
     let target=note_target(roots,id,relative)?;
+    let current=read_note_file(roots,id,relative)?;
+    if current!=expected{return Err("This file changed outside Still. Reload it from the library before saving.".into())}
     let parent=target.parent().ok_or("This note has no parent folder")?;
     let stamp=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|_|"System clock is unavailable")?.as_nanos();
     let temp=parent.join(format!(".still-note-{}-{stamp}.tmp",std::process::id()));
@@ -176,8 +209,8 @@ pub async fn notes_library_choose(app:AppHandle,webview:Webview,roots:State<'_,F
     let path=selected.into_path().map_err(|e|e.to_string())?.canonicalize().map_err(|e|e.to_string())?;
     if !path.is_dir(){return Err("Choose a folder for your Notes library".into())}
     let name=path.file_name().map(|value|value.to_string_lossy().into_owned()).unwrap_or_else(||"Notes library".into());
-    roots.0.lock().map_err(|_|"Folder state is unavailable")?.insert(id,path);
-    persist_roots(&app,&roots)?;Ok(Some(name))
+    set_root_and_persist(&roots, &id, path, |roots| persist_roots(&app, roots))?;
+    Ok(Some(name))
 }
 #[tauri::command]
 pub async fn notes_library_list(webview:Webview,roots:State<'_,FolderRoots>,id:String)->Result<Vec<NoteLibraryEntry>,String>{
@@ -191,8 +224,8 @@ pub async fn notes_library_read(webview:Webview,roots:State<'_,FolderRoots>,id:S
     crate::security::authorize(&webview)?;read_note_file(&roots,&id,&path)
 }
 #[tauri::command]
-pub async fn notes_library_write(webview:Webview,roots:State<'_,FolderRoots>,id:String,path:String,text:String)->Result<(),String>{
-    crate::security::authorize(&webview)?;write_note_file(&roots,&id,&path,&text)
+pub async fn notes_library_write(webview:Webview,roots:State<'_,FolderRoots>,id:String,path:String,text:String,expected:String)->Result<(),String>{
+    crate::security::authorize(&webview)?;write_note_file(&roots,&id,&path,&text,&expected)
 }
 #[tauri::command]
 pub async fn notes_library_create(webview:Webview,roots:State<'_,FolderRoots>,id:String,title:String)->Result<NoteLibraryEntry,String>{
@@ -252,6 +285,16 @@ pub async fn files_preview(webview:Webview,roots:State<'_,FolderRoots>,id:String
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn failed_notes_library_grant_persistence_restores_previous_root() {
+        let old = PathBuf::from("old-library");
+        let roots = FolderRoots(Mutex::new(HashMap::from([("notes-widget".into(), old.clone())])));
+        let result = set_root_and_persist(&roots, "notes-widget", PathBuf::from("new-library"), |_| {
+            Err("simulated persistence failure".into())
+        });
+        assert!(result.is_err());
+        assert_eq!(roots.root("notes-widget").unwrap(), old);
+    }
     #[test] fn lists_nested_files_and_rejects_escape_and_programs() {
         let fixture=std::env::temp_dir().join(format!("still-files-test-{}-{}",std::process::id(),std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
         let root=fixture.join("chosen");fs::create_dir_all(root.join("lectures")).unwrap();
@@ -291,16 +334,19 @@ mod tests {
     #[test]fn notes_library_lists_reads_creates_and_safely_replaces_supported_files(){
         let fixture=std::env::temp_dir().join(format!("still-notes-library-{}-{}",std::process::id(),std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
         let root=fixture.join("library");fs::create_dir_all(root.join("course")).unwrap();
-        fs::write(root.join("course/week1.MARKDOWN"),"first draft").unwrap();fs::write(root.join("ignored.html"),"no").unwrap();fs::write(root.join("large.txt"),vec![b'x';(NOTE_LIBRARY_MAX_BYTES+1) as usize]).unwrap();
+        fs::write(root.join("course/week1.MARKDOWN"),"first draft").unwrap();fs::write(root.join("ignored.html"),"no").unwrap();fs::write(root.join("large.txt"),vec![b'x';(NOTE_LIBRARY_MAX_BYTES+1) as usize]).unwrap();fs::write(root.join("large-chars.md"),"x".repeat(NOTE_LIBRARY_MAX_CHARS+1)).unwrap();
         let root=root.canonicalize().unwrap();
         let roots=FolderRoots(Mutex::new(HashMap::from([("notes-widget".into(),root.clone())])));
-        let mut entries=Vec::new();let(mut directories,mut scanned)=(0,0);collect_note_files(&root,&root,&mut entries,&mut directories,&mut scanned,0).unwrap();assert_eq!(entries.len(),1);assert_eq!(entries[0].path,"course/week1.MARKDOWN");
+        let mut entries=Vec::new();let(mut directories,mut scanned)=(0,0);collect_note_files(&root,&root,&mut entries,&mut directories,&mut scanned,0).unwrap();assert_eq!(entries.len(),2);assert!(entries.iter().any(|entry|entry.path=="course/week1.MARKDOWN"));
         assert_eq!(read_note_file(&roots,"notes-widget","course/week1.MARKDOWN").unwrap(),"first draft");
-        write_note_file(&roots,"notes-widget","course/week1.MARKDOWN","saved update").unwrap();assert_eq!(fs::read_to_string(root.join("course/week1.MARKDOWN")).unwrap(),"saved update");
+        assert!(read_note_file(&roots,"notes-widget","large-chars.md").unwrap_err().contains("256,000-character"));
+        write_note_file(&roots,"notes-widget","course/week1.MARKDOWN","saved update","first draft").unwrap();assert_eq!(fs::read_to_string(root.join("course/week1.MARKDOWN")).unwrap(),"saved update");
+        fs::write(root.join("course/week1.MARKDOWN"),"edited outside Still").unwrap();
+        assert!(write_note_file(&roots,"notes-widget","course/week1.MARKDOWN","stale overwrite","saved update").unwrap_err().contains("changed outside Still"));
         let created=create_note_file(&roots,"notes-widget","New idea").unwrap();assert_eq!(created.path,"New idea.md");assert_eq!(fs::read_to_string(root.join("New idea.md")).unwrap(),"");
         assert!(create_note_file(&roots,"notes-widget","New idea").is_err());assert!(create_note_file(&roots,"notes-widget","../outside").is_err());
-        assert!(read_note_file(&roots,"notes-widget","../ignored.html").is_err());assert!(write_note_file(&roots,"notes-widget","ignored.html","no").is_err());
-        assert!(write_note_file(&roots,"notes-widget","course/week1.MARKDOWN",&"x".repeat((NOTE_LIBRARY_MAX_BYTES+1) as usize)).is_err());
+        assert!(read_note_file(&roots,"notes-widget","../ignored.html").is_err());assert!(write_note_file(&roots,"notes-widget","ignored.html","no","").is_err());
+        assert!(write_note_file(&roots,"notes-widget","course/week1.MARKDOWN",&"x".repeat((NOTE_LIBRARY_MAX_BYTES+1) as usize),"").is_err());
         fs::remove_dir_all(fixture).unwrap();
     }
 }
