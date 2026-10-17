@@ -34,6 +34,7 @@ export interface WidgetInstance {
   lockPluginEnabled:boolean;locked:boolean;
   noteFont:'sans'|'serif'|'mono';noteFontSize:number;
   noteDocuments:NoteDocument[];activeNoteDocumentId:string;
+  notesLibraryKey:string|null;notesLibraryName?:string;
   fileNotes:Record<string,string>;
   text: string;
   remaining: number; end: number | null;
@@ -64,7 +65,7 @@ export interface WorkspaceState {
 export function createWidget(type: WidgetType): WidgetInstance {
   const id=crypto.randomUUID(),initialText='A clear space, a clear mind.\n\nStart with one important thing.\nLeave room for a new idea.',initialNote=createNoteDocument();initialNote.text=initialText;
   return { id, type, instanceNumber:1, title:'', tagColor:null, relaunchOverride:'follow',pluginControls:type==='tagStatus'?['widget-relaunch.tag-colors']:[], span: type === 'ai' ? 2 : 1,
-    clockPluginEnabled:false,lockPluginEnabled:false,locked:false,noteFont:'sans',noteFontSize:14,noteDocuments:type==='notes'?[initialNote]:[],activeNoteDocumentId:type==='notes'?initialNote.id:'',fileNotes:{},text: type === 'notes' ? initialText : '',
+    clockPluginEnabled:false,lockPluginEnabled:false,locked:false,noteFont:'sans',noteFontSize:14,noteDocuments:type==='notes'?[initialNote]:[],activeNoteDocumentId:type==='notes'?initialNote.id:'',notesLibraryKey:null,fileNotes:{},text: type === 'notes' ? initialText : '',
     remaining: 1500, end: null, placement:placement(type,null), shortcuts:[], schedule:[],groupId:null,folderKey:null,fileKey:null,appKey:null,appPanelOpen:false,appReuseExisting:false,
     minimized:false,restorePlacement:null,groupCollapsed:false,groupExpandedPlacement:null };
 }
@@ -252,7 +253,7 @@ function parseGroupEntries(value:unknown):GroupWidgetEntry[]{
   const item=groupWidgetEntry({id:typeof v.id==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(v.id)&&!ids.has(v.id)?v.id:undefined,type:v.type,name:v.name,icon:typeof v.icon==='string'?v.icon:undefined,iconData:typeof v.iconData==='string'?v.iconData:undefined});ids.add(item.id);return[item];
  }catch{return []}});
 }
-const PERSISTED_WIDGET_FIELDS:(keyof WidgetInstance)[]=['id','type','span','instanceNumber','title','tagColor','relaunchOverride','pluginControls','clockPluginEnabled','lockPluginEnabled','locked','noteFont','noteFontSize','noteDocuments','activeNoteDocumentId','fileNotes','text','remaining','end','folderName','folderKey','fileKey','fileName','fileKind','appKey','appName','appIconData','appPanelOpen','appWasCollected','appReuseExisting','appMinWidth','appMinHeight','placement','minimized','restorePlacement','shortcuts','schedule','groupId'];
+const PERSISTED_WIDGET_FIELDS:(keyof WidgetInstance)[]=['id','type','span','instanceNumber','title','tagColor','relaunchOverride','pluginControls','clockPluginEnabled','lockPluginEnabled','locked','noteFont','noteFontSize','noteDocuments','activeNoteDocumentId','notesLibraryKey','notesLibraryName','fileNotes','text','remaining','end','folderName','folderKey','fileKey','fileName','fileKind','appKey','appName','appIconData','appPanelOpen','appWasCollected','appReuseExisting','appMinWidth','appMinHeight','placement','minimized','restorePlacement','shortcuts','schedule','groupId'];
 function persistentWidgetSnapshot(value:unknown):WidgetInstance {
  if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('Invalid collected widget.');
  const source=value as Record<string,unknown>,filtered=Object.fromEntries(PERSISTED_WIDGET_FIELDS.filter(key=>key in source).map(key=>[key,source[key]]));
@@ -382,7 +383,7 @@ function checkedWidget(value: unknown): WidgetInstance {
     clockPluginEnabled:item.clockPluginEnabled===true,
     lockPluginEnabled:item.lockPluginEnabled===true,locked:item.lockPluginEnabled===true&&item.locked===true,
     noteFont:item.noteFont==='serif'||item.noteFont==='mono'?item.noteFont:'sans',noteFontSize:typeof item.noteFontSize==='number'&&Number.isFinite(item.noteFontSize)?Math.max(12,Math.min(28,Math.round(item.noteFontSize/2)*2)):14,
-    noteDocuments,activeNoteDocumentId:item.type==='notes'?activeNote.id:'',
+    noteDocuments,activeNoteDocumentId:item.type==='notes'?activeNote.id:'',notesLibraryKey:item.type==='notes'&&typeof item.notesLibraryKey==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(item.notesLibraryKey)?item.notesLibraryKey:null,notesLibraryName:item.type==='notes'&&typeof item.notesLibraryName==='string'?item.notesLibraryName.slice(0,255):undefined,
     fileNotes:checkedFileNotes(item.fileNotes),
     groupId:item.type==='group'&&typeof item.groupId==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(item.groupId)?item.groupId:null,
     folderName:typeof item.folderName==='string'?item.folderName:undefined,

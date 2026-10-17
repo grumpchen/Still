@@ -352,6 +352,19 @@ dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
 .note-tab,.note-tab-add{flex:0 0 auto;max-width:150px;min-width:52px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:6px 10px;border:1px solid transparent;border-radius:9px 9px 0 0;background:transparent;color:var(--muted);font-size:11px}
 .note-tab[aria-selected=true]{border-color:var(--border);border-bottom-color:var(--surface);background:var(--surface);color:var(--text)}
 .note-tab-add{min-width:28px;width:28px;padding:4px;font-size:16px;line-height:1}
+.note-library-toggle{flex:0 0 auto;max-width:135px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-left:auto;padding:5px 9px;border:1px solid var(--border);border-radius:9px;background:var(--surface);color:var(--muted);font-size:11px}
+.note-library{display:flex;flex-direction:column;min-height:0;max-height:100%;padding:9px 12px;gap:8px;overflow:hidden;border-bottom:1px solid var(--border);background:var(--surface)}
+.note-library-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:30px;color:var(--text);font-size:12px}
+.note-library-heading>strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.note-library-heading>div{display:flex;gap:5px;flex:0 0 auto}
+.note-library-heading button,.note-library-new button{padding:5px 8px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:11px}
+.note-library-new{display:flex;gap:6px}
+.note-library-new input{min-width:0;flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:12px}
+.note-library-files{min-height:45px;overflow:auto;border:1px solid var(--border);border-radius:9px}
+.note-library-file{display:flex;width:100%;align-items:center;justify-content:space-between;gap:8px;padding:7px 9px;border:0;border-bottom:1px solid var(--border);background:transparent;color:var(--text);text-align:left;font-size:12px}
+.note-library-file:last-child{border-bottom:0}.note-library-file span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.note-library-file small{flex:0 0 auto;color:var(--muted);font-size:10px}
+.note-library-files>p{margin:10px;color:var(--muted);font-size:11px}
+.note-heading-input:disabled{opacity:1;cursor:default}
 .note-editor{display:flex;flex:1;flex-direction:column;gap:8px;min-height:0;padding:14px}
 .note-heading-input{width:100%;min-height:34px;border:0;border-bottom:1px solid var(--border);border-radius:0;background:transparent;color:var(--text);font-size:20px;font-weight:650;outline:none}
 .note-format-toolbar{display:flex;gap:8px;align-items:center}

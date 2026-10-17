@@ -43,7 +43,8 @@ export function widgetPreset(value:WidgetPreset):WidgetPreset {
  }
  if(value.type==='notes'||value.type==='ai'){
   if(value.text!==undefined&&(typeof value.text!=='string'||value.text.length>2*1024*1024))throw new Error('Use valid saved text.');
-  const docs=value.type==='notes'&&(value.noteDocuments!==undefined||value.text!==undefined)?checkedNoteDocuments(value.noteDocuments,{id:'legacy-preset',title:'',text:typeof value.text==='string'?value.text:''}):undefined;
+  // Tray copies preserve note content but deliberately sever the selected-folder relationship.
+  const docs=value.type==='notes'&&(value.noteDocuments!==undefined||value.text!==undefined)?checkedNoteDocuments(value.noteDocuments,{id:'legacy-preset',title:'',text:typeof value.text==='string'?value.text:''}).map(({sourcePath,...document})=>document):undefined;
   const active=value.type==='notes'?noteDocument(docs!,value.activeNoteDocumentId):undefined;
   const noteFont=value.type==='notes'&&(value.noteFont==='serif'||value.noteFont==='mono'||value.noteFont==='sans')?value.noteFont:undefined;
   const noteFontSize=value.type==='notes'&&typeof value.noteFontSize==='number'&&Number.isFinite(value.noteFontSize)?Math.max(12,Math.min(28,Math.round(value.noteFontSize/2)*2)):undefined;

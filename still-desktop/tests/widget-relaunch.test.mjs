@@ -14,7 +14,7 @@ const setGlobal=(key,value)=>Object.defineProperty(globalThis,key,{configurable:
 const vite=await createServer({server:{middlewareMode:true,hmr:false},appType:'custom',optimizeDeps:{noDiscovery:true,entries:[]}});
 after(()=>vite.close());
 
-async function setup(widgets,{identity={hwnd:451,pid:902},startupDeferredIds=new Set(),screenshotPluginMode='global',screenshotPluginColors=[],screenshotPluginColorOverrides={},clockPluginMode='global',clockPluginColors=[],clockPluginColorOverrides={},showAppAttachAction=false,showAppDetachAction=false,showAppSaveAction=false,showWidgetRelaunchAction=true,showWidgetExportPngAction=true}={}){
+async function setup(widgets,{identity={hwnd:451,pid:902},startupDeferredIds=new Set(),screenshotPluginMode='global',screenshotPluginColors=[],screenshotPluginColorOverrides={},clockPluginMode='global',clockPluginColors=[],clockPluginColorOverrides={},showAppAttachAction=false,showAppDetachAction=false,showAppSaveAction=false,showWidgetRelaunchAction=true,showWidgetExportPngAction=true,responses={}}={}){
  const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true});
  const oldGlobals=new Map();
  for(const key of ['window','document','navigator','HTMLElement','Element','Node','MutationObserver','ResizeObserver','requestAnimationFrame','cancelAnimationFrame','getComputedStyle','isTauri','IS_REACT_ACT_ENVIRONMENT'])oldGlobals.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
@@ -38,6 +38,7 @@ async function setup(widgets,{identity={hwnd:451,pid:902},startupDeferredIds=new
   if(command==='chrome_panel_present')return args.visible;
   if(command==='app_panel_open'||command==='app_panel_present')return info(args);
   if(command==='app_panel_identity')return identity;
+  if(Object.hasOwn(responses,command))return typeof responses[command]==='function'?responses[command](args):responses[command];
   return null;
  },{shouldMockEvents:true});
  const {default:WorkspaceCanvas}=await vite.ssrLoadModule('/src/WorkspaceCanvas.tsx');
@@ -88,6 +89,22 @@ test('Notes opens a second tab and switching tabs keeps each page text separate'
   assert.equal(app.window.document.querySelector('[aria-label="Note text"]').value,'');
   await act(async()=>tabs[0].click());assert.equal(app.window.document.querySelector('[aria-label="Note text"]').value,original.text);
   await act(async()=>tabs[1].click());assert.equal(app.window.document.querySelector('[aria-label="Note text"]').value,'');
+ }finally{await app.cleanup()}
+});
+
+test('Notes library opens Markdown tabs beside local notes and writes edits to the selected file',async()=>{
+ const widget=createWidget('notes'),app=await setup([widget],{responses:{notes_library_choose:'Study',notes_library_list:[{name:'kinetics.md',path:'Chemistry/kinetics.md',size:12}],notes_library_read:'Initial note'}});
+ try{
+  const localId=widget.noteDocuments[0].id;
+  await act(async()=>app.window.document.querySelector('.note-library-toggle').click());
+  const buttons=[...app.window.document.querySelectorAll('.note-library-heading button')];
+  await act(async()=>buttons.find(button=>button.textContent.includes('Choose folder')).click());
+  assert.equal(app.currentState.workspaces[0].widgets[0].notesLibraryKey,widget.id);
+  const file=[...app.window.document.querySelectorAll('.note-library-file')][0];assert.equal(file.querySelector('span').textContent,'Chemistry/kinetics.md');
+  await act(async()=>file.click());
+  assert.equal(app.window.document.querySelector('[aria-label="Note text"]').value,'Initial note');
+  assert.equal(app.window.document.querySelectorAll('[role="tab"]').length,2);
+  assert.equal(app.currentState.workspaces[0].widgets[0].noteDocuments.find(note=>note.id===localId).text,widget.noteDocuments[0].text);
  }finally{await app.cleanup()}
 });
 

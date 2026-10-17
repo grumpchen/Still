@@ -4,6 +4,10 @@
 
 The current AI sidebar uses one chat flow for Gemini and OpenAI API models. Workspace widget data is available for relevant questions and edits without selecting it; type `@` to quickly point the assistant at one or all widgets. Ordinary layout requests include workspace geometry and produce reviewable proposals with Apply/Undo. Choose the model from the chat footer and connect each provider once per Still session in AI settings. API keys remain in desktop memory until Still closes; OpenAI API usage requires separate billing from a ChatGPT subscription. Browser previews do not send AI requests. Setup, privacy limits, and verification steps are in [the AI assistant notes](docs/plans/2026-10-11-gemini-sidebar.md).
 
+## Notes library
+
+Notes keeps its existing local pages and can also open a folder as a file library. The library lists Markdown (`.md`, `.markdown`) and plain-text (`.txt`) files, including supported files in subfolders. Open files in tabs, create new Markdown notes in the selected folder, and Still saves edits back to those files. Folder access stays limited to the directory selected in the native folder picker. Each library scan is bounded to 500 notes, 2,000 folders, 10,000 entries and 24 folder levels; files over 1 MB are excluded. Changing folders first saves pending edits and then detaches existing file tabs as local copies, so they cannot write into similarly named files in the new folder. Saved tray copies keep note content as local notes and do not carry the folder grant. This feature is available in the desktop app; the browser preview cannot write local files.
+
 ## Existing desktop release
 
 ver0.20 retains the ver0.19 minimum-size work and fixes attached Apps windows remaining over another workspace. Hidden DOM resize handles now produce no native grip rectangle, so the native hide request passes validation. The sidebar/header plan is paused; this build changes no layout controls.

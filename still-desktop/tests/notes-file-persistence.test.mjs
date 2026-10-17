@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {createInitialState,createWidget,createWidgetFromPreset,parseState} from '../src/domain/workspaces.ts';
 import {presetFromWidget} from '../src/domain/presets.ts';
 import {checkedFileNotes,FILE_NOTE_LIMIT,FILE_NOTE_TOTAL_LIMIT} from '../src/domain/fileNotes.ts';
+import {pendingNoteText} from '../src/domain/noteAutosave.ts';
+import {detachNoteLibraryDocuments} from '../src/domain/noteDocuments.ts';
 
 test('Notes typography and document annotations survive saving and reopening a widget preset',()=>{
  const note=createWidget('notes');note.title='Revision';note.noteFont='serif';note.noteFontSize=24;
@@ -27,6 +29,29 @@ test('legacy Notes with only a title and text migrate into one editable page',()
  const legacy={...note,title:'Old note',text:'Saved text'};delete legacy.noteDocuments;delete legacy.activeNoteDocumentId;
  const reopened=parseState(JSON.parse(JSON.stringify({...state,workspaces:[{...workspace,widgets:workspace.widgets.map(item=>item.id===note.id?legacy:item)}]}))).workspaces[0].widgets.find(item=>item.id===note.id);
  assert.equal(reopened.title,'Old note');assert.equal(reopened.text,'Saved text');assert.equal(reopened.noteDocuments.length,1);assert.equal(reopened.noteDocuments[0].title,'Old note');
+});
+
+test('Markdown library tabs retain a scoped source reference when workspace data is normalized',()=>{
+ const state=createInitialState(),workspace=state.workspaces[0],note=workspace.widgets.find(item=>item.type==='notes');
+ note.notesLibraryKey=note.id;note.notesLibraryName='Chemistry';
+ note.noteDocuments.push({id:'library-tab',title:'Kinetics.md',text:'Rate law',sourcePath:'lectures/Kinetics.md'});
+ note.activeNoteDocumentId='library-tab';note.title='Kinetics.md';note.text='Rate law';
+ const reopened=parseState(JSON.parse(JSON.stringify(state))).workspaces[0].widgets.find(item=>item.id===note.id);
+ assert.equal(reopened.notesLibraryKey,note.id);assert.equal(reopened.notesLibraryName,'Chemistry');
+ assert.deepEqual(reopened.noteDocuments.find(document=>document.id==='library-tab'),{id:'library-tab',title:'Kinetics.md',text:'Rate law',sourcePath:'lectures/Kinetics.md'});
+ const preset=createWidgetFromPreset(presetFromWidget(note),[]);
+ assert.equal(preset.notesLibraryKey,null);assert.deepEqual(preset.noteDocuments.find(document=>document.id==='library-tab'),{id:'library-tab',title:'Kinetics.md',text:'Rate law'});
+});
+
+test('an intentional empty library edit remains pending instead of falling back to old note text',()=>{
+ const pending=new Map([['chemistry/kinetics.md','']]);
+ assert.equal(pendingNoteText(pending,'chemistry/kinetics.md','Initial text'),'');
+ assert.equal(pendingNoteText(new Map(),'chemistry/kinetics.md','Initial text'),'Initial text');
+});
+
+test('changing the selected library detaches old file tabs while keeping their text as local notes',()=>{
+ const tabs=[{id:'file-tab',title:'kinetics.md',text:'unsaved snapshot',sourcePath:'Chemistry/kinetics.md'},{id:'local-tab',title:'Idea',text:'keep'}];
+ assert.deepEqual(detachNoteLibraryDocuments(tabs),[{id:'file-tab',title:'kinetics.md',text:'unsaved snapshot'},{id:'local-tab',title:'Idea',text:'keep'}]);
 });
 
 test('file note state has per-note, count, and aggregate bounds',()=>{
