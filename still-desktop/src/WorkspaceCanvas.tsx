@@ -157,7 +157,7 @@ export default function WorkspaceCanvas({workspaceId,canvasFrameRate='display',m
     const v=scroll.getBoundingClientRect();if(!row&&!activeSnapLayout){if(y>v.bottom-32)scroll.scrollTop+=10;if(y<v.top+32&&y>r.bottom)scroll.scrollTop-=10;
     if(x>v.right-32)scroll.scrollLeft+=10;if(x<v.left+32)scroll.scrollLeft-=10}
   }
-  function writeCardPlacement(id:string,p:Placement){const card=document.getElementById('widget-'+id);if(!card)return;card.style.transform='';card.style.left=`${p.x}px`;card.style.top=`${p.y}px`;card.style.width=`${p.width}px`;card.style.height=`${p.height}px`}
+  function writeCardPlacement(id:string,p:Placement){const card=document.getElementById('widget-'+id);if(!card)return;card.style.left=`${p.x}px`;card.style.top=`${p.y}px`;card.style.width=`${p.width}px`;card.style.height=`${p.height}px`;card.style.transform=''}
   function move(e:PointerEvent<HTMLElement>){pendingMove.current={x:e.clientX,y:e.clientY};if(moveFrame.current||moveTimer.current)return;
     const schedule=()=>{moveTimer.current=null;moveFrame.current=requestAnimationFrame(now=>{moveFrame.current=0;const interval=canvasFrameInterval(canvasFrameRate),wait=interval-(now-lastMoveAt.current);if(lastMoveAt.current&&!isCanvasFrameDue(now,lastMoveAt.current,canvasFrameRate)){moveTimer.current=setTimeout(schedule,wait);return}const point=pendingMove.current;pendingMove.current=null;lastMoveAt.current=now;if(point)applyMove(point.x,point.y)})};schedule();
   }

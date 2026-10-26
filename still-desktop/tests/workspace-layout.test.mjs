@@ -49,6 +49,11 @@ test('bursts of pointer movement coalesce into one canvas update and pointer-up 
  }finally{await app.cleanup()}
 });
 
+test('drag release applies destination geometry before clearing the visual transform',()=>{
+ const canvas=readFileSync(new URL('../src/WorkspaceCanvas.tsx',import.meta.url),'utf8');
+ assert.match(canvas,/function writeCardPlacement\(id:string,p:Placement\)\{const card=document\.getElementById\('widget-'\+id\);if\(!card\)return;card\.style\.left=[\s\S]*?card\.style\.height=[\s\S]*?card\.style\.transform=''/);
+});
+
 test('duplicate widget labels keep their instance numbers after canvas counts are precomputed',async()=>{
  const first=createWidget('notes');first.id='notes-1';first.instanceNumber=1;
  const second=createWidget('notes');second.id='notes-2';second.instanceNumber=2;
