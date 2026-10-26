@@ -26,11 +26,13 @@ test('compact focus state is temporary and keeps its exit control beside fullscr
 
 test('sidebar and widget-tray visibility chevrons sit on their panel edges, outside the top bar',()=>{
  assert.match(app,/<button className="sidebar-edge-toggle"[\s\S]*aria-controls="workspace-sidebar"/);
- assert.match(app,/aria-expanded=\{sidebarVisible&&!state\.sidebarCollapsed\}[\s\S]*<Icon name=\{sidebarVisible&&!state\.sidebarCollapsed\?'chevronLeft':'chevronRight'\}/);
+ assert.match(app,/aria-expanded=\{sidebarVisible&&!state\.sidebarCollapsed\}[^>]*><Icon name="chevronRight"/);
+ assert.match(styles,/\.sidebar-edge-toggle\[aria-expanded=true\] svg\{transform:rotate\(180deg\)\}/);
  assert.doesNotMatch(app,/<button className="sidebar-toggle"/);
  assert.doesNotMatch(app,/<button aria-label=\{widgetTrayVisible\?/);
  assert.match(canvas,/<div className="widget-tray-shell"><div id="workspace-tray"[\s\S]*className="tray-edge-toggle"[\s\S]*aria-controls="workspace-tray"/);
- assert.match(canvas,/aria-expanded=\{widgetTrayVisible\}[\s\S]*<Icon name=\{widgetTrayVisible\?"chevronUp":"chevronDown"\}/);
+ assert.match(canvas,/aria-expanded=\{widgetTrayVisible\}[^>]*><Icon name="chevronDown"/);
+ assert.match(styles,/\.tray-edge-toggle\[aria-expanded=true\] svg\{transform:rotate\(180deg\)\}/);
  assert.match(styles,/\.sidebar-edge-toggle\{position:absolute[^}]*background:transparent/);
  assert.match(styles,/\.tray-edge-toggle\{position:absolute[^}]*top:100%;left:50%;transform:translate\(-50%,0\)[^}]*background:transparent/);
 });

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {trayDropDecision} from '../src/domain/trayDrop.ts';
 import {createInitialState,createWidget,parseState} from '../src/domain/workspaces.ts';
 import {presetFromWidget} from '../src/domain/presets.ts';
+import {setNoteText} from './fixtures.mjs';
 
 test('Saved +, Group and Trash are mutually exclusive; blank space never deletes',()=>{
  const source={source:'widget',widgetType:'notes',insideTray:true};
@@ -20,11 +21,11 @@ test('Saved +, Group and Trash are mutually exclusive; blank space never deletes
 test('Saved copies deduplicate, persist supported state and leave original placement/content intact',async()=>{
  const {upsertSavedPresets}=await import('../src/domain/trayActions.ts');
  const state=createInitialState(),note=state.workspaces[0].widgets.find(w=>w.type==='notes');
- note.title='math120';note.text='Formula';const original=structuredClone(note);
+ note.title='math120';setNoteText(note,'Formula');const original=structuredClone(note);
  state.presets=upsertSavedPresets([], [presetFromWidget(note),presetFromWidget(note)]);
  assert.equal(state.presets.length,1);assert.deepEqual(note,original);
  const restored=parseState(JSON.stringify(state));assert.equal(restored.presets[0].text,'Formula');
- const id=state.presets[0].id;note.text='Updated';
+ const id=state.presets[0].id;setNoteText(note,'Updated');
  state.presets=upsertSavedPresets(state.presets,[presetFromWidget(note)]);
  assert.equal(state.presets.length,2);assert.equal(state.presets[0].id,id);assert.equal(state.presets[0].text,'Formula');
  assert.equal(state.presets[1].text,'Updated');assert.equal(state.presets[1].name,'math120 2');

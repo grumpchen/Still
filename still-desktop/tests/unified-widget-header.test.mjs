@@ -4,22 +4,18 @@ import {readFileSync} from 'node:fs';
 
 const source=path=>readFileSync(new URL(path,import.meta.url),'utf8');
 
-test('Apps and Browser content begins below the shared header without a secondary bar',()=>{
+test('Apps content begins below the shared header without a secondary bar',()=>{
  const apps=source('../src/AppsWidget.tsx');
- const browser=source('../src/BrowserWidget.tsx');
  assert.doesNotMatch(apps,/app-panel-tools|app-panel-status/);
- assert.doesNotMatch(browser,/browser-main-tools|browser-status/);
  assert.match(apps,/app-panel-host/);
- assert.match(browser,/browser-host/);
 });
 
-test('shared widget header keeps configurable Apps actions and Browser Lecture actions accessible',()=>{
+test('shared widget header keeps configurable Apps actions accessible',()=>{
  const canvas=source('../src/WorkspaceCanvas.tsx');
  assert.match(canvas,/w\.type==='apps'&&showAppAttachAction&&<button[^>]*aria-label=\{'Attach open app to '\+title\}/);
  assert.match(canvas,/w\.type==='apps'&&showAppDetachAction&&w\.appPanelOpen&&<button[^>]*aria-label=\{'Detach app from '\+title\}/);
  assert.match(canvas,/w\.type==='apps'&&showAppSaveAction&&w\.appKey&&<button[^>]*aria-label=\{'Save '\+title\+' to tray'\}/);
  assert.match(canvas,/showAppAttachAction=false,showAppDetachAction=false,showAppSaveAction=false/,'all Apps header actions default to hidden');
- assert.match(canvas,/w\.type==='browser'&&<button[\s\S]*?lecture\(w\)/);
  const apps=source('../src/AppsWidget.tsx');
  assert.match(apps,/onClick=\{\(\)=>void choose\(\)\}/,'app selection remains available in its empty state');
  assert.match(apps,/widget\.appKey\?'Change app…':'Choose app…'/,'changing or choosing an app remains available without restoring a secondary toolbar');

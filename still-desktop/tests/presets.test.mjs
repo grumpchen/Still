@@ -4,15 +4,15 @@ import * as workspaces from '../src/domain/workspaces.ts';
 import {localFiles} from '../src/platform/files.ts';
 import {presetFromWidget} from '../src/domain/presets.ts';
 
-test('a ChatGPT browser preset survives reopening and adds fresh independent browsers at its URL',()=>{
+test('a saved Apps preset survives reopening and adds fresh independent instances',()=>{
  const state=workspaces.createInitialState();assert.deepEqual(state.presets,[]);
- state.presets=[{id:'chatgpt-preset',type:'browser',name:'ChatGPT',url:'https://chatgpt.com/'}];
- const saved=workspaces.parseState(JSON.stringify(state));assert.equal(saved.presets[0].name,'ChatGPT');
+ state.presets=[{id:'editor-preset',type:'apps',name:'Editor',appSourceId:'editor-grant',appName:'Editor.exe'}];
+ const saved=workspaces.parseState(JSON.stringify(state));assert.equal(saved.presets[0].name,'Editor');
  const first=workspaces.createWidgetFromPreset(saved.presets[0],saved.workspaces[0].widgets,{x:12,y:16});
  const second=workspaces.createWidgetFromPreset(saved.presets[0],[...saved.workspaces[0].widgets,first],{x:60,y:20});
- assert.equal(first.type,'browser');assert.equal(first.title,'ChatGPT');assert.equal(first.url,'https://chatgpt.com/');
- assert.notEqual(first.id,second.id);assert.equal(second.instanceNumber,3);assert.equal(first.placement.y,16);
- first.url='https://example.com/';assert.equal(second.url,'https://chatgpt.com/');assert.equal(saved.presets[0].url,'https://chatgpt.com/');
+ assert.equal(first.type,'apps');assert.equal(first.title,'Editor');assert.equal(first.appKey,'editor-grant');assert.equal(first.appName,'Editor.exe');
+ assert.notEqual(first.id,second.id);assert.equal(second.instanceNumber,2);assert.equal(first.placement.y,16);
+ first.appName='Other.exe';assert.equal(second.appName,'Editor.exe');assert.equal(saved.presets[0].appName,'Editor.exe');
 });
 
 test('a Tag Color Status saved button retains its selected plugin controls',()=>{
@@ -41,14 +41,14 @@ test('saved Apps shortcuts retain only bounded validated PNG icon data',()=>{
  state.presets=[{...state.presets[0],iconData:'data:image/png;base64,iVBORw0KGgo,'+'A'.repeat(16*1024)}];assert.equal(workspaces.parseState(JSON.stringify(state)).presets[0].iconData,undefined);
 });
 
-test('older layouts gain an empty preset list and invalid URLs or folder references are rejected',()=>{
- const state=workspaces.createInitialState();delete state.presets;const browser=state.workspaces[0].widgets[0];
- const older=workspaces.parseState(JSON.stringify(state));assert.deepEqual(older.presets,[]);assert.equal(older.workspaces[0].widgets[0].id,browser.id);
- state.presets=[{id:'valid',type:'browser',name:'Course',url:'example.com/course'},
+test('older layouts gain an empty preset list and removed or invalid shortcuts are rejected',()=>{
+ const state=workspaces.createInitialState();delete state.presets;const original=state.workspaces[0].widgets[0];
+ const older=workspaces.parseState(JSON.stringify(state));assert.deepEqual(older.presets,[]);assert.equal(older.workspaces[0].widgets[0].id,original.id);
+ state.presets=[{id:'valid',type:'files',name:'Course folder',folderSourceId:'course-folder',folderName:'Course'},
   {id:'bad-url',type:'browser',name:'Unsafe',url:'javascript:alert(1)'},
   {id:'bad-folder',type:'files',name:'Escape',folderSourceId:'C:\\Users\\private',folderName:'Private'},
   {id:'unknown',type:'unsupported-widget',name:'Other'},null];
- const saved=workspaces.parseState(JSON.stringify(state));assert.equal(saved.presets.length,1);assert.equal(saved.presets[0].url,'https://example.com/course');
+ const saved=workspaces.parseState(JSON.stringify(state));assert.equal(saved.presets.length,1);assert.equal(saved.presets[0].folderSourceId,'course-folder');
  assert.throws(()=>workspaces.createWidgetFromPreset(state.presets[1],[]));
  assert.throws(()=>workspaces.createWidgetFromPreset(state.presets[2],[]));
 });

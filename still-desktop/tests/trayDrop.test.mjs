@@ -2,6 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createInitialState,parseState,createWidgetFromPreset} from '../src/domain/workspaces.ts';
 import * as presets from '../src/domain/presets.ts';
+import {setNoteText} from './fixtures.mjs';
 const {parsePresets,widgetPreset}=presets;
 
 test('a saved PDF shortcut persists without a raw path and opens independent Files widgets',()=>{
@@ -54,10 +55,10 @@ test('widget drops distinguish creating and adding to Groups from Trash removal'
 });
 
 test('saving notes and timetable templates preserves content but gives each opened widget independent state',()=>{
- const state=createInitialState(),note=state.workspaces[0].widgets.find(w=>w.type==='notes');note.title='Chemistry notes';note.text='Keep this formula';
+ const state=createInitialState(),note=state.workspaces[0].widgets.find(w=>w.type==='notes');note.title='Chemistry notes';setNoteText(note,'Keep this formula');
  assert.equal(typeof presets.presetFromWidget,'function');
  const notePreset=presets.presetFromWidget(note);assert.equal(notePreset.type,'notes');assert.equal(notePreset.text,note.text);
- const first=createWidgetFromPreset(notePreset,[]),second=createWidgetFromPreset(notePreset,[first]);first.text='A separate note';
+ const first=createWidgetFromPreset(notePreset,[]),second=createWidgetFromPreset(notePreset,[first]);setNoteText(first,'A separate note');
  assert.equal(second.text,'Keep this formula');assert.equal(notePreset.text,'Keep this formula');assert.notEqual(first.id,second.id);
  const template={id:'class-template',type:'timetable',name:'CHEM111',schedule:[{id:'class1',day:1,time:'10:00',title:'Lecture',location:'Room 1'}]};
  state.presets=[notePreset,template];const saved=parseState(JSON.stringify(state));assert.equal(saved.presets.length,2);
@@ -75,15 +76,13 @@ test('saved focus timers reopen paused and malformed generic state is filtered',
  assert.throws(()=>widgetPreset({id:'negative-timer',type:'focus',name:'Timer',remaining:-1}));
 });
 
-test('external files and websites are saved only on their tray type and never removed on blank tray',async()=>{
+test('external files save to Files while website links are not treated as widget presets',async()=>{
  const {trayDropDecision}=await import('../src/domain/trayDrop.ts');
- for(const source of ['file','website']){
-  assert.equal(trayDropDecision({source,insideTray:true,targetType:null}),'none');
-  assert.equal(trayDropDecision({source,insideTray:false,targetType:source==='file'?'files':'browser'}),'none');
- }
+ assert.equal(trayDropDecision({source:'file',insideTray:true,targetType:null}),'none');
+ assert.equal(trayDropDecision({source:'file',insideTray:false,targetType:'files'}),'none');
+ assert.equal(trayDropDecision({source:'website',insideTray:true,targetType:null}),'none');
  assert.equal(trayDropDecision({source:'file',insideTray:true,targetType:'files'}),'save');
- assert.equal(trayDropDecision({source:'file',insideTray:true,targetType:'browser'}),'none');
- assert.equal(trayDropDecision({source:'website',insideTray:true,targetType:'browser'}),'save');
+ assert.equal(trayDropDecision({source:'website',insideTray:true,targetType:'files'}),'none');
  assert.equal(trayDropDecision({source:'website',insideTray:true,targetType:'files'}),'none');
 });
 

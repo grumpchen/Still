@@ -4,10 +4,10 @@ import { createInitialState, createWorkspace, duplicateWorkspace, migratePreview
 import { normalizeUrl, browserDestination, GOOGLE_URL, AKO_URL } from '../src/domain/browser.ts';
 import { folderEntries, programFile } from '../src/platform/files.ts';
 test('custom workspace starts with chosen widgets and a unique ID',()=>{
-  const a=createWorkspace(' Engineering ',['desmos','browser']);
+  const a=createWorkspace(' Engineering ',['desmos','apps']);
   const b=createWorkspace('Engineering',['notes']);
   assert.equal(a.name,'Engineering');
-  assert.deepEqual(a.widgets.map(w=>w.type),['desmos','browser']);
+  assert.deepEqual(a.widgets.map(w=>w.type),['desmos','apps']);
   assert.notEqual(a.id,b.id);
   assert.notEqual(a.widgets[0].id,b.widgets[0].id);
   assert.throws(()=>createWorkspace('  ',[]));
@@ -38,31 +38,25 @@ test('browser allows HTTPS navigation and rejects active schemes or credential U
   assert.equal(normalizeUrl('https://example.com/a?b=c'),'https://example.com/a?b=c');
   for(const url of ['javascript:alert(1)','file:///c:/secret','data:text/html,test','http://example.com','https://u:p@example.com','https://','https://exam ple.com'])assert.throws(()=>normalizeUrl(url),url);
 });
-test('legacy lecture data migrates to canvas while preserving old sizing fields',()=>{
-  const state=createInitialState(), study=state.workspaces[0];
+test('legacy lecture data migrates to canvas while preserving and bounding widget placements',()=>{
+  const state=createInitialState(), study=state.workspaces[0],note=study.widgets.find(widget=>widget.type==='notes');
   assert.equal(study.layout,'canvas');
-  assert.equal(study.browserWidth,80);
-  study.browserWidth=72;study.browserHeight=85;
+  note.placement={x:72,y:85,width:400,height:340};
   const copy=duplicateWorkspace(study,'Lecture copy');
-  assert.equal(copy.browserWidth,72);assert.equal(copy.browserHeight,85);
-  assert.equal(parseState(JSON.stringify(state)).workspaces[0].browserWidth,72);
-  delete study.layout;delete study.browserWidth;delete study.browserHeight;
+  assert.deepEqual(copy.widgets.find(widget=>widget.type==='notes').placement,note.placement);
+  assert.deepEqual(parseState(JSON.stringify(state)).workspaces[0].widgets.find(widget=>widget.type==='notes').placement,note.placement);
+  delete study.layout;
   const migrated=parseState(JSON.stringify(state)).workspaces[0];
-  assert.equal(migrated.layout,'canvas');assert.equal(migrated.browserWidth,80);assert.equal(migrated.browserHeight,100);
-  study.browserWidth=500;study.browserHeight=-1;
-  const clamped=parseState(JSON.stringify(state)).workspaces[0];
-  assert.equal(clamped.browserWidth,95);assert.equal(clamped.browserHeight,50);
+  assert.equal(migrated.layout,'canvas');assert.deepEqual(migrated.widgets.find(widget=>widget.type==='notes').placement,note.placement);
+  note.placement={x:500,y:-1,width:5000,height:5000};
+  const clamped=parseState(JSON.stringify(state)).workspaces[0].widgets.find(widget=>widget.type==='notes').placement;
+  assert.deepEqual(clamped,{x:500,y:0,width:3000,height:3000});
 });
-test('Google starts new browsers and omnibox separates searches from safe URLs',()=>{
-  assert.equal(createWorkspace('Web',['browser']).widgets[0].url,GOOGLE_URL);
+test('omnibox URL normalization separates searches from safe web addresses',()=>{
   assert.equal(browserDestination('how to integrate x squared'),'https://www.google.com/search?q=how%20to%20integrate%20x%20squared');
   assert.equal(browserDestination('desmos.com/scientific'),'https://desmos.com/scientific');
   assert.equal(browserDestination('google'),'https://www.google.com/search?q=google');
   assert.throws(()=>browserDestination('javascript:alert(1)'));
-  const state=createInitialState(),widget=state.workspaces[0].widgets[0];widget.url=AKO_URL;delete widget.homeVersion;
-  const migrated=parseState(JSON.stringify(state));assert.equal(migrated.workspaces[0].widgets[0].url,GOOGLE_URL);
-  migrated.workspaces[0].widgets[0].url=AKO_URL;
-  assert.equal(parseState(JSON.stringify(migrated)).workspaces[0].widgets[0].url,AKO_URL);
 });
 test('folder browsing lists immediate children with directories first and blocks program launch',()=>{
   const files=[{path:'lectures/week1.txt',size:10},{path:'notes.txt',size:20},{path:'lectures/week2.txt',size:30},{path:'RUN.CMD',size:2}];

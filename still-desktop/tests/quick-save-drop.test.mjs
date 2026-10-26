@@ -6,6 +6,7 @@ import {JSDOM} from 'jsdom';
 import {createServer} from 'vite';
 import {createInitialState,createWidget} from '../src/domain/workspaces.ts';
 import {upsertSavedPresets} from '../src/domain/trayActions.ts';
+import {setNoteText} from './fixtures.mjs';
 
 const vite=await createServer({server:{middlewareMode:true,hmr:false},appType:'custom'});
 after(()=>vite.close());
@@ -35,7 +36,7 @@ test('dragging a canvas widget onto Saved + quick-saves it beside the button',as
    if(this.classList.contains('widget-resize'))return rect(428,418,32,32);
    return rect(0,0,0,0);
   };
-  const workspace=createInitialState().workspaces[0],note=createWidget('notes');note.title='Quick note';note.text='Save me';note.placement={x:100,y:150,width:360,height:300};workspace.widgets=[note];
+  const workspace=createInitialState().workspaces[0],note=createWidget('notes');note.title='Quick note';setNoteText(note,'Save me');note.placement={x:100,y:150,width:360,height:300};workspace.widgets=[note];
   const props={workspaceId:workspace.id,transferWidget(){},setWorkspaceDropTarget(){},openAppsDialog(){},editTray(){throw new Error('Saved + opened the editor instead of quick-saving')},presets:[],openPreset(){},editPreset(){},removePreset(){},renamePreset(){},renameGroup(){},widgets:workspace.widgets,groups:[],updateGroup(){},saveToGroup(){},openGroup(){},editGroup(){},removeGroup(){},openGroupWidget(){},update(){},add(){},remove(){},begin(){},bringToFront(){},notify(){},obscured:false,openResource(){},openDropped(){},pickApp(){},saveApp(){},appAttachments:{},appAttachmentHandled(){}};
   let currentPresets=[];
   function Host(){const [presets,setPresets]=useState([]);currentPresets=presets;return createElement(WorkspaceCanvas,{...props,presets,savePresets:items=>setPresets(existing=>upsertSavedPresets(existing,items))})}

@@ -79,7 +79,7 @@ test('saved entry rename and deletion stay in the saved collection and Edit dial
 });
 
 test('expanded Group entries stay inline, with management actions retained in Edit',()=>{
- assert.match(groups,/groups\.map\(group=>[\s\S]*tray-group-button[\s\S]*group\.expanded&&[\s\S]*tray-group-inline-contents/);
+ assert.match(groups,/groups\.map\(group=>[\s\S]*tray-group-button[\s\S]*tray-group-inline-contents[\s\S]*aria-hidden=\{!group\.expanded\}[\s\S]*inert=\{!group\.expanded\}/);
  assert.match(groups,/data-group-drop-target="existing"/);
  assert.doesNotMatch(groups,/tray-group-inline-title|tray-group-add|Remove group|Open group/);
  for(const action of ['Edit','Add widget','Add link','Remove group','Attach open app'])assert.ok(editor.includes(action),action);
@@ -98,7 +98,7 @@ test('Group drop collection and saved-app launch guard retain existing pipelines
  const app=readFileSync(new URL('../src/App.tsx',import.meta.url),'utf8');
  assert.match(app,/collectWidgetIntoGroup/);assert.match(app,/restoreCollectedWidget/);
  assert.match(app,/savedAppInUse\(s,preset\)/);assert.match(app,/checkedAppIconData\(preset\.iconData\)/);
- assert.match(canvas,/action==='save'&&original\)void saveWidgetToTray\(original\)/);
+ assert.match(canvas,/action==='save'&&original\)\{if\(g\.type==='apps'\)appPanel\.finishDrag\(g\.id\);void saveWidgetToTray\(original\)/);
  assert.match(canvas,/appPanel\.prepare\(attachment\)/);
  assert.match(app,/modal==='delete'&&pendingRemoval/);
 });

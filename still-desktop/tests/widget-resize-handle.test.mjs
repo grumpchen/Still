@@ -11,12 +11,12 @@ test('every expanded widget uses the shared accessible bottom-right resize handl
  assert.match(styles,/\.canvas-card \.widget-resize\{position:absolute;bottom:0;right:0;[^}]*display:grid[^}]*z-index:2/);
  assert.match(styles,/\.canvas-card \.widget-resize\{[^}]*width:30px;height:30px/);
  assert.match(styles,/\.canvas-card\.widget-apps \.widget-resize\{width:32px;height:32px\}/);
- assert.match(styles,/\.canvas-card\.group-collapsed \.widget-content,\.canvas-card\.group-collapsed \.widget-resize\{display:none!important\}/);
- assert.match(styles,/\.widget-minimized \.widget-content,\.widget-minimized \.widget-resize\{display:none!important\}/);
+ assert.match(styles,/\.canvas-card\.group-collapsed \.widget-resize,\.canvas-card\.widget-minimized \.widget-resize\{display:none!important\}/);
+ assert.match(styles,/\.canvas-card\.group-collapsed \.widget-content,\.canvas-card\.widget-minimized \.widget-content\{opacity:0;visibility:hidden/);
 });
 
-test('Browser forwards the measured resize handle so native Chrome leaves it uncovered',()=>{
- const browser=source('../src/BrowserWidget.tsx');
- assert.match(browser,/querySelector<HTMLElement>\('\.widget-resize'\)\?\.getBoundingClientRect\(\)\?\?null/);
- assert.match(browser,/chromeClipGeometry\(r,v,content,higher,current\.current\.workspaceActive,current\.current\.obscured,grip\)/);
+test('Apps measures the shared resize handle when positioning its native window',()=>{
+ const apps=source('../src/AppsWidget.tsx');
+ assert.match(apps,/querySelector<HTMLElement>\('\.widget-resize'\)\?\.getBoundingClientRect\(\)\?\?null/);
+ assert.match(apps,/appPanelGeometry\(node\.getBoundingClientRect\(\),clipped,current\.current\.workspaceActive,current\.current\.obscured,grip,higher/);
 });

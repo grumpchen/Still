@@ -13,5 +13,5 @@ test('all scrollbars share a thin visible thumb and a wider native hit area',()=
  assert.match(css,/\*::\-webkit-scrollbar\{[^}]*width:14px[^}]*height:14px/);
  assert.match(css,/\*::\-webkit-scrollbar-thumb\{[^}]*border:5px solid transparent[^}]*background-clip:content-box/);
  assert.match(css,/\*::\-webkit-scrollbar-button\{[^}]*display:none/);
- assert.doesNotMatch(css,/scrollbar-width:thin/,'per-element thin settings can override the shared WebView scrollbar styling');
+ assert.match(css,/\.note-tabs\{[^}]*scrollbar-width:thin/,'scrollable note tabs retain their narrower local scrollbar');
 });

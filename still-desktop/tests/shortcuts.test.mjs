@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { adjacentWorkspaceId, defaultShortcuts, shortcutAction, shortcutDirection, shortcutFromEvent, shortcutsError } from '../src/domain/shortcuts.ts';
 import { createInitialState, createWorkspace, parseState } from '../src/domain/workspaces.ts';
+import {setNoteText} from './fixtures.mjs';
 const key=(key,modifiers={})=>({key,ctrlKey:false,altKey:false,shiftKey:false,metaKey:false,...modifiers});
 test('Alt+W moves above, Alt+S below, and movement wraps through current sidebar order',()=>{
   const shortcuts=defaultShortcuts();const list=[{id:'one'},{id:'two'},{id:'custom'}];
@@ -23,7 +24,7 @@ test('exact modifier matching preserves typing, IME composition, AltGr and other
 });
 test('custom bindings persist; older or invalid bindings migrate without losing workspaces or notes',()=>{
   const state=createInitialState();state.workspaces.push(createWorkspace('My custom space',['notes']));
-  state.workspaces[0].widgets.find(w=>w.type==='notes').text='keep my lecture notes';
+  setNoteText(state.workspaces[0].widgets.find(w=>w.type==='notes'),'keep my lecture notes');
   state.shortcuts={...defaultShortcuts(),up:{key:'ArrowUp',ctrl:true,alt:false,shift:true},down:{key:'ArrowDown',ctrl:true,alt:false,shift:true},clickThrough:{key:'O',ctrl:true,alt:false,shift:true}};
   let restored=parseState(JSON.stringify(state));assert.deepEqual(restored.shortcuts,state.shortcuts);
   assert.equal(shortcutDirection(key('ArrowDown',{ctrlKey:true,shiftKey:true}),restored.shortcuts),'down');

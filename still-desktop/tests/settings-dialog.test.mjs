@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 
 const app=readFileSync(new URL('../src/App.tsx',import.meta.url),'utf8');
 const general=readFileSync(new URL('../src/GeneralSettings.tsx',import.meta.url),'utf8');
+const relaunchScope=readFileSync(new URL('../src/WidgetRelaunchScope.tsx',import.meta.url),'utf8');
 const shortcuts=readFileSync(new URL('../src/ShortcutSettings.tsx',import.meta.url),'utf8');
 const appearance=readFileSync(new URL('../src/AppearanceSettings.tsx',import.meta.url),'utf8');
 const tagStatus=readFileSync(new URL('../src/TagColorStatusWidget.tsx',import.meta.url),'utf8');
@@ -36,9 +37,9 @@ test('sidebar Settings opens a tabbed dialog with General, Appearance, and Plugi
  assert.doesNotMatch(sidebarPluginSettings,/tag color|Apply by tag/);
  assert.doesNotMatch(tagStatus,/Screenshot plugin scope|Apply by tag color|screenshotPluginMode/);
  assert.match(widgetPlugins,/Disable Widget Relaunch plugin[\s\S]*?Remove Widget Relaunch plugin[\s\S]*?Enable Widget Relaunch plugin/);
- assert.match(general,/aria-label="Widget relaunch mode"/);
- assert.match(general,/Apply to All/);
- assert.match(general,/aria-label=\{color\+' tag relaunch mode'\}/);
+ assert.match(relaunchScope,/aria-label="Widget relaunch mode"/);
+ assert.match(relaunchScope,/Apply to All/);
+ assert.match(relaunchScope,/aria-label=\{color\+' tag relaunch mode'\}/);
 });
 
 test('all checkboxes are compact circles without checkmarks',()=>{

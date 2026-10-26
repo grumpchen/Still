@@ -18,18 +18,6 @@ test('custom groups are independent tray widgets with saved names, icons, links 
  group.shortcuts=[];assert.deepEqual(parseState(JSON.stringify(state)).workspaces[0].widgets.find(w=>w.id===group.id).shortcuts,[]);
 });
 
-test('every group click creates a fresh named browser without changing existing browser tabs or geometry',()=>{
- assert.equal(typeof workspaces.createBrowserFromGroup,'function');
- const link=shortcut({name:'Formula sheet',url:'https://example.com/formula.pdf',icon:'∑'});
- const existing=[createWidget('browser')];const before=structuredClone(existing);
- const first=workspaces.createBrowserFromGroup(link,existing,{x:15,y:25});
- const second=workspaces.createBrowserFromGroup(link,[...existing,first],{x:15,y:25});
- assert.equal(first.type,'browser');assert.equal(first.title,'Formula sheet');assert.equal(first.url,link.url);
- assert.notEqual(first.id,existing[0].id);assert.notEqual(first.id,second.id);assert.equal(second.instanceNumber,3);
- assert.equal(first.placement.x,15);assert.equal(first.placement.y,25);assert.deepEqual(existing,before);
- assert.throws(()=>workspaces.createBrowserFromGroup({...link,url:'javascript:alert(1)'},existing));
-});
-
 test('older workspaces survive group support and invalid titles or URLs are normalized',()=>{
  const state=createInitialState();const group=createWidget('group');group.title={bad:true};group.shortcuts=[{name:'Unsafe',url:'javascript:alert(1)'},{name:'Valid',url:'example.com/guide',icon:'PDF'}];state.workspaces[0].widgets.push(group);
  const restored=parseState(JSON.stringify(state));const saved=restored.workspaces[0].widgets.find(w=>w.id===group.id);

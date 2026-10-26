@@ -6,8 +6,9 @@ import {JSDOM} from 'jsdom';
 import {mockIPC,clearMocks} from '@tauri-apps/api/mocks';
 import {createInitialState,createWidget,minimizeWidgetInstance} from '../src/domain/workspaces.ts';
 import {createServer} from 'vite';
+import {setNoteText} from './fixtures.mjs';
 
-const types=['browser','group','desmos','notes','focus','ai','files','apps','timetable','tagStatus'];
+const types=['group','desmos','notes','focus','ai','files','apps','timetable','tagStatus'];
 const rect=(left,top,width,height)=>({x:left,y:top,left,top,right:left+width,bottom:top+height,width,height,toJSON(){return this}});
 const info=(args)=>({hwnd:args.id==='app-one'?451:452,pid:args.id==='app-one'?902:903,minWidth:0,minHeight:0,requiredWidth:null,requiredHeight:null,measured:false,probing:false,shown:args.visible??true});
 const setGlobal=(key,value)=>Object.defineProperty(globalThis,key,{configurable:true,writable:true,value});
@@ -183,7 +184,7 @@ test('Relaunch and Export PNG controls can be hidden independently without remov
 });
 
 test('Relaunch remounts an ordinary widget view while preserving its saved content',async()=>{
- const note=createWidget('notes');note.id='saved-note';note.title='Quick note';note.text='Keep this saved text';
+ const note=createWidget('notes');note.id='saved-note';note.title='Quick note';setNoteText(note,'Keep this saved text');
  const app=await setup([note]);
  try{
   const before=app.window.document.querySelector('.note');assert.ok(before);assert.equal(before.value,'Keep this saved text');
@@ -196,7 +197,7 @@ test('Relaunch remounts an ordinary widget view while preserving its saved conte
 });
 
 test('manual startup keeps the widget card and saved data in place until Relaunch',async()=>{
- const note=createWidget('notes');note.id='manual-note';note.title='Manual note';note.text='Keep this saved text';note.placement={x:700,y:360,width:400,height:340};
+ const note=createWidget('notes');note.id='manual-note';note.title='Manual note';setNoteText(note,'Keep this saved text');note.placement={x:700,y:360,width:400,height:340};
  const app=await setup([note],{startupDeferredIds:new Set(['manual-note'])});
  try{
   assert.ok(app.window.document.querySelector('[data-widget-id="manual-note"]'),'the card stays on its workspace');
@@ -208,16 +209,16 @@ test('manual startup keeps the widget card and saved data in place until Relaunc
  }finally{await app.cleanup()}
 });
 
-test('manual startup delays Browser native Chrome creation until the user relaunches its card',async()=>{
- const widget=createWidget('browser');widget.id='manual-browser';widget.title='Manual browser';
- const app=await setup([widget],{startupDeferredIds:new Set(['manual-browser'])});
+test('manual startup delays native app creation until the user relaunches its card',async()=>{
+ const widget=createWidget('apps');widget.id='manual-app';widget.title='Manual app';widget.appKey='editor-grant';widget.appName='Editor.exe';widget.appPanelOpen=true;
+ const app=await setup([widget],{startupDeferredIds:new Set(['manual-app'])});
  try{
   await act(async()=>await new Promise(resolve=>setTimeout(resolve,30)));
-  assert.equal(app.calls.filter(call=>call.command==='chrome_panel_open').length,0);
-  assert.ok(app.window.document.querySelector('[data-widget-id="manual-browser"]'));
-  await act(async()=>app.window.document.querySelector('[aria-label="Relaunch Manual browser"]').dispatchEvent(new app.window.MouseEvent('click',{bubbles:true})));
-  await act(async()=>{for(let attempt=0;attempt<40&&!app.calls.some(call=>call.command==='chrome_panel_open');attempt++)await new Promise(resolve=>setTimeout(resolve,10))});
-  assert.equal(app.calls.filter(call=>call.command==='chrome_panel_open').length,1);
+  assert.equal(app.calls.filter(call=>call.command==='app_panel_open').length,0);
+  assert.ok(app.window.document.querySelector('[data-widget-id="manual-app"]'));
+  await act(async()=>app.window.document.querySelector('[aria-label="Relaunch Manual app"]').dispatchEvent(new app.window.MouseEvent('click',{bubbles:true})));
+  await act(async()=>{for(let attempt=0;attempt<40&&!app.calls.some(call=>call.command==='app_panel_open');attempt++)await new Promise(resolve=>setTimeout(resolve,10))});
+  assert.equal(app.calls.filter(call=>call.command==='app_panel_open').length,1);
  }finally{await app.cleanup()}
 });
 
@@ -350,21 +351,5 @@ test('Ctrl+Shift+right-click on a workspace card minimizes it, while ordinary ri
   assert.equal(card.classList.contains('widget-minimized'),false,'the left-click gesture remains untouched');
   await act(async()=>card.dispatchEvent(new app.window.MouseEvent('contextmenu',{bubbles:true,cancelable:true,button:2,ctrlKey:true,shiftKey:true})));
   assert.equal(card.classList.contains('widget-minimized'),true,'Ctrl+Shift+right-click minimizes the widget');
- }finally{await app.cleanup()}
-});
-
-test('Relaunch re-presents the same Browser panel without closing or reopening Chrome',async()=>{
- const widget=createWidget('browser');widget.id='browser-one';widget.title='Work browser';
- const app=await setup([widget]);
- try{
-  await act(async()=>{for(let attempt=0;attempt<40&&!app.calls.some(call=>call.command==='chrome_panel_present');attempt++)await new Promise(resolve=>setTimeout(resolve,10))});
-  const opens=app.calls.filter(call=>call.command==='chrome_panel_open').length;assert.equal(opens,1,'the Browser card opens its native panel once');
-  const presentations=app.calls.filter(call=>call.command==='chrome_panel_present').length;
-  const relaunch=app.window.document.querySelector('[aria-label="Relaunch Work browser"]');assert.ok(relaunch);
-  await act(async()=>relaunch.dispatchEvent(new app.window.MouseEvent('click',{bubbles:true})));
-  await act(async()=>{for(let attempt=0;attempt<40&&app.calls.filter(call=>call.command==='chrome_panel_present').length<=presentations;attempt++)await new Promise(resolve=>setTimeout(resolve,10))});
-  assert.equal(app.calls.filter(call=>call.command==='chrome_panel_open').length,opens,'the existing Chrome window is not reopened as a second window');
-  assert.equal(app.calls.filter(call=>call.command==='chrome_panel_close').length,0,'Relaunch leaves the same Chrome HWND managed');
-  assert.ok(app.calls.filter(call=>call.command==='chrome_panel_present').length>presentations,'Relaunch synchronizes the current Browser geometry again');
  }finally{await app.cleanup()}
 });

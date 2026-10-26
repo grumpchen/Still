@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createInitialState,createWidget,createWorkspace,collectWidgetIntoGroup,restoreCollectedWidget,parseState} from '../src/domain/workspaces.ts';
+import {setNoteText} from './fixtures.mjs';
 
 test('new workspace state defaults relaunch to automatic with the built-in plugin enabled',()=>{
- const state=createInitialState();assert.equal(state.version,6);assert.equal(state.widgetRelaunchMode,'automatic');assert.equal(state.widgetRelaunchPluginStatus,'enabled');assert.deepEqual(state.widgetRelaunchColors,{});
+ const state=createInitialState();assert.equal(state.version,7);assert.equal(state.widgetRelaunchMode,'automatic');assert.equal(state.widgetRelaunchPluginStatus,'enabled');assert.deepEqual(state.widgetRelaunchColors,{});
  assert.equal(state.passThroughTransparentBackground,false);assert.equal(state.enableWholeWindowClickThrough,false);
 });
 
@@ -21,16 +22,16 @@ test('click-through preferences migrate safely and persist independently',()=>{
 });
 
 test('loading older workspace state keeps cards in place and adds safe relaunch defaults',()=>{
- const state=createInitialState(),widget=createWidget('notes');widget.id='saved-note';widget.text='Keep this';widget.placement={x:640,y:320,width:400,height:340};state.workspaces[0].widgets=[widget];
+ const state=createInitialState(),widget=createWidget('notes');widget.id='saved-note';setNoteText(widget,'Keep this');widget.placement={x:640,y:320,width:400,height:340};state.workspaces[0].widgets=[widget];
  const old={...state,version:4};delete old.widgetRelaunchMode;delete old.widgetRelaunchPluginStatus;delete old.widgetRelaunchColors;
- const restored=parseState(JSON.stringify(old));assert.equal(restored.version,6);assert.equal(restored.widgetRelaunchMode,'automatic');assert.equal(restored.widgetRelaunchPluginStatus,'enabled');
+ const restored=parseState(JSON.stringify(old));assert.equal(restored.version,7);assert.equal(restored.widgetRelaunchMode,'automatic');assert.equal(restored.widgetRelaunchPluginStatus,'enabled');
  assert.equal(restored.workspaces[0].widgets[0].id,'saved-note');assert.equal(restored.workspaces[0].widgets[0].text,'Keep this');assert.deepEqual(restored.workspaces[0].widgets[0].placement,widget.placement);
 });
 
 test('version 5 settings migrate to the new optional action defaults without losing workspace data',()=>{
- const state=createInitialState(),widget=createWidget('notes');widget.id='legacy-note';widget.text='Still saved';state.workspaces[0].widgets=[widget];
+ const state=createInitialState(),widget=createWidget('notes');widget.id='legacy-note';setNoteText(widget,'Still saved');state.workspaces[0].widgets=[widget];
  const old={...state,version:5};delete old.showAppAttachAction;delete old.showAppDetachAction;delete old.showAppSaveAction;delete old.screenshotPluginMode;delete old.screenshotPluginColors;
- const restored=parseState(JSON.stringify(old));assert.equal(restored.version,6);assert.equal(restored.showAppAttachAction,false);assert.equal(restored.showAppDetachAction,false);assert.equal(restored.showAppSaveAction,false);assert.equal(restored.screenshotPluginMode,'global');assert.equal(restored.workspaces[0].widgets[0].text,'Still saved');
+ const restored=parseState(JSON.stringify(old));assert.equal(restored.version,7);assert.equal(restored.showAppAttachAction,false);assert.equal(restored.showAppDetachAction,false);assert.equal(restored.showAppSaveAction,false);assert.equal(restored.screenshotPluginMode,'global');assert.equal(restored.workspaces[0].widgets[0].text,'Still saved');
 });
 
 test('widget and relaunch settings survive persistence',()=>{

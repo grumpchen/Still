@@ -70,7 +70,7 @@ test('legacy saved overflow is clamped without changing widget content',()=>{
 test('legacy Browser cards migrate bookmarks into Groups without losing other workspace data',()=>{
   const state=createInitialState();state.version=6;const w=state.workspaces[0];
   const web={id:'old-browser',type:'browser',title:'Course browser',url:'https://example.com/course',bookmarks:[{id:'course',name:'Course page',url:'https://example.com/lectures'}]};w.widgets.push(web);
-  const note=w.widgets.find(w=>w.type==='notes');note.text='Do not lose this';
+  const note=w.widgets.find(w=>w.type==='notes');note.text='Do not lose this';delete note.noteDocuments;delete note.activeNoteDocumentId;
   const restored=parseState(JSON.stringify(state)),migrated=restored.workspaces[0];
   assert.equal(restored.version,7);assert.equal(migrated.layout,'canvas');
   assert.equal(migrated.widgets.some(w=>w.id===web.id),false);
@@ -88,16 +88,16 @@ test('workspace performance preference persists and old saves default to display
   assert.equal(parseState(JSON.stringify(state)).canvasFrameRate,'display');
 });
 test('multiple instances and duplicated workspaces retain independent state and geometry',()=>{
-  const workspace=createWorkspace('Many',['browser','browser','notes','notes','timetable']);
+  const workspace=createWorkspace('Many',['desmos','desmos','notes','notes','timetable']);
   assert.equal(new Set(workspace.widgets.map(w=>w.id)).size,5);
   assert.deepEqual(workspace.widgets.slice(0,2).map(w=>w.instanceNumber),[1,2]);
-  workspace.widgets[0].shortcuts[0].name='My AKO';assert.equal(workspace.widgets[1].shortcuts[0].name,'AKO Learn');
-  workspace.widgets[2].text='One';workspace.widgets[3].text='Two';workspace.widgets[2].placement={x:812,y:77,width:320,height:235};
+  workspace.widgets[0].title='My calculator';assert.equal(workspace.widgets[1].title,'');
+  workspace.widgets[2].text='One';workspace.widgets[2].noteDocuments[0].text='One';workspace.widgets[3].text='Two';workspace.widgets[3].noteDocuments[0].text='Two';workspace.widgets[2].placement={x:812,y:77,width:320,height:235};
   workspace.widgets[4].schedule=[{id:'a',day:2,time:'10:30',title:'Engineering',location:'Room 1'}];
   const state=createInitialState();state.workspaces=[workspace];state.activeId=workspace.id;
   const restored=parseState(JSON.stringify(state));assert.deepEqual(JSON.parse(JSON.stringify(restored.workspaces[0])),JSON.parse(JSON.stringify(workspace)));
-  const copy=duplicateWorkspace(workspace,'Copy');copy.widgets[0].shortcuts[0].name='Changed';copy.widgets[4].schedule[0].title='Different';
-  assert.equal(workspace.widgets[0].shortcuts[0].name,'My AKO');assert.equal(workspace.widgets[4].schedule[0].title,'Engineering');
+  const copy=duplicateWorkspace(workspace,'Copy');copy.widgets[0].title='Changed';copy.widgets[4].schedule[0].title='Different';
+  assert.equal(workspace.widgets[0].title,'My calculator');assert.equal(workspace.widgets[4].schedule[0].title,'Engineering');
   assert.deepEqual(copy.widgets[2].placement,workspace.widgets[2].placement);
 });
 test('transferring one widget preserves its instance state and clamps it to destination bounds',()=>{

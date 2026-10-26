@@ -19,9 +19,8 @@ test('a mixed file drop accepts documents and reports blocked programs without l
  assert.throws(()=>presetForDroppedResource({sourceId:'invalid',name:'Unsafe',kind:'website',url:'javascript:alert(1)',extension:'url'}));
 });
 
-test('folder and Internet shortcuts retain their resource types and do not invent paths',()=>{
+test('folders retain their Files identity while web links remain Group links, not Browser widgets',()=>{
  const folder=presetForDroppedResource({sourceId:'selected-folder',name:'CHEM111',kind:'folder',extension:''});
  assert.equal(folder.folderSourceId,'selected-folder');assert.equal(folder.folderName,'CHEM111');
- const website=presetForDroppedResource({sourceId:'',name:'ChatGPT',kind:'website',url:'https://chatgpt.com/',extension:'url'});
- assert.equal(website.type,'browser');assert.equal(website.url,'https://chatgpt.com/');
+ assert.throws(()=>presetForDroppedResource({sourceId:'',name:'ChatGPT',kind:'website',url:'https://chatgpt.com/',extension:'url'}),/saved inside a Group/);
 });
