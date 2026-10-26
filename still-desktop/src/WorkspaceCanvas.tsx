@@ -300,7 +300,7 @@ export default function WorkspaceCanvas({workspaceId,canvasFrameRate='display',m
      </div>
      {layoutMode&&<SnapLayoutOverlay mode={layoutMode} assigned={snapAssignments} hoveredZone={hoveredSnapZone} availableWidgets={widgets} widgetName={widget=>widget.title||widgetRegistry[widget.type].name} chooseLayout={setLayoutMode} chooseWidget={chooseSnapAssistWidget} close={()=>setLayoutMode(null)}/>}
      {overviewVisible&&!layoutMode&&<svg className="canvas-overview" style={{width:Math.min(160,Math.max(96,viewportWidth-16))}} role="img" aria-label="Workspace overview map; shaded outline shows the visible viewport" viewBox={`0 0 ${Math.max(extent,1)} ${Math.max(height,1)}`} preserveAspectRatio="none"><title>Workspace overview</title><rect className="overview-canvas" x="0" y="0" width={extent} height={height}/>{widgets.map(w=>{const p=bounded(w,w.placement);return <rect key={w.id} className="overview-widget" x={p.x} y={p.y} width={p.width} height={p.height} rx="14"/>})}<rect ref={overviewViewportRef} className="overview-viewport" x="0" y="0" width={viewportWidth} height={viewportHeight}/></svg>}
-     </div><div className="canvas-status"><span>{widgets.length} widgets · drag headers to move between workspaces · use ◢ to resize</span><span>Camera → copy screenshot</span></div>
+     </div>
     {trayGhost&&<div className="tray-drag-ghost" aria-hidden="true" style={{left:trayGhost.clientX+14,top:trayGhost.clientY+14}}>＋ {ghostLabel}</div>}
     {savedMenu&&<SavedItemContextMenu target={savedMenu} close={closeSavedMenu} rename={()=>savedMenu.kind==='preset'?renamePreset(savedMenu.id):renameGroup(savedMenu.id)} remove={()=>savedMenu.kind==='preset'?removePreset(savedMenu.id):removeGroup(savedMenu.id)}/>}
   </div></TrayDragProvider>;

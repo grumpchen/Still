@@ -29,8 +29,8 @@ export default function WorkspaceDock({trayRef,shortcuts,status,expanded,onExpan
    <button type="button" className="dock-reveal-rail" aria-label={expanded?'Apps and shortcuts area expanded':'Show installed apps and shortcuts'} aria-expanded={expanded} title="Apps and shortcuts" onClick={()=>onExpandedChange(!expanded)} onKeyDown={event=>{if(event.key==='Escape'){event.preventDefault();onExpandedChange(false)}}}><span/></button>
    {expanded&&<>
     <div className="dock-page-tabs" role="tablist" aria-label="Dock pages">
-     <button role="tab" aria-selected={page==='apps'} onClick={()=>setPage('apps')}>Apps{apps.length>0&&<small>{apps.length}</small>}</button>
-     <button role="tab" aria-selected={page==='shortcuts'} onClick={()=>setPage('shortcuts')}>Shortcuts</button>
+     <button role="tab" aria-selected={page==='apps'} onClick={()=>{setPage('apps');onExpandedChange(true)}}>Apps{apps.length>0&&<small>{apps.length}</small>}</button>
+     <button role="tab" aria-selected={page==='shortcuts'} onClick={()=>{setPage('shortcuts');onExpandedChange(true)}}>Shortcuts</button>
      <span className="dock-tab-spacer"/>
      <button type="button" className={'tray-control tray-trash '+(onRemoveDrop?'trash-active':'')} data-trash-target="" aria-label="Remove widget" title="Drag a widget here to remove it" onClick={onEditShortcuts}><Icon name="trash"/></button>
      <button type="button" className="tray-control" aria-label="Manage shortcuts" title="Manage shortcuts" onClick={onEditShortcuts}><Icon name="edit"/></button>
