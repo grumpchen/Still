@@ -22,11 +22,11 @@ async function setup(widgets,canvasFrameRate='display'){
  documentElement(window.document).elementFromPoint=()=>null;
  mockIPC(()=>null,{shouldMockEvents:true});
  const {default:WorkspaceCanvas}=await vite.ssrLoadModule('/src/WorkspaceCanvas.tsx');
- let currentState,root,updates=0;
- function Host(){const [current,setCurrent]=useState(widgets),[mode,setMode]=useState('picker');currentState={widgets:current,mode};const update=(id,patch)=>{updates++;setCurrent(items=>items.map(item=>item.id===id?{...item,...patch}:item))};return createElement(WorkspaceCanvas,{workspaceId:'study',canvasFrameRate,transferWidget(){},setWorkspaceDropTarget(){},openAppsDialog(){},editTray(){},presets:[],savePresets(){},openPreset(){},editPreset(){},removePreset(){},renamePreset(){},widgets:current,groups:[],updateGroup(){},saveToGroup(){},openGroup(){},editGroup(){},removeGroup(){},openGroupWidget(){},update,add(){},remove(){},begin(){},bringToFront(id){setCurrent(items=>[...items.filter(item=>item.id!==id),...items.filter(item=>item.id===id)])},notify(){},obscured:false,openResource(){},openDropped(){},pickApp(){},saveApp(){},appAttachments:{},appAttachmentHandled(){},layoutMode:mode,setLayoutMode:setMode})}
+ let currentState,root,updates=0,lastCommitStyle;
+ function Host(){const [current,setCurrent]=useState(widgets),[mode,setMode]=useState('picker');currentState={widgets:current,mode};const update=(id,patch)=>{updates++;const card=window.document.getElementById('widget-'+id);lastCommitStyle=card?{left:card.style.left,top:card.style.top,transform:card.style.transform}:undefined;setCurrent(items=>items.map(item=>item.id===id?{...item,...patch}:item))};return createElement(WorkspaceCanvas,{workspaceId:'study',canvasFrameRate,transferWidget(){},setWorkspaceDropTarget(){},openAppsDialog(){},editTray(){},presets:[],savePresets(){},openPreset(){},editPreset(){},removePreset(){},renamePreset(){},widgets:current,groups:[],updateGroup(){},saveToGroup(){},openGroup(){},editGroup(){},removeGroup(){},openGroupWidget(){},update,add(){},remove(){},begin(){},bringToFront(id){setCurrent(items=>[...items.filter(item=>item.id!==id),...items.filter(item=>item.id===id)])},notify(){},obscured:false,openResource(){},openDropped(){},pickApp(){},saveApp(){},appAttachments:{},appAttachmentHandled(){},layoutMode:mode,setLayoutMode:setMode})}
  root=createRoot(window.document.querySelector('#root'));await act(async()=>root.render(createElement(Host)));
  const pointer=(type,x,y)=>{const event=new window.Event(type,{bubbles:true,cancelable:true});Object.defineProperties(event,{button:{value:0},pointerId:{value:1},clientX:{value:x},clientY:{value:y}});return event};
- return{dom,window,get currentState(){return currentState},get updates(){return updates},root,pointer,cleanup:async()=>{if(root)await act(async()=>root.unmount());for(const timer of pendingFrames)clearTimeout(timer);pendingFrames.clear();await new Promise(resolve=>setTimeout(resolve,0));clearMocks();dom.window.close();for(const [key,descriptor]of oldGlobals){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}}};
+ return{dom,window,get currentState(){return currentState},get updates(){return updates},get lastCommitStyle(){return lastCommitStyle},root,pointer,cleanup:async()=>{if(root)await act(async()=>root.unmount());for(const timer of pendingFrames)clearTimeout(timer);pendingFrames.clear();await new Promise(resolve=>setTimeout(resolve,0));clearMocks();dom.window.close();for(const [key,descriptor]of oldGlobals){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}}};
 }
 function documentElement(document){return document}
 
@@ -42,6 +42,8 @@ test('bursts of pointer movement coalesce into one canvas update and pointer-up 
   await act(async()=>header.dispatchEvent(app.pointer('pointerup',70,20)));
   assert.equal(app.updates,1,'the final placement is committed once when the gesture ends');
   assert.equal(app.window.document.querySelector('#widget-notes').style.transform,'','the compositor transform is cleared when the final layout is committed');
+  assert.equal(app.lastCommitStyle.left,'50px','the visual position is already at the destination before React commits it');
+  assert.equal(app.lastCommitStyle.transform,'','the visual transform is cleared only after the destination geometry is applied');
   assert.equal(app.window.document.querySelector('#widget-notes').style.left,'50px','the saved card position matches the final pointer location');
   assert.equal(app.currentState.widgets[0].placement.x,50,'pointer-up applies the exact final position even if a frame was pending');
  }finally{await app.cleanup()}

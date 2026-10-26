@@ -20,7 +20,7 @@ test('expanded and minimized widgets enter the same move-to-Group finish path',(
  const canvas=readFileSync(new URL('../src/WorkspaceCanvas.tsx',import.meta.url),'utf8');
  const finish=canvas.slice(canvas.indexOf('function finish('),canvas.indexOf('function key('));
  assert.match(finish,/const moved=currentWidget\?\{\.\.\.currentWidget,placement:g\.current/);
- assert.match(finish,/canvasTarget&&moved\)\{void saveToGroup\(moved,canvasTarget,true\);return\}/);
+ assert.match(finish,/canvasTarget&&moved\)\{writeCardPlacement\(g\.id,moved\.placement\);void saveToGroup\(moved,canvasTarget,true\);return\}/);
  assert.equal((canvas.match(/onPointerDown=\{e=>start\(e,w,'move'\)\}/g)||[]).length,2, 'expanded headers and minimized buttons both use the same drag handler');
 });
 

@@ -163,22 +163,22 @@ export default function WorkspaceCanvas({workspaceId,canvasFrameRate='display',m
   }
   function flushMove(x:number,y:number){pendingMove.current=null;if(moveFrame.current)cancelAnimationFrame(moveFrame.current);moveFrame.current=0;if(moveTimer.current)clearTimeout(moveTimer.current);moveTimer.current=null;lastMoveAt.current=0;applyMove(x,y)}
   useEffect(()=>()=>{if(moveFrame.current)cancelAnimationFrame(moveFrame.current);if(moveTimer.current)clearTimeout(moveTimer.current)},[]);
-  function finish(e:PointerEvent<HTMLElement>,cancel=false){const g=gesture.current;if(!g)return;flushMove(e.clientX,e.clientY);const card=document.getElementById('widget-'+g.id);if(card)card.style.transform='';const currentWidget=widgets.find(w=>w.id===g.id),canvasTarget=canvasGroupTarget(e.clientX,e.clientY,currentWidget),distance=Math.hypot(e.clientX-g.startX,e.clientY-g.startY);
+  function finish(e:PointerEvent<HTMLElement>,cancel=false){const g=gesture.current;if(!g)return;flushMove(e.clientX,e.clientY);const currentWidget=widgets.find(w=>w.id===g.id),canvasTarget=canvasGroupTarget(e.clientX,e.clientY,currentWidget),distance=Math.hypot(e.clientX-g.startX,e.clientY-g.startY);
     // DOM reordering can cancel pointer capture. Raise visually during dragging,
     // then persist stacking after releasing the pointer.
      gesture.current=null;setActive(null);setOverTray(false);setSaveTarget(null);setCanvasGroupDropId(null);setWorkspaceDropTarget(null);setHoveredSnapZone(null);
      const workspaceRow=document.elementFromPoint(e.clientX,e.clientY)?.closest<HTMLElement>('[data-workspace-drop-target]'),destination=workspaceRow?.dataset.workspaceDropTarget;
-     if(!cancel&&g.mode==='move'&&destination&&destination!==workspaceId&&distance>4){if(g.type==='apps')appPanel.finishDrag(g.id);transferWidget(workspaceId,g.id,destination,g.current,g.currentRestorePlacement);return}
+     if(!cancel&&g.mode==='move'&&destination&&destination!==workspaceId&&distance>4){writeCardPlacement(g.id,g.p);if(g.type==='apps')appPanel.finishDrag(g.id);transferWidget(workspaceId,g.id,destination,g.current,g.currentRestorePlacement);return}
     const original=currentWidget?{...currentWidget,placement:g.p,...(g.restorePlacement?{restorePlacement:g.restorePlacement}:{})}:undefined;
     const moved=currentWidget?{...currentWidget,placement:g.current,...(g.currentRestorePlacement?{restorePlacement:g.currentRestorePlacement}:{})}:undefined;
-    if(!cancel&&g.mode==='move'&&distance>4&&canvasTarget&&moved){void saveToGroup(moved,canvasTarget,true);return}
+    if(!cancel&&g.mode==='move'&&distance>4&&canvasTarget&&moved){writeCardPlacement(g.id,moved.placement);void saveToGroup(moved,canvasTarget,true);return}
     const target=trayTarget(e.clientX,e.clientY),action=trayDropDecision({source:'widget',widgetType:g.type,...target});
     if(cancel){if(original)writeCardPlacement(g.id,original.placement)}
     else if(g.mode==='move'&&distance>4&&target.insideTray){
      if(action==='remove')remove(g.id,true);
      else if(action==='save'&&original){writeCardPlacement(g.id,original.placement);if(g.type==='apps')appPanel.finishDrag(g.id);void saveWidgetToTray(original).catch(error=>notify(String((error as Error).message??error)))}
-     else try{if((action==='create-group'||action==='save-group')&&moved){const groupId=target.groupTarget?.kind==='existing'?target.groupTarget.groupId:undefined;saveToGroup(moved,groupId,true)}else if(original)writeCardPlacement(g.id,original.placement)}catch(error){notify(String((error as Error).message??error))}
-    }else{const snapZone=!cancel&&g.mode==='move'&&distance>4?snapZoneAtClient(e.clientX,e.clientY):null;if(snapZone!==null&&currentWidget&&!currentWidget.minimized&&!(currentWidget.type==='group'&&currentWidget.groupCollapsed))snapWidgetToZone(g.id,snapZone);else{if(moved)update(g.id,{placement:moved.placement,...(moved.restorePlacement?{restorePlacement:moved.restorePlacement}:{})});bringToFront(g.id)}if(g.type==='apps')appPanel.finishDrag(g.id)}
+     else try{if((action==='create-group'||action==='save-group')&&moved){writeCardPlacement(g.id,moved.placement);const groupId=target.groupTarget?.kind==='existing'?target.groupTarget.groupId:undefined;saveToGroup(moved,groupId,true)}else if(original)writeCardPlacement(g.id,original.placement)}catch(error){notify(String((error as Error).message??error))}
+    }else{const snapZone=!cancel&&g.mode==='move'&&distance>4?snapZoneAtClient(e.clientX,e.clientY):null;if(snapZone!==null&&currentWidget&&!currentWidget.minimized&&!(currentWidget.type==='group'&&currentWidget.groupCollapsed)){writeCardPlacement(g.id,g.current);snapWidgetToZone(g.id,snapZone)}else{if(moved){writeCardPlacement(g.id,moved.placement);update(g.id,{placement:moved.placement,...(moved.restorePlacement?{restorePlacement:moved.restorePlacement}:{})})}else writeCardPlacement(g.id,g.p);bringToFront(g.id)}if(g.type==='apps')appPanel.finishDrag(g.id)}
   }
   function key(e:KeyboardEvent<HTMLElement>,w:WidgetInstance,mode:'move'|'resize'){
     const delta:Record<string,[number,number]>={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]};
