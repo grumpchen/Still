@@ -11,7 +11,7 @@ test('expanded native Apps panels suspend before canvas dragging and cancellatio
  assert.match(start,/mode==='move'&&!w\.minimized&&w\.type==='apps'&&appPanel\.available\)void appPanel\.suspendForDrag\(w\.id\)/);
  assert.ok(start.indexOf('suspendForDrag')<start.indexOf('setActive(w.id)'), 'native hide is queued before the active drag render');
  assert.match(apps,/suspendForDrag:async\(id:string\)=>\{retainedForDrag\.add\(id\);try\{return await command<boolean>\(id,'app_panel_suspend'\)\}/);
- assert.match(finish,/gesture\.current=null;setActive\(null\)/);
+ assert.match(finish,/gesture\.current=null;gestureEndListeners\.current\?\.\(\);gestureEndListeners\.current=null;setActive\(null\)/);
  assert.match(finish,/if\(cancel\)\{if\(original\)writeCardPlacement\(g\.id,original\.placement\)\}/);
  assert.match(canvas,/onPointerCancel=\{e=>finish\(e,true\)\}/);
 });

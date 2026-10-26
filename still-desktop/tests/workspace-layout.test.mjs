@@ -54,6 +54,19 @@ test('drag release applies destination geometry before clearing the visual trans
  assert.match(canvas,/function writeCardPlacement\(id:string,p:Placement\)\{const card=document\.getElementById\('widget-'\+id\);if\(!card\)return;card\.style\.left=[\s\S]*?card\.style\.height=[\s\S]*?card\.style\.transform=''/);
 });
 
+test('lost pointer capture commits the Notes drag instead of restoring its original position',async()=>{
+ const notes=createWidget('notes');notes.id='notes';const app=await setup([notes],'display');
+ try{
+  const header=app.window.document.querySelector('#widget-notes .widget-move');
+  await act(async()=>header.dispatchEvent(app.pointer('pointerdown',20,20)));
+  await act(async()=>{header.dispatchEvent(app.pointer('pointermove',40,20));await new Promise(resolve=>setTimeout(resolve,10))});
+  await act(async()=>header.dispatchEvent(app.pointer('lostpointercapture',50,20)));
+  assert.equal(app.updates,1,'losing pointer capture finishes the active drag once');
+  assert.equal(app.currentState.widgets[0].placement.x,30,'the last pointer position is kept instead of rolling back');
+  assert.equal(app.window.document.querySelector('#widget-notes').style.left,'30px');
+ }finally{await app.cleanup()}
+});
+
 test('duplicate widget labels keep their instance numbers after canvas counts are precomputed',async()=>{
  const first=createWidget('notes');first.id='notes-1';first.instanceNumber=1;
  const second=createWidget('notes');second.id='notes-2';second.instanceNumber=2;
