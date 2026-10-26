@@ -183,7 +183,7 @@ export function transferWidgetInstance(source:Workspace,destination:Workspace,wi
  return{source:{...source,widgets:source.widgets.filter(item=>item.id!==widgetId)},destination:{...destination,widgets:[...destination.widgets,moved],groups}};
 }
 export function nextInstanceNumber(type:WidgetType,widgets:WidgetInstance[]):number {return Math.max(0,...widgets.filter(w=>w.type===type).map(w=>w.instanceNumber))+1}
-const GROUP_ICON_LIMIT=80*1024,GROUP_ICON_BUDGET=512*1024;
+const GROUP_ICON_LIMIT=256*1024,GROUP_ICON_BUDGET=1024*1024;
 export function checkedAppIconData(value:unknown):string|undefined {
  return typeof value==='string'&&value.length<=GROUP_ICON_LIMIT&&/^data:image\/png;base64,iVBORw0KGgo[A-Za-z0-9+/]*={0,2}$/.test(value)?value:undefined;
 }

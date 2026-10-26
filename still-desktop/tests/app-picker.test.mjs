@@ -43,7 +43,7 @@ test('selected app icon bytes are bounded PNG data and never store native window
  const bytes=[137,80,78,71,13,10,26,10,1,2,3];
  const icon=appIconData(bytes);assert.ok(icon?.startsWith('data:image/png;base64,iVBORw0KGgo'));
  assert.equal(appIconData([1,2,3]),undefined);
- assert.equal(appIconData([...bytes,...Array(48_001).fill(0)]),undefined);
+ assert.equal(appIconData([...bytes,...Array(192_001).fill(0)]),undefined);
  const widget=managedAppWidget({sourceId:'app-word',name:'Word'},'Chem notes',[],undefined,undefined,false,bytes);
  assert.equal(widget.appIconData,icon);assert.equal(JSON.stringify(widget).includes('hwnd'),false);assert.equal(JSON.stringify(widget).includes('pid'),false);
 });

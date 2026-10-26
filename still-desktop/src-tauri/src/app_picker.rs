@@ -55,7 +55,7 @@ impl Bitmap{
 }
 impl Drop for Bitmap{fn drop(&mut self){unsafe{SelectObject(self.memory,self.previous);let _=DeleteObject(HGDIOBJ(self.bitmap.0));let _=DeleteDC(self.memory);ReleaseDC(None,self.desktop);}}}
 fn png(image:image::DynamicImage)->Result<Vec<u8>,String>{let mut bytes=std::io::Cursor::new(Vec::new());image.write_to(&mut bytes,image::ImageFormat::Png).map_err(|e|e.to_string())?;Ok(bytes.into_inner())}
-const APP_ICON_SIZE:i32=128;
+const APP_ICON_SIZE:i32=256;
 unsafe fn jumbo_icon(path:&str)->Option<HICON>{
  let _com=Com::initialize();
  let filename=wide(path);let mut file_info=SHFILEINFOW::default();

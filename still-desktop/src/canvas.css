@@ -358,7 +358,7 @@ dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
 .note-tab[aria-selected=true]{background:transparent;color:var(--text)}
 .note-tab-add{min-width:28px;width:28px;padding:4px;font-size:16px;line-height:1}
 .note-library-toggle{flex:0 0 auto;max-width:135px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-left:auto;padding:5px 9px;border:1px solid var(--border);border-radius:9px;background:var(--surface);color:var(--muted);font-size:11px}
-.note-library{display:flex;flex:1;flex-direction:column;min-height:0;max-height:100%;padding:9px 12px;gap:8px;overflow:hidden;border-bottom:1px solid var(--border);background:var(--surface)}
+.note-library{display:flex;flex:1 1 0;flex-direction:column;min-height:0;max-height:none;padding:9px 12px;gap:8px;overflow:hidden;border-bottom:1px solid var(--border);background:var(--surface)}
 .note-library-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:30px;color:var(--text);font-size:12px}
 .note-library-heading>strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
 .note-library-heading>div{display:flex;gap:5px;flex:0 0 auto}
@@ -371,7 +371,7 @@ dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
 .note-library-location button{padding:3px 6px;border:0;border-radius:6px;background:transparent;color:var(--muted);font-size:10px}
 .note-library-location button:hover{background:var(--tint);color:var(--text)}
 .note-library-location span{display:flex;align-items:center;gap:5px}.note-library-location i{color:var(--muted);font-style:normal;opacity:.65}
-.note-library-explorer{display:grid;grid-template-columns:minmax(118px,.86fr) minmax(0,1.14fr);flex:1;min-height:130px;overflow:hidden;border:1px solid var(--border);border-radius:10px;background:color-mix(in srgb,var(--surface) 70%,transparent)}
+.note-library-explorer{display:grid;grid-template-columns:minmax(118px,.86fr) minmax(0,1.14fr);flex:1;min-height:0;overflow:hidden;border:1px solid var(--border);border-radius:10px;background:color-mix(in srgb,var(--surface) 70%,transparent)}
 .note-library-files{min-height:0;overflow:auto;border:0;border-right:1px solid var(--border);border-radius:0}
 .note-library-file{display:flex;width:100%;min-height:34px;align-items:center;justify-content:flex-start;gap:7px;padding:6px 7px;border:0;border-bottom:1px solid color-mix(in srgb,var(--border) 72%,transparent);background:transparent;color:var(--text);text-align:left;font-size:11px}
 .note-library-file:hover,.note-library-file.is-selected{background:var(--tint)}
@@ -398,7 +398,8 @@ dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
 .note-format-toolbar{display:flex;gap:8px;align-items:center}
 .note-format-toolbar label{display:flex;align-items:center;gap:5px;color:var(--muted);font-size:11px}
 .note-format-toolbar select{min-height:28px;max-width:136px;padding:3px 8px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:11px}
-.note-editor textarea.note{flex:1;min-height:80px;resize:none;border:0;border-radius:8px;background:transparent;color:var(--text);line-height:1.55;outline:none}
+.note-editor textarea.note{flex:1;min-height:0;resize:none;border:0;border-radius:8px;background:transparent;color:var(--text);line-height:1.55;outline:none}
+.canvas-card.widget-notes>.widget-content{overflow:hidden}.canvas-card.widget-notes .note-tabs{flex:0 0 auto}
 .canvas-card .timer-widget .timer-mode-switch button:not([aria-pressed=true]){background:#343837;color:#fff!important}
 .canvas-card .timer-widget .timer-widget-actions button{background:#343837;color:#fff!important;border-color:#737978}
 .canvas-card .timer-widget .timer-widget-actions button:disabled{opacity:.8}
@@ -429,7 +430,7 @@ dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
 .dock-app-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:6px;align-content:start}
 .dock-app{display:flex;min-width:0;min-height:82px;flex-direction:column;align-items:center;justify-content:flex-start;gap:6px;padding:8px 5px;border:1px solid transparent;border-radius:14px;background:transparent;box-shadow:none;color:var(--text);font-size:10px;text-align:center;transition:transform .22s cubic-bezier(.2,.8,.2,1),background .2s ease,border-color .2s ease}
 .dock-app:hover,.dock-app:focus-visible{transform:translateY(-3px) scale(1.04);border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.16);outline:none}
-.dock-app>img,.dock-app-fallback{display:grid;place-items:center;width:56px;height:56px;object-fit:contain;border-radius:13px;filter:drop-shadow(0 4px 6px rgba(0,0,0,.12));image-rendering:auto}
+.dock-app>img,.dock-app-fallback{display:grid;place-items:center;width:64px;height:64px;object-fit:contain;border-radius:13px;filter:drop-shadow(0 4px 6px rgba(0,0,0,.12));image-rendering:auto}
 .dock-app-fallback{background:rgba(255,255,255,.17)}.dock-app-fallback svg{width:24px;height:24px}
 .dock-app>span:last-child{display:-webkit-box;width:100%;overflow:hidden;line-height:1.25;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow-wrap:anywhere}
 .dock-message{margin:12px 4px;color:var(--muted);font-size:12px;line-height:1.5}.dock-error{color:#a92727}
@@ -450,7 +451,7 @@ dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
 .liquid-glass .app.glass-widget-headers .canvas-card.widget-notes>.widget-content{background:linear-gradient(155deg,rgba(255,255,255,.18),rgba(255,255,255,.055) 52%,rgba(255,255,255,.13)),rgba(220,234,226,.16);backdrop-filter:blur(18px) saturate(1.35);-webkit-backdrop-filter:blur(18px) saturate(1.35)}
 @supports not (backdrop-filter:blur(1px)){.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes{background:#d9e4dc}.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes>.widget-content{background:transparent}}
 @media(prefers-reduced-transparency:reduce){.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes{background:#e4ebe5;backdrop-filter:none;-webkit-backdrop-filter:none}.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes>.card-head,.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes>.widget-content{background:transparent;backdrop-filter:none;-webkit-backdrop-filter:none}.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes::before{display:none}}
-@media(max-width:740px){.widget-tray-shell.workspace-dock-shell{width:calc(100% - 14px);max-width:calc(100% - 14px)}.workspace-dock-shell.dock-expanded{height:58dvh}.workspace-dock-shell:hover .workspace-dock,.workspace-dock-shell:focus-within .workspace-dock,.workspace-dock[data-expanded=true]{max-height:none}.dock-page-content{max-height:none}.dock-app-grid{grid-template-columns:repeat(auto-fill,minmax(68px,1fr));gap:2px}.dock-app{min-height:78px;padding:6px 3px}.dock-app>img,.dock-app-fallback{width:48px;height:48px}}
+@media(max-width:740px){.widget-tray-shell.workspace-dock-shell{width:calc(100% - 14px);max-width:calc(100% - 14px)}.workspace-dock-shell.dock-expanded{height:58dvh}.workspace-dock-shell:hover .workspace-dock,.workspace-dock-shell:focus-within .workspace-dock,.workspace-dock[data-expanded=true]{max-height:none}.dock-page-content{max-height:none}.dock-app-grid{grid-template-columns:repeat(auto-fill,minmax(68px,1fr));gap:2px}.dock-app{min-height:78px;padding:6px 3px}.dock-app>img,.dock-app-fallback{width:52px;height:52px}}
 @media(prefers-reduced-motion:reduce){.workspace-dock,.dock-app,.dock-reveal-rail{transition:none!important}}
 .document-toolbar,.folder-file-preview-head{display:flex;align-items:center;gap:8px;min-height:36px;padding:4px 10px;border-bottom:1px solid var(--border)}
 .document-toolbar strong,.folder-file-preview-head strong{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);font-size:12px}
@@ -465,3 +466,28 @@ dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
 .file-note{display:flex;flex-direction:column;gap:5px;padding:8px 10px;color:var(--muted);font-size:11px}
 .file-note textarea{min-height:50px;max-height:110px;resize:vertical;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font:inherit}
 .folder-file-preview-head{flex:none}
+
+@property --reflect-x{syntax:"<percentage>";inherits:false;initial-value:46%}
+@property --reflect-y{syntax:"<percentage>";inherits:false;initial-value:34%}
+.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes{border:1px solid transparent;background:linear-gradient(150deg,#292b2d 0%,#111213 50%,#222426 100%) padding-box,linear-gradient(135deg,#c9cecd 0%,#65696a 24%,#e3e6e5 48%,#55595b 72%,#a9adad 100%) border-box;box-shadow:0 22px 50px rgba(0,0,0,.36),inset 0 1px 0 rgba(255,255,255,.42),inset 0 -1px 0 rgba(0,0,0,.42)}
+.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes::before{inset:1px;background:radial-gradient(ellipse 44% 34% at var(--reflect-x) var(--reflect-y),rgba(255,255,255,.62) 0%,rgba(220,224,223,.35) 23%,rgba(173,178,178,.15) 43%,transparent 72%),linear-gradient(118deg,transparent 23%,rgba(255,255,255,.035) 36%,rgba(255,255,255,.2) 47%,rgba(255,255,255,.045) 55%,transparent 70%),linear-gradient(155deg,rgba(255,255,255,.06),transparent 46%,rgba(0,0,0,.16));mix-blend-mode:screen}
+.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes>.card-head{background:linear-gradient(112deg,#bfc3c2 0%,#55595a 24%,#969a9a 48%,#383b3d 73%,#8a8e8f 100%),repeating-linear-gradient(100deg,rgba(255,255,255,.055) 0 1px,rgba(0,0,0,.06) 1px 2px);border-bottom:1px solid rgba(235,239,238,.38);box-shadow:inset 0 1px 0 rgba(255,255,255,.72),inset 0 -1px 0 rgba(0,0,0,.32)}
+.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes>.widget-content{overflow:hidden;background:linear-gradient(155deg,rgba(255,255,255,.09),rgba(255,255,255,.015) 48%,rgba(255,255,255,.055)),rgba(15,16,17,.72);backdrop-filter:blur(20px) saturate(1.35);-webkit-backdrop-filter:blur(20px) saturate(1.35)}
+.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes .note-tabs{flex:0 0 36px;border-color:rgba(255,255,255,.16)}
+.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes .note-tab,.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes .note-title,.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes .note-heading-input,.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes textarea.note{color:#f2f3f3}
+.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes .note-tab,.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes .note-tab-close,.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes .note-library-toggle{color:rgba(245,247,247,.74)}
+.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes .note-tab-item:has(.note-tab[aria-selected=true]),.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes .note-library-toggle{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.2)}
+.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes .note-editor{min-height:0;padding:10px;gap:6px}
+.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes .note-heading-input{border-color:rgba(255,255,255,.24)}
+.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes .note-format-toolbar label,.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes .note-status{color:rgba(238,241,240,.66)}
+.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes .note-format-toolbar select,.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes .note-library input,.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes .note-library button{color:#f1f3f2;background:rgba(255,255,255,.09);border-color:rgba(255,255,255,.22);color-scheme:dark}
+.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes .note-library{min-height:0;max-height:none;overflow:hidden;color:#eef1f0;background:rgba(15,16,17,.22);border-color:rgba(255,255,255,.14)}
+.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes .note-library-heading,.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes .note-library-preview-head>strong,.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes .note-library-file{color:#eef1f0}
+.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes .note-library-location,.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes .note-library-file small,.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes .note-library-preview-empty{color:rgba(238,241,240,.7)}
+.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes .note-library-explorer{min-height:0;background:rgba(0,0,0,.16);border-color:rgba(255,255,255,.17)}
+.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes .note-library-file:hover,.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes .note-library-file.is-selected{background:rgba(255,255,255,.14)}
+.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes .note-library-icon{background:rgba(255,255,255,.11);border-color:rgba(255,255,255,.22);color:#eef1f0}
+.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes .note-library-icon.is-folder{color:#d7e3ff}
+.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes .note-library-explorer,.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes .note-library-files,.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes .note-library-preview-head,.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes .note-heading-input{border-color:rgba(255,255,255,.18)}
+.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes .note-editor textarea.note{min-height:0}
+@media(prefers-reduced-transparency:reduce){.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes>.widget-content{backdrop-filter:none;-webkit-backdrop-filter:none}.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes::before{mix-blend-mode:normal}}

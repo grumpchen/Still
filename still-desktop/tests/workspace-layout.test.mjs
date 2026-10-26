@@ -97,8 +97,8 @@ test('duplicate widget labels keep their instance numbers after canvas counts ar
 
 test('canvas placement reconciliation pauses while a widget is moving',()=>{
  const canvas=readFileSync(new URL('../src/WorkspaceCanvas.tsx',import.meta.url),'utf8');
- assert.match(canvas,/useEffect\(\(\)=>\{if\(active\|\|!workspaceActive\|\|viewportWidth<=0\|\|viewportHeight<=0\)return;for\(const w of widgets\)/);
- assert.match(canvas,/\},\[active,workspaceActive,viewportWidth,viewportHeight,extent,height,widgets,update\]\)/);
+ assert.match(canvas,/useEffect\(\(\)=>\{if\(active\|\|!workspaceActive\|\|viewportWidth<=0\|\|viewportHeight<=0\)return;for\(const w of latestWidgets\.current\)/);
+ assert.match(canvas,/\},\[active,workspaceActive,viewportWidth,viewportHeight,extent,height\]\)/);
 });
 
 test('a dragged widget snaps to a highlighted zone and Snap Assist places another in an open zone',async()=>{
