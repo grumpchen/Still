@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 
 const canvas=readFileSync(new URL('../src/WorkspaceCanvas.tsx',import.meta.url),'utf8');
+const dock=readFileSync(new URL('../src/WorkspaceDock.tsx',import.meta.url),'utf8');
 const presets=readFileSync(new URL('../src/PresetTray.tsx',import.meta.url),'utf8');
 const groups=readFileSync(new URL('../src/GroupTray.tsx',import.meta.url),'utf8');
 const contextMenu=readFileSync(new URL('../src/SavedItemContextMenu.tsx',import.meta.url),'utf8');
@@ -10,18 +11,12 @@ const css=readFileSync(new URL('../src/canvas.css',import.meta.url),'utf8');
 
 const editor=readFileSync(new URL('../src/TrayEditor.tsx',import.meta.url),'utf8');
 
-test('Saved + follows all saved items in the scrolling row while Edit and Trash stay fixed',()=>{
- const row=canvas.slice(canvas.indexOf('<div className="tray-main-row">'),canvas.indexOf('<span id="widget-tray-help"'));
- assert.match(row,/data-saved-target/);assert.match(row,/data-trash-target/);
- assert.ok(row.indexOf('<PresetTray')<row.indexOf('data-saved-target'));
- assert.ok(row.indexOf('<GroupTray')<row.indexOf('data-saved-target'));
- assert.ok(row.indexOf('data-saved-target')<row.indexOf('</div>'));
- assert.ok(row.indexOf('data-saved-target')<row.indexOf('Edit widget tray'));
- assert.ok(row.indexOf('data-trash-target')>row.indexOf('Edit widget tray'));
- assert.doesNotMatch(row,/tray-blank-gutter|widgetTypes\.filter|Add widget|Add link/);
+test('Shortcuts keeps Saved + and the remove control available beside saved items',()=>{
+ assert.match(dock,/dock-shortcuts-items[^>]*>\{shortcuts\}/);assert.match(dock,/data-saved-target/);assert.match(dock,/data-trash-target/);
+ assert.ok(dock.indexOf('dock-shortcuts-items')<dock.indexOf('data-saved-target'));
+ assert.match(canvas,/<PresetTray/);assert.match(canvas,/<GroupTray/);
  assert.match(css,/\.tray-items\{[^}]*overflow-x:auto/);
  assert.match(css,/\.tray-control\{[^}]*flex:0 0 34px/);
- assert.match(css,/\.tray-items \.saved-plus\{flex:0 0 34px/);
  assert.match(canvas,/const savedTarget=[^\n]*closest\('\.tray-items'\)/);
 });
 
@@ -29,9 +24,8 @@ test('new saved shortcuts scroll into view immediately before Saved +',()=>{
  assert.match(canvas,/previousPresetIds/);
  assert.match(canvas,/presets\.some\(preset=>!previousPresetIds\.current\.has\(preset\.id\)\)/);
  assert.match(canvas,/scrollLeft\s*=\s*Math\.max\(0,items\.scrollWidth-items\.clientWidth\)/);
- assert.match(canvas,/ref=\{trayItems\}/);
- const row=canvas.slice(canvas.indexOf('<div className="tray-main-row">'),canvas.indexOf('<span id="widget-tray-help"'));
- assert.ok(row.indexOf('<PresetTray')<row.indexOf('data-saved-target'));
+ assert.match(canvas,/querySelector<HTMLElement>\('\.dock-shortcuts-items'\)/);
+ assert.ok(dock.indexOf('dock-shortcuts-items')<dock.indexOf('data-saved-target'));
 });
 
 test('Quiet Minimal keeps the tray visible while offering transparent and opaque canvas choices',()=>{

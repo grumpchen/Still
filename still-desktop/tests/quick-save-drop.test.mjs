@@ -37,12 +37,14 @@ test('dragging a canvas widget onto Saved + quick-saves it beside the button',as
    return rect(0,0,0,0);
   };
   const workspace=createInitialState().workspaces[0],note=createWidget('notes');note.title='Quick note';setNoteText(note,'Save me');note.placement={x:100,y:150,width:360,height:300};workspace.widgets=[note];
-  const props={workspaceId:workspace.id,transferWidget(){},setWorkspaceDropTarget(){},openAppsDialog(){},editTray(){throw new Error('Saved + opened the editor instead of quick-saving')},presets:[],openPreset(){},editPreset(){},removePreset(){},renamePreset(){},renameGroup(){},widgets:workspace.widgets,groups:[],updateGroup(){},saveToGroup(){},openGroup(){},editGroup(){},removeGroup(){},openGroupWidget(){},update(){},add(){},remove(){},begin(){},bringToFront(){},notify(){},obscured:false,openResource(){},openDropped(){},pickApp(){},saveApp(){},appAttachments:{},appAttachmentHandled(){}};
+  const props={workspaceId:workspace.id,transferWidget(){},setWorkspaceDropTarget(){},openAppsDialog(){},widgetTrayVisible:true,editTray(){throw new Error('Saved + opened the editor instead of quick-saving')},presets:[],openPreset(){},editPreset(){},removePreset(){},renamePreset(){},renameGroup(){},widgets:workspace.widgets,groups:[],updateGroup(){},saveToGroup(){},openGroup(){},editGroup(){},removeGroup(){},openGroupWidget(){},update(){},add(){},remove(){},begin(){},bringToFront(){},notify(){},obscured:false,openResource(){},openDropped(){},pickApp(){},saveApp(){},appAttachments:{},appAttachmentHandled(){}};
   let currentPresets=[];
   function Host(){const [presets,setPresets]=useState([]);currentPresets=presets;return createElement(WorkspaceCanvas,{...props,presets,savePresets:items=>setPresets(existing=>upsertSavedPresets(existing,items))})}
   const {default:WorkspaceCanvas}=await vite.ssrLoadModule('/src/WorkspaceCanvas.tsx');
   root=createRoot(window.document.querySelector('#root'));
   await act(async()=>root.render(createElement(Host)));
+  await act(async()=>window.document.querySelector('.dock-reveal-rail').click());
+  await act(async()=>[...window.document.querySelectorAll('[role="tab"]')].find(tab=>tab.textContent==='Shortcuts').click());
   const header=window.document.querySelector('.canvas-card .card-head');
   assert.ok(header);assert.equal(window.document.querySelector('.preset-tray-entry'),null);
   const pointer=(type,x,y)=>{const event=new window.MouseEvent(type,{bubbles:true,cancelable:true,button:0,clientX:x,clientY:y});for(const [key,value]of Object.entries({pointerId:1,isPrimary:true}))Object.defineProperty(event,key,{value});return event};
@@ -84,10 +86,11 @@ test('dragging a captured Chrome or Edge Apps widget onto Saved + creates a reus
    return rect(0,0,0,0);
   };
   const widget=createWidget('apps');widget.title='Google Chrome';widget.appName='Google Chrome';widget.appPanelOpen=true;widget.placement={x:100,y:150,width:360,height:300};
-  const updates=[],attachment={hwnd:101,pid:202},props={workspaceId:'workspace',transferWidget(){},setWorkspaceDropTarget(){},openAppsDialog(){},editTray(){throw new Error('Saved + opened the editor instead of quick-saving')},presets:[],openPreset(){},editPreset(){},removePreset(){},renamePreset(){},renameGroup(){},widgets:[widget],groups:[],updateGroup(){},saveToGroup(){},openGroup(){},editGroup(){},removeGroup(){},openGroupWidget(){},update:(id,patch)=>updates.push({id,patch}),add(){},remove(){},begin(){},bringToFront(){},notify(){},obscured:false,openResource(){},openDropped(){},pickApp(){},saveApp(){},appAttachments:{},appAttachmentHandled(){}};
+  const updates=[],attachment={hwnd:101,pid:202},props={workspaceId:'workspace',transferWidget(){},setWorkspaceDropTarget(){},openAppsDialog(){},widgetTrayVisible:true,editTray(){throw new Error('Saved + opened the editor instead of quick-saving')},presets:[],openPreset(){},editPreset(){},removePreset(){},renamePreset(){},renameGroup(){},widgets:[widget],groups:[],updateGroup(){},saveToGroup(){},openGroup(){},editGroup(){},removeGroup(){},openGroupWidget(){},update:(id,patch)=>updates.push({id,patch}),add(){},remove(){},begin(){},bringToFront(){},notify(){},obscured:false,openResource(){},openDropped(){},pickApp(){},saveApp(){},appAttachments:{},appAttachmentHandled(){}};
   const {default:WorkspaceCanvas}=await vite.ssrLoadModule('/src/WorkspaceCanvas.tsx');
-  const {appPanel}=await vite.ssrLoadModule('/src/platform/appPanel.ts');const originalAvailable=appPanel.available,originalPrepare=appPanel.prepare,originalIdentity=appPanel.identity,originalRelease=appPanel.release,originalSuspend=appPanel.suspendForDrag,originalFinish=appPanel.finishDrag;restorePrepare=()=>{appPanel.available=originalAvailable;appPanel.prepare=originalPrepare;appPanel.identity=originalIdentity;appPanel.release=originalRelease;appPanel.suspendForDrag=originalSuspend;appPanel.finishDrag=originalFinish};
+  const {appPanel}=await vite.ssrLoadModule('/src/platform/appPanel.ts');const originalAvailable=appPanel.available,originalInstalled=appPanel.installed,originalPrepare=appPanel.prepare,originalIdentity=appPanel.identity,originalRelease=appPanel.release,originalSuspend=appPanel.suspendForDrag,originalFinish=appPanel.finishDrag;restorePrepare=()=>{appPanel.available=originalAvailable;appPanel.installed=originalInstalled;appPanel.prepare=originalPrepare;appPanel.identity=originalIdentity;appPanel.release=originalRelease;appPanel.suspendForDrag=originalSuspend;appPanel.finishDrag=originalFinish};
   appPanel.available=true;
+  appPanel.installed=async()=>[];
   let dragSuspensions=0,dragFinishes=0;appPanel.suspendForDrag=async()=>{dragSuspensions++;return true};appPanel.finishDrag=()=>{dragFinishes++};
   let identifiedWidget;appPanel.identity=async id=>{identifiedWidget=id;return attachment};
   let preparedAttachment;appPanel.prepare=async value=>{preparedAttachment=value;return{sourceId:'app-chrome',name:'Google Chrome',kind:'app',extension:'exe'}};
@@ -95,6 +98,8 @@ test('dragging a captured Chrome or Edge Apps widget onto Saved + creates a reus
   let currentPresets=[],notifications=[];
   function Host(){const [presets,setPresets]=useState([]);currentPresets=presets;return createElement(WorkspaceCanvas,{...props,presets,notify:message=>notifications.push(message),savePresets:items=>setPresets(existing=>upsertSavedPresets(existing,items))})}
   root=createRoot(window.document.querySelector('#root'));await act(async()=>root.render(createElement(Host)));
+  await act(async()=>window.document.querySelector('.dock-reveal-rail').click());
+  await act(async()=>[...window.document.querySelectorAll('[role="tab"]')].find(tab=>tab.textContent==='Shortcuts').click());
   const header=window.document.querySelector('.canvas-card .card-head');
   const pointer=(type,x,y)=>{const event=new window.MouseEvent(type,{bubbles:true,cancelable:true,button:0,clientX:x,clientY:y});for(const [key,value]of Object.entries({pointerId:1,isPrimary:true}))Object.defineProperty(event,key,{value});return event};
   await act(async()=>{header.dispatchEvent(pointer('pointerdown',200,170));header.dispatchEvent(pointer('pointermove',710,25));header.dispatchEvent(pointer('pointerup',710,25))});

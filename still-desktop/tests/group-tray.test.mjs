@@ -284,7 +284,7 @@ test('group app icons persist within size limits and over-budget icons fall back
  assert.equal(saved.groups.at(-1).widgets[0].iconData,icon);
  const roundtrip=workspaces.parseState(JSON.stringify({...workspaces.createInitialState(),workspaces:[saved],activeId:saved.id})).workspaces[0];
  assert.equal(roundtrip.groups.at(-1).widgets[0].iconData,icon);
- const tooMuch={...source,appIconData:'data:image/png;base64,iVBORw0KGgo='+'.'.repeat(257*1024)};
+ const tooMuch={...source,appIconData:'data:image/png;base64,iVBORw0KGgo='+'.'.repeat(385*1024)};
  const fallback=workspaces.saveWidgetToGroup(workspace,tooMuch);
  assert.equal(fallback.groups.at(-1).widgets[0].iconData,undefined);
  assert.equal(fallback.groups.at(-1).widgets[0].icon,'WO');
@@ -296,7 +296,7 @@ test('the workspace icon budget is enforced without dropping saved group entries
  assert.equal(workspaces.groupIconBudget(groups),true);
  assert.equal(workspaces.groupIconBudget(groups,{id:'e2',type:'apps',name:'Two',icon:'TW',iconData:'A'.repeat(1024*1024)}),false);
  const workspace=workspaces.createWorkspace('Apps',[]);workspace.groups=groups;
- const source=workspaces.createWidget('apps');source.appIconData='data:image/png;base64,iVBORw0KGgo='+'A'.repeat(300*1024);
+ const source=workspaces.createWidget('apps');source.appIconData='data:image/png;base64,iVBORw0KGgo='+'A'.repeat(400*1024);
  const saved=workspaces.saveWidgetToGroup(workspace,source,'g1');
  assert.equal(saved.groups[0].widgets.length,2);assert.equal(saved.groups[0].widgets[1].iconData,undefined);
  const restored=workspaces.parseState(JSON.stringify({...workspaces.createInitialState(),workspaces:[saved],activeId:saved.id})).workspaces[0];

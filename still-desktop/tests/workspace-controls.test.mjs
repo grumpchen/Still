@@ -24,15 +24,15 @@ test('compact focus state is temporary and keeps its exit control beside fullscr
  assert.doesNotMatch(readFileSync(new URL('../src/domain/workspaces.ts',import.meta.url),'utf8'),/focusMode\??:/);
 });
 
-test('sidebar and widget-tray visibility chevrons sit on their panel edges, outside the top bar',()=>{
+test('sidebar chevron and Apps reveal rail sit on their panel edges',()=>{
  assert.match(app,/<button className="sidebar-edge-toggle"[\s\S]*aria-controls="workspace-sidebar"/);
  assert.match(app,/aria-expanded=\{sidebarVisible&&!state\.sidebarCollapsed\}[^>]*><Icon name="chevronRight"/);
  assert.match(styles,/\.sidebar-edge-toggle\[aria-expanded=true\] svg\{transform:rotate\(180deg\)\}/);
  assert.doesNotMatch(app,/<button className="sidebar-toggle"/);
  assert.doesNotMatch(app,/<button aria-label=\{widgetTrayVisible\?/);
- assert.match(canvas,/<div className="widget-tray-shell"><div id="workspace-tray"[\s\S]*className="tray-edge-toggle"[\s\S]*aria-controls="workspace-tray"/);
- assert.match(canvas,/aria-expanded=\{widgetTrayVisible\}[^>]*><Icon name="chevronDown"/);
- assert.match(styles,/\.tray-edge-toggle\[aria-expanded=true\] svg\{transform:rotate\(180deg\)\}/);
+ const dock=readFileSync(new URL('../src/WorkspaceDock.tsx',import.meta.url),'utf8');
+ assert.match(canvas,/<WorkspaceDock trayRef=\{tray\}/);
+ assert.match(dock,/className="dock-reveal-rail"[^>]*aria-expanded=\{expanded\}/);
  assert.match(styles,/\.sidebar-edge-toggle\{position:absolute[^}]*background:transparent/);
- assert.match(styles,/\.tray-edge-toggle\{position:absolute[^}]*top:100%;left:50%;transform:translate\(-50%,0\)[^}]*background:transparent/);
+ assert.match(readFileSync(new URL('../src/canvas.css',import.meta.url),'utf8'),/\.dock-reveal-rail\{position:absolute/);
 });

@@ -9,6 +9,12 @@ export interface AppAttachment {hwnd:number;pid:number;capture?:boolean}
 export function appImageUrl(bytes:number[]):string{let binary='';for(let offset=0;offset<bytes.length;offset+=8192)binary+=String.fromCharCode(...bytes.slice(offset,offset+8192));return'data:image/png;base64,'+btoa(binary)}
 export interface AppPanelInfo {hwnd:number;pid:number;minWidth:number;minHeight:number;requiredWidth:number|null;requiredHeight:number|null;measured:boolean;probing:boolean;shown:boolean;openedExternally:boolean}
 const pending=new Map<string,Promise<unknown>>();
+let installedRequest:Promise<InstalledAppChoice[]>|undefined;
+function installedApps(){
+ if(installedRequest)return installedRequest;
+ const task=invoke<InstalledAppChoice[]>('app_picker_installed');installedRequest=task;
+ const clear=()=>{if(installedRequest===task)installedRequest=undefined};task.then(clear,clear);return task;
+}
 const retainedForCollection=new Set<string>();
 const retainedForDrag=new Set<string>();
 function command<T>(id:string,name:string,args:Record<string,unknown>={}):Promise<T>{
@@ -24,7 +30,8 @@ export const appPanel={
  identity:(id:string)=>invoke<AppAttachment|null>('app_panel_identity',{id}),
  choices:(sourceId?:string)=>invoke<AppWindowChoice[]>('app_picker_windows',{sourceId:sourceId??null}),
  icon:(window:AppAttachment)=>invoke<number[]>('app_picker_icon',{hwnd:window.hwnd,pid:window.pid}),
- installed:()=>invoke<InstalledAppChoice[]>('app_picker_installed'),
+ installed:installedApps,
+ installedIcon:(id:string)=>invoke<number[]>('app_picker_installed_icon',{id}),
  selectInstalled:(id:string)=>invoke<DroppedResource>('app_picker_select_installed',{id}),
  prepare:(window:AppAttachment)=>invoke<DroppedResource>('app_picker_prepare',{hwnd:window.hwnd,pid:window.pid}),
  preview:async(window:AppAttachment)=>appImageUrl(await invoke<number[]>('app_picker_preview',{hwnd:window.hwnd,pid:window.pid})),

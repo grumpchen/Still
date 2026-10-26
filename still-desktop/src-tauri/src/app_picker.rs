@@ -56,6 +56,22 @@ impl Bitmap{
 impl Drop for Bitmap{fn drop(&mut self){unsafe{SelectObject(self.memory,self.previous);let _=DeleteObject(HGDIOBJ(self.bitmap.0));let _=DeleteDC(self.memory);ReleaseDC(None,self.desktop);}}}
 fn png(image:image::DynamicImage)->Result<Vec<u8>,String>{let mut bytes=std::io::Cursor::new(Vec::new());image.write_to(&mut bytes,image::ImageFormat::Png).map_err(|e|e.to_string())?;Ok(bytes.into_inner())}
 const APP_ICON_SIZE:i32=256;
+// Drawing over both backgrounds recovers transparency for modern and legacy icons.
+unsafe fn icon_png(image:HICON)->Result<Vec<u8>,String>{
+ let bitmap=Bitmap::new(APP_ICON_SIZE,APP_ICON_SIZE)?;
+ DrawIconEx(bitmap.memory,0,0,image,APP_ICON_SIZE,APP_ICON_SIZE,0,None,DI_NORMAL).map_err(|_|"No app icon")?;
+ let white=bitmap.image()?;
+ SelectObject(bitmap.memory,HGDIOBJ(bitmap.bitmap.0));
+ FillRect(bitmap.memory,&RECT{left:0,top:0,right:APP_ICON_SIZE,bottom:APP_ICON_SIZE},HBRUSH(GetStockObject(BLACK_BRUSH).0));
+ DrawIconEx(bitmap.memory,0,0,image,APP_ICON_SIZE,APP_ICON_SIZE,0,None,DI_NORMAL).map_err(|_|"No app icon")?;
+ let mut black=bitmap.image()?;
+ for (dark,light) in black.pixels_mut().zip(white.pixels()){
+  let delta=(0..3).map(|i|i32::from(light[i])-i32::from(dark[i])).sum::<i32>()/3;
+  let alpha=(255-delta).clamp(0,255) as u8;
+  for i in 0..3{dark[i]=if alpha==0{0}else{((u32::from(dark[i])*255+u32::from(alpha)/2)/u32::from(alpha)).min(255) as u8}}dark[3]=alpha;
+ }
+ png(image::DynamicImage::ImageRgba8(black))
+}
 unsafe fn jumbo_icon(path:&str)->Option<HICON>{
  let _com=Com::initialize();
  let filename=wide(path);let mut file_info=SHFILEINFOW::default();
@@ -69,7 +85,7 @@ fn icon(hwnd:HWND,path:Option<&str>)->Vec<u8>{unsafe{
  if image.0.is_null(){if let Some(path)=path{let filename=wide(path);if ExtractIconExW(PCWSTR(filename.as_ptr()),0,None,Some(&mut image),1)>0{owned=true}}}
  if image.0.is_null(){let mut result=0;SendMessageTimeoutW(hwnd,WM_GETICON,WPARAM(ICON_SMALL2 as usize),LPARAM(0),SMTO_ABORTIFHUNG|SMTO_BLOCK,60,Some(&mut result));image=HICON(result as *mut _);}
  if image.0.is_null(){image=HICON(GetClassLongPtrW(hwnd,GCLP_HICONSM) as *mut _)}
- let result=(||{if image.0.is_null(){return Err("No app icon")};let bitmap=Bitmap::new(APP_ICON_SIZE,APP_ICON_SIZE).map_err(|_|"No app icon")?;DrawIconEx(bitmap.memory,0,0,image,APP_ICON_SIZE,APP_ICON_SIZE,0,None,DI_NORMAL).map_err(|_|"No app icon")?;png(image::DynamicImage::ImageRgba8(bitmap.image().map_err(|_|"No app icon")?)).map_err(|_|"No app icon")})();
+ let result=if image.0.is_null(){Err("No app icon".into())}else{icon_png(image)};
  if owned{let _=DestroyIcon(image);}result.unwrap_or_default()
 }}
 
@@ -101,7 +117,7 @@ fn shortcut_files(root:&Path,depth:u8,remaining:&mut usize,items:&mut Vec<PathBu
   else if kind.is_file()&&path.extension().is_some_and(|ext|ext.eq_ignore_ascii_case("lnk")){items.push(path)}
  }
 }
-fn installed_shortcuts()->Result<Vec<(String,PathBuf,String,Vec<u8>)>,String>{
+fn installed_shortcuts()->Result<Vec<(String,PathBuf,String)>,String>{
  let _com=Com::initialize();let mut files=Vec::new();let mut remaining=10_000;
  for root in shortcut_roots(){shortcut_files(&root,0,&mut remaining,&mut files)}
  files.sort_by_key(|path|path.to_string_lossy().to_lowercase());
@@ -112,8 +128,7 @@ fn installed_shortcuts()->Result<Vec<(String,PathBuf,String,Vec<u8>)>,String>{
   let target_text=target.to_string_lossy().into_owned();
   let profile_shortcut=target.file_name().is_some_and(|name|name.to_string_lossy().eq_ignore_ascii_case("chrome.exe"))&&has_chrome_profile_argument(&args);
   let name=if profile_shortcut{path.file_stem().map(|name|name.to_string_lossy().into_owned())}else{version_name(&target_text).filter(|name|!name.is_empty())}.or_else(||path.file_stem().map(|name|name.to_string_lossy().into_owned())).unwrap_or_else(||"Application".into());
-  let icon=icon(handle(0),Some(&target_text));
-  result.push((name,path,target_text,icon));
+  result.push((name,path,target_text));
  }
  result.sort_by(|a,b|a.0.to_lowercase().cmp(&b.0.to_lowercase()));Ok(result)
 }
@@ -149,12 +164,21 @@ pub async fn app_picker_windows(app:AppHandle,webview:Webview,source_id:Option<S
 #[tauri::command]
 pub async fn app_picker_installed(app:AppHandle,webview:Webview)->Result<Vec<InstalledApp>,String>{
  crate::security::authorize(&webview)?;
- let (choices,paths)=tauri::async_runtime::spawn_blocking(move||{
-  let found=installed_shortcuts()?;let mut paths=HashMap::new();let mut choices=Vec::new();
-  for(name,path,_,icon)in found{let id=crate::dropped_files::source_id()?;paths.insert(id.clone(),path);choices.push(InstalledApp{id,name,icon});}
-  Ok::<_,String>((choices,paths))
- }).await.map_err(|e|e.to_string())??;
- *app.state::<InstalledAppCatalog>().0.lock().map_err(|_|"Installed app list is unavailable")?=paths;Ok(choices)
+ let found=tauri::async_runtime::spawn_blocking(installed_shortcuts).await.map_err(|e|e.to_string())??;
+ let state=app.state::<InstalledAppCatalog>();let mut catalog=state.0.lock().map_err(|_|"Installed app list is unavailable")?;
+ if catalog.len()>5000{catalog.clear()}
+ let mut by_path:HashMap<PathBuf,String>=catalog.iter().map(|(id,path)|(path.clone(),id.clone())).collect();let mut choices=Vec::new();
+ for(name,path,_)in found{let id=if let Some(id)=by_path.get(&path){id.clone()}else{let id=crate::dropped_files::source_id()?;by_path.insert(path.clone(),id.clone());catalog.insert(id.clone(),path);id};choices.push(InstalledApp{id,name,icon:Vec::new()});}Ok(choices)
+}
+#[tauri::command]
+pub async fn app_picker_installed_icon(app:AppHandle,webview:Webview,id:String)->Result<Vec<u8>,String>{
+ crate::security::authorize(&webview)?;crate::files::valid_id(&id)?;
+ tauri::async_runtime::spawn_blocking(move||{
+  let path=app.state::<InstalledAppCatalog>().0.lock().map_err(|_|"Installed app list is unavailable")?.get(&id).cloned().ok_or("Refresh the installed app list and choose again")?;
+  let picture=icon(handle(0),Some(&path.to_string_lossy()));if !picture.is_empty(){return Ok(picture)}
+  let Some((target,_,_))=crate::app_panel::shortcut_target(&path) else{return Ok(Vec::new())};
+  Ok(icon(handle(0),Some(&target.to_string_lossy())))
+ }).await.map_err(|e|e.to_string())?
 }
 #[tauri::command]
 pub async fn app_picker_select_installed(app:AppHandle,webview:Webview,id:String)->Result<crate::dropped_files::DropEntry,String>{
@@ -226,10 +250,15 @@ pub async fn app_picker_preview(webview:Webview,hwnd:usize,pid:u32)->Result<Vec<
   assert!(has_chrome_profile_argument("--profile-directory=Default"));
   assert!(!has_chrome_profile_argument("--incognito"));
  }
- #[test]fn installed_catalog_reads_only_named_entries_with_bounded_png_icons(){
+ #[test]fn installed_catalog_reads_only_named_entries(){
   let apps=installed_shortcuts().unwrap();assert!(apps.len()<=500);
-  for(name,_,_,icon)in apps{assert!(!name.trim().is_empty());assert!(icon.is_empty()||icon.len()<=48_000);if !icon.is_empty(){assert_eq!(&icon[..8],&[137,80,78,71,13,10,26,10]);}}
+  for(name,_,_)in apps{assert!(!name.trim().is_empty());}
  }
+ #[test]fn icons_preserve_transparent_and_visible_pixels(){unsafe{
+  let image=LoadIconW(None,IDI_APPLICATION).unwrap();let bytes=icon_png(image).unwrap();let decoded=image::load_from_memory(&bytes).unwrap().to_rgba8();
+  assert!(decoded.pixels().any(|pixel|pixel[3]==0),"icon background should be transparent");
+  assert!(decoded.pixels().any(|pixel|pixel[3]>0),"icon must contain visible pixels");
+ }}
  #[test]fn bitmap_icon_rendering_encodes_real_pixels_and_rejects_unbounded_dimensions(){unsafe{
   assert!(Bitmap::new(0,20).is_err());assert!(Bitmap::new(20000,20000).is_err());
   let bitmap=Bitmap::new(APP_ICON_SIZE,APP_ICON_SIZE).unwrap();let image=LoadIconW(None,IDI_APPLICATION).unwrap();DrawIconEx(bitmap.memory,0,0,image,APP_ICON_SIZE,APP_ICON_SIZE,0,None,DI_NORMAL).unwrap();

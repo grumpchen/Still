@@ -220,7 +220,7 @@ export default function App(){
   function saveSavedRename(){if(!savedRename)return;try{const nextName=savedRename.name.trim();if(!nextName)throw new Error('Enter a name.');if(savedRename.kind==='preset'){renameSavedPreset(state.presets,savedRename.id,nextName);undo.current=state;setState(s=>({...s,presets:renameSavedPreset(s.presets,savedRename.id,nextName)}))}else{const owner=state.workspaces.find(w=>w.id===savedRename.workspaceId);if(!owner)throw new Error('This workspace is no longer available.');const renamed=saveGroupName(owner,savedRename.id,nextName);undo.current=state;setState(s=>({...s,workspaces:s.workspaces.map(w=>w.id===owner.id?renamed:w)}))}setSavedRename(null);setFormError('');setModal(null);notify('Saved name updated.')}catch(error){setFormError(String((error as Error).message??error))}}
   function openPreset(workspaceId:string,preset:WidgetPreset,at?:{x:number;y:number},width?:number){if(savedAppInUse(captureState.current,preset)){notify('This application is already open or collected in Still. Restore its existing widget instead.');return}undo.current=state;setState(s=>savedAppInUse(s,preset)?s:({...s,workspaces:s.workspaces.map(w=>{if(w.id!==workspaceId)return w;const created=preset.type==='apps'&&appPanel.available?managedAppWidget({sourceId:preset.appSourceId,name:preset.appName},preset.name,w.widgets,at,width,true,checkedAppIconData(preset.iconData)):createWidgetFromPreset(preset,w.widgets,at,width);return{...w,widgets:[...w.widgets,boundNewWidget(created,w.widgets,width)]}})}));notify(preset.name+' added as a new widget.')}
   function pickApp(workspaceId:string,widgetId?:string,at?:{x:number;y:number},width?:number){setAppTarget({workspaceId,widgetId,at,width});setModal('apps')}
-  function addManagedApp(source:DroppedResource,name:string,save:boolean,window?:AppWindowChoice,icon?:number[]){
+  function addManagedApp(source:DroppedResource,name:string,save:boolean,window?:AppWindowChoice,icon?:number[]|string){
     const target=appTarget,owner=state.workspaces.find(w=>w.id===target?.workspaceId);if(!target||!owner)throw new Error('Choose a workspace first.');
     const existing=target.widgetId?owner.widgets.find(w=>w.id===target.widgetId&&w.type==='apps'):undefined;
     if(target.widgetId&&!existing)throw new Error('This widget was removed. Open the Apps picker again.');
@@ -233,7 +233,7 @@ export default function App(){
   }
   function launchInstalledApp(workspaceId:string,app:import('./domain/appPicker.ts').InstalledAppChoice,source:DroppedResource){
     const before=captureState.current,owner=before.workspaces.find(item=>item.id===workspaceId);if(!owner){notify('This workspace is no longer available.');return}
-    const widget=boundNewWidget(managedAppWidget(source,app.name,owner.widgets,undefined,undefined,true,app.icon),owner.widgets);undo.current=before;
+    const widget=boundNewWidget(managedAppWidget(source,app.name,owner.widgets,undefined,undefined,true,app.iconData??app.icon),owner.widgets);undo.current=before;
     setState(current=>({...current,workspaces:current.workspaces.map(item=>item.id===workspaceId?{...item,widgets:[...item.widgets,widget]}:item)}));notify(app.name+' is opening in a Still widget.');
   }
   function finishAppAttachment(id:string,attachment:AppAttachment){if(attachment.capture)captureInFlight.current.delete(`${attachment.hwnd}:${attachment.pid}`);setAppAttachments(current=>{if(current[id]?.hwnd!==attachment.hwnd||current[id]?.pid!==attachment.pid)return current;const next={...current};delete next[id];return next})}
