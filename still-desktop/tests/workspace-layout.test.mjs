@@ -42,6 +42,16 @@ test('bursts of pointer movement coalesce into one canvas update and pointer-up 
  }finally{await app.cleanup()}
 });
 
+test('duplicate widget labels keep their instance numbers after canvas counts are precomputed',async()=>{
+ const first=createWidget('notes');first.id='notes-1';first.instanceNumber=1;
+ const second=createWidget('notes');second.id='notes-2';second.instanceNumber=2;
+ const app=await setup([first,second]);
+ try{
+  assert.equal(app.window.document.querySelector('#widget-notes-1 .widget-move')?.getAttribute('aria-label'),'Move Notes 1');
+  assert.equal(app.window.document.querySelector('#widget-notes-2 .widget-move')?.getAttribute('aria-label'),'Move Notes 2');
+ }finally{await app.cleanup()}
+});
+
 test('a dragged widget snaps to a highlighted zone and Snap Assist places another in an open zone',async()=>{
  const notes=createWidget('notes');notes.id='notes';const apps=createWidget('apps');apps.id='apps';
  const app=await setup([notes,apps]);
