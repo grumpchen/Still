@@ -128,6 +128,9 @@ pub(crate) struct NoteLibraryEntry { path:String, name:String, size:u64 }
 fn supported_note(path:&Path)->bool{
     matches!(path.extension().and_then(|value|value.to_str()).unwrap_or("").to_ascii_lowercase().as_str(),"md"|"markdown"|"txt")
 }
+fn previewable_library_file(path:&Path)->bool{
+    supported_note(path)||matches!(path.extension().and_then(|value|value.to_str()).unwrap_or("").to_ascii_lowercase().as_str(),"pdf"|"csv"|"log"|"png"|"jpg"|"jpeg"|"gif"|"webp"|"bmp"|"mp4"|"m4v"|"webm"|"mp3"|"wav"|"ogg")
+}
 fn collect_note_files(root:&Path,dir:&Path,files:&mut Vec<NoteLibraryEntry>,directories:&mut usize,scanned:&mut usize,depth:usize)->Result<(),String>{
     if files.len()>=NOTE_LIBRARY_MAX_FILES||*directories>=NOTE_LIBRARY_MAX_DIRECTORIES||*scanned>=NOTE_LIBRARY_MAX_SCANNED_ENTRIES||depth>=NOTE_LIBRARY_MAX_DEPTH{return Ok(())}
     *directories+=1;
@@ -140,7 +143,8 @@ fn collect_note_files(root:&Path,dir:&Path,files:&mut Vec<NoteLibraryEntry>,dire
         let target=match path.canonicalize(){Ok(value) if value.starts_with(root)=>value,_=>continue};
         let metadata=match fs::metadata(&target){Ok(value)=>value,Err(_)=>continue};
         if metadata.is_dir(){collect_note_files(root,&target,files,directories,scanned,depth+1)?;continue}
-        if !metadata.is_file()||!supported_note(&target)||metadata.len()>NOTE_LIBRARY_MAX_BYTES{continue}
+        let size_limit=if supported_note(&target){NOTE_LIBRARY_MAX_BYTES}else{20*1024*1024};
+        if !metadata.is_file()||!previewable_library_file(&target)||metadata.len()>size_limit{continue}
         let relative=target.strip_prefix(root).map_err(|_|"Use files inside the selected notes folder")?;
         let path=relative.components().map(|part|part.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/");
         let name=target.file_name().map(|value|value.to_string_lossy().into_owned()).unwrap_or_default();
@@ -183,16 +187,18 @@ fn write_note_file(roots:&FolderRoots,id:&str,relative:&str,text:&str,expected:&
     if result.is_err(){let _=fs::remove_file(temp);}
     result
 }
-fn create_note_file(roots:&FolderRoots,id:&str,title:&str)->Result<NoteLibraryEntry,String>{
+fn create_note_file(roots:&FolderRoots,id:&str,location:&str,title:&str)->Result<NoteLibraryEntry,String>{
     valid_id(id)?;
     let clean=title.trim();
     if clean.is_empty()||clean.len()>80||clean.chars().any(|c|c.is_control()||matches!(c,'/'|'\\'|':'|'*'|'?'|'"'|'<'|'>'|'|')){
         return Err("Use a note name up to 80 characters without file-path symbols.".into())
     }
     let root=roots.root(id)?.canonicalize().map_err(|_|"The selected notes folder is unavailable. Choose it again.")?;
-    let target=root.join(format!("{clean}.md"));
+    let directory=resolve(&root,location)?;
+    if !directory.is_dir(){return Err("Choose a folder in the notes library.".into())}
+    let target=directory.join(format!("{clean}.md"));
     if target.exists(){return Err("A note with that name already exists in this folder.".into())}
-    let relative=target.file_name().ok_or("Invalid note name")?.to_string_lossy().into_owned();
+    let relative=target.strip_prefix(&root).map_err(|_|"Choose a folder inside the notes library.")?.components().map(|part|part.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/");
     let mut file=std::fs::OpenOptions::new().write(true).create_new(true).open(&target).map_err(|_|"Could not create this note. Check that the folder is writable and try again")?;
     use std::io::Write;
     file.write_all(b"").map_err(|_|"Could not finish creating this note")?;
@@ -228,8 +234,8 @@ pub async fn notes_library_write(webview:Webview,roots:State<'_,FolderRoots>,id:
     crate::security::authorize(&webview)?;write_note_file(&roots,&id,&path,&text,&expected)
 }
 #[tauri::command]
-pub async fn notes_library_create(webview:Webview,roots:State<'_,FolderRoots>,id:String,title:String)->Result<NoteLibraryEntry,String>{
-    crate::security::authorize(&webview)?;create_note_file(&roots,&id,&title)
+pub async fn notes_library_create(webview:Webview,roots:State<'_,FolderRoots>,id:String,location:String,title:String)->Result<NoteLibraryEntry,String>{
+    crate::security::authorize(&webview)?;create_note_file(&roots,&id,&location,&title)
 }
 fn reuse_folder(roots:&FolderRoots,id:&str,source_id:&str)->Result<FolderListing,String>{
     valid_id(id)?;valid_id(source_id)?;
@@ -337,14 +343,15 @@ mod tests {
         fs::write(root.join("course/week1.MARKDOWN"),"first draft").unwrap();fs::write(root.join("ignored.html"),"no").unwrap();fs::write(root.join("large.txt"),vec![b'x';(NOTE_LIBRARY_MAX_BYTES+1) as usize]).unwrap();fs::write(root.join("large-chars.md"),"x".repeat(NOTE_LIBRARY_MAX_CHARS+1)).unwrap();
         let root=root.canonicalize().unwrap();
         let roots=FolderRoots(Mutex::new(HashMap::from([("notes-widget".into(),root.clone())])));
-        let mut entries=Vec::new();let(mut directories,mut scanned)=(0,0);collect_note_files(&root,&root,&mut entries,&mut directories,&mut scanned,0).unwrap();assert_eq!(entries.len(),2);assert!(entries.iter().any(|entry|entry.path=="course/week1.MARKDOWN"));
+        fs::write(root.join("course/diagram.pdf"),b"%PDF sample").unwrap();
+        let mut entries=Vec::new();let(mut directories,mut scanned)=(0,0);collect_note_files(&root,&root,&mut entries,&mut directories,&mut scanned,0).unwrap();assert_eq!(entries.len(),3);assert!(entries.iter().any(|entry|entry.path=="course/week1.MARKDOWN"));assert!(entries.iter().any(|entry|entry.path=="course/diagram.pdf"));
         assert_eq!(read_note_file(&roots,"notes-widget","course/week1.MARKDOWN").unwrap(),"first draft");
         assert!(read_note_file(&roots,"notes-widget","large-chars.md").unwrap_err().contains("256,000-character"));
         write_note_file(&roots,"notes-widget","course/week1.MARKDOWN","saved update","first draft").unwrap();assert_eq!(fs::read_to_string(root.join("course/week1.MARKDOWN")).unwrap(),"saved update");
         fs::write(root.join("course/week1.MARKDOWN"),"edited outside Still").unwrap();
         assert!(write_note_file(&roots,"notes-widget","course/week1.MARKDOWN","stale overwrite","saved update").unwrap_err().contains("changed outside Still"));
-        let created=create_note_file(&roots,"notes-widget","New idea").unwrap();assert_eq!(created.path,"New idea.md");assert_eq!(fs::read_to_string(root.join("New idea.md")).unwrap(),"");
-        assert!(create_note_file(&roots,"notes-widget","New idea").is_err());assert!(create_note_file(&roots,"notes-widget","../outside").is_err());
+        let created=create_note_file(&roots,"notes-widget","course","Week two").unwrap();assert_eq!(created.path,"course/Week two.md");assert_eq!(fs::read_to_string(root.join("course/Week two.md")).unwrap(),"");
+        assert!(create_note_file(&roots,"notes-widget","course","Week two").is_err());assert!(create_note_file(&roots,"notes-widget","../outside","Nope").is_err());
         assert!(read_note_file(&roots,"notes-widget","../ignored.html").is_err());assert!(write_note_file(&roots,"notes-widget","ignored.html","no","").is_err());
         assert!(write_note_file(&roots,"notes-widget","course/week1.MARKDOWN",&"x".repeat((NOTE_LIBRARY_MAX_BYTES+1) as usize),"").is_err());
         fs::remove_dir_all(fixture).unwrap();
