@@ -1,5 +1,6 @@
 import test,{after} from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {createElement,act,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {JSDOM} from 'jsdom';
@@ -50,6 +51,12 @@ test('duplicate widget labels keep their instance numbers after canvas counts ar
   assert.equal(app.window.document.querySelector('#widget-notes-1 .widget-move')?.getAttribute('aria-label'),'Move Notes 1');
   assert.equal(app.window.document.querySelector('#widget-notes-2 .widget-move')?.getAttribute('aria-label'),'Move Notes 2');
  }finally{await app.cleanup()}
+});
+
+test('canvas placement reconciliation pauses while a widget is moving',()=>{
+ const canvas=readFileSync(new URL('../src/WorkspaceCanvas.tsx',import.meta.url),'utf8');
+ assert.match(canvas,/useEffect\(\(\)=>\{if\(active\|\|!workspaceActive\|\|viewportWidth<=0\|\|viewportHeight<=0\)return;for\(const w of widgets\)/);
+ assert.match(canvas,/\},\[active,workspaceActive,viewportWidth,viewportHeight,extent,height,widgets,update\]\)/);
 });
 
 test('a dragged widget snaps to a highlighted zone and Snap Assist places another in an open zone',async()=>{
