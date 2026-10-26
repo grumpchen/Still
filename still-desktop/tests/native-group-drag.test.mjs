@@ -12,15 +12,15 @@ test('expanded native Apps panels suspend before canvas dragging and cancellatio
  assert.ok(start.indexOf('suspendForDrag')<start.indexOf('setActive(w.id)'), 'native hide is queued before the active drag render');
  assert.match(apps,/suspendForDrag:async\(id:string\)=>\{retainedForDrag\.add\(id\);try\{return await command<boolean>\(id,'app_panel_suspend'\)\}/);
  assert.match(finish,/gesture\.current=null;setActive\(null\)/);
- assert.match(finish,/if\(cancel\)\{if\(original\)update\(g\.id,\{placement:original\.placement,restorePlacement:original\.restorePlacement\}\)\}/);
+ assert.match(finish,/if\(cancel\)\{if\(original\)writeCardPlacement\(g\.id,original\.placement\)\}/);
  assert.match(canvas,/onPointerCancel=\{e=>finish\(e,true\)\}/);
 });
 
 test('expanded and minimized widgets enter the same move-to-Group finish path',()=>{
  const canvas=readFileSync(new URL('../src/WorkspaceCanvas.tsx',import.meta.url),'utf8');
  const finish=canvas.slice(canvas.indexOf('function finish('),canvas.indexOf('function key('));
- assert.match(finish,/const original=currentWidget\?\(currentWidget\.minimized\?moveMinimizedWidgetInstance\(currentWidget,\{x:g\.p\.x,y:g\.p\.y\},extent,height\):\{\.\.\.currentWidget,placement:g\.p\}\)/);
- assert.match(finish,/canvasTarget&&original\)\{void saveToGroup\(original,canvasTarget,true\);return\}/);
+ assert.match(finish,/const moved=currentWidget\?\{\.\.\.currentWidget,placement:g\.current/);
+ assert.match(finish,/canvasTarget&&moved\)\{void saveToGroup\(moved,canvasTarget,true\);return\}/);
  assert.equal((canvas.match(/onPointerDown=\{e=>start\(e,w,'move'\)\}/g)||[]).length,2, 'expanded headers and minimized buttons both use the same drag handler');
 });
 

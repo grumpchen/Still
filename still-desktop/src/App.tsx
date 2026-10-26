@@ -123,7 +123,7 @@ export default function App(){
   function hideWidgetTray(){setWidgetTrayHidden(true);setFocusMode(false);setModal(null)}
   function boundNewWidget(widget:WidgetInstance,widgets:WidgetInstance[],width?:number){const viewport=document.querySelector<HTMLElement>('.workspace-surface:not([hidden]) .canvas-viewport'),viewportWidth=viewport?.clientWidth??1000,viewportHeight=viewport?.clientHeight??700;const extent=width??canvasExtent(viewportWidth,[...widgets,widget]),height=canvasHeight(viewportHeight,widgets);return {...widget,placement:constrainPlacement(widget.type,widget.placement,extent,{width:widget.appPanelOpen?widget.appMinWidth:undefined,height:widget.appPanelOpen?widget.appMinHeight:undefined},height)}}
   function moveWorkspace(direction:WorkspaceDirection){setState(s=>({...s,activeId:adjacentWorkspaceId(s.workspaces,s.activeId,direction)}));setArrange(false);}
-  function transferWidget(sourceWorkspaceId:string,widgetId:string,destinationId:string){
+  function transferWidget(sourceWorkspaceId:string,widgetId:string,destinationId:string,previewPlacement?:WidgetInstance['placement'],previewRestorePlacement?:WidgetInstance['restorePlacement']){
     if(sourceWorkspaceId===destinationId)return;
     const source=state.workspaces.find(w=>w.id===sourceWorkspaceId),destination=state.workspaces.find(w=>w.id===destinationId),widget=source?.widgets.find(item=>item.id===widgetId);
     if(!source||!destination||!widget)return;
@@ -131,7 +131,8 @@ export default function App(){
     undo.current=state;
     const viewport=document.querySelector<HTMLElement>('.workspace-surface:not([hidden]) .canvas-viewport'),viewportWidth=viewport?.clientWidth??1000,viewportHeight=viewport?.clientHeight??700;
     const width=canvasExtent(viewportWidth,destination.widgets),height=canvasHeight(viewportHeight,destination.widgets);
-    const transfer=transferWidgetInstance(source,destination,widgetId,width,height);if(!transfer)return;
+    const sourceForTransfer=previewPlacement?{...source,widgets:source.widgets.map(item=>item.id===widgetId?{...item,placement:previewPlacement,...(previewRestorePlacement?{restorePlacement:previewRestorePlacement}:{})}:item)}:source;
+    const transfer=transferWidgetInstance(sourceForTransfer,destination,widgetId,width,height);if(!transfer)return;
     setState(s=>({...s,activeId:s.followWidgetToWorkspace?destinationId:s.activeId,workspaces:s.workspaces.map(w=>w.id===sourceWorkspaceId?transfer.source:w.id===destinationId?transfer.destination:w)}));
     setArrange(false);notify((widget.title.trim()||widgetRegistry[widget.type].name)+' moved to '+destination.name+'.');
   }

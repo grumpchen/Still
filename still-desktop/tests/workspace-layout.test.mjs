@@ -36,9 +36,11 @@ test('bursts of pointer movement coalesce into one canvas update and pointer-up 
   const header=app.window.document.querySelector('#widget-notes .widget-move');
   await act(async()=>header.dispatchEvent(app.pointer('pointerdown',20,20)));
   await act(async()=>{for(const x of [30,40,50,60])header.dispatchEvent(app.pointer('pointermove',x,20));await new Promise(resolve=>setTimeout(resolve,10))});
-  assert.equal(app.updates,1,'only the latest pointer position is applied for a single display frame');
-  assert.equal(app.currentState.widgets[0].placement.x,40);
+  assert.equal(app.updates,0,'pointer movement updates the visual preview without rewriting workspace state');
+  assert.equal(app.currentState.widgets[0].placement.x,0,'the saved placement stays unchanged during the gesture');
+  assert.equal(app.window.document.querySelector('#widget-notes').style.left,'40px','the card still follows the pointer immediately');
   await act(async()=>header.dispatchEvent(app.pointer('pointerup',70,20)));
+  assert.equal(app.updates,1,'the final placement is committed once when the gesture ends');
   assert.equal(app.currentState.widgets[0].placement.x,50,'pointer-up applies the exact final position even if a frame was pending');
  }finally{await app.cleanup()}
 });

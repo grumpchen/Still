@@ -98,7 +98,7 @@ test('Group drop collection and saved-app launch guard retain existing pipelines
  const app=readFileSync(new URL('../src/App.tsx',import.meta.url),'utf8');
  assert.match(app,/collectWidgetIntoGroup/);assert.match(app,/restoreCollectedWidget/);
  assert.match(app,/savedAppInUse\(s,preset\)/);assert.match(app,/checkedAppIconData\(preset\.iconData\)/);
- assert.match(canvas,/action==='save'&&original\)\{if\(g\.type==='apps'\)appPanel\.finishDrag\(g\.id\);void saveWidgetToTray\(original\)/);
+ assert.match(canvas,/action==='save'&&original\)\{writeCardPlacement\(g\.id,original\.placement\);if\(g\.type==='apps'\)appPanel\.finishDrag\(g\.id\);void saveWidgetToTray\(original\)/);
  assert.match(canvas,/appPanel\.prepare\(attachment\)/);
  assert.match(app,/modal==='delete'&&pendingRemoval/);
 });

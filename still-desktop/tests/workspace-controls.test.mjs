@@ -9,7 +9,7 @@ const styles=readFileSync(new URL('../src/canvas.css',import.meta.url),'utf8');
 test('widget headers expose other workspace rows as transfer targets and reset invalid drops',()=>{
  assert.match(app,/data-workspace-drop-target=\{w\.id\}/);
  assert.match(canvas,/elementFromPoint\(e\.clientX,e\.clientY\).*data-workspace-drop-target/);
- assert.match(canvas,/transferWidget\(workspaceId,g\.id,destination\)/);
+ assert.match(canvas,/transferWidget\(workspaceId,g\.id,destination,g\.current,g\.currentRestorePlacement\)/);
  assert.match(canvas,/if\(!cancel&&g\.mode==='move'&&destination/);
  assert.match(styles,/workspace-drop-active/);
 });
