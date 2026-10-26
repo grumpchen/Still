@@ -17,7 +17,7 @@ async function setup(widgets,canvasFrameRate='display'){
  const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true}),oldGlobals=new Map(),{window}=dom;
  for(const key of ['window','document','navigator','HTMLElement','Element','Node','CustomEvent','MutationObserver','ResizeObserver','requestAnimationFrame','cancelAnimationFrame','getComputedStyle','isTauri','IS_REACT_ACT_ENVIRONMENT'])oldGlobals.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
  const pendingFrames=new Set();setGlobal('window',window);setGlobal('document',window.document);setGlobal('navigator',window.navigator);setGlobal('HTMLElement',window.HTMLElement);setGlobal('Element',window.Element);setGlobal('Node',window.Node);setGlobal('CustomEvent',window.CustomEvent);setGlobal('MutationObserver',window.MutationObserver);setGlobal('ResizeObserver',class{observe(){}disconnect(){}});setGlobal('requestAnimationFrame',callback=>{const timer=setTimeout(()=>{pendingFrames.delete(timer);callback(Date.now())},0);pendingFrames.add(timer);return timer});setGlobal('cancelAnimationFrame',timer=>{pendingFrames.delete(timer);clearTimeout(timer)});setGlobal('getComputedStyle',window.getComputedStyle.bind(window));setGlobal('isTauri',false);setGlobal('IS_REACT_ACT_ENVIRONMENT',true);
- window.HTMLElement.prototype.getBoundingClientRect=function(){if(this.classList.contains('canvas-viewport'))return rect(0,0,1200,700);if(this.classList.contains('workspace-canvas'))return rect(0,0,1800,700);const card=this.closest('.canvas-card');if(!card)return rect(0,0,0,0);const left=Number.parseFloat(card.style.left)||0,top=Number.parseFloat(card.style.top)||0,width=Number.parseFloat(card.style.width)||420,height=Number.parseFloat(card.style.height)||320;if(this===card)return rect(left,top,width,height);return rect(left,top,width,height)};
+ const placementFlushes=[];window.HTMLElement.prototype.getBoundingClientRect=function(){if(this.classList.contains('canvas-viewport'))return rect(0,0,1200,700);if(this.classList.contains('workspace-canvas'))return rect(0,0,1800,700);const card=this.closest('.canvas-card');if(!card)return rect(0,0,0,0);const left=Number.parseFloat(card.style.left)||0,top=Number.parseFloat(card.style.top)||0,width=Number.parseFloat(card.style.width)||420,height=Number.parseFloat(card.style.height)||320;if(this===card){if(card.style.transition==='none'&&!card.style.transform)placementFlushes.push({left,top,width,height,gestureActive:card.classList.contains('gesture-card')});return rect(left,top,width,height)}return rect(left,top,width,height)};
  Object.defineProperties(window.HTMLElement.prototype,{clientWidth:{configurable:true,get(){return this.classList.contains('canvas-viewport')?1200:0}},clientHeight:{configurable:true,get(){return this.classList.contains('canvas-viewport')?700:0}},scrollLeft:{configurable:true,writable:true,value:0},scrollTop:{configurable:true,writable:true,value:0},setPointerCapture:{configurable:true,value(){}},hasPointerCapture:{configurable:true,value(){return true}},releasePointerCapture:{configurable:true,value(){}}});
  documentElement(window.document).elementFromPoint=()=>null;
  mockIPC(()=>null,{shouldMockEvents:true});
@@ -26,7 +26,7 @@ async function setup(widgets,canvasFrameRate='display'){
  function Host(){const [current,setCurrent]=useState(widgets),[mode,setMode]=useState('picker');currentState={widgets:current,mode};const update=(id,patch)=>{updates++;const card=window.document.getElementById('widget-'+id);lastCommitStyle=card?{left:card.style.left,top:card.style.top,transform:card.style.transform}:undefined;setCurrent(items=>items.map(item=>item.id===id?{...item,...patch}:item))};return createElement(WorkspaceCanvas,{workspaceId:'study',canvasFrameRate,transferWidget(){},setWorkspaceDropTarget(){},openAppsDialog(){},editTray(){},presets:[],savePresets(){},openPreset(){},editPreset(){},removePreset(){},renamePreset(){},widgets:current,groups:[],updateGroup(){},saveToGroup(){},openGroup(){},editGroup(){},removeGroup(){},openGroupWidget(){},update,add(){},remove(){},begin(){},bringToFront(id){setCurrent(items=>[...items.filter(item=>item.id!==id),...items.filter(item=>item.id===id)])},notify(){},obscured:false,openResource(){},openDropped(){},pickApp(){},saveApp(){},appAttachments:{},appAttachmentHandled(){},layoutMode:mode,setLayoutMode:setMode})}
  root=createRoot(window.document.querySelector('#root'));await act(async()=>root.render(createElement(Host)));
  const pointer=(type,x,y)=>{const event=new window.Event(type,{bubbles:true,cancelable:true});Object.defineProperties(event,{button:{value:0},pointerId:{value:1},clientX:{value:x},clientY:{value:y}});return event};
- return{dom,window,get currentState(){return currentState},get updates(){return updates},get lastCommitStyle(){return lastCommitStyle},root,pointer,cleanup:async()=>{if(root)await act(async()=>root.unmount());for(const timer of pendingFrames)clearTimeout(timer);pendingFrames.clear();await new Promise(resolve=>setTimeout(resolve,0));clearMocks();dom.window.close();for(const [key,descriptor]of oldGlobals){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}}};
+ return{dom,window,get currentState(){return currentState},get updates(){return updates},get lastCommitStyle(){return lastCommitStyle},get placementFlushes(){return placementFlushes},root,pointer,cleanup:async()=>{if(root)await act(async()=>root.unmount());for(const timer of pendingFrames)clearTimeout(timer);pendingFrames.clear();await new Promise(resolve=>setTimeout(resolve,0));clearMocks();dom.window.close();for(const [key,descriptor]of oldGlobals){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}}};
 }
 function documentElement(document){return document}
 
@@ -44,6 +44,8 @@ test('bursts of pointer movement coalesce into one canvas update and pointer-up 
   assert.equal(app.window.document.querySelector('#widget-notes').style.transform,'','the compositor transform is cleared when the final layout is committed');
   assert.equal(app.lastCommitStyle.left,'50px','the visual position is already at the destination before React commits it');
   assert.equal(app.lastCommitStyle.transform,'','the visual transform is cleared only after the destination geometry is applied');
+  const finalPlacement=app.currentState.widgets[0].placement;
+  assert.deepEqual(app.placementFlushes.at(-1),{left:50,top:0,width:finalPlacement.width,height:finalPlacement.height,gestureActive:true},'the destination geometry is laid out while drag transitions are still disabled');
   assert.equal(app.window.document.querySelector('#widget-notes').style.left,'50px','the saved card position matches the final pointer location');
   assert.equal(app.currentState.widgets[0].placement.x,50,'pointer-up applies the exact final position even if a frame was pending');
  }finally{await app.cleanup()}
@@ -51,7 +53,7 @@ test('bursts of pointer movement coalesce into one canvas update and pointer-up 
 
 test('drag release applies destination geometry before clearing the visual transform',()=>{
  const canvas=readFileSync(new URL('../src/WorkspaceCanvas.tsx',import.meta.url),'utf8');
- assert.match(canvas,/function writeCardPlacement\(id:string,p:Placement\)\{const card=document\.getElementById\('widget-'\+id\);if\(!card\)return;card\.style\.left=[\s\S]*?card\.style\.height=[\s\S]*?card\.style\.transform=''/);
+ assert.match(canvas,/function writeCardPlacement\(id:string,p:Placement\)\{const card=document\.getElementById\('widget-'\+id\);if\(!card\)return;card\.style\.transition='none';card\.style\.left=[\s\S]*?card\.style\.height=[\s\S]*?card\.style\.transform='';card\.style\.transformOrigin='';void card\.getBoundingClientRect\(\);card\.style\.removeProperty\('transition'\)\}/);
 });
 
 test('lost pointer capture commits the Notes drag instead of restoring its original position',async()=>{
@@ -64,6 +66,22 @@ test('lost pointer capture commits the Notes drag instead of restoring its origi
   assert.equal(app.updates,1,'losing pointer capture finishes the active drag once');
   assert.equal(app.currentState.widgets[0].placement.x,30,'the last pointer position is kept instead of rolling back');
   assert.equal(app.window.document.querySelector('#widget-notes').style.left,'30px');
+ }finally{await app.cleanup()}
+});
+
+test('resizing a Notes widget keeps its top-left corner anchored',async()=>{
+ const notes=createWidget('notes');notes.id='notes';const original={...notes.placement},app=await setup([notes],'display');
+ try{
+  const handle=app.window.document.querySelector('#widget-notes .widget-resize'),card=app.window.document.querySelector('#widget-notes');
+  await act(async()=>handle.dispatchEvent(app.pointer('pointerdown',original.x+original.width,original.y+original.height)));
+  await act(async()=>{handle.dispatchEvent(app.pointer('pointermove',original.x+original.width+40,original.y+original.height+50));await new Promise(resolve=>setTimeout(resolve,10))});
+  assert.equal(card.style.left,original.x+'px','resizing must not change the widget left edge');
+  assert.equal(card.style.top,original.y+'px','resizing must not change the widget top edge');
+  assert.equal(card.style.transformOrigin,'top left','the preview scales outward from the fixed top-left corner');
+  await act(async()=>handle.dispatchEvent(app.pointer('pointerup',original.x+original.width+40,original.y+original.height+50)));
+  assert.equal(app.currentState.widgets[0].placement.x,original.x);
+  assert.equal(app.currentState.widgets[0].placement.y,original.y);
+  assert.equal(card.style.transformOrigin,'','the temporary resize origin is cleared after committing');
  }finally{await app.cleanup()}
 });
 
