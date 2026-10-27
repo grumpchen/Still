@@ -1,7 +1,7 @@
 use serde::{Deserialize,Serialize};
 use std::{collections::{HashMap,HashSet},path::{Path,PathBuf},sync::{Mutex,OnceLock}};
 use tauri::{AppHandle,Emitter,Manager,Webview};
-use windows::{core::{Interface,PCWSTR,PWSTR},Win32::{Foundation::{CloseHandle,HANDLE,HWND,LPARAM,POINT,RECT},Graphics::Gdi::*,System::{Com::*,Threading::*},UI::{Shell::*,WindowsAndMessaging::*,Accessibility::{SetWinEventHook,HWINEVENTHOOK}}}};
+use windows::{core::{Interface,PCWSTR,PWSTR},Win32::{Foundation::{CloseHandle,HANDLE,HWND,LPARAM,POINT,RECT},Graphics::Gdi::*,System::{Com::*,Diagnostics::ToolHelp::*,Threading::*},UI::{Shell::*,WindowsAndMessaging::*,Accessibility::{SetWinEventHook,HWINEVENTHOOK}}}};
 
 #[derive(Clone,Copy,Debug,Default,Deserialize,PartialEq)]
 #[serde(rename_all="camelCase")]
@@ -21,7 +21,7 @@ pub struct WindowInfo {pub hwnd:usize,pub pid:u32,pub title:String,#[serde(skip)
 #[derive(Clone,Copy,Debug,Eq,PartialEq)]
 struct WindowIdentity{hwnd:usize,pid:u32}
 #[derive(Clone)]
-struct Launch {pid:u32,executable:Option<String>,before:Vec<WindowIdentity>,profile_picker:bool,picker_hwnd:Option<usize>,picker_title:Option<String>}
+struct Launch {pid:u32,executable:Option<String>,app_user_model_id:Option<String>,before:Vec<WindowIdentity>,profile_picker:bool,picker_hwnd:Option<usize>,picker_title:Option<String>}
 #[cfg(test)]
 #[derive(Clone,Copy,Debug,Eq,PartialEq)]
 enum SelectedWindowDisposition{AttachToPanel}
@@ -29,15 +29,33 @@ enum SelectedWindowDisposition{AttachToPanel}
 fn selected_window_disposition(_profile_picker:bool)->SelectedWindowDisposition{SelectedWindowDisposition::AttachToPanel}
 fn same_path(a:&str,b:&str)->bool{a.trim_start_matches("\\\\?\\").eq_ignore_ascii_case(b.trim_start_matches("\\\\?\\"))}
 fn existed_before(before:&[WindowIdentity],window:&WindowInfo)->bool{before.contains(&WindowIdentity{hwnd:window.hwnd,pid:window.pid})}
+fn process_parents()->HashMap<u32,u32>{unsafe{
+ let Ok(snapshot)=CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS,0)else{return HashMap::new()};
+ let mut parents=HashMap::new();let mut item=PROCESSENTRY32W{dwSize:std::mem::size_of::<PROCESSENTRY32W>() as u32,..Default::default()};
+ if Process32FirstW(snapshot,&mut item).is_ok(){loop{parents.insert(item.th32ProcessID,item.th32ParentProcessID);if Process32NextW(snapshot,&mut item).is_err(){break}}}
+ let _=CloseHandle(snapshot);parents
+}}
+fn has_expected_process_ancestor(pid:u32,expected:&str,parents:&HashMap<u32,u32>,path_cache:&mut HashMap<u32,Option<String>>)->bool{
+ let mut current=pid;let mut visited=HashSet::new();
+ for _ in 0..24{let Some(parent)=parents.get(&current).copied()else{break};if parent==0||parent==current||!visited.insert(parent){break}
+  let path=path_cache.entry(parent).or_insert_with(||executable(parent));if path.as_deref().is_some_and(|path|same_path(path,expected)){return true}current=parent;
+ }false
+}
+fn window_matches_app(window:&WindowInfo,expected:Option<&str>,app_user_model_id:Option<&str>,parents:&HashMap<u32,u32>,path_cache:&mut HashMap<u32,Option<String>>)->bool{
+ if expected.is_some_and(|path|matches_executable(window,path)||has_expected_process_ancestor(window.pid,path,parents,path_cache)){return true}
+ app_user_model_id.is_some_and(|expected|window_user_model_id(window.hwnd).as_deref().is_some_and(|actual|actual.eq_ignore_ascii_case(expected)))
+}
 fn select_window<'a>(launch:&Launch,windows:&'a [WindowInfo],claimed:&[usize],foreground_hwnd:usize)->Option<&'a WindowInfo>{
  let launched=windows.iter().find(|w|!existed_before(&launch.before,w)&&!claimed.contains(&w.hwnd)&&((launch.pid!=0&&w.pid==launch.pid)||launch.executable.as_ref().zip(w.executable.as_ref()).is_some_and(|(a,b)|same_path(a,b))));
  if launched.is_some(){return launched}
- // ShellExecute can hand off activation to an already-running process. In
- // that case the visible app window keeps its old PID/HWND and is deliberately
- // absent from the new-window candidates above. Only adopt it when Windows
- // has foregrounded a window whose full executable matches this launch.
+ let parents=process_parents();let mut path_cache=HashMap::new();
+ let family=windows.iter().filter(|w|!claimed.contains(&w.hwnd)&&!existed_before(&launch.before,w)&&window_matches_app(w,launch.executable.as_deref(),launch.app_user_model_id.as_deref(),&parents,&mut path_cache)).collect::<Vec<_>>();
+ if family.len()==1{return family.first().copied()}
+ if let Some(front)=family.iter().find(|window|window.hwnd==foreground_hwnd){return Some(front)}
+ // ShellExecute can hand activation to an existing process. A visible window
+ // may therefore belong to a helper child instead of the shortcut's exe.
  if launch.profile_picker{return None}
- windows.iter().find(|w|w.hwnd==foreground_hwnd&&!claimed.contains(&w.hwnd)&&launch.executable.as_ref().zip(w.executable.as_ref()).is_some_and(|(a,b)|same_path(a,b)))
+ windows.iter().find(|w|w.hwnd==foreground_hwnd&&!claimed.contains(&w.hwnd)&&window_matches_app(w,launch.executable.as_deref(),launch.app_user_model_id.as_deref(),&parents,&mut path_cache))
 }
 fn selected_profile_window<'a>(picker_hwnd:usize,picker_title:Option<&str>,foreground_hwnd:usize,windows:&'a [WindowInfo],expected:&str,claimed:&[usize],before:&[WindowIdentity])->Option<&'a WindowInfo>{
  if picker_hwnd==0{return None}
@@ -190,6 +208,17 @@ pub(crate) fn executable(process:u32)->Option<String>{unsafe{
  let read=QueryFullProcessImageNameW(handle,PROCESS_NAME_WIN32,PWSTR(path.as_mut_ptr()),&mut length);
  let _=CloseHandle(handle);read.ok()?;Some(String::from_utf16_lossy(&path[..length as usize]))
 }}
+fn property_string(store:&windows::Win32::UI::Shell::PropertiesSystem::IPropertyStore,key:&windows::Win32::Foundation::PROPERTYKEY)->Option<String>{unsafe{
+ let mut property=store.GetValue(key).ok()?;let allocated=windows::Win32::System::Com::StructuredStorage::PropVariantToStringAlloc(&property).ok()?;let raw=allocated.0;
+ if raw.is_null(){let _=windows::Win32::System::Com::StructuredStorage::PropVariantClear(&mut property);return None}
+ let length=(0..32768).find(|index|*raw.add(*index)==0).unwrap_or(32768);let value=String::from_utf16_lossy(std::slice::from_raw_parts(raw,length));
+ let _=windows::Win32::System::Com::CoTaskMemFree(Some(raw.cast()));let _=windows::Win32::System::Com::StructuredStorage::PropVariantClear(&mut property);
+ let value=value.trim().to_owned();(!value.is_empty()).then_some(value)
+}}
+fn window_user_model_id(hwnd:usize)->Option<String>{
+ let store:windows::Win32::UI::Shell::PropertiesSystem::IPropertyStore=unsafe{windows::Win32::UI::Shell::PropertiesSystem::SHGetPropertyStoreForWindow(handle(hwnd)).ok()?};
+ property_string(&store,&windows::Win32::Storage::EnhancedStorage::PKEY_AppUserModel_ID)
+}
 struct WindowEnumeration{items:Vec<WindowInfo>,include_hidden:bool}
 fn window_visibility_matches(visible:bool,include_hidden:bool)->bool{visible||include_hidden}
 unsafe extern "system" fn enumerate(hwnd:HWND,param:LPARAM)->windows::core::BOOL{
@@ -240,15 +269,17 @@ pub(crate) fn capture_candidate(app:&AppHandle,hwnd:usize,expected_pid:u32)->Res
 }
 pub(crate) fn expected_executable(path:&Path)->Option<String>{let _com=Com::initialize();if path.extension().is_some_and(|e|e.eq_ignore_ascii_case("lnk")){shortcut_target(path).map(|v|v.0.to_string_lossy().into_owned())}else{Some(path.to_string_lossy().into_owned())}}
 pub(crate) fn matches_executable(window:&WindowInfo,expected:&str)->bool{window.executable.as_ref().is_some_and(|exe|same_path(exe,expected))}
-fn reuse_candidate<'a>(windows:&'a [WindowInfo],expected:Option<&str>)->Result<Option<&'a WindowInfo>,String>{
- let Some(expected)=expected else{return Ok(None)};
- let mut matches=windows.iter().filter(|window|matches_executable(window,expected));let chosen=matches.next();
- if matches.next().is_some(){return Err("Several windows of this app are open. Use Attach open app to choose the document you want.".into())}
- Ok(chosen)
+fn reuse_candidate<'a>(windows:&'a [WindowInfo],expected:Option<&str>,app_user_model_id:Option<&str>)->Result<Option<&'a WindowInfo>,String>{
+ let exact=windows.iter().filter(|window|expected.is_some_and(|path|matches_executable(window,path))).collect::<Vec<_>>();
+ if exact.len()==1{return Ok(exact.first().copied())}
+ if exact.len()>1{return Err("Several windows of this app are open. Use Attach open app to choose the document you want.".into())}
+ let parents=process_parents();let mut path_cache=HashMap::new();let family=windows.iter().filter(|window|window_matches_app(window,expected,app_user_model_id,&parents,&mut path_cache)).collect::<Vec<_>>();
+ if family.len()>1{return Err("Several windows of this app are open. Use Attach open app to choose the document you want.".into())}
+ Ok(family.first().copied())
 }
-fn reuse_candidate_for_launch<'a>(windows:&'a [WindowInfo],expected:Option<&str>,explicit_chrome_profile:bool)->Result<Option<&'a WindowInfo>,String>{
+fn reuse_candidate_for_launch<'a>(windows:&'a [WindowInfo],expected:Option<&str>,app_user_model_id:Option<&str>,explicit_chrome_profile:bool)->Result<Option<&'a WindowInfo>,String>{
  if explicit_chrome_profile{return Ok(None)}
- reuse_candidate(windows,expected)
+ reuse_candidate(windows,expected,app_user_model_id)
 }
 fn window_snapshot()->Vec<WindowIdentity>{
  unsafe extern "system" fn collect(hwnd:HWND,param:LPARAM)->windows::core::BOOL{let items=&mut *(param.0 as *mut Vec<WindowIdentity>);let process=pid(hwnd);if process!=0{items.push(WindowIdentity{hwnd:hwnd.0 as usize,pid:process});}windows::core::BOOL(1)}
@@ -273,6 +304,15 @@ pub(crate) fn shortcut_target(path:&Path)->Option<(PathBuf,String,Option<PathBuf
  let directory=(end>0).then(||PathBuf::from(std::ffi::OsString::from_wide(&directory[..end])));
  Some((target,from_wide(&args),directory))
 }}
+fn shortcut_user_model_id(path:&Path)->Option<String>{
+ if !path.extension().is_some_and(|extension|extension.eq_ignore_ascii_case("lnk")){return None}
+ let _com=Com::initialize();unsafe{
+  let link:IShellLinkW=CoCreateInstance(&ShellLink,None,CLSCTX_INPROC_SERVER).ok()?;
+  let file:IPersistFile=link.cast().ok()?;let selected=os_wide(path.as_os_str());file.Load(PCWSTR(selected.as_ptr()),STGM_READ).ok()?;
+  let store:windows::Win32::UI::Shell::PropertiesSystem::IPropertyStore=link.cast().ok()?;
+  property_string(&store,&windows::Win32::Storage::EnhancedStorage::PKEY_AppUserModel_ID)
+ }
+}
 fn launch(path:&Path,before:Vec<WindowIdentity>,profile_arguments:&[String])->Result<Launch,String>{
  let _com=Com::initialize();
  let resolved=if path.extension().is_some_and(|e|e.eq_ignore_ascii_case("lnk")){shortcut_target(path)}else{Some((path.to_path_buf(),String::new(),None))};
@@ -286,7 +326,7 @@ fn launch(path:&Path,before:Vec<WindowIdentity>,profile_arguments:&[String])->Re
  unsafe{ShellExecuteExW(&mut execute).map_err(|e|format!("Unable to open the app: {e}"))?;}
  let process=if execute.hProcess.0.is_null(){0}else{let p=unsafe{GetProcessId(execute.hProcess)};unsafe{let _=CloseHandle(execute.hProcess);}p};
  let expected=target.extension().is_some_and(|e|e.eq_ignore_ascii_case("exe")).then(||target.to_string_lossy().into_owned());
- Ok(Launch{pid:process,executable:expected,before,profile_picker,picker_hwnd:None,picker_title:None})
+ Ok(Launch{pid:process,executable:expected,app_user_model_id:shortcut_user_model_id(path),before,profile_picker,picker_hwnd:None,picker_title:None})
 }
 fn valid_window(entry:&Entry)->bool{(unsafe{IsWindow(Some(handle(entry.hwnd))).as_bool()})&&pid(handle(entry.hwnd))==entry.pid}
 fn attachment_identity(entry:Option<&Entry>)->Option<AttachmentIdentity>{entry.filter(|entry|valid_window(entry)).map(|entry|AttachmentIdentity{hwnd:entry.hwnd,pid:entry.pid})}
@@ -586,7 +626,8 @@ pub async fn app_panel_open(app:AppHandle,webview:Webview,id:String,source_id:St
     let available=if reuse_existing==Some(true){windows()}else{Vec::new()};
     let launch_args=profile_arguments_string(&profile_arguments);
     let profile_picker=expected.as_deref().is_some_and(|executable|opens_chrome_profile_picker(Path::new(executable),&launch_args));
-    let ticket=if let Some(window)=reuse_candidate_for_launch(&available,expected.as_deref(),explicit_profile||profile_picker)?{Launch{pid:window.pid,executable:expected,before:before.into_iter().filter(|identity|identity.hwnd!=window.hwnd).collect(),profile_picker:false,picker_hwnd:None,picker_title:None}}else{launch(&path,before,&profile_arguments)?};
+    let app_user_model_id=shortcut_user_model_id(&path);
+    let ticket=if let Some(window)=reuse_candidate_for_launch(&available,expected.as_deref(),app_user_model_id.as_deref(),explicit_profile||profile_picker)?{Launch{pid:window.pid,executable:expected,app_user_model_id,before:before.into_iter().filter(|identity|identity.hwnd!=window.hwnd).collect(),profile_picker:false,picker_hwnd:None,picker_title:None}}else{launch(&path,before,&profile_arguments)?};
     state.0.lock().map_err(|_|"App panels are unavailable")?.pending.insert(id.clone(),ticket.clone());ticket
    }};
    let mut launch=launch;
@@ -766,7 +807,7 @@ pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
    assert_eq!(required_size((0,0,600,375),(0,0,900,600)),(true,true),"A genuine clamp above the request is a refusal");
   }
  #[test]fn discovery_never_claims_an_old_document_unrelated_app_or_already_managed_window(){
-  let launch=Launch{pid:22,executable:Some("C:\\Office\\WINWORD.EXE".into()),before:vec![WindowIdentity{hwnd:101,pid:22}],profile_picker:false,picker_hwnd:None,picker_title:None};
+  let launch=Launch{pid:22,executable:Some("C:\\Office\\WINWORD.EXE".into()),app_user_model_id:None,before:vec![WindowIdentity{hwnd:101,pid:22}],profile_picker:false,picker_hwnd:None,picker_title:None};
   let window=|hwnd,pid,path:&str|WindowInfo{hwnd,pid,title:"Document".into(),executable:Some(path.into())};
   let choices=vec![window(101,22,"C:\\Office\\WINWORD.EXE"),window(102,90,"C:\\Apps\\other.exe"),window(103,22,"C:\\Office\\WINWORD.EXE"),window(104,33,"c:\\office\\winword.exe")];
   assert_eq!(select_window(&launch,&choices,&[103],0).map(|w|w.hwnd),Some(104));
@@ -774,7 +815,7 @@ pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
  }
  #[test]fn opening_an_explicit_chrome_profile_does_not_reuse_an_arbitrary_existing_profile_window(){
   let chrome=WindowInfo{hwnd:81,pid:900,title:"Google - Stephen".into(),executable:Some("C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe".into())};
-  let windows=[chrome];let candidate=reuse_candidate_for_launch(&windows,Some("C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"),true).unwrap();
+  let windows=[chrome];let candidate=reuse_candidate_for_launch(&windows,Some("C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"),None,true).unwrap();
   assert!(candidate.is_none(),"a matching executable does not prove this is the profile named by the shortcut");
  }
  #[test]fn profile_picker_is_never_selected_and_waits_until_selection_is_unambiguous(){
@@ -845,11 +886,11 @@ pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
  #[test]fn saved_app_reuse_requires_one_exact_matching_window(){
   let window=|hwnd,path:&str|WindowInfo{hwnd,pid:22,title:"Document".into(),executable:Some(path.into())};
   let choices=vec![window(101,"C:\\Office\\WINWORD.EXE"),window(102,"C:\\Apps\\Editor.exe")];
-  assert_eq!(reuse_candidate(&choices,Some("c:\\office\\winword.exe")).unwrap().map(|w|w.hwnd),Some(101));
-  assert!(reuse_candidate(&choices,Some("C:\\Apps\\Other.exe")).unwrap().is_none());
-  assert!(reuse_candidate(&choices,None).unwrap().is_none());
+  assert_eq!(reuse_candidate(&choices,Some("c:\\office\\winword.exe"),None).unwrap().map(|w|w.hwnd),Some(101));
+  assert!(reuse_candidate(&choices,Some("C:\\Apps\\Other.exe"),None).unwrap().is_none());
+  assert!(reuse_candidate(&choices,None,None).unwrap().is_none());
   let mut ambiguous=choices.clone();ambiguous.push(window(103,"\\\\?\\C:\\Office\\WINWORD.EXE"));
-  assert!(reuse_candidate(&ambiguous,Some("C:\\Office\\WINWORD.EXE")).is_err_and(|error|error.contains("Several windows")));
+  assert!(reuse_candidate(&ambiguous,Some("C:\\Office\\WINWORD.EXE"),None).is_err_and(|error|error.contains("Several windows")));
  }
  struct Fixture(HWND);impl Fixture{fn new(title:&str)->Self{unsafe{let class=wide("STATIC");let title=wide(title);Self(CreateWindowExW(WINDOW_EX_STYLE(0),PCWSTR(class.as_ptr()),PCWSTR(title.as_ptr()),WS_OVERLAPPEDWINDOW,50,60,840,520,None,None,None,None).unwrap())}}}impl Drop for Fixture{fn drop(&mut self){unsafe{let _=DestroyWindow(self.0);}}}
  #[test]fn app_widget_identity_exposes_only_a_live_attached_hwnd_and_pid(){
