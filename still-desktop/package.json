@@ -7,7 +7,7 @@
     "dev": "vite --host 127.0.0.1 --port 4318 --strictPort",
     "dev:desktop": "node scripts/dev-desktop.mjs",
     "check": "tsc --noEmit",
-    "test": "node --test --test-concurrency=1 tests/*.test.mjs",
+    "test": "tsx --test --test-concurrency=1 tests/*.test.mjs",
     "build": "tsc --noEmit && vite build",
     "tauri": "tauri",
     "publish-preview": "node scripts/publish-preview.mjs"
@@ -25,6 +25,7 @@
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.1.1",
     "jsdom": "26.1.0",
+    "tsx": "^4.23.15",
     "typescript": "7.0.2",
     "vite": "8.3.2"
   }
