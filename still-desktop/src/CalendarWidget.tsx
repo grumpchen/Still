@@ -1,0 +1,25 @@
+import {useEffect,useMemo,useState} from 'react';
+import type {WidgetProps} from './widgets.tsx';
+import {calendarDateKey,calendarMonthCells,type StudyEventCategory,type StudyCalendarEvent} from './domain/studyCalendar.ts';
+import {Icon} from './Icon.tsx';
+
+const categories:StudyEventCategory[]=['class','assignment','exam','study'];
+const categoryNames:Record<StudyEventCategory,string>={class:'Class',assignment:'Assignment',exam:'Exam',study:'Study'};
+const weekdays=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const formatMonth=(date:Date)=>new Intl.DateTimeFormat(undefined,{month:'long',year:'numeric'}).format(date);
+const formatDate=(key:string)=>new Intl.DateTimeFormat(undefined,{weekday:'long',month:'long',day:'numeric'}).format(new Date(`${key}T12:00:00`));
+
+export default function CalendarWidget({widget,update}:WidgetProps){
+ const today=calendarDateKey(new Date()),[month,setMonth]=useState(()=>new Date()),[selected,setSelected]=useState(today),[draft,setDraft]=useState(false),[title,setTitle]=useState(''),[time,setTime]=useState(''),[category,setCategory]=useState<StudyEventCategory>('study');
+ const days=useMemo(()=>calendarMonthCells(month),[month]),events=widget.calendarEvents??[],selectedEvents=events.filter(event=>event.date===selected);
+ useEffect(()=>{const open=()=>{setSelected(today);setMonth(new Date());setDraft(true)};window.addEventListener('still-calendar-add-event',open);return()=>window.removeEventListener('still-calendar-add-event',open)},[today]);
+ function save(event:React.FormEvent){event.preventDefault();const clean=title.trim();if(!clean)return;const item:StudyCalendarEvent={id:crypto.randomUUID(),date:selected,title:clean,time:time||null,category};update({calendarEvents:[...events,item]});setTitle('');setTime('');setDraft(false)}
+ return <div className="study-calendar">
+  <div className="study-calendar-month"><button aria-label="Previous month" onClick={()=>setMonth(date=>new Date(date.getFullYear(),date.getMonth()-1,1))}><Icon name="chevronLeft"/></button><strong>{formatMonth(month)}</strong><button aria-label="Next month" onClick={()=>setMonth(date=>new Date(date.getFullYear(),date.getMonth()+1,1))}><Icon name="chevronRight"/></button><button className="study-calendar-today" onClick={()=>{setMonth(new Date());setSelected(today)}}>Today</button></div>
+  <div className="study-calendar-grid" role="grid" aria-label={formatMonth(month)}>{weekdays.map(day=><span className="study-calendar-weekday" key={day}>{day}</span>)}{days.map(date=>{const key=calendarDateKey(date),inMonth=date.getMonth()===month.getMonth(),marked=events.some(event=>event.date===key);return <button key={key} role="gridcell" aria-selected={selected===key} aria-label={`${formatDate(key)}${marked?', has events':''}`} className={`${inMonth?'':'outside-month'}${key===today?' is-today':''}${selected===key?' is-selected':''}${marked?' has-events':''}`} onClick={()=>setSelected(key)}>{date.getDate()}<i/></button>})}</div>
+  <section className="study-calendar-agenda"><div className="study-calendar-agenda-head"><div><small>AGENDA</small><strong>{formatDate(selected)}</strong></div><button onClick={()=>setDraft(value=>!value)}>{draft?'Cancel':'+ Event'}</button></div>
+   {draft&&<form className="study-calendar-form" onSubmit={save}><input aria-label="Event title" placeholder="What are you studying?" maxLength={160} value={title} onChange={event=>setTitle(event.target.value)} required autoFocus/><div><input aria-label="Event time" type="time" value={time} onChange={event=>setTime(event.target.value)}/><select aria-label="Event category" value={category} onChange={event=>setCategory(event.target.value as StudyEventCategory)}>{categories.map(value=><option key={value} value={value}>{categoryNames[value]}</option>)}</select><button className="primary" type="submit">Save</button></div></form>}
+   <div className="study-calendar-events">{selectedEvents.length?selectedEvents.map(event=><article key={event.id} className={`study-event event-${event.category}`}><time>{event.time||'All day'}</time><span><strong>{event.title}</strong><small>{categoryNames[event.category]}</small></span><button aria-label={'Remove '+event.title} onClick={()=>update({calendarEvents:events.filter(item=>item.id!==event.id)})}>×</button></article>):!draft&&<p className="widget-hint">Nothing planned. Add a class, deadline, or study session.</p>}</div>
+  </section>
+ </div>
+}

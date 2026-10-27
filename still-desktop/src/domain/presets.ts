@@ -2,6 +2,7 @@ import {widgetCatalog,type WidgetType} from './widgetCatalog.ts';
 import type {WidgetInstance} from './workspaces.ts';
 import {checkedFileNotes} from './fileNotes.ts';
 import {checkedNoteDocuments,detachNoteLibraryDocuments,noteDocument,type NoteDocument} from './noteDocuments.ts';
+import {checkedCalendarEvents,type StudyCalendarEvent} from './studyCalendar.ts';
 export type FileKind='pdf'|'image'|'media'|'document';
 export type PresetType=Exclude<WidgetType,'group'>;
 export type GenericPresetType=Exclude<PresetType,'files'|'apps'>;
@@ -9,7 +10,7 @@ export interface PresetScheduleEntry {id:string;day:number;time:string;title:str
 export type WidgetPreset={id:string;type:'files';name:string;resourceKind?:'folder';folderSourceId:string;folderName:string;fileNotes?:Record<string,string>;remaining?:number;clockPluginEnabled?:boolean}
  |{id:string;type:'files';name:string;resourceKind:'document';fileSourceId:string;fileName:string;fileKind:FileKind;fileNotes?:Record<string,string>;remaining?:number;clockPluginEnabled?:boolean}
  |{id:string;type:'apps';name:string;appSourceId:string;appName:string;iconData?:string;remaining?:number;clockPluginEnabled?:boolean}
- |{id:string;type:GenericPresetType;name:string;text?:string;noteDocuments?:NoteDocument[];activeNoteDocumentId?:string;noteFont?:'sans'|'serif'|'mono';noteFontSize?:number;remaining?:number;schedule?:PresetScheduleEntry[];pluginControls?:string[];clockPluginEnabled?:boolean};
+ |{id:string;type:GenericPresetType;name:string;text?:string;noteDocuments?:NoteDocument[];activeNoteDocumentId?:string;noteFont?:'sans'|'serif'|'mono';noteFontSize?:number;remaining?:number;schedule?:PresetScheduleEntry[];calendarEvents?:StudyCalendarEvent[];pluginControls?:string[];clockPluginEnabled?:boolean};
 export function fileKind(value:unknown):value is FileKind{return value==='pdf'||value==='image'||value==='media'||value==='document'}
 export function fileName(value:unknown):value is string{return typeof value==='string'&&value.length>0&&value.length<=260&&!/[\\/\x00-\x1f]/.test(value)&&value!=='.'&&value!=='..'}
 function checkedIconData(value:unknown):string|undefined{return typeof value==='string'&&value.length<=32*1024&&/^data:image\/png;base64,iVBORw0KGgo[A-Za-z0-9+/]*={0,2}$/.test(value)?value:undefined}
@@ -54,6 +55,7 @@ export function widgetPreset(value:WidgetPreset):WidgetPreset {
   return{id:value.id,type:value.type,name,...remaining,...(clockPluginEnabled?{clockPluginEnabled}:{})};
  }
  if(value.type==='timetable')return{id:value.id,type:'timetable',name,schedule:savedSchedule(value.schedule),...remaining,...(clockPluginEnabled?{clockPluginEnabled}:{})};
+ if(value.type==='calendar')return{id:value.id,type:'calendar',name,calendarEvents:checkedCalendarEvents(value.calendarEvents),...remaining,...(clockPluginEnabled?{clockPluginEnabled}:{})};
  if(value.type==='tagStatus')return{id:value.id,type:'tagStatus',name,pluginControls:Array.isArray(value.pluginControls)?[...new Set(value.pluginControls.filter(control=>typeof control==='string'&&/^[a-z0-9.-]{1,80}$/.test(control)))].slice(0,20):undefined,...remaining,...(clockPluginEnabled?{clockPluginEnabled}:{})};
  if(value.type==='desmos')return{id:value.id,type:'desmos',name,...remaining,...(clockPluginEnabled?{clockPluginEnabled}:{})};
  throw new Error('Choose a supported widget.');
@@ -77,6 +79,7 @@ export function presetFromWidget(widget:WidgetInstance):WidgetPreset {
   ...(widget.type==='notes'?{noteFont:widget.noteFont,noteFontSize:widget.noteFontSize,noteDocuments:widget.noteDocuments,activeNoteDocumentId:widget.activeNoteDocumentId}:{}),
   ...(widget.type==='focus'||widget.clockPluginEnabled?{remaining}:{}),
   ...(widget.type==='timetable'?{schedule:widget.schedule}:{}),
+  ...(widget.type==='calendar'?{calendarEvents:widget.calendarEvents}:{}),
   ...(widget.type==='tagStatus'?{pluginControls:widget.pluginControls}:{})});
 }
 export function parsePresets(value:unknown):WidgetPreset[]{
