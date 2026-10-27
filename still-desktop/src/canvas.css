@@ -73,6 +73,9 @@ input[type=checkbox]{appearance:none;-webkit-appearance:none;width:14px!importan
 .liquid-glass .tray-group-inline-contents button{background:#ffffff24;border-color:var(--glass-rim)}
 .liquid-glass .tray-group-inline-contents .tray-group-add{background:transparent}
 @media(max-width:1050px){.tray-main-row{gap:8px}}
+.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes>.card-head{background-image:radial-gradient(ellipse 34% 140% at var(--reflect-x) var(--reflect-y),rgba(255,255,255,.3),transparent 76%),repeating-linear-gradient(100deg,rgba(255,255,255,.1) 0 .55px,transparent .55px 1.8px,rgba(0,0,0,.08) 1.8px 2.3px,transparent 2.3px 5px),linear-gradient(112deg,#d0d4d4 0%,#62686a 24%,#aab0b1 48%,#44494b 73%,#b5bbbc 100%);background-blend-mode:screen,soft-light,normal}
+.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes::after{background:repeating-linear-gradient(100deg,rgba(255,255,255,.2) 0 .65px,rgba(0,0,0,.12) .65px 1.3px,transparent 1.3px 3.6px) border-box,linear-gradient(135deg,#e4e9e9 0%,#62696b 22%,#f4f7f6 45%,#596164 71%,#c5cbcc 100%) border-box;background-blend-mode:soft-light,normal}
+.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes>.widget-content{background:linear-gradient(153deg,rgba(255,255,255,.2),rgba(255,255,255,.07) 37%,rgba(255,255,255,.12) 66%,rgba(255,255,255,.035)),rgba(10,12,14,.24);backdrop-filter:blur(18px) saturate(1.72);-webkit-backdrop-filter:blur(18px) saturate(1.72)}
 @media(max-width:740px){.canvas-app{grid-template-columns:66px minmax(0,1fr)}.canvas-app .footer{flex-direction:row}.canvas-app .footer>span:last-child{display:none}.canvas-app .brand{padding:0 10px}}
 
 .canvas-app .nav .workspace-status-dot{width:6px;height:6px;flex:none;margin-left:auto;border-radius:50%;background:color-mix(in srgb,var(--muted) 35%,transparent);transition:background-color .12s}
