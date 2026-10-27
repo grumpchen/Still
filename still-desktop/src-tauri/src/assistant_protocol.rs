@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-const GENERAL_ASSISTANT_GUIDANCE:&str="Be a helpful general-purpose AI: answer questions, explain ideas, help write and plan, and discuss topics normally. Understand ordinary wording such as make, build, give me, and I need; users do not need to know action names or widget IDs. Consult supplied capabilities, the widget catalogue, and supplied widget data. Each widget's structured tagColor field is authoritative for its color; use it instead of guessing from screenshot colors. @ is optional; type @ for a widget to prioritize its data when a large workspace requires trimming. For creation use add_widget with the catalogue type ID; optional title names the new widget and optional text supplies initial Notes content. For in-app edits use edit_widget with an exact existing widget ID and only fields supported for that widget: title or tagColor for any widget, text for Notes, schedule for Timetable, and pluginControls for Tag Color Status. Timetable schedule entries require day 0-6, 24-hour HH:MM time, class title, and location; preserve entries using the complete schedule supplied in widget data. The user may type @ as an optional quick-selection hint, but it is not required to answer or edit workspace widgets. Never guess an edit when the requested change is vague: requests such as 'edit the timetable' or 'make it better' need one short follow-up question and an empty actions array. A target alone does not explain what to change. If the user gives a clear value or task, do it directly without needless confirmation. If the target is unclear, ask which widget without actions. If target data is marked contentOmitted, ask the user to @-prioritize that widget. Focus and Clock timers use set_timer. The Clock timer plugin can be enabled or disabled with set_widget_plugin. Add or remove the built-in Stack and Layout sidebar plugins with set_sidebar_plugin using plugin IDs stack or layout and enabled true or false. rename_workspace renames the current workspace. Apps, Files, and Calculator content belongs to their native application. When selectedStudyResource says fileActionAllowed is true and the user asks to classify, organize, or file that selected file, you may return at most one fileProposal with a relative destinationFolder and a short reason. Use a simple relative folder path inside the selected Files library, never an absolute path, drive name, source path, or traversal segment. A fileProposal is only a suggestion; Still will show it for review and will not move anything until the user presses Move file. Never propose deletion or claim a file moved, renamed, or deleted. If the file is not useful, advise the user and leave it in the inbox. Otherwise return an empty fileProposals array. Workspace actions and layout proposals must not be mixed with fileProposals. Workspace deletion always requires Still's on-screen confirmation; preserve the final workspace. Do not claim changes succeeded; Still applies them and reports the result. If an intended action is unclear, ask a helpful follow-up question with no actions instead of claiming success.";
+const GENERAL_ASSISTANT_GUIDANCE:&str="Be a helpful general-purpose AI: answer questions, explain ideas, help write and plan, and discuss topics normally. Understand ordinary wording such as make, build, give me, and I need; users do not need to know action names or widget IDs. Consult supplied capabilities, the widget catalogue, and supplied widget data. Each widget's structured tagColor field is authoritative for its color; use it instead of guessing from screenshot colors. @ is optional; type @ for a widget to prioritize its data when a large workspace requires trimming. For creation use add_widget with the catalogue type ID; optional title names the new widget and optional text supplies initial Notes content. For in-app edits use edit_widget with an exact existing widget ID and only fields supported for that widget: title or tagColor for any widget, text for Notes, schedule for Timetable, and pluginControls for Tag Color Status. Timetable schedule entries require day 0-6, 24-hour HH:MM time, class title, and location; preserve entries using the complete schedule supplied in widget data. The user may type @ as an optional quick-selection hint, but it is not required to answer or edit workspace widgets. Never guess an edit when the requested change is vague: requests such as 'edit the timetable' or 'make it better' need one short follow-up question and an empty actions array. A target alone does not explain what to change. If the user gives a clear value or task, do it directly without needless confirmation. If the target is unclear, ask which widget without actions. If target data is marked contentOmitted, ask the user to @-prioritize that widget. Focus and Clock timers use set_timer. The Clock timer plugin can be enabled or disabled with set_widget_plugin. Add or remove the built-in Stack and Layout sidebar plugins with set_sidebar_plugin using plugin IDs stack or layout and enabled true or false. rename_workspace renames the current workspace. Apps, Files, and Calculator content belongs to their native application. When selectedStudyResource says fileActionAllowed is true and the user asks to classify, organize, or file that selected file, you may return at most one fileProposal with a relative destinationFolder and a short reason. Use a simple relative folder path inside the selected Files library, never an absolute path, drive name, source path, or traversal segment. A fileProposal is only a suggestion; Still will show it for review and will not move anything until the user presses Move file. Never propose deletion or claim a file moved, renamed, or deleted. If the file is not useful, advise the user and leave it in the inbox. Otherwise return an empty fileProposals array. Workspace actions and layout proposals must not be mixed with fileProposals. For a request to make a study plan or draft calendar events, return up to 14 calendarProposals with a real ISO date, a concise title, a 24-hour HH:MM time or an empty time for all-day, and category class, assignment, exam, or study. These are only drafts; Still will display every event and will not save them until the user confirms. Never say that calendar events were added before confirmation. Calendar proposals must not be mixed with workspace actions, layouts, or fileProposals. Workspace deletion always requires Still's on-screen confirmation; preserve the final workspace. Do not claim changes succeeded; Still applies them and reports the result. If an intended action is unclear, ask a helpful follow-up question with no actions instead of claiming success.";
 
 #[derive(Deserialize, Serialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
@@ -38,9 +38,12 @@ pub struct AssistantAction { #[serde(rename = "type")] pub action_type: ActionTy
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields,rename_all="camelCase")]
 pub struct FileProposal { pub destination_folder:String, pub reason:String }
+#[derive(Deserialize, Serialize, Clone)]
+#[serde(deny_unknown_fields,rename_all="camelCase")]
+pub struct CalendarEventDraft { pub date:String, pub title:String, pub time:String, pub category:String }
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct Reply { #[serde(default,skip_serializing_if="Option::is_none")] pub intent:Option<ResponseIntent>, pub reply: String, pub layout: Vec<LayoutItem>, #[serde(default)] pub actions: Vec<AssistantAction>, #[serde(default,rename="fileProposals")] pub file_proposals:Vec<FileProposal> }
+pub struct Reply { #[serde(default,skip_serializing_if="Option::is_none")] pub intent:Option<ResponseIntent>, pub reply: String, pub layout: Vec<LayoutItem>, #[serde(default)] pub actions: Vec<AssistantAction>, #[serde(default,rename="fileProposals")] pub file_proposals:Vec<FileProposal>, #[serde(default,rename="calendarProposals")] pub calendar_proposals:Vec<CalendarEventDraft> }
 
 fn valid_assistant_actions(actions:&[AssistantAction])->bool {
     let mut batch_size=0;let mut change_batch_size=0;
@@ -217,7 +220,7 @@ pub fn body(request: &Request) -> Result<Value, String> {
             "thinkingConfig":{"thinkingBudget":0},
             "responseMimeType":"application/json",
             "responseSchema":{
-                "type":"OBJECT","required":["intent","reply","layout","actions","fileProposals"],
+                "type":"OBJECT","required":["intent","reply","layout","actions","fileProposals","calendarProposals"],
                 "properties":{
                     "intent":{"type":"STRING","enum":["chat","clarification","workspace_action","layout"]},
                     "reply":{"type":"STRING"},
@@ -228,7 +231,7 @@ pub fn body(request: &Request) -> Result<Value, String> {
                         "type":{"type":"STRING","enum":["minimize","restore","save_to_tray","set_timer","add_widget","open_saved","remove_widget","edit_widget","set_widget_plugin","set_sidebar_plugin","rename_workspace"]},
                         "ids":{"type":"ARRAY","items":{"type":"STRING"}},"seconds":{"type":"INTEGER"},"title":{"type":"STRING"},"text":{"type":"STRING"},"tagColor":{"type":"STRING"},"pluginControls":{"type":"ARRAY","items":{"type":"STRING"}},"plugin":{"type":"STRING"},"enabled":{"type":"BOOLEAN"},"schedule":{"type":"ARRAY","items":{"type":"OBJECT","required":["id","day","time","title","location"],"properties":{"id":{"type":"STRING"},"day":{"type":"INTEGER"},"time":{"type":"STRING"},"title":{"type":"STRING"},"location":{"type":"STRING"}}}}
                     }}},
-                    "fileProposals":{"type":"ARRAY","items":{"type":"OBJECT","required":["destinationFolder","reason"],"properties":{"destinationFolder":{"type":"STRING"},"reason":{"type":"STRING"}}}}
+                    "fileProposals":{"type":"ARRAY","items":{"type":"OBJECT","required":["destinationFolder","reason"],"properties":{"destinationFolder":{"type":"STRING"},"reason":{"type":"STRING"}}}},"calendarProposals":{"type":"ARRAY","items":{"type":"OBJECT","required":["date","title","time","category"],"properties":{"date":{"type":"STRING"},"title":{"type":"STRING"},"time":{"type":"STRING"},"category":{"type":"STRING","enum":["class","assignment","exam","study"]}}}}
                 }
             }
         }
@@ -250,14 +253,19 @@ fn parse_compatible_response(value:Value,provider:&str)->Result<Reply,String>{
     validate_reply(reply,provider)
 }
 fn validate_reply(mut reply:Reply,provider:&str)->Result<Reply,String>{
-    if reply.reply.len()>24000||reply.layout.len()>100||reply.actions.len()>100||reply.file_proposals.len()>1{return Err(format!("{provider} returned too much content. Nothing was changed. Try a smaller request."));}
+    if reply.reply.len()>24000||reply.layout.len()>100||reply.actions.len()>100||reply.file_proposals.len()>1||reply.calendar_proposals.len()>14{return Err(format!("{provider} returned too much content. Nothing was changed. Try a smaller request."));}
     for proposal in &reply.file_proposals{
         if proposal.reason.trim().is_empty()||proposal.reason.chars().count()>600||crate::files::validate_filing_folder(&proposal.destination_folder).is_err(){return Err(format!("{provider} returned an unsafe file filing proposal. Nothing was changed. Try again."));}
     }
-    if !reply.file_proposals.is_empty()&&(!reply.actions.is_empty()||!reply.layout.is_empty()){return Err(format!("{provider} mixed a file filing proposal with workspace changes. Nothing was changed. Try again."));}
+    for proposal in &mut reply.calendar_proposals{
+        if !valid_calendar_date(&proposal.date)||proposal.title.trim().is_empty()||proposal.title.chars().count()>160||(!proposal.time.is_empty()&&!valid_calendar_time(&proposal.time))||!matches!(proposal.category.as_str(),"class"|"assignment"|"exam"|"study"){return Err(format!("{provider} returned an invalid calendar event proposal. Nothing was changed. Try again."));}
+        proposal.title=proposal.title.trim().to_string();
+    }
+    if !reply.file_proposals.is_empty()&&(!reply.actions.is_empty()||!reply.layout.is_empty()||!reply.calendar_proposals.is_empty()){return Err(format!("{provider} mixed a file filing proposal with workspace changes. Nothing was changed. Try again."));}
+    if !reply.calendar_proposals.is_empty()&&(!reply.actions.is_empty()||!reply.layout.is_empty()){return Err(format!("{provider} mixed calendar event proposals with workspace changes. Nothing was changed. Try again."));}
     match reply.intent {
         Some(ResponseIntent::Chat)=>{reply.layout.clear();reply.actions.clear();},
-        Some(ResponseIntent::Clarification)=>{reply.layout.clear();reply.actions.clear();reply.file_proposals.clear();},
+        Some(ResponseIntent::Clarification)=>{reply.layout.clear();reply.actions.clear();reply.file_proposals.clear();reply.calendar_proposals.clear();},
         Some(ResponseIntent::WorkspaceAction)=>reply.layout.clear(),
         Some(ResponseIntent::Layout)=>reply.actions.clear(),
         None if !reply.layout.is_empty()&&!reply.actions.is_empty()=>return Err(format!("{provider} mixed a layout proposal with workspace actions. Nothing was changed. Try again.")),
@@ -268,9 +276,16 @@ fn validate_reply(mut reply:Reply,provider:&str)->Result<Reply,String>{
         if !reply.actions.is_empty(){reply.reply="Workspace actions requested.".into();}
         else if !reply.layout.is_empty(){reply.reply="Workspace layout proposal.".into();}
         else if !reply.file_proposals.is_empty(){reply.reply="I found a possible filing folder. Review it before moving the file.".into();}
+        else if !reply.calendar_proposals.is_empty(){reply.reply="Review the proposed calendar events before adding them.".into();}
         else{return Err(format!("{provider} returned no reply or workspace action. Try again."));}
     }
     Ok(reply)
+}
+fn valid_calendar_time(value:&str)->bool{value.len()==5&&value.as_bytes()[2]==b':'&&value.as_bytes().iter().enumerate().all(|(index,byte)|index==2||byte.is_ascii_digit())&&value[..2].parse::<u8>().is_ok_and(|hour|hour<24)&&value[3..].parse::<u8>().is_ok_and(|minute|minute<60)}
+fn valid_calendar_date(value:&str)->bool{
+    let bytes=value.as_bytes();if bytes.len()!=10||bytes[4]!=b'-'||bytes[7]!=b'-'||bytes.iter().enumerate().any(|(index,byte)|index!=4&&index!=7&&!byte.is_ascii_digit()){return false}
+    let(year,month,day)=(value[..4].parse::<i32>().ok(),value[5..7].parse::<u32>().ok(),value[8..].parse::<u32>().ok());let(Some(year),Some(month),Some(day))=(year,month,day)else{return false};
+    if !(1900..=2200).contains(&year){return false}let days=match month{1|3|5|7|8|10|12=>31,4|6|9|11=>30,2=>if year%400==0||year%4==0&&year%100!=0{29}else{28},_=>return false};day>=1&&day<=days
 }
 pub fn http_error(status:u16) -> String {
     match status {

@@ -5,6 +5,7 @@ import type {WidgetPreset} from './presets.ts';
 import type {SavedGroup} from './workspaces.ts';
 import {constrainPlacement,nextPlacement,type Placement} from './layout.ts';
 import {widgetTagColors} from './widgetTags.ts';
+import {checkedStudyCalendarDrafts,type StudyCalendarEventDraft} from './studyCalendar.ts';
 
 export type AssistantProvider = 'gemini' | 'openai' | 'opencode';
 export type ChatMessage = {role:'user'|'model'; text:string};
@@ -32,7 +33,7 @@ export function resolveNamedNotesCreation(prompt:string):{title:string;topic:str
   if(!title||title.length>60||topic.length>12000)return null;
   return {title,topic};
 }
-export type AssistantReply = {intent?:AssistantResponseIntent;reply:string; layout:LayoutItem[]; actions:AssistantAction[];fileProposals?:AssistantFileProposal[]};
+export type AssistantReply = {intent?:AssistantResponseIntent;reply:string; layout:LayoutItem[]; actions:AssistantAction[];fileProposals?:AssistantFileProposal[];calendarProposals?:StudyCalendarEventDraft[]};
 export type LayoutPlan = {workspaceId:string; fingerprint:string; width:number; height:number; items:LayoutItem[]};
 export const DEFAULT_MODEL = 'gemini-2.5-flash';
 export const DEFAULT_MODELS:Record<AssistantProvider,string> = {gemini:DEFAULT_MODEL,openai:'gpt-4o-mini',opencode:'mimo-v2.6-flash'};
@@ -163,16 +164,20 @@ export function parseAssistantReply(value:unknown):AssistantReply {
     if(!proposal||typeof proposal.destinationFolder!=='string'||!isSafeFilingFolder(proposal.destinationFolder)||typeof proposal.reason!=='string'||!proposal.reason.trim()||Array.from(proposal.reason).length>600)throw new Error('The AI returned an unsafe file filing proposal. Nothing was moved. Try again.');
     return {destinationFolder:proposal.destinationFolder,reason:proposal.reason.trim()};
   });
-  if(fileProposals.length&&(items.length||actions.length))throw new Error('The AI mixed a file filing proposal with workspace changes. Nothing was moved. Try again.');
+  let calendarProposals:StudyCalendarEventDraft[]=[];
+  try{calendarProposals=checkedStudyCalendarDrafts((value as Partial<AssistantReply>).calendarProposals??[])}catch(error){throw new Error(error instanceof Error?error.message:'The AI returned invalid calendar events. Nothing was added.')}
+  if(fileProposals.length&&(items.length||actions.length||calendarProposals.length))throw new Error('The AI mixed a file filing proposal with workspace changes. Nothing was moved. Try again.');
+  if(calendarProposals.length&&(items.length||actions.length))throw new Error('The AI mixed calendar event proposals with workspace changes. Nothing was changed. Try again.');
   if(actions.filter(action=>action.type==='add_widget'||action.type==='open_saved').reduce((total,action)=>total+action.ids.length,0)>MAX_ASSISTANT_BATCH)throw new Error('The AI returned too many widget actions. Nothing was changed. Try a smaller request.');
   if(actions.filter(action=>action.type==='edit_widget'||action.type==='set_widget_plugin'||action.type==='set_sidebar_plugin').reduce((total,action)=>total+action.ids.length,0)>MAX_ASSISTANT_BATCH)throw new Error('The AI returned too many workspace changes. Nothing was changed. Try a smaller request.');
   if(!intent&&items.length&&actions.length)throw new Error('The AI mixed a layout proposal with workspace actions. Nothing was changed. Try again.');
   const safeLayout=intent==='chat'||intent==='clarification'||intent==='workspace_action'?[]:items;
   const safeActions=intent==='chat'||intent==='clarification'||intent==='layout'?[]:actions;
-  if(!reply.trim()&&!safeActions.length&&!safeLayout.length)throw new Error('The AI returned no reply. Try again.');
-  const normalizedReply=reply.trim()?reply:safeActions.length?'Workspace actions requested.':'Workspace layout proposal.';
+  if(!reply.trim()&&!safeActions.length&&!safeLayout.length&&!calendarProposals.length)throw new Error('The AI returned no reply. Try again.');
+  const normalizedReply=reply.trim()?reply:safeActions.length?'Workspace actions requested.':calendarProposals.length?'Review the proposed calendar events before adding them.':'Workspace layout proposal.';
    const safeFileProposals=intent==='clarification'?[]:fileProposals;
-   return {...(intent?{intent}:{}),reply:normalizedReply,layout:safeLayout,actions:safeActions,...(safeFileProposals.length?{fileProposals:safeFileProposals}:{})};
+   const safeCalendarProposals=intent==='clarification'?[]:calendarProposals;
+   return {...(intent?{intent}:{}),reply:normalizedReply,layout:safeLayout,actions:safeActions,...(safeFileProposals.length?{fileProposals:safeFileProposals}:{}),...(safeCalendarProposals.length?{calendarProposals:safeCalendarProposals}:{})};
 }
 function isSafeFilingFolder(value:string):boolean{
   const segments=value.split('/');
