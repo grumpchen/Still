@@ -1,5 +1,6 @@
 import {useEffect,useState} from 'react';
 import type {Workspace,WidgetInstance} from './domain/workspaces.ts';
+import type {WebShortcut} from './domain/webShortcuts.ts';
 import {readRecentLibraryFiles,type RecentLibraryFile} from './domain/libraryRecents.ts';
 import {widgetRegistry} from './widgets.tsx';
 import {Icon} from './Icon.tsx';
@@ -10,17 +11,20 @@ interface LibraryHomeProps {
  update:(id:string,patch:Partial<WidgetInstance>)=>void;
  notify:(message:string)=>void;
  workspaceActive:boolean;
+ links:LibrarySavedLink[];
+ openLink:(workspaceId:string,link:WebShortcut)=>void;
 }
 
-type LibrarySection='files'|'notes';
+interface LibrarySavedLink extends WebShortcut {workspaceId:string;workspaceName:string;groupName:string}
+type LibrarySection='files'|'notes'|'links';
 
-export default function LibraryHome({workspace,update,notify,workspaceActive}:LibraryHomeProps){
+export default function LibraryHome({workspace,update,notify,workspaceActive,links,openLink}:LibraryHomeProps){
  const t=useT(),locale=useLocale(),[section,setSection]=useState<LibrarySection|'recent'>('files'),[recent,setRecent]=useState<RecentLibraryFile[]>(readRecentLibraryFiles);
  const files=workspace.widgets.find(widget=>widget.type==='files'&&!widget.fileKey)??workspace.widgets.find(widget=>widget.type==='files');
  const notes=workspace.widgets.find(widget=>widget.type==='notes');
  const current=section==='files'?files:section==='notes'?notes:null;
- const title=section==='files'?t('files'):section==='notes'?t('widget_notes'):t('recentLibraryFiles');
- const description=section==='files'?t('localLibraryStatus'):section==='notes'?t('libraryNotesDescription'):t('recentLibraryDescription');
+ const title=section==='files'?t('files'):section==='notes'?t('widget_notes'):section==='links'?t('savedStudyLinks'):t('recentLibraryFiles');
+ const description=section==='files'?t('localLibraryStatus'):section==='notes'?t('libraryNotesDescription'):section==='links'?t('savedLinksDescription'):t('recentLibraryDescription');
  const Renderer=current?widgetRegistry[current.type].component:null;
 
  useEffect(()=>{const opened=(event:Event)=>{const detail=(event as CustomEvent<{widgetId?:string}>).detail;if(detail?.widgetId===files?.id)setRecent(readRecentLibraryFiles())};window.addEventListener('still-library-file-opened',opened);return()=>window.removeEventListener('still-library-file-opened',opened)},[files?.id]);
@@ -35,6 +39,7 @@ export default function LibraryHome({workspace,update,notify,workspaceActive}:Li
     <span className="library-rail-label">{t('libraryContents')}</span>
     <button type="button" className={section==='files'?'active':''} aria-current={section==='files'?'page':undefined} onClick={()=>setSection('files')}><Icon name="files"/><span>{t('files')}</span></button>
     <button type="button" className={section==='notes'?'active':''} aria-current={section==='notes'?'page':undefined} onClick={()=>setSection('notes')}><Icon name="notes"/><span>{t('widget_notes')}</span></button>
+    <button type="button" className={section==='links'?'active':''} aria-current={section==='links'?'page':undefined} onClick={()=>setSection('links')}><Icon name="browser"/><span>{t('savedStudyLinks')}</span></button>
     <button type="button" className={section==='recent'?'active':''} aria-current={section==='recent'?'page':undefined} onClick={()=>setSection('recent')}><Icon name="clock"/><span>{t('recentLibraryFiles')}</span></button>
    </div>
    <p className="library-rail-footnote">{t('filesStayLocal')}</p>
@@ -42,7 +47,7 @@ export default function LibraryHome({workspace,update,notify,workspaceActive}:Li
   <main className="library-main">
    <header className="library-page-header"><div><span className="library-page-eyebrow">{t('library')}</span><h2>{title}</h2><p>{description}</p></div></header>
    <section className={'library-work-area library-work-area-'+section} aria-label={title}>
-    {section==='recent'?<div className="library-recent-list" aria-label={t('recentLibraryFiles')}>{workspaceActive&&recent.filter(file=>file.widgetId===files?.id).length?recent.filter(file=>file.widgetId===files?.id).map(file=><button key={file.widgetId+file.path} type="button" className="library-recent-item" title={file.path} onClick={()=>openRecentFile(file)}><span className="library-recent-icon"><Icon name="files"/></span><span className="library-recent-copy"><strong>{file.name}</strong><small>{file.path}</small></span><time dateTime={new Date(file.openedAt).toISOString()}>{openDate(file.openedAt)}</time></button>):<div className="library-empty-state"><Icon name="clock"/><p>{t('noRecentLibraryFiles')}</p></div>}</div>:workspaceActive&&current&&Renderer?<Renderer widget={current} update={patch=>update(current.id,patch)} obscured={false} workspaceActive={workspaceActive} notify={notify}/>:workspaceActive?<div className="library-empty-state"><Icon name={section==='files'?'files':'notes'}/><p>{section==='files'?t('emptyLibrary'):t('noMatchingNotesText')}</p></div>:null}
+    {section==='links'?<div className="library-recent-list library-link-list" aria-label={t('savedStudyLinks')}>{workspaceActive&&links.length?links.map(link=><button key={link.id} type="button" className="library-recent-item library-link-item" title={link.url} onClick={()=>openLink(link.workspaceId,link)}><span className="library-recent-icon"><Icon name="browser"/></span><span className="library-recent-copy"><strong>{link.name}</strong><small>{link.workspaceName} · {link.groupName} · {link.url}</small></span><span className="library-link-open" aria-hidden="true">↗</span></button>):<div className="library-empty-state"><Icon name="browser"/><p>{t('noSavedStudyLinks')}</p></div>}</div>:section==='recent'?<div className="library-recent-list" aria-label={t('recentLibraryFiles')}>{workspaceActive&&recent.filter(file=>file.widgetId===files?.id).length?recent.filter(file=>file.widgetId===files?.id).map(file=><button key={file.widgetId+file.path} type="button" className="library-recent-item" title={file.path} onClick={()=>openRecentFile(file)}><span className="library-recent-icon"><Icon name="files"/></span><span className="library-recent-copy"><strong>{file.name}</strong><small>{file.path}</small></span><time dateTime={new Date(file.openedAt).toISOString()}>{openDate(file.openedAt)}</time></button>):<div className="library-empty-state"><Icon name="clock"/><p>{t('noRecentLibraryFiles')}</p></div>}</div>:workspaceActive&&current&&Renderer?<Renderer widget={current} update={patch=>update(current.id,patch)} obscured={false} workspaceActive={workspaceActive} notify={notify}/>:workspaceActive?<div className="library-empty-state"><Icon name={section==='files'?'files':'notes'}/><p>{section==='files'?t('emptyLibrary'):t('noMatchingNotesText')}</p></div>:null}
    </section>
   </main>
  </section>;
