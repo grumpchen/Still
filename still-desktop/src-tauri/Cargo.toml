@@ -17,6 +17,7 @@ url = "2"
 tauri-plugin-dialog = "=2.8.1"
 tauri-plugin-opener = "=2.7.0"
 image = { version = "0.25", default-features = false, features = ["png"] }
+pdf-extract = "=0.12.1"
 
 [target.'cfg(windows)'.dependencies]
 webview2-com = "=0.39.1"

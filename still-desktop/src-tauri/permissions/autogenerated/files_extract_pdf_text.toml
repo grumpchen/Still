@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-files-extract-pdf-text"
+description = "Enables the files_extract_pdf_text command without any pre-configured scope."
+commands.allow = ["files_extract_pdf_text"]
+
+[[permission]]
+identifier = "deny-files-extract-pdf-text"
+description = "Denies the files_extract_pdf_text command without any pre-configured scope."
+commands.deny = ["files_extract_pdf_text"]

@@ -67,6 +67,31 @@ pub(crate) struct StillInbox { listing:FolderListing,path:String }
 #[derive(Serialize)]
 #[serde(rename_all="camelCase")]
 pub(crate) struct FileMoveResult { source_path:String, destination_path:String }
+#[derive(Serialize)]
+#[serde(rename_all="camelCase")]
+pub(crate) struct ExtractedPdfText { text:String, pages_read:usize, total_pages:usize, truncated:bool }
+const MAX_AI_PDF_BYTES:u64=20*1024*1024;
+const MAX_AI_PDF_PAGES:usize=30;
+const MAX_AI_PDF_CHARS:usize=24_000;
+fn extract_pdf_text(path:&Path)->Result<ExtractedPdfText,String>{
+    let metadata=fs::metadata(path).map_err(|_|"This PDF is no longer available")?;
+    if !metadata.is_file()||path.extension().and_then(|value|value.to_str()).is_none_or(|value|!value.eq_ignore_ascii_case("pdf")){return Err("Choose a PDF inside the selected Files library.".into())}
+    if metadata.len()>MAX_AI_PDF_BYTES{return Err("This PDF is larger than the 20 MB text extraction limit.".into())}
+    let mut bytes=Vec::with_capacity(metadata.len() as usize);
+    fs::File::open(path).map_err(|_|"Could not read this PDF")?.take(MAX_AI_PDF_BYTES+1).read_to_end(&mut bytes).map_err(|_|"Could not read this PDF")?;
+    if bytes.len() as u64>MAX_AI_PDF_BYTES{return Err("This PDF is larger than the 20 MB text extraction limit.".into())}
+    let document=pdf_extract::Document::load_mem(&bytes).map_err(|_|"Still could not extract text from this PDF. It may be encrypted or damaged.")?;
+    let total_pages=document.get_pages().len();
+    let pages=document.get_pages().keys().copied().take(MAX_AI_PDF_PAGES).collect::<Vec<_>>();
+    let mut text=String::new();let mut truncated=total_pages>pages.len();let mut pages_read=0;
+    for page in &pages{
+        let chunk=document.extract_text(&[*page]).map_err(|_|"Still could not extract text from this PDF. It may be encrypted or damaged.")?;pages_read+=1;
+        let remaining=MAX_AI_PDF_CHARS.saturating_sub(text.chars().count());
+        if chunk.chars().count()>remaining{text.extend(chunk.chars().take(remaining));truncated=true;break}
+        text.push_str(&chunk);
+    }
+    Ok(ExtractedPdfText{text,pages_read,total_pages,truncated})
+}
 pub(crate) fn valid_id(id: &str) -> Result<(), String> {
     if id.is_empty() || id.len()>80 || !id.bytes().all(|c| c.is_ascii_alphanumeric()||c==b'-') { return Err("Invalid Files widget".into()); }
     Ok(())
@@ -450,6 +475,13 @@ pub async fn files_preview(webview:Webview,roots:State<'_,FolderRoots>,id:String
     let target=resolve(&roots.root(&id)?,&path)?;
     if blocked(&target){return Err("Programs and shortcuts cannot be previewed.".into())}
     tauri::async_runtime::spawn_blocking(move||read_preview(&target)).await.map_err(|_|"Could not read this file")?
+}
+#[tauri::command]
+pub async fn files_extract_pdf_text(webview:Webview,roots:State<'_,FolderRoots>,id:String,path:String)->Result<ExtractedPdfText,String>{
+    crate::security::authorize(&webview)?;valid_id(&id)?;
+    let target=resolve(&roots.root(&id)?,&path)?;
+    if blocked(&target){return Err("Programs and shortcuts cannot be read for AI.".into())}
+    tauri::async_runtime::spawn_blocking(move||extract_pdf_text(&target)).await.map_err(|_|"Could not extract text from this PDF")?
 }
 #[tauri::command]
 pub async fn files_move_resource(webview:Webview,roots:State<'_,FolderRoots>,id:String,source_path:String,destination_folder:String)->Result<FileMoveResult,String>{
