@@ -95,6 +95,26 @@ test('duplicate widget labels keep their instance numbers after canvas counts ar
  }finally{await app.cleanup()}
 });
 
+test('bringing a Notes card to front preserves its absolute canvas placement',async()=>{
+ const first=createWidget('notes');first.id='notes-1';first.placement={...first.placement,x:40,y:60};
+ const second=createWidget('notes');second.id='notes-2';second.placement={...second.placement,x:520,y:90};
+ const app=await setup([first,second]);
+ try{
+  const outer=app.window.document.createElement('div');outer.className='liquid-glass';
+  const root=app.window.document.querySelector('#root');root.className='app glass-widget-headers';root.parentNode.replaceChild(outer,root);outer.append(root);
+  const stylesheet=app.window.document.createElement('style');stylesheet.textContent=readFileSync(new URL('../src/canvas.css',import.meta.url),'utf8');app.window.document.head.append(stylesheet);
+  const firstCard=app.window.document.querySelector('#widget-notes-1'),secondCard=app.window.document.querySelector('#widget-notes-2');
+  const before={first:{left:firstCard.style.left,top:firstCard.style.top},second:{left:secondCard.style.left,top:secondCard.style.top}};
+  assert.equal(app.window.getComputedStyle(firstCard).position,'absolute','the glass surface must keep the shared canvas positioning rule');
+  const header=firstCard.querySelector('.widget-move');
+  await act(async()=>header.dispatchEvent(app.pointer('pointerdown',600,100)));
+  await act(async()=>header.dispatchEvent(app.pointer('pointerup',600,100)));
+  assert.deepEqual(app.currentState.widgets.map(widget=>widget.id),['notes-2','notes-1'],'the interacted card is brought to the front');
+  assert.equal(app.window.getComputedStyle(firstCard).position,'absolute');
+  assert.deepEqual({first:{left:firstCard.style.left,top:firstCard.style.top},second:{left:secondCard.style.left,top:secondCard.style.top}},before,'reordering changes stacking only and preserves both canvas coordinates');
+ }finally{await app.cleanup()}
+});
+
 test('canvas placement reconciliation pauses while a widget is moving',()=>{
  const canvas=readFileSync(new URL('../src/WorkspaceCanvas.tsx',import.meta.url),'utf8');
  assert.match(canvas,/useEffect\(\(\)=>\{if\(active\|\|!workspaceActive\|\|viewportWidth<=0\|\|viewportHeight<=0\)return;for\(const w of latestWidgets\.current\)/);
