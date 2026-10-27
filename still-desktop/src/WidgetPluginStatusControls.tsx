@@ -3,6 +3,7 @@ import {widgetTagColors,type WidgetTagColor} from './domain/widgetTags.ts';
 import type {ClockPluginMode} from './domain/clockPlugin.ts';
 import type {WidgetPluginColorSettingDefinition,WidgetPluginColorSettingProps,WidgetPluginControlProps} from './domain/widgetPlugins.ts';
 import {Icon} from './Icon.tsx';
+import {useT} from './localization.tsx';
 
 const colorControlPrefix='widget-relaunch.color.';
 const colorRulePrefix='widget-color-rule.';
@@ -19,10 +20,11 @@ export const widgetColorSettingCatalog:WidgetPluginColorSettingDefinition[]=[
 ];
 
 export function RelaunchGlobalModeControl({context}:WidgetPluginControlProps){
- return <label className="settings-row"><span>All widgets</span><select aria-label="Status card global relaunch mode" disabled={!context||context.relaunchPluginStatus!=='enabled'} value={context?.globalMode??'manual'} onChange={event=>context?.setGlobalMode(event.target.value as 'automatic'|'manual')}><option value="automatic">Automatic</option><option value="manual">Manual</option></select></label>;
+ const t=useT();return <label className="settings-row"><span>{t('allWidgets')}</span><select aria-label={t('globalRelaunchMode')} disabled={!context||context.relaunchPluginStatus!=='enabled'} value={context?.globalMode??'manual'} onChange={event=>context?.setGlobalMode(event.target.value as 'automatic'|'manual')}><option value="automatic">{t('automatic')}</option><option value="manual">{t('manual')}</option></select></label>;
 }
 
 export function RelaunchTagColorsControl({context,widget,update}:WidgetPluginControlProps){
+ const t=useT();
  const controls=widget.pluginControls??[];
  const selectedColors=selectedColorControls(controls,[...Object.keys(context?.colors??{}),...Object.keys(context?.screenshotColorOverrides??{}),...Object.keys(context?.clockColorOverrides??{})] as WidgetTagColor[]);
  const hasOverrides=widgetTagColors.some(color=>context?.colors[color]||context?.screenshotColorOverrides[color]!==undefined||context?.clockColorOverrides[color]!==undefined);
@@ -56,48 +58,50 @@ export function RelaunchTagColorsControl({context,widget,update}:WidgetPluginCon
   context?.setClockColorOverride(color,null);
   if(selectedColors.length===1)setExpanded(false);
  }
- return <section className="tag-status-color-settings" aria-label="Plugin settings by tag color">
-  <label className="tag-status-global-switch"><span>All colors follow global</span><input type="checkbox" role="switch" aria-label="All tag colors follow global mode" checked={useGlobal} onChange={event=>changeGlobal(event.target.checked)}/></label>
-  {summaries.length>0&&<p className="tag-status-summary">{summaries.map(group=><span key={group.mode}>{group.mode[0].toUpperCase()+group.mode.slice(1)}: {group.colors.map(color=>color[0].toUpperCase()+color.slice(1)).join(', ')}</span>)}</p>}
+ return <section className="tag-status-color-settings" aria-label={t('pluginSettingsByTagColor')}>
+  <label className="tag-status-global-switch"><span>{t('allColorsFollowGlobal')}</span><input type="checkbox" role="switch" aria-label={t('allTagColorsFollowGlobal')} checked={useGlobal} onChange={event=>changeGlobal(event.target.checked)}/></label>
+  {summaries.length>0&&<p className="tag-status-summary">{summaries.map(group=><span key={group.mode}>{t(group.mode)}: {group.colors.map(color=>t('tag_'+color)).join(', ')}</span>)}</p>}
   {showRules&&<>
    {selectedColors.map(color=>{
     const selectedSettings=widgetColorSettingCatalog.filter(setting=>setting.available(context?.relaunchPluginStatus??'removed')&&(controls.includes(colorSettingId(color,setting.id))||(setting.id==='relaunch'&&controls.includes(colorControlPrefix+color))));
     const availableSettings=widgetColorSettingCatalog.filter(setting=>setting.available(context?.relaunchPluginStatus??'removed')&&!selectedSettings.some(item=>item.id===setting.id));
     return <div className="tag-status-color-rule" key={color}>
-     <div className="tag-status-color-heading"><span className="tag-status-color"><i data-tag-color={color}/>{color[0].toUpperCase()+color.slice(1)} tag</span><button type="button" aria-label={'Remove '+color+' color rule'} onClick={()=>removeColor(color)}>×</button></div>
-     {selectedSettings.map(({id,label,ColorSetting})=><div className="tag-status-plugin-setting" key={id}><span>{label}</span><ColorSetting context={context} color={color}/><button type="button" aria-label={'Remove '+color+' '+label+' setting'} onClick={()=>removeSetting(color,id)}>×</button></div>)}
-     {availableSettings.length>0&&<label className="tag-status-add-setting"><span>Select plugin/setting</span><select aria-label={'Add '+color+' plugin setting'} value="" onChange={event=>{if(event.target.value)addSetting(color,event.target.value)}}><option value="" disabled>Select plugin/setting…</option>{availableSettings.map(setting=><option key={setting.id} value={setting.id}>{setting.label}</option>)}</select></label>}
+     <div className="tag-status-color-heading"><span className="tag-status-color"><i data-tag-color={color}/>{t('tag_'+color)} {t('tag')}</span><button type="button" aria-label={t('removeTagColorRule')+' '+t('tag_'+color)} onClick={()=>removeColor(color)}>×</button></div>
+     {selectedSettings.map(({id,ColorSetting})=><div className="tag-status-plugin-setting" key={id}><span>{t('pluginSetting_'+id)}</span><ColorSetting context={context} color={color}/><button type="button" aria-label={t('removeTagSetting')+' '+t('tag_'+color)+' '+t('pluginSetting_'+id)} onClick={()=>removeSetting(color,id)}>×</button></div>)}
+     {availableSettings.length>0&&<label className="tag-status-add-setting"><span>{t('selectPluginSetting')}</span><select aria-label={t('addPluginSettingFor')+' '+t('tag_'+color)} value="" onChange={event=>{if(event.target.value)addSetting(color,event.target.value)}}><option value="" disabled>{t('selectPluginSetting')}</option>{availableSettings.map(setting=><option key={setting.id} value={setting.id}>{t('pluginSetting_'+setting.id)}</option>)}</select></label>}
     </div>
    })}
-   {availableColors.length>0&&<label className="tag-status-add-color"><span>Select color rule</span><select aria-label="Add tag color relaunch setting" value="" onChange={event=>{const color=event.target.value as WidgetTagColor;if(widgetTagColors.includes(color))addColor(color)}}><option value="" disabled>Select color…</option>{availableColors.map(color=><option key={color} value={color}>{color[0].toUpperCase()+color.slice(1)}</option>)}</select></label>}
+   {availableColors.length>0&&<label className="tag-status-add-color"><span>{t('selectColorRule')}</span><select aria-label={t('addTagColorSetting')} value="" onChange={event=>{const color=event.target.value as WidgetTagColor;if(widgetTagColors.includes(color))addColor(color)}}><option value="" disabled>{t('selectColor')}</option>{availableColors.map(color=><option key={color} value={color}>{t('tag_'+color)}</option>)}</select></label>}
   </>}
  </section>;
 }
 
 export function RelaunchColorSettingControl({context,color}:WidgetPluginColorSettingProps){
- return <select aria-label={'Status card '+color+' relaunch mode'} disabled={!context||context.relaunchPluginStatus!=='enabled'} value={context?.colors[color]??'follow'} onChange={event=>context?.setColorMode(color,event.target.value==='follow'?null:event.target.value as 'automatic'|'manual')}><option value="follow">Follow global</option><option value="automatic">Automatic</option><option value="manual">Manual</option></select>;
+ const t=useT();return <select aria-label={t('tagRelaunchMode')+' '+t('tag_'+color)} disabled={!context||context.relaunchPluginStatus!=='enabled'} value={context?.colors[color]??'follow'} onChange={event=>context?.setColorMode(color,event.target.value==='follow'?null:event.target.value as 'automatic'|'manual')}><option value="follow">{t('followGlobal')}</option><option value="automatic">{t('automatic')}</option><option value="manual">{t('manual')}</option></select>;
 }
 
 export function ScreenshotColorSettingControl({context,color}:WidgetPluginColorSettingProps){
+ const t=useT();
  const override=context?.screenshotColorOverrides[color];
  const value=override===undefined?'follow':override?'enabled':'disabled';
- return <select aria-label={'Status card '+color+' screenshot setting'} value={value} onChange={event=>context?.setScreenshotColorOverride(color,event.target.value==='follow'?null:event.target.value==='enabled')}><option value="follow">Follow global</option><option value="enabled">Camera enabled</option><option value="disabled">Camera disabled</option></select>;
+ return <select aria-label={t('tagScreenshotSetting')+' '+t('tag_'+color)} value={value} onChange={event=>context?.setScreenshotColorOverride(color,event.target.value==='follow'?null:event.target.value==='enabled')}><option value="follow">{t('followGlobal')}</option><option value="enabled">{t('cameraEnabled')}</option><option value="disabled">{t('cameraDisabled')}</option></select>;
 }
 
 export function ScreenshotSettingsControl({context}:WidgetPluginControlProps){
- return <fieldset className="status-plugin-settings"><legend>Screenshot button</legend><label className="settings-row"><span>Show for</span><select aria-label="Status card screenshot scope" value={context?.screenshotMode??'global'} onChange={event=>context?.setScreenshotMode(event.target.value as 'global'|'tag-colors'|'off')}><option value="global">All widgets</option><option value="tag-colors">Selected tag colors</option><option value="off">Off</option></select></label>{context?.screenshotMode==='tag-colors'&&<div className="status-plugin-colors">{widgetTagColors.map(color=><label key={color}><input type="checkbox" aria-label={'Status card '+color+' screenshot color'} checked={context.screenshotColors.includes(color)} onChange={event=>context.setScreenshotColor(color,event.target.checked)}/>{color[0].toUpperCase()+color.slice(1)}</label>)}</div>}</fieldset>;
+ const t=useT();return <fieldset className="status-plugin-settings"><legend>{t('screenshotButton')}</legend><label className="settings-row"><span>{t('showFor')}</span><select aria-label={t('screenshotScope')} value={context?.screenshotMode??'global'} onChange={event=>context?.setScreenshotMode(event.target.value as 'global'|'tag-colors'|'off')}><option value="global">{t('allWidgets')}</option><option value="tag-colors">{t('selectedTagColors')}</option><option value="off">{t('off')}</option></select></label>{context?.screenshotMode==='tag-colors'&&<div className="status-plugin-colors">{widgetTagColors.map(color=><label key={color}><input type="checkbox" aria-label={t('screenshotColorFor')+' '+t('tag_'+color)} checked={context.screenshotColors.includes(color)} onChange={event=>context.setScreenshotColor(color,event.target.checked)}/>{t('tag_'+color)}</label>)}</div>}</fieldset>;
 }
 
 export function ClockTimerColorSettingControl({context,color}:WidgetPluginColorSettingProps){
+ const t=useT();
  const override=context?.clockColorOverrides[color],value=override===undefined?'follow':override?'enabled':'disabled';
- return <select aria-label={'Status card '+color+' clock timer setting'} value={value} onChange={event=>context?.setClockColorOverride(color,event.target.value==='follow'?null:event.target.value==='enabled')}><option value="follow">Follow global</option><option value="enabled">Clock enabled</option><option value="disabled">Clock disabled</option></select>;
+ return <select aria-label={t('tagClockSetting')+' '+t('tag_'+color)} value={value} onChange={event=>context?.setClockColorOverride(color,event.target.value==='follow'?null:event.target.value==='enabled')}><option value="follow">{t('followGlobal')}</option><option value="enabled">{t('clockEnabled')}</option><option value="disabled">{t('clockDisabled')}</option></select>;
 }
 
 export function ClockTimerSettingsControl({context}:WidgetPluginControlProps){
- return <fieldset className="status-plugin-settings"><legend>Clock timer add-on</legend><label className="settings-row"><span>Show for</span><select aria-label="Status card clock timer scope" value={context?.clockMode??'global'} onChange={event=>context?.setClockMode(event.target.value as ClockPluginMode)}><option value="global">All tagged and untagged widgets</option><option value="tag-colors">Selected tag colors</option><option value="off">Off</option></select></label>{context?.clockMode==='tag-colors'&&<div className="status-plugin-colors">{widgetTagColors.map(color=><label key={color}><input type="checkbox" aria-label={'Status card '+color+' clock timer color'} checked={context.clockColors.includes(color)} onChange={event=>context.setClockColor(color,event.target.checked)}/>{color[0].toUpperCase()+color.slice(1)}</label>)}</div>}<p className="notice">Add Clock timer to an individual card with its + button. Color rules can override this setting.</p></fieldset>;
+ const t=useT();return <fieldset className="status-plugin-settings"><legend>{t('clockTimerAddon')}</legend><label className="settings-row"><span>{t('showFor')}</span><select aria-label={t('clockTimerScope')} value={context?.clockMode??'global'} onChange={event=>context?.setClockMode(event.target.value as ClockPluginMode)}><option value="global">{t('allTaggedWidgets')}</option><option value="tag-colors">{t('selectedTagColors')}</option><option value="off">{t('off')}</option></select></label>{context?.clockMode==='tag-colors'&&<div className="status-plugin-colors">{widgetTagColors.map(color=><label key={color}><input type="checkbox" aria-label={t('clockTimerColorFor')+' '+t('tag_'+color)} checked={context.clockColors.includes(color)} onChange={event=>context.setClockColor(color,event.target.checked)}/>{t('tag_'+color)}</label>)}</div>}<p className="notice">{t('clockAddIndividual')}</p></fieldset>;
 }
 
 export function LockWidgetControl({widget,update}:WidgetPluginControlProps){
- if(!widget.lockPluginEnabled)return <div className="settings-row"><span>Widget Lock<small>Add the Lock plugin from a widget’s + menu.</small></span></div>;
- return <div className="settings-row"><span>Widget Lock<small>{widget.locked?'Movement and close are disabled.':'Widget can be moved and closed.'}</small></span><button type="button" aria-label={widget.locked?'Unlock widget':'Lock widget'} aria-pressed={widget.locked} onClick={()=>update({locked:!widget.locked})}><Icon name="lock"/>{widget.locked?'Unlock':'Lock'}</button></div>;
+ const t=useT();if(!widget.lockPluginEnabled)return <div className="settings-row"><span>{t('widgetLock')}<small>{t('addLockPluginHint')}</small></span></div>;
+ return <div className="settings-row"><span>{t('widgetLock')}<small>{widget.locked?t('widgetLockedDescription'):t('widgetUnlockedDescription')}</small></span><button type="button" aria-label={widget.locked?t('unlockWidget'):t('lockWidget')} aria-pressed={widget.locked} onClick={()=>update({locked:!widget.locked})}><Icon name="lock"/>{widget.locked?t('unlock'):t('lock')}</button></div>;
 }
