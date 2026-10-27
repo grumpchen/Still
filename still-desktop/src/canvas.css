@@ -499,11 +499,11 @@ dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
 
 /* Shared satin-metal shell and clear glass interiors for Liquid Glass widgets. */
 .liquid-glass .app .sidebar{
- background:linear-gradient(145deg,rgba(255,255,255,.09),rgba(255,255,255,.025)),rgba(18,34,25,.12);
- border-color:rgba(255,255,255,.18);
- backdrop-filter:blur(24px) saturate(1.22);
- -webkit-backdrop-filter:blur(24px) saturate(1.22);
- box-shadow:0 8px 34px rgba(1,20,8,.08),inset 0 1px 0 rgba(255,255,255,.16);
+ background:linear-gradient(145deg,rgba(255,255,255,.035),rgba(255,255,255,.008)),rgba(18,34,25,.055);
+ border-color:rgba(255,255,255,.15);
+ backdrop-filter:none;
+ -webkit-backdrop-filter:none;
+ box-shadow:0 8px 34px rgba(1,20,8,.05),inset 0 1px 0 rgba(255,255,255,.1);
 }
 .liquid-glass .app .canvas-card,
 .liquid-glass .app.glass-widget-headers .canvas-card{
@@ -515,12 +515,12 @@ dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
 .liquid-glass .app .canvas-card>.card-head,
 .liquid-glass .app.glass-widget-headers .canvas-card>.card-head{
  color:#f5f8f6;
- background:linear-gradient(112deg,rgba(236,241,239,.6),rgba(94,103,98,.32) 22%,rgba(225,231,228,.56) 49%,rgba(82,91,86,.34) 75%,rgba(227,233,230,.58)),
-  repeating-linear-gradient(100deg,rgba(255,255,255,.025) 0 1px,transparent 1px 28px),rgba(110,120,114,.22);
+ background:linear-gradient(112deg,rgba(236,241,239,.36),rgba(94,103,98,.19) 22%,rgba(225,231,228,.34) 49%,rgba(82,91,86,.2) 75%,rgba(227,233,230,.36)),
+  repeating-linear-gradient(100deg,rgba(255,255,255,.02) 0 1px,transparent 1px 28px),rgba(110,120,114,.12);
  background-blend-mode:normal,soft-light,normal;
  border-bottom:1px solid rgba(244,248,246,.38);
- backdrop-filter:blur(22px) saturate(1.38);
- -webkit-backdrop-filter:blur(22px) saturate(1.38);
+ backdrop-filter:none;
+ -webkit-backdrop-filter:none;
  box-shadow:inset 0 1px 0 rgba(255,255,255,.55),inset 0 -1px 0 rgba(35,42,38,.15);
 }
 .liquid-glass .app .canvas-card>.card-head svg,
@@ -531,9 +531,9 @@ dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
 .liquid-glass .app.glass-widget-headers .canvas-card>.card-head .move-grip{color:rgba(249,252,250,.8)}
 .liquid-glass .app .canvas-card>.widget-content,
 .liquid-glass .app.glass-widget-headers .canvas-card>.widget-content{
- background:linear-gradient(155deg,rgba(255,255,255,.12),rgba(255,255,255,.035) 52%,rgba(255,255,255,.09)),rgba(198,215,204,.12);
- backdrop-filter:blur(16px) saturate(1.28);
- -webkit-backdrop-filter:blur(16px) saturate(1.28);
+ background:linear-gradient(155deg,rgba(255,255,255,.055),rgba(255,255,255,.015) 52%,rgba(255,255,255,.04)),rgba(198,215,204,.045);
+ backdrop-filter:none;
+ -webkit-backdrop-filter:none;
 }
 .liquid-glass .app .canvas-card.widget-notes,
 .liquid-glass .app.glass-widget-headers .canvas-card.widget-notes{
@@ -542,11 +542,19 @@ dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
 }
 .liquid-glass .app .canvas-card.widget-notes>.widget-content,
 .liquid-glass .app.glass-widget-headers .canvas-card.widget-notes>.widget-content{
- background:linear-gradient(155deg,rgba(226,234,230,.13),rgba(196,207,201,.055) 52%,rgba(230,237,233,.11)),rgba(53,62,57,.22);
- backdrop-filter:blur(16px) saturate(1.3);
- -webkit-backdrop-filter:blur(16px) saturate(1.3);
- box-shadow:inset 0 1px 0 rgba(255,255,255,.14),inset 0 -1px 0 rgba(0,0,0,.1);
- text-shadow:0 1px 2px rgba(0,0,0,.42);
+ background:linear-gradient(155deg,rgba(226,234,230,.055),rgba(196,207,201,.018) 52%,rgba(230,237,233,.045)),rgba(53,62,57,.075);
+ backdrop-filter:none;
+ -webkit-backdrop-filter:none;
+ box-shadow:inset 0 1px 0 rgba(255,255,255,.1),inset 0 -1px 0 rgba(0,0,0,.06);
+ text-shadow:0 1px 2px rgba(0,0,0,.28);
+}
+.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes>.card-head{
+ background:radial-gradient(ellipse 34% 140% at var(--reflect-x) var(--reflect-y),rgba(255,255,255,.22),transparent 76%),
+  linear-gradient(110deg,rgba(242,246,244,.36),rgba(102,111,107,.2) 20%,rgba(225,231,228,.34) 45%,rgba(82,91,87,.2) 70%,rgba(219,226,222,.36)),
+  repeating-linear-gradient(100deg,rgba(255,255,255,.025) 0 1px,transparent 1px 28px),rgba(80,88,84,.14);
+ background-blend-mode:screen,normal,soft-light,normal;
+ backdrop-filter:none;
+ -webkit-backdrop-filter:none;
 }
 @media(prefers-reduced-transparency:reduce){
  .liquid-glass .app .sidebar{background:#26392d;backdrop-filter:none;-webkit-backdrop-filter:none}
@@ -555,7 +563,3 @@ dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
  .liquid-glass .app .canvas-card>.widget-content,.liquid-glass .app.glass-widget-headers .canvas-card>.widget-content{backdrop-filter:none;-webkit-backdrop-filter:none}
  .liquid-glass .app .canvas-card.widget-notes>.widget-content,.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes>.widget-content{background:#39443e;backdrop-filter:none;-webkit-backdrop-filter:none}
 }
- .liquid-glass .app.glass-widget-headers .canvas-card.widget-notes::before{display:none}
- .liquid-glass .app.glass-widget-headers .canvas-card.widget-notes>.card-head{background:radial-gradient(ellipse 34% 140% at var(--reflect-x) var(--reflect-y),rgba(255,255,255,.3),transparent 76%),linear-gradient(110deg,rgba(242,246,244,.62),rgba(102,111,107,.48) 20%,rgba(225,231,228,.64) 45%,rgba(82,91,87,.5) 70%,rgba(219,226,222,.62)),repeating-linear-gradient(100deg,rgba(255,255,255,.035) 0 1px,transparent 1px 28px),rgba(80,88,84,.44);background-blend-mode:screen,normal,soft-light,normal;backdrop-filter:blur(24px) saturate(1.35);-webkit-backdrop-filter:blur(24px) saturate(1.35);transition:--reflect-x .18s ease-out,--reflect-y .18s ease-out}
- .liquid-glass .app.glass-widget-headers .canvas-card.widget-notes>.widget-content{background:linear-gradient(155deg,rgba(49,53,55,.82),rgba(29,32,34,.8) 48%,rgba(39,43,45,.84));backdrop-filter:blur(22px) saturate(1.38);-webkit-backdrop-filter:blur(22px) saturate(1.38);box-shadow:inset 0 1px 0 rgba(255,255,255,.12),inset 0 -1px 0 rgba(0,0,0,.22);text-shadow:0 1px 2px rgba(0,0,0,.72)}
-@media(prefers-reduced-transparency:reduce){.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes{background:#25292a;backdrop-filter:none;-webkit-backdrop-filter:none}.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes>.widget-content{background:#202426;backdrop-filter:none;-webkit-backdrop-filter:none}.liquid-glass .app.glass-widget-headers .canvas-card.widget-notes::before{display:none}}
