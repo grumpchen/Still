@@ -72,12 +72,14 @@ export function assistantAddedWidgetReceipt(actions:AssistantAction[]):string{
 export function safeAssistantReceipt(text:string):string{
   return text.trim()?text:'Still could not confirm whether that action completed. Check the workspace before trying again.';
 }
-export function assistantActionsDescription(actions:AssistantAction[],workspace:Workspace,tray:AssistantTrayItem[]):string{
+export function assistantActionsDescription(actions:AssistantAction[],workspace:Workspace,tray:AssistantTrayItem[],copy?:{types?:Partial<Record<AssistantActionType,string>>;widget?:string;widgetType?:(type:WidgetType)=>string;widgetLabel?:(widget:WidgetInstance)=>string;named?:string;withInitialNote?:string;seconds?:string;off?:string;join?:string}):string{
   const labels:Record<AssistantActionType,string>={add_widget:'Create',open_saved:'Open saved',remove_widget:'Remove',minimize:'Minimize',restore:'Restore',save_to_tray:'Save to tray',set_timer:'Start timer on',edit_widget:'Edit',set_widget_plugin:'Change plugin on',set_sidebar_plugin:'Change sidebar plugin',rename_workspace:'Rename workspace'};
   return actions.map(action=>{
-    const names=action.ids.map(id=>action.type==='add_widget'?widgetCatalog[id as WidgetType]?.name:action.type==='open_saved'?tray.find(item=>item.id===id)?.name:action.type==='rename_workspace'?workspace.name:action.type==='set_sidebar_plugin'?id:workspace.widgets.find(item=>item.id===id)).map(value=>typeof value==='string'?value:value?widgetLabel(value):'widget');
-    return `${labels[action.type]} ${names.join(', ')}${action.title?` named “${action.title}”`:''}${action.text!==undefined?' with initial note text':''}${action.seconds!==undefined?` for ${action.seconds} seconds`:''}${action.enabled===false?' off':''}`;
-  }).join('; ');
+    const names=action.ids.map(id=>action.type==='add_widget'?copy?.widgetType?.(id as WidgetType)??widgetCatalog[id as WidgetType]?.name:action.type==='open_saved'?tray.find(item=>item.id===id)?.name:action.type==='rename_workspace'?workspace.name:action.type==='set_sidebar_plugin'?id:workspace.widgets.find(item=>item.id===id)).map(value=>typeof value==='string'?value:value?copy?.widgetLabel?.(value)??widgetLabel(value):copy?.widget??'widget');
+    const named=copy?.named?.replace('{name}',action.title??'')??` named “${action.title}”`;
+    const seconds=copy?.seconds?.replace('{count}',String(action.seconds??''))??` for ${action.seconds} seconds`;
+    return `${copy?.types?.[action.type]??labels[action.type]} ${names.join(', ')}${action.title?named:''}${action.text!==undefined?(copy?.withInitialNote??' with initial note text'):''}${action.seconds!==undefined?seconds:''}${action.enabled===false?(copy?.off??' off'):''}`;
+  }).join(copy?.join??'; ');
 }
 
 export function widgetLabel(widget:WidgetInstance):string {
