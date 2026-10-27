@@ -80,7 +80,7 @@ dialog{width:min(440px,calc(100vw - 32px));border:1px solid var(--border);border
 /* The wallpaper stays photographic; only its background layer is softened. */
 .liquid-glass{--canvas:#203026;--surface:rgb(245 249 245 / var(--glass-alpha,.68));--sidebar:rgb(24 42 31 / .24);--text:#18291f;--muted:#445a4b;--border:rgb(255 255 255 / .4);--accent:#145cff;--tint:rgb(255 255 255 / .25);--glass-rim:rgb(255 255 255 / .7);--glass-highlight:rgb(255 255 255 / .28);--glass-shadow:rgb(3 19 10 / .16);isolation:isolate;background:#203026;font-family:"Segoe UI Variable","Segoe UI",sans-serif}
 .liquid-glass::before,.liquid-glass::after{content:"";position:fixed;pointer-events:none;z-index:-1}
-.liquid-glass::before{inset:-24px;background:url('./assets/leaf-wallpaper.jpg') center center / cover no-repeat;filter:saturate(var(--wallpaper-saturation,.78)) blur(var(--wallpaper-blur,6px));}
+.liquid-glass::before{inset:-24px;background:url('./assets/leaf-wallpaper.jpg') center center / contain no-repeat;filter:saturate(var(--wallpaper-saturation,.78)) blur(var(--wallpaper-blur,6px));}
 .liquid-glass::after{inset:0;background:linear-gradient(135deg,rgb(14 29 21 / .16),rgb(12 26 18 / .05) 50%,rgb(8 20 14 / .24))}
 .liquid-glass.dark{--surface:rgb(25 37 30 / var(--glass-alpha,.68));--text:#eef5ef;--muted:#b9cbbb;--border:rgb(230 245 232 / .18);--accent:#9cbaff;--tint:rgb(235 255 238 / .09);--glass-rim:rgb(237 255 241 / .25);--glass-highlight:rgb(226 255 234 / .055);--glass-shadow:rgb(0 12 4 / .3);color-scheme:dark}
 .liquid-glass.dark::after{background:linear-gradient(135deg,rgb(7 15 10 / .35),rgb(7 15 10 / .17) 50%,rgb(7 15 10 / .4))}
