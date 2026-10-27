@@ -533,8 +533,8 @@ dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
  pointer-events:none;
  opacity:.075;
  mix-blend-mode:soft-light;
- background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='128' height='128'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.2'/%3E%3C/svg%3E");
- background-size:128px 128px;
+ background-image:repeating-linear-gradient(176deg,rgba(255,255,255,.14) 0 .35px,rgba(35,36,35,.035) .55px .85px,transparent 1.1px 9px),url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='128' height='128'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.2'/%3E%3C/svg%3E");
+ background-size:auto,128px 128px;
 }
 .app .canvas-card>.card-head svg,
 .app .canvas-card>.card-head .widget-controls button{color:#35403b}
