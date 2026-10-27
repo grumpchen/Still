@@ -515,13 +515,15 @@ dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
 .liquid-glass .app .canvas-card>.card-head,
 .liquid-glass .app.glass-widget-headers .canvas-card>.card-head{
  color:#f5f8f6;
- background:linear-gradient(112deg,rgba(236,241,239,.36),rgba(94,103,98,.19) 22%,rgba(225,231,228,.34) 49%,rgba(82,91,86,.2) 75%,rgba(227,233,230,.36)),
+ background:radial-gradient(ellipse 34% 140% at var(--reflect-x) var(--reflect-y),rgba(255,255,255,.24),transparent 76%),
+  linear-gradient(112deg,rgba(236,241,239,.36),rgba(94,103,98,.19) 22%,rgba(225,231,228,.34) 49%,rgba(82,91,86,.2) 75%,rgba(227,233,230,.36)),
   repeating-linear-gradient(100deg,rgba(255,255,255,.02) 0 1px,transparent 1px 28px),rgba(110,120,114,.12);
- background-blend-mode:normal,soft-light,normal;
+ background-blend-mode:screen,normal,soft-light,normal;
  border-bottom:1px solid rgba(244,248,246,.38);
  backdrop-filter:none;
  -webkit-backdrop-filter:none;
  box-shadow:inset 0 1px 0 rgba(255,255,255,.55),inset 0 -1px 0 rgba(35,42,38,.15);
+ transition:--reflect-x .16s ease-out,--reflect-y .16s ease-out;
 }
 .liquid-glass .app .canvas-card>.card-head svg,
 .liquid-glass .app.glass-widget-headers .canvas-card>.card-head svg,
