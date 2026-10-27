@@ -34,7 +34,7 @@ export default function TimerWidget({widget,variant,workspaceActive=true,update,
    update({end:null,remaining:0});
    notify(variant==='focus'?t('focusComplete'):t('clockTimerComplete'));
   }
- },[workspaceActive,remaining,widget.end,variant,update,notify]);
+ },[workspaceActive,remaining,widget.end,variant,update,notify,t]);
 
  const hours=Math.min(12,Math.floor(selected/3600));
  const minutes=Math.floor(selected%3600/60);

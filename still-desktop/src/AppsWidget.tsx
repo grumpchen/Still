@@ -6,9 +6,11 @@ import {appPanel,type AppAttachment,type AppPanelInfo} from './platform/appPanel
 import {appPanelFit,appPanelGeometry} from './domain/appPanel.ts';
 import {constrainPlacement} from './domain/layout.ts';
 import {observeCanvasScroll} from './platform/canvasScroll.ts';
+import {useT} from './localization.tsx';
 
 export default function AppsWidget({widget,update,notify,appOpenResult,obscured,workspaceActive=true,relaunchToken=0,onRelaunchStatus,appAttachment,appAttachmentHandled,pickApp}:WidgetProps){
- const host=useRef<HTMLDivElement>(null),picker=useRef<HTMLInputElement>(null),current=useRef({widget,update,notify,appOpenResult,obscured,workspaceActive,appAttachment,appAttachmentHandled,onRelaunchStatus});current.current={widget,update,notify,appOpenResult,obscured,workspaceActive,appAttachment,appAttachmentHandled,onRelaunchStatus};
+ const t=useT();
+ const host=useRef<HTMLDivElement>(null),picker=useRef<HTMLInputElement>(null),current=useRef({widget,update,notify,appOpenResult,obscured,workspaceActive,appAttachment,appAttachmentHandled,onRelaunchStatus,t});current.current={widget,update,notify,appOpenResult,obscured,workspaceActive,appAttachment,appAttachmentHandled,onRelaunchStatus,t};
  const [busy,setBusy]=useState(false),[ready,setReady]=useState(false),[opening,setOpening]=useState(false),[relaunchFailed,setRelaunchFailed]=useState(false),[externalOpened,setExternalOpened]=useState(false),[error,setError]=useState('');
  const [collectionResumed,setCollectionResumed]=useState(false);
  const schedule=useRef<()=>void>(()=>{}),launch=useRef<()=>Promise<boolean>>(async()=>false),resume=useRef<()=>Promise<boolean>>(async()=>false),detach=useRef<()=>Promise<void>>(async()=>{}),attach=useRef<(window:AppAttachment)=>Promise<boolean>>(async()=>false),relaunch=useRef<()=>Promise<void>>(async()=>{});
@@ -35,7 +37,7 @@ export default function AppsWidget({widget,update,notify,appOpenResult,obscured,
   launch.current=async()=>{
    const c=current.current;if(disposed||opened||launching||c.appAttachment||!c.widget.appKey||!c.workspaceActive||c.obscured)return false;
    launching=true;setOpening(true);setRelaunchFailed(false);setError('');
-   try{const g=geometry(),info=await appPanel.open(widget.id,c.widget.appKey,g.bounds,g.clip,g.grip,c.widget.appReuseExisting);if(disposed)return false;if(info.openedExternally){setExternalOpened(true);setReady(false);current.current.update({appPanelOpen:false});current.current.notify('Chrome opened in its own Windows window.');current.current.appOpenResult?.(widget.id,true);return true}opened=true;last='';setExternalOpened(false);setReady(true);fit(info);schedule.current();current.current.appOpenResult?.(widget.id,true);return true}
+   try{const g=geometry(),info=await appPanel.open(widget.id,c.widget.appKey,g.bounds,g.clip,g.grip,c.widget.appReuseExisting);if(disposed)return false;if(info.openedExternally){setExternalOpened(true);setReady(false);current.current.update({appPanelOpen:false});current.current.notify(current.current.t('chromeOpenedSeparately'));current.current.appOpenResult?.(widget.id,true);return true}opened=true;last='';setExternalOpened(false);setReady(true);fit(info);schedule.current();current.current.appOpenResult?.(widget.id,true);return true}
    catch(reason){if(!disposed){const message=String(reason);setError(message);setRelaunchFailed(true);current.current.update({appPanelOpen:false});current.current.appOpenResult?.(widget.id,false,message)}return false}finally{launching=false;if(!disposed)setOpening(false)}
   };
   resume.current=async()=>{
@@ -74,14 +76,14 @@ export default function AppsWidget({widget,update,notify,appOpenResult,obscured,
  useEffect(()=>{if(relaunchToken>0)void relaunch.current()},[relaunchToken]);
  useEffect(()=>{schedule.current();if(appAttachment&&workspaceActive&&!obscured)void attach.current(appAttachment);else if(widget.appPanelOpen&&workspaceActive&&!obscured)void launch.current();else if(!widget.appPanelOpen&&!collectionResumed)void detach.current()},[appAttachment,widget.appPanelOpen,workspaceActive,obscured,widget.placement,collectionResumed]);
  return <div className="app-panel">
-  <input ref={picker} aria-label="Choose app shortcut" type="file" accept=".exe,.lnk" hidden onChange={e=>{try{const result=previewFileDrop(Array.from(e.target.files??[]));if(result.entries[0])selected(result.entries[0]);else setError(result.errors.join(' '))}catch(reason){setError(String(reason))}e.target.value=''}}/>
+  <input ref={picker} aria-label={t('chooseAppShortcut')} type="file" accept=".exe,.lnk" hidden onChange={e=>{try{const result=previewFileDrop(Array.from(e.target.files??[]));if(result.entries[0])selected(result.entries[0]);else setError(result.errors.join(' '))}catch(reason){setError(String(reason))}e.target.value=''}}/>
   {error&&<p className="widget-error" role="alert">{error}</p>}
   <div ref={host} className="app-panel-host" data-native-app-id={appPanel.available&&ready?widget.id:undefined}>
-   <div className="app-panel-placeholder">{widget.appIconData?<img className="app-panel-app-icon" src={widget.appIconData} alt={widget.appName?widget.appName+' logo':''}/>:<span className="document-type-symbol type-app"><Icon name="apps"/></span>}<h2>{opening?'Opening app in panel…':ready?widget.appName+' · attached':externalOpened?'Opened in Chrome':widget.appName||'Your desktop apps'}</h2>
-    <p>{externalOpened?'Chrome is open in a separate Windows window, outside Still.':!widget.appKey?'Use Ctrl+Shift-click or the header control to attach an open app, or choose an app shortcut.':!appPanel.available?'The Windows version positions the real app window inside this panel.':ready?'The app follows this widget. Move it inside the workspace if its right edge crosses the boundary.':'Open the real app inside this widget, with its normal tools and documents.'}</p>
-    {!ready&&(widget.appWasCollected||(!widget.appKey&&widget.appName))&&<button disabled={opening||busy} onClick={()=>pickApp?.()}>Reattach open app…</button>}
-    {!ready&&<button disabled={opening||busy} onClick={()=>void choose()}>{widget.appKey?'Change app…':'Choose app…'}</button>}
-   {widget.appKey&&!ready&&!opening&&!widget.appPanelOpen&&<button className={'primary'+(relaunchFailed?' app-panel-relaunch-failed':'')} aria-invalid={relaunchFailed||undefined} aria-label={externalOpened?'Choose another Chrome profile':'Reopen '+widget.appName+' in widget'} disabled={busy||!appPanel.available} onClick={()=>{update({appPanelOpen:true});void launch.current()}}>{externalOpened?'Choose Chrome profile…':relaunchFailed?'Retry opening app':'Reopen app in widget'}</button>}
+   <div className="app-panel-placeholder">{widget.appIconData?<img className="app-panel-app-icon" src={widget.appIconData} alt={widget.appName?t('appLogo')+' '+widget.appName:''}/>:<span className="document-type-symbol type-app"><Icon name="apps"/></span>}<h2>{opening?t('openingAppInPanel'):ready?widget.appName+' · '+t('attached'):externalOpened?t('openedInChrome'):widget.appName||t('yourDesktopApps')}</h2>
+    <p>{externalOpened?t('chromeOutsideStill'):!widget.appKey?t('attachOpenAppHelp'):!appPanel.available?t('realAppWindowsOnly'):ready?t('appFollowsWidget'):t('openRealAppInWidget')}</p>
+    {!ready&&(widget.appWasCollected||(!widget.appKey&&widget.appName))&&<button disabled={opening||busy} onClick={()=>pickApp?.()}>{t('reattachOpenApp')}</button>}
+    {!ready&&<button disabled={opening||busy} onClick={()=>void choose()}>{widget.appKey?t('changeApp'):t('chooseApp')}</button>}
+   {widget.appKey&&!ready&&!opening&&!widget.appPanelOpen&&<button className={'primary'+(relaunchFailed?' app-panel-relaunch-failed':'')} aria-invalid={relaunchFailed||undefined} aria-label={externalOpened?t('chooseAnotherChromeProfile'):t('reopenAppInWidget')+' '+widget.appName} disabled={busy||!appPanel.available} onClick={()=>{update({appPanelOpen:true});void launch.current()}}>{externalOpened?t('chooseChromeProfile'):relaunchFailed?t('retryOpeningApp'):t('reopenAppInWidget')}</button>}
    </div>
   </div>
  </div>;
