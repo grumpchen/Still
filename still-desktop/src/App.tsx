@@ -13,7 +13,7 @@ import WorkspaceCanvas from './WorkspaceCanvas.tsx';
 import DashboardHome from './DashboardHome.tsx';
 import LibraryHome from './LibraryHome.tsx';
 import AssistantPanel from './AssistantPanel.tsx';
-import {addFocusForAssistantTimer,applyAssistantWidgetActions,applyLayoutPlan,assistantAddedWidgetReceipt,assistantTrayItems,MAX_ASSISTANT_WIDGETS,validateAssistantActions,validateAssistantActionIntent,type AssistantAction,type LayoutPlan} from './domain/assistant.ts';
+import {addFocusForAssistantTimer,applyAssistantWidgetActions,applyLayoutPlan,assistantTrayItems,MAX_ASSISTANT_WIDGETS,validateAssistantActions,validateAssistantActionIntent,type AssistantAction,type LayoutPlan} from './domain/assistant.ts';
 import {checkedCalendarEvents,checkedStudyCalendarDrafts,type StudyCalendarEventDraft} from './domain/studyCalendar.ts';
 import {canvasExtent,canvasHeight,nextPlacement,placement,constrainPlacement} from './domain/layout.ts';
 import type {SnapLayoutId} from './domain/snapLayouts.ts';
@@ -163,7 +163,7 @@ export default function App(){
     const sourceForTransfer=previewPlacement?{...source,widgets:source.widgets.map(item=>item.id===widgetId?{...item,placement:previewPlacement,...(previewRestorePlacement?{restorePlacement:previewRestorePlacement}:{})}:item)}:source;
     const transfer=transferWidgetInstance(sourceForTransfer,destination,widgetId,width,height);if(!transfer)return;
     setState(s=>({...s,activeId:s.followWidgetToWorkspace?destinationId:s.activeId,workspaces:s.workspaces.map(w=>w.id===sourceWorkspaceId?transfer.source:w.id===destinationId?transfer.destination:w)}));
-    setArrange(false);notify((widget.title.trim()||widgetRegistry[widget.type].name)+' moved to '+destination.name+'.');
+    setArrange(false);notify(translate(state.locale,'widgetMovedToWorkspace').replace('{widget}',widget.title.trim()||translate(state.locale,'widget_'+widget.type)).replace('{workspace}',destination.name));
   }
   function openAppsTrayDialog(workspaceId:string){setAppTarget({workspaceId});setAppsDialogMode('attach');setModal('appsTray')}
   function stackWidgets(){const viewport=document.querySelector<HTMLElement>('.workspace-surface:not([hidden]) .canvas-viewport'),width=canvasExtent(viewport?.clientWidth??1000,workspace.widgets),height=canvasHeight(viewport?.clientHeight??700,workspace.widgets);undo.current=state;setState(s=>({...s,workspaces:s.workspaces.map(w=>w.id===s.activeId?{...w,widgets:stackWorkspaceWidgets(w.widgets,width,height)}:w)}));notify('Open widgets and Groups/minimized widgets arranged in separate stacks.')}
@@ -359,8 +359,8 @@ export default function App(){
             if(shortcut.kind!=='app'||!shortcut.sourceId)throw new Error(translate(captureState.current.locale,'appShortcutCreateError'));
             reusable={...widget,appKey:shortcut.sourceId,appName:shortcut.name};
           }
-          const preset=presetFromWidget(reusable);nextPresets=upsertSavedPresets(nextPresets,[preset]);saved.push(widget.title.trim()||widgetRegistry[widget.type].name);
-        }catch(reason){failed.push(`${widget.title.trim()||widgetRegistry[widget.type].name}: ${String((reason as Error).message??reason)}`)}
+          const preset=presetFromWidget(reusable);nextPresets=upsertSavedPresets(nextPresets,[preset]);saved.push(widget.title.trim()||translate(current.locale,'widget_'+widget.type));
+        }catch(reason){failed.push(`${widget.title.trim()||translate(current.locale,'widget_'+widget.type)}: ${String((reason as Error).message??reason)}`)}
       }
     }
     const current=captureState.current,owner=current.workspaces.find(item=>item.id===workspaceId);
@@ -406,20 +406,21 @@ export default function App(){
     if(stateChanged){undo.current=current;setState({...current,presets:nextPresets,sidebarPlugins:nextSidebarPlugins,workspaces:current.workspaces.map(item=>item.id===workspaceId?nextWorkspaceRecord:item)});if(sidebarActions.some(action=>action.enabled===false&&action.ids.includes('layout')))setLayoutMode(null)}
     const removedAppIds=removedWidgets.filter(widget=>widget.type==='apps').map(widget=>widget.id);
     if(removedAppIds.length){setAppAttachments(attachments=>Object.fromEntries(Object.entries(attachments).filter(([id])=>!removedAppIds.includes(id))));for(const id of removedAppIds)if(appPanel.available)void appPanel.release(id,current.closeAppOnWidgetClose).catch(error=>notify('Widget removed, but its attached app could not be released to the desktop: '+String(error)));}
-    const result:string[]=[];
-    if(actions.some(action=>action.type==='minimize'))result.push(minimized.length?`Minimized ${minimized.length} widget${minimized.length===1?'':'s'} as compact cards on the canvas.`:'Those widgets were already minimized.');
-    if(actions.some(action=>action.type==='restore'))result.push(restored.length?`Restored ${restored.length} widget${restored.length===1?'':'s'}.`:'Those widgets were already restored.');
-    const addedReceipt=assistantAddedWidgetReceipt(actions);if(addedReceipt)result.push(addedReceipt);
-    if(renamed)result.push(`Renamed this workspace to ${renamed.trim()}.`);
-    for(const action of sidebarActions)result.push(action.ids.map(plugin=>{const name=plugin==='stack'?'Stack':'Layout';return changedSidebarPlugins.get(plugin as SidebarPlugin)?`${action.enabled?'Added':'Removed'} ${name}`:`${name} was already ${action.enabled?'added':'removed'}`}).join('; ')+'.');
-    for(const action of actions.filter(item=>item.type==='set_widget_plugin'))result.push(`${action.enabled?'Added':'Removed'} the Clock timer ${action.enabled?'to':'from'} ${action.ids.map(id=>{const widget=nextWorkspace.widgets.find(item=>item.id===id);return widget?.title||widget&&widgetRegistry[widget.type].name||'widget'}).join(', ')}.`);
-    for(const action of actions.filter(item=>item.type==='edit_widget'))result.push(`Updated ${action.ids.map(id=>{const widget=nextWorkspace.widgets.find(item=>item.id===id);return widget?.title||widget&&widgetRegistry[widget.type].name||'widget'}).join(', ')}.`);
-    if(removedWidgets.length)result.push(`Removed ${removedWidgets.map(widget=>widget.title.trim()||widgetRegistry[widget.type].name).join(', ')} from ${owner.name}. Saved shortcuts stay in the tray; Undo change restores the widget${removedWidgets.length===1?'':'s'}.`);
-    if(actions.some(action=>action.type==='save_to_tray'))result.push(saved.length?`Saved ${saved.length} reusable shortcut${saved.length===1?'':'s'} to the widget tray. The original widgets stay open.`:translate(current.locale,'noReusableShortcuts'));
-    if(openAction)result.push(opened?`Opened ${opened} saved tray item${opened===1?'':'s'} in ${owner.name}.${alreadyOpen?` ${alreadyOpen} app shortcut${alreadyOpen===1?' was':'s were'} already open.`:''}`:`No saved items were opened.${alreadyOpen?` ${alreadyOpen} app shortcut${alreadyOpen===1?' was':'s were'} already open.`:''}`);
-    for(const action of actions.filter(item=>item.type==='set_timer')){const seconds=action.seconds??0,label=seconds%3600===0?`${seconds/3600} hour${seconds===3600?'':'s'}`:seconds%60===0?`${seconds/60} minute${seconds===60?'':'s'}`:`${seconds} seconds`;const names=action.ids.map(id=>{const widget=nextWorkspace.widgets.find(item=>item.id===id);return widget?widget.title||widgetRegistry[widget.type].name:''}).filter(Boolean);result.push(`Started a ${label} timer on ${names.join(', ')}.`)}
-    if(failed.length)result.push(`Could not save: ${failed.join('; ')}`);
-    return result.join(' ');
+    const result:string[]=[],t=(key:string)=>translate(current.locale,key),joinNames=(names:string[])=>names.join(current.locale==='zh-CN'?'、':', '),describeWidgets=(ids:string[])=>joinNames(ids.map(id=>{const widget=nextWorkspace.widgets.find(item=>item.id===id);return widget?.title||widget&&t('widget_'+widget.type)||t('widget')}));
+    if(actions.some(action=>action.type==='minimize'))result.push(minimized.length?t(minimized.length===1?'assistantMinimizedOne':'assistantMinimizedMany').replace('{count}',String(minimized.length)) :t('assistantAlreadyMinimized'));
+    if(actions.some(action=>action.type==='restore'))result.push(restored.length?t(restored.length===1?'assistantRestoredOne':'assistantRestoredMany').replace('{count}',String(restored.length)):t('assistantAlreadyRestored'));
+    const addedCounts=new Map<string,number>();for(const action of actions)if(action.type==='add_widget')for(const id of action.ids)addedCounts.set(id,(addedCounts.get(id)??0)+1);
+    if(addedCounts.size){const addedNames=[...addedCounts].map(([id,count])=>`${t('widget_'+id)}${count>1?` × ${count}`:''}`);result.push(t('assistantAddedWidgets').replace('{widgets}',joinNames(addedNames)))}
+    if(renamed)result.push(t('assistantWorkspaceRenamed').replace('{name}',renamed.trim()));
+    for(const action of sidebarActions)for(const plugin of action.ids as SidebarPlugin[]){const name=plugin==='stack'?t('stack'):t('layout'),changed=changedSidebarPlugins.get(plugin as SidebarPlugin);const key=changed?(action.enabled?'assistantSidebarPluginAdded':'assistantSidebarPluginRemoved'):(action.enabled?'assistantSidebarPluginAlreadyAdded':'assistantSidebarPluginAlreadyRemoved');result.push(t(key).replace('{name}',name))}
+    for(const action of actions.filter(item=>item.type==='set_widget_plugin'))result.push(t(action.enabled?'assistantClockTimerPluginAdded':'assistantClockTimerPluginRemoved').replace('{widgets}',describeWidgets(action.ids)));
+    for(const action of actions.filter(item=>item.type==='edit_widget'))result.push(t('assistantWidgetsUpdated').replace('{widgets}',describeWidgets(action.ids)));
+    if(removedWidgets.length){const names=joinNames(removedWidgets.map(widget=>widget.title.trim()||t('widget_'+widget.type)));result.push(t('assistantWidgetsRemoved').replace('{widgets}',names).replace('{workspace}',owner.name))}
+    if(actions.some(action=>action.type==='save_to_tray'))result.push(saved.length?t(saved.length===1?'assistantShortcutSaved':'assistantShortcutsSaved').replace('{count}',String(saved.length)):t('noReusableShortcuts'));
+    if(openAction){if(opened){const key=opened===1?'assistantOneSavedItemOpened':'assistantSavedItemsOpened';result.push(t(key).replace('{workspace}',owner.name).replace('{count}',String(opened)))}else result.push(t('assistantNoSavedItemsOpened'));if(alreadyOpen)result.push(t('assistantAppsAlreadyOpen').replace('{count}',String(alreadyOpen)))}
+    for(const action of actions.filter(item=>item.type==='set_timer')){const seconds=action.seconds??0,count=seconds%3600===0?seconds/3600:seconds%60===0?seconds/60:seconds,unitKey=seconds%3600===0?(count===1?'durationHour':'durationHours'):seconds%60===0?(count===1?'durationMinute':'durationMinutes'):(count===1?'durationSecond':'durationSeconds'),duration=t(unitKey).replace('{count}',String(count));result.push(t('assistantTimerStarted').replace('{duration}',duration).replace('{widgets}',describeWidgets(action.ids)))}
+    if(failed.length)result.push(t('assistantCouldNotSave').replace('{details}',failed.join('; ')));
+    return result.join(current.locale==='zh-CN'?'':' ');
   }
   async function clearAssistantTray(workspaceId:string):Promise<string>{
     const current=captureState.current,owner=current.workspaces.find(item=>item.id===workspaceId);
