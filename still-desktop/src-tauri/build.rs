@@ -4,7 +4,7 @@ fn main() {
             tauri_build::AppManifest::new().commands(&[
                 "assistant_configured", "assistant_models", "assistant_set_key", "assistant_chat", "assistant_key_setup",
                 "chrome_open", "widget_capture", "widget_export",
-                "files_choose", "files_list", "files_open", "files_reuse", "files_preview", "files_extract_pdf_text",
+                "files_choose", "files_list", "files_open", "files_reuse", "files_preview", "files_extract_pdf_text", "files_library_search",
                 "notes_library_choose", "notes_library_list", "notes_library_read", "notes_library_write", "notes_library_create",
                 "document_open", "document_choose", "document_preview",
                 "app_open", "app_choose",

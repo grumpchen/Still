@@ -60,6 +60,12 @@ pub struct FileEntry { name: String, path: String, directory: bool, size: u64, b
 pub(crate) struct FilePreview { mime_type: String, base64: String }
 #[derive(Serialize)]
 #[serde(rename_all="camelCase")]
+pub(crate) struct LibrarySearchHit { widget_id:String, entry:FileEntry }
+#[derive(Serialize)]
+#[serde(rename_all="camelCase")]
+pub(crate) struct LibrarySearchResponse { results:Vec<LibrarySearchHit>, unavailable_widget_ids:Vec<String>, truncated:bool }
+#[derive(Serialize)]
+#[serde(rename_all="camelCase")]
 pub struct FolderListing { root_name: String, location: String, entries: Vec<FileEntry>, truncated: bool }
 #[derive(Serialize)]
 #[serde(rename_all="camelCase")]
@@ -205,11 +211,11 @@ fn listing(root: &Path, location: &str) -> Result<FolderListing,String> {
     entries.sort_by(|a,b| b.directory.cmp(&a.directory).then(a.name.to_lowercase().cmp(&b.name.to_lowercase())));
     Ok(FolderListing{root_name:root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "Selected folder".into()),location:location.into(),entries,truncated})
 }
-fn search_tree(root:&Path,directory:&Path,query:&str,results:&mut Vec<FileEntry>,scanned:&mut usize,depth:usize)->Result<(),String>{
-    const MAX_SEARCH_RESULTS:usize=500;const MAX_SEARCH_ENTRIES:usize=10000;const MAX_SEARCH_DEPTH:usize=20;
-    if results.len()>=MAX_SEARCH_RESULTS||*scanned>=MAX_SEARCH_ENTRIES||depth>=MAX_SEARCH_DEPTH{return Ok(())}
+fn search_tree_with_limits(root:&Path,directory:&Path,query:&str,results:&mut Vec<FileEntry>,scanned:&mut usize,depth:usize,result_limit:usize,scan_limit:usize,truncated:&mut bool)->Result<(),String>{
+    const MAX_SEARCH_DEPTH:usize=20;
+    if results.len()>=result_limit||*scanned>=scan_limit||depth>=MAX_SEARCH_DEPTH{*truncated=true;return Ok(())}
     for item in fs::read_dir(directory).map_err(|_|"Could not search this folder")?{
-        if results.len()>=MAX_SEARCH_RESULTS||*scanned>=MAX_SEARCH_ENTRIES{break}
+        if results.len()>=result_limit||*scanned>=scan_limit{*truncated=true;break}
         *scanned+=1;let Ok(item)=item else{continue};
         if item.file_type().map(|kind|kind.is_symlink()).unwrap_or(true){continue}
         let target=match item.path().canonicalize(){Ok(value) if value.starts_with(root)=>value,_=>continue};
@@ -217,9 +223,12 @@ fn search_tree(root:&Path,directory:&Path,query:&str,results:&mut Vec<FileEntry>
         let name=item.file_name().to_string_lossy().into_owned();
         let relative=target.strip_prefix(root).map_err(|_|"Search result escaped its selected folder")?.components().map(|part|part.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/");
         if name.to_lowercase().contains(query){results.push(FileEntry{name,path:relative,directory:metadata.is_dir(),size:metadata.len(),blocked:metadata.is_file()&&blocked(&target)})}
-        if metadata.is_dir(){search_tree(root,&target,query,results,scanned,depth+1)?}
+        if metadata.is_dir(){search_tree_with_limits(root,&target,query,results,scanned,depth+1,result_limit,scan_limit,truncated)?}
     }
     Ok(())
+}
+fn search_tree(root:&Path,directory:&Path,query:&str,results:&mut Vec<FileEntry>,scanned:&mut usize,depth:usize)->Result<(),String>{
+    let mut truncated=false;search_tree_with_limits(root,directory,query,results,scanned,depth,500,10_000,&mut truncated)
 }
 
 const NOTE_LIBRARY_MAX_FILES:usize=500;
@@ -461,6 +470,26 @@ pub async fn files_search(webview:Webview,roots:State<'_,FolderRoots>,id:String,
     let root=roots.root(&id)?.canonicalize().map_err(|_|"The selected folder is unavailable. Choose it again.")?;
     let mut results=Vec::new();let mut scanned=0;search_tree(&root,&root,&query,&mut results,&mut scanned,0)?;
     results.sort_by(|a,b|a.path.to_lowercase().cmp(&b.path.to_lowercase()));Ok(results)
+}
+#[tauri::command]
+pub async fn files_library_search(webview:Webview,roots:State<'_,FolderRoots>,ids:Vec<String>,query:String)->Result<LibrarySearchResponse,String>{
+    crate::security::authorize(&webview)?;
+    const MAX_LIBRARY_SEARCH_WIDGETS:usize=40;const MAX_LIBRARY_SEARCH_RESULTS:usize=500;const MAX_LIBRARY_SEARCH_ENTRIES:usize=20_000;
+    if ids.is_empty()||ids.len()>MAX_LIBRARY_SEARCH_WIDGETS{return Err("Choose between one and 40 Library folders to search.".into())}
+    let query=query.trim().to_lowercase();if query.is_empty()||query.len()>100{return Err("Enter a search term up to 100 characters.".into())}
+    let mut results=Vec::new();let mut unavailable_widget_ids=Vec::new();let mut scanned=0;let mut truncated=false;let mut seen=Vec::new();
+    for id in ids{
+        valid_id(&id)?;if seen.contains(&id){continue}seen.push(id.clone());
+        if results.len()>=MAX_LIBRARY_SEARCH_RESULTS||scanned>=MAX_LIBRARY_SEARCH_ENTRIES{truncated=true;break}
+        let root=match roots.root(&id).and_then(|path|path.canonicalize().map_err(|_|"The selected folder is unavailable. Choose it again.".to_string())){Ok(path)=>path,Err(_)=>{unavailable_widget_ids.push(id);continue}};
+        if !root.is_dir(){unavailable_widget_ids.push(id);continue}
+        let mut entries=Vec::new();let remaining=MAX_LIBRARY_SEARCH_RESULTS-results.len();
+        if search_tree_with_limits(&root,&root,&query,&mut entries,&mut scanned,0,remaining,MAX_LIBRARY_SEARCH_ENTRIES,&mut truncated).is_err(){unavailable_widget_ids.push(id.clone())}
+        results.extend(entries.into_iter().map(|entry|LibrarySearchHit{widget_id:id.clone(),entry}));
+        if truncated{break}
+    }
+    results.sort_by(|a,b|a.entry.path.to_lowercase().cmp(&b.entry.path.to_lowercase()));
+    Ok(LibrarySearchResponse{results,unavailable_widget_ids,truncated})
 }
 #[tauri::command]
 pub async fn files_open(app: AppHandle, webview: Webview, roots: State<'_,FolderRoots>, id:String, path:String) -> Result<(),String> {

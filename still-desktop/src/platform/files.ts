@@ -5,6 +5,8 @@ export interface NativeFilePreview {mimeType:string;base64:string}
 export interface StillInbox {listing:FolderListing;path:string}
 export interface FileMoveResult {sourcePath:string;destinationPath:string}
 export interface ExtractedPdfText {text:string;pagesRead:number;totalPages:number;truncated:boolean}
+export interface LibrarySearchHit {widgetId:string;entry:FileEntry}
+export interface LibrarySearchResponse {results:LibrarySearchHit[];unavailableWidgetIds:string[];truncated:boolean}
 const selected=new Map<string,{rootName:string; files:Map<string,File>}>();
 export function programFile(name:string):boolean { return /\.(exe|com|bat|cmd|msi|ps1|psm1|vbs|vbe|js|jse|wsf|wsh|scr|lnk|url|reg|hta|sh|app|desktop)$/i.test(name) }
 export async function openBrowserFile(file:File):Promise<void>{
@@ -37,6 +39,12 @@ export const localFiles={
     return {rootName:folder.rootName,location,entries:folderEntries([...folder.files].map(([path,file])=>({path,size:file.size})),location),truncated:false};
   },
   async list(id:string,location:string):Promise<FolderListing>{return this.native?invoke('files_list',{id,location}):this.browserList(id,location)},
+  async searchLibrary(ids:string[],query:string):Promise<LibrarySearchResponse>{
+    if(this.native)return invoke<LibrarySearchResponse>('files_library_search',{ids,query});
+    const results:LibrarySearchHit[]=[],unavailableWidgetIds:string[]=[],term=query.trim().toLowerCase();let truncated=false,scanned=0;
+    for(const id of ids){const folder=selected.get(id);if(!folder){unavailableWidgetIds.push(id);continue}for(const [path,file] of folder.files){if(scanned>=10000||results.length>=500){truncated=true;break}scanned++;if(file.name.toLowerCase().includes(term))results.push({widgetId:id,entry:{name:file.name,path,directory:false,size:file.size,blocked:programFile(file.name)}})}if(truncated)break}
+    return{results,unavailableWidgetIds,truncated};
+  },
   async search(id:string,query:string):Promise<FileEntry[]>{
     if(this.native)return invoke<FileEntry[]>('files_search',{id,query});
     const selectedFolder=selected.get(id);if(!selectedFolder)throw new Error('Choose a folder to search.');
