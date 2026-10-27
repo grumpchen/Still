@@ -8,7 +8,7 @@
 
 ## Design decisions
 
-- The Dashboard is a normal workspace with a protected `dashboard` role and ordinary widgets. It opens first for existing users during the one-time state migration, while their existing workspaces and content remain intact.
+- The Dashboard is a protected `dashboard` role with a dedicated fixed home composition, visually and behaviorally distinct from the movable/resizable widget canvas. Its Calendar, Focus, Notes, and Timetable modules keep their validated workspace data; the Library's resource browser is embedded in the home and remains available as its own workspace.
 - The calendar stores typed, date-based events in its Calendar widget. The existing weekly Timetable stays available and is not silently converted.
 - The Library is a first-party workspace and navigation destination. It uses approved folder roots and opaque native grants; it does not get unrestricted filesystem access.
 - AI capabilities grow through provider adapters and Still's existing action/confirmation layer. Reading uses explicitly selected notes/resources; edits, launches, deletion, and external actions keep user-visible confirmation.
@@ -19,9 +19,11 @@
 
 1. Add a workspace role and versioned migration that creates a Dashboard once, preserves existing workspace data, and selects it as the initial home.
 2. Add a date-based Calendar widget with month navigation, selected-day agenda, event categories, and validated local persistence.
-3. Populate the Dashboard with Calendar, Focus, Notes, and Timetable cards; keep every card movable, resizable, taggable, and removable except the Dashboard workspace itself.
-4. Add a small Dashboard header with today's date and quick actions to add a calendar event or open the assistant.
-5. Run TypeScript and production builds, review migration behavior, write the task report, commit and push.
+3. Render Calendar, Focus, Notes, and Timetable as fixed Dashboard modules in a bespoke responsive study-home layout; keep ordinary widgets and their canvas interactions on other workspaces.
+4. Embed the Library's granted Files view in the Dashboard and keep a direct route to the full Library workspace.
+5. Add a Dashboard header with today's date and quick actions to add a calendar event, request a study plan, open the assistant, and open the Library.
+6. Preserve Dashboard modules through migration and prevent workspace actions from removing the built-in Dashboard or Library.
+7. Run TypeScript and production builds, review migration behavior, write the task report, commit and push.
 
 ## Phase 2 — Built-in Library workspace and sidebar
 
