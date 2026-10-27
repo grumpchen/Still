@@ -36,8 +36,8 @@
 
 ## Phase 3 — Notes for study workflows
 
-1. Add note search, course/topic tags, and a compact library-aware navigation pane.
-2. Improve quick capture, markdown structure, task/checklist support, and backlinks to selected resources.
+1. Add search across open notes and validated course/topic tags; retain the connected Notes Library's folder and content search.
+2. Improve quick capture, markdown structure, task/checklist support, and durable note-to-note links with a visible referenced-by list.
 3. Keep multi-document tabs, autosave, explicit save, stale-write detection, and folder-change rollback protections.
 4. Add safe AI actions for selected text or notes (summarize, explain, make flashcards, draft a study outline) with previews before replacing content.
 5. Verify local persistence and document safety; commit and push.
