@@ -69,7 +69,7 @@ export default function WorkspaceCanvas({workspaceId,canvasFrameRate='display',m
   },[workspaceActive,obscured]);
   useEffect(()=>{
    if(!workspaceActive||!runningClockSignature)return;
-   const checkCompleted=()=>{const now=Date.now();for(const widget of widgets){if(widget.clockPluginEnabled&&widget.end!==null&&widget.end<=now){update(widget.id,{end:null,remaining:0});notify('Clock timer complete.')}}};
+   const checkCompleted=()=>{const now=Date.now();for(const widget of widgets){if(widget.clockPluginEnabled&&widget.end!==null&&widget.end<=now){update(widget.id,{end:null,remaining:0});notify(t('clockTimerCompleted'))}}};
    checkCompleted();
    const timer=window.setInterval(checkCompleted,1000);
    return()=>window.clearInterval(timer);
@@ -112,9 +112,9 @@ export default function WorkspaceCanvas({workspaceId,canvasFrameRate='display',m
    const target=trayTarget(x,y),inCanvas=!target.insideTray&&contains(viewport.current!.getBoundingClientRect(),x,y);
    const accepted=inCanvas?entries:entries.filter(entry=>trayDropDecision({source:entrySource(entry),...target})==='save');
    const websites=accepted.filter(entry=>entry.kind==='website'&&entry.url),widgetEntries=accepted.filter(entry=>entry.kind!=='website');
-   if(websites.length&&!inCanvas){notify('Website links can be saved inside a Group.');clearDrop();return}
+   if(websites.length&&!inCanvas){notify(t('websiteGroupOnly'));clearDrop();return}
    for(const website of websites)if(website.url)void openExternalUrl(website.url).catch(error=>notify(String(error)));
-   try{const saved=widgetEntries.map(presetForDroppedResource);if(saved.length){if(inCanvas)openDropped(saved,canvasPoint(x,y),extent);else savePresets(saved)}else if(!websites.length)notify(errors[0]??'Drop on Saved + to save, or on the workspace to add a widget.');if((saved.length||websites.length)&&errors.length)notify('Added '+saved.length+' shortcut(s). '+errors[0])}catch(e){notify(String((e as Error).message??e))}finally{clearDrop()}
+   try{const saved=widgetEntries.map(presetForDroppedResource);if(saved.length){if(inCanvas)openDropped(saved,canvasPoint(x,y),extent);else savePresets(saved)}else if(!websites.length)notify(errors[0]??t('dropSavedHint'));if((saved.length||websites.length)&&errors.length)notify('Added '+saved.length+' shortcut(s). '+errors[0])}catch(e){notify(String((e as Error).message??e))}finally{clearDrop()}
   }
   nativeHandler.current=event=>{
    if(!workspaceActive||obscured)return;
@@ -124,7 +124,7 @@ export default function WorkspaceCanvas({workspaceId,canvasFrameRate='display',m
    if(event.phase==='enter')externalEntries.current=event.entries;
    setExternalDragging(true);externalFeedback(p.x,p.y,externalEntries.current);
   };
-  useEffect(()=>{if(!resourceDrop.available)return;let disposed=false,stop:(()=>void)|undefined;void resourceDrop.subscribe(event=>{if(!disposed)nativeHandler.current(event)}).then(unlisten=>{if(disposed)unlisten();else stop=unlisten}).catch(()=>notify('File drop handling could not start. Restart Still to try again.'));return()=>{disposed=true;stop?.()}},[]);
+  useEffect(()=>{if(!resourceDrop.available)return;let disposed=false,stop:(()=>void)|undefined;void resourceDrop.subscribe(event=>{if(!disposed)nativeHandler.current(event)}).then(unlisten=>{if(disposed)unlisten();else stop=unlisten}).catch(()=>notify(t('fileDropUnavailable')));return()=>{disposed=true;stop?.()}},[]);
   useEffect(()=>{if(!workspaceActive||obscured)clearDrop()},[workspaceActive,obscured]);
   const extent=canvasExtent(viewportWidth,widgets);
   const height=canvasHeight(viewportHeight,widgets);
@@ -148,7 +148,7 @@ export default function WorkspaceCanvas({workspaceId,canvasFrameRate='display',m
     // Native panels are separate top-level HWNDs, so DOM iframe pointer-events
     // cannot keep them from taking the mouse during a canvas drag. Queue the
     // native hide before React's drag-state render and its later present call.
-    if(mode==='move'&&!w.minimized&&w.type==='apps'&&appPanel.available)void appPanel.suspendForDrag(w.id).catch(error=>notify('Native app could not be suspended for dragging: '+String(error)));
+    if(mode==='move'&&!w.minimized&&w.type==='apps'&&appPanel.available)void appPanel.suspendForDrag(w.id).catch(error=>notify(t('appSuspendDragError').replace('{detail}',String(error))));
     begin();e.currentTarget.setPointerCapture(e.pointerId);
     const pointerId=e.pointerId,onPointerUp=(event:globalThis.PointerEvent)=>{if(event.pointerId===pointerId)finish(event)},onPointerCancel=(event:globalThis.PointerEvent)=>{if(event.pointerId===pointerId)finish(event,true)};
     window.addEventListener('pointerup',onPointerUp,true);window.addEventListener('pointercancel',onPointerCancel,true);gestureEndListeners.current=()=>{window.removeEventListener('pointerup',onPointerUp,true);window.removeEventListener('pointercancel',onPointerCancel,true)};
@@ -202,8 +202,8 @@ export default function WorkspaceCanvas({workspaceId,canvasFrameRate='display',m
     let reusable=widget;
     if(widget.type==='apps'&&!widget.appKey){
       let source=preparedAppSources.current.get(widget.id);
-      if(!source){const attachment=appAttachments[widget.id]??await appPanel.identity(widget.id);if(!attachment)throw new Error('Attach an application shortcut before saving this Apps widget.');
-        const shortcut=await appPanel.prepare(attachment);if(shortcut.kind!=='app'||!shortcut.sourceId)throw new Error('Windows could not create a reusable shortcut for this app.');
+      if(!source){const attachment=appAttachments[widget.id]??await appPanel.identity(widget.id);if(!attachment)throw new Error(t('appShortcutRequired'));
+        const shortcut=await appPanel.prepare(attachment);if(shortcut.kind!=='app'||!shortcut.sourceId)throw new Error(t('appShortcutCreateError'));
         source={appKey:shortcut.sourceId,appName:shortcut.name};preparedAppSources.current.set(widget.id,source);
       }
       reusable={...widget,...source};
@@ -217,7 +217,7 @@ export default function WorkspaceCanvas({workspaceId,canvasFrameRate='display',m
       bringToFront(id);await new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())));
       const node=document.getElementById('widget-'+id);if(!node)return;
       const blob=await captureWidget(node,!download);if(download && !await downloadCapture(blob,widgetRegistry[widgets.find(w=>w.id===id)!.type].name))return;
-      notify(download?'PNG exported. Attach it to ChatGPT.':'Widget image copied. Paste into ChatGPT with Ctrl+V.');
+      notify(download?t('pngExported'):t('screenshotCopied'));
     }catch(e){notify(String((e as Error).message??e))}finally{setBusy(null)}
   }
   const visibleOrigin=()=>({x:(viewport.current?.scrollLeft??0)+12,y:(viewport.current?.scrollTop??0)+12});
@@ -255,7 +255,7 @@ export default function WorkspaceCanvas({workspaceId,canvasFrameRate='display',m
   const widgetCounts=new Map<WidgetType,number>();
   for(const widget of widgets)widgetCounts.set(widget.type,(widgetCounts.get(widget.type)??0)+1);
   return <TrayDragProvider enabled={workspaceActive&&!obscured} onChange={trayDragChange} onDrop={trayDragDrop}><div className={`canvas-system ${active||trayDragging||externalDragging?'widget-gesture':''}`} onDragOverCapture={previewDragOver} onDropCapture={previewDrop} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget as Node))clearDrop()}}>
-    <WorkspaceDock trayRef={tray} expanded={widgetTrayVisible&&dockExpanded} onExpandedChange={expanded=>{if(widgetTrayVisible)setDockExpanded(expanded)}} onOpenInstalledApp={openInstalledApp} onEditShortcuts={editTray} onRemoveDrop={overTray} status={overTray?'Release on Trash to remove':saveTarget?.kind==='saved'?'Release on Saved + to copy':saveTarget?'Release on Group to collect':''} shortcuts={<>
+    <WorkspaceDock trayRef={tray} expanded={widgetTrayVisible&&dockExpanded} onExpandedChange={expanded=>{if(widgetTrayVisible)setDockExpanded(expanded)}} onOpenInstalledApp={openInstalledApp} onEditShortcuts={editTray} onRemoveDrop={overTray} status={overTray?t('releaseTrashHint'):saveTarget?.kind==='saved'?t('releaseSavedHint'):saveTarget?t('releaseGroupHint'):''} shortcuts={<>
       <TrayDragButton className={'tray-widget-button '+(saveTarget?.kind==='group-create'?'tray-save-target':'')} dragPayload={{kind:'type',type:'group'}} data-group-drop-target="create" aria-label={t('createGroupTitle')} title={t('createGroupHelp')} onClick={()=>trayTypeClick('group')}><Icon name="group"/><span>{t('group')}</span></TrayDragButton>
       <GroupTray groups={groups} update={updateGroup} openGroup={id=>openGroup(id,visibleOrigin(),extent)} openLink={link=>openResource(link,visibleOrigin())} openWidget={entry=>openGroupWidget(entry,visibleOrigin(),extent)} edit={editGroup} remove={removeGroup} onContextMenu={(event,id)=>openSavedContextMenu(event,'group',id)} activeDropGroupId={saveTarget?.kind==='group'?saveTarget.id:null}/>
       <PresetTray presets={presets} add={preset=>openPreset(preset,visibleOrigin(),extent)} onContextMenu={(event,id)=>openSavedContextMenu(event,'preset',id)}/>

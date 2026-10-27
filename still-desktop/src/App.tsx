@@ -179,7 +179,7 @@ export default function App(){
   function setClockColor(color:WidgetTagColor,enabled:boolean){setState(s=>({...s,clockPluginColors:enabled?[...new Set([...s.clockPluginColors,color])]:s.clockPluginColors.filter(item=>item!==color)}))}
   function setClockColorOverride(color:WidgetTagColor,enabled:boolean|null){setState(s=>{const overrides={...s.clockPluginColorOverrides};if(enabled===null)delete overrides[color];else overrides[color]=enabled;return{...s,clockPluginColorOverrides:overrides}})}
   function setClockMode(mode:ClockPluginMode){setState(s=>({...s,clockPluginMode:mode}))}
-  function runShortcut(action:AppShortcutAction){if(modal)return;switch(action){case'up':case'down':moveWorkspace(action);break;case'overview':window.dispatchEvent(new Event('still:workspace-overview-toggle'));break;case'clickThrough':if(state.enableWholeWindowClickThrough)void toggleClickThrough();break;case'commandPalette':setQuery('');setModal('commands');break;case'undo':if(undo.current){setState(undo.current);undo.current=null;notify('Previous workspace layout restored.')}break;default:{const index=Number(action.slice('workspace:'.length))-1;if(index>=0&&!Number.isNaN(index)&&state.workspaces[index])switchWorkspace(state.workspaces[index].id)}}}
+  function runShortcut(action:AppShortcutAction){if(modal)return;switch(action){case'up':case'down':moveWorkspace(action);break;case'overview':window.dispatchEvent(new Event('still:workspace-overview-toggle'));break;case'clickThrough':if(state.enableWholeWindowClickThrough)void toggleClickThrough();break;case'commandPalette':setQuery('');setModal('commands');break;case'undo':if(undo.current){setState(undo.current);undo.current=null;notify(translate(captureState.current.locale,'previousLayoutRestored'))}break;default:{const index=Number(action.slice('workspace:'.length))-1;if(index>=0&&!Number.isNaN(index)&&state.workspaces[index])switchWorkspace(state.workspaces[index].id)}}}
   const shortcutContext=useRef({modal,moveWorkspace,runShortcut});shortcutContext.current={modal,moveWorkspace,runShortcut};
   useEffect(()=>{if(!nativeShortcuts.available)return;let disposed=false;let unlisten:(()=>void)|undefined;
     nativeShortcuts.subscribe(direction=>{if(!disposed&&!shortcutContext.current.modal)shortcutContext.current.moveWorkspace(direction)}).then(stop=>{if(disposed)stop();else unlisten=stop}).catch(()=>notify('Workspace shortcut handling could not start. Restart the app to try again.'));
@@ -208,11 +208,11 @@ export default function App(){
   }
   function removeWidget(id:string,preserveUndo=false){
     const current=captureState.current,owner=current.workspaces.find(w=>w.widgets.some(widget=>widget.id===id)),widget=owner?.widgets.find(w=>w.id===id);if(!owner||!widget)return;
-    if(owner.role==='dashboard'){notify('Dashboard study modules are fixed. Their content can still be edited.');return}
+    if(owner.role==='dashboard'){notify(translate(captureState.current.locale,'dashboardModulesFixed'));return}
     const target={workspaceId:owner.id,id,kind:'widget' as const,preserveUndo,name:widget.title||'Group'};
     performRemoval(target);
   }
-  function addWidget(type:WidgetType,at?:{x:number;y:number},width?:number){if(captureState.current.workspaces.find(w=>w.id===captureState.current.activeId)?.role==='dashboard'){notify('Dashboard has fixed study modules. Switch to a regular workspace to add widgets.');setModal(null);return}const viewportWidth=width??document.querySelector<HTMLElement>('.workspace-surface:not([hidden]) .canvas-viewport')?.clientWidth??1000;undo.current=state;setState(s=>({...s,workspaces:s.workspaces.map(w=>{if(w.id!==s.activeId)return w;const widget=createWidget(type);widget.instanceNumber=nextInstanceNumber(type,w.widgets);widget.placement=at?placement(type,{...widget.placement,...at}):nextPlacement(type,w.widgets,width??canvasExtent(viewportWidth,w.widgets));const bounded=boundNewWidget(widget,w.widgets,width);if(type==='group'){const id=crypto.randomUUID();bounded.groupId=id;return{...w,groups:[...w.groups,{id,name:'',shortcuts:[],widgets:[],expanded:false}],widgets:[...w.widgets,bounded]}}return {...w,widgets:[...w.widgets,bounded]}})}));setModal(null);notify(widgetRegistry[type].name+' added')}
+  function addWidget(type:WidgetType,at?:{x:number;y:number},width?:number){if(captureState.current.workspaces.find(w=>w.id===captureState.current.activeId)?.role==='dashboard'){notify(translate(captureState.current.locale,'dashboardAddFixed'));setModal(null);return}const viewportWidth=width??document.querySelector<HTMLElement>('.workspace-surface:not([hidden]) .canvas-viewport')?.clientWidth??1000;undo.current=state;setState(s=>({...s,workspaces:s.workspaces.map(w=>{if(w.id!==s.activeId)return w;const widget=createWidget(type);widget.instanceNumber=nextInstanceNumber(type,w.widgets);widget.placement=at?placement(type,{...widget.placement,...at}):nextPlacement(type,w.widgets,width??canvasExtent(viewportWidth,w.widgets));const bounded=boundNewWidget(widget,w.widgets,width);if(type==='group'){const id=crypto.randomUUID();bounded.groupId=id;return{...w,groups:[...w.groups,{id,name:'',shortcuts:[],widgets:[],expanded:false}],widgets:[...w.widgets,bounded]}}return {...w,widgets:[...w.widgets,bounded]}})}));setModal(null);notify(widgetRegistry[type].name+' added')}
   function changeGroup(workspaceId:string,id:string,patch:Partial<Omit<SavedGroup,'id'>>){setState(s=>({...s,workspaces:s.workspaces.map(w=>w.id===workspaceId?(patch.name!==undefined?saveGroupName(w,id,patch.name):updateSavedGroup(w,id,patch)):w)}))}
   async function saveWidgetInGroup(workspaceId:string,widget:WidgetInstance,groupId?:string,preserveUndo=false){
     const initial=captureState.current,initialWorkspace=initial.workspaces.find(w=>w.id===workspaceId);
@@ -338,8 +338,8 @@ export default function App(){
   }
   async function applyAssistantActions(workspaceId:string,actions:AssistantAction[],prompt:string):Promise<string>{
     const initial=captureState.current,initialWorkspace=initial.workspaces.find(item=>item.id===workspaceId);
-    if(!initialWorkspace||initial.activeId!==workspaceId)throw new Error('The active workspace changed. Nothing was changed; try again.');
-    if(initialWorkspace.role==='dashboard'&&actions.some(action=>['add_widget','open_saved','remove_widget','minimize','restore'].includes(action.type)))throw new Error('Dashboard study modules are fixed. Their content and timers can still be changed.');
+    if(!initialWorkspace||initial.activeId!==workspaceId)throw new Error(translate(captureState.current.locale,'activeWorkspaceChanged'));
+    if(initialWorkspace.role==='dashboard'&&actions.some(action=>['add_widget','open_saved','remove_widget','minimize','restore'].includes(action.type)))throw new Error(translate(initial.locale,'dashboardModulesImmutable'));
     const initialTray=assistantTrayItems(initial.presets,initialWorkspace.groups);
     validateAssistantActions(initialWorkspace,actions,initialTray);validateAssistantActionIntent(prompt,initialWorkspace,actions,initialTray);
     let nextPresets=initial.presets;const saved:string[]=[],failed:string[]=[];
@@ -347,15 +347,15 @@ export default function App(){
       if(action.type!=='save_to_tray')continue;
       for(const id of action.ids){
         const current=captureState.current,owner=current.workspaces.find(item=>item.id===workspaceId),widget=owner?.widgets.find(item=>item.id===id);
-        if(!widget||current.activeId!==workspaceId)throw new Error('The workspace changed before the action finished. Nothing was changed; try again.');
+        if(!widget||current.activeId!==workspaceId)throw new Error(translate(captureState.current.locale,'workspaceActionChanged'));
         try{
           let reusable=widget;
           if(widget.type==='apps'&&!widget.appKey){
-            if(!appPanel.available)throw new Error('App shortcuts are unavailable outside the Still desktop app.');
+            if(!appPanel.available)throw new Error(translate(captureState.current.locale,'desktopAppsUnavailable'));
             const attachment=appAttachments[widget.id]??await appPanel.identity(widget.id);
-            if(!attachment)throw new Error('Attach an application shortcut before saving this Apps widget.');
+            if(!attachment)throw new Error(translate(captureState.current.locale,'appShortcutRequired'));
             const shortcut=await appPanel.prepare(attachment);
-            if(shortcut.kind!=='app'||!shortcut.sourceId)throw new Error('Windows could not create a reusable shortcut for this app.');
+            if(shortcut.kind!=='app'||!shortcut.sourceId)throw new Error(translate(captureState.current.locale,'appShortcutCreateError'));
             reusable={...widget,appKey:shortcut.sourceId,appName:shortcut.name};
           }
           const preset=presetFromWidget(reusable);nextPresets=upsertSavedPresets(nextPresets,[preset]);saved.push(widget.title.trim()||widgetRegistry[widget.type].name);
@@ -363,7 +363,7 @@ export default function App(){
       }
     }
     const current=captureState.current,owner=current.workspaces.find(item=>item.id===workspaceId);
-    if(!owner||current.activeId!==workspaceId)throw new Error('The active workspace changed. Nothing was changed; try again.');
+    if(!owner||current.activeId!==workspaceId)throw new Error(translate(captureState.current.locale,'activeWorkspaceChanged'));
     const tray=assistantTrayItems(current.presets,owner.groups);
     validateAssistantActions(owner,actions,tray);validateAssistantActionIntent(prompt,owner,actions,tray);
     const size=assistantDimensions();let nextWorkspace=applyAssistantWidgetActions(owner,actions,size.width,size.height,Date.now(),tray);
@@ -414,7 +414,7 @@ export default function App(){
     for(const action of actions.filter(item=>item.type==='set_widget_plugin'))result.push(`${action.enabled?'Added':'Removed'} the Clock timer ${action.enabled?'to':'from'} ${action.ids.map(id=>{const widget=nextWorkspace.widgets.find(item=>item.id===id);return widget?.title||widget&&widgetRegistry[widget.type].name||'widget'}).join(', ')}.`);
     for(const action of actions.filter(item=>item.type==='edit_widget'))result.push(`Updated ${action.ids.map(id=>{const widget=nextWorkspace.widgets.find(item=>item.id===id);return widget?.title||widget&&widgetRegistry[widget.type].name||'widget'}).join(', ')}.`);
     if(removedWidgets.length)result.push(`Removed ${removedWidgets.map(widget=>widget.title.trim()||widgetRegistry[widget.type].name).join(', ')} from ${owner.name}. Saved shortcuts stay in the tray; Undo change restores the widget${removedWidgets.length===1?'':'s'}.`);
-    if(actions.some(action=>action.type==='save_to_tray'))result.push(saved.length?`Saved ${saved.length} reusable shortcut${saved.length===1?'':'s'} to the widget tray. The original widgets stay open.`:'No reusable shortcuts were saved.');
+    if(actions.some(action=>action.type==='save_to_tray'))result.push(saved.length?`Saved ${saved.length} reusable shortcut${saved.length===1?'':'s'} to the widget tray. The original widgets stay open.`:translate(current.locale,'noReusableShortcuts'));
     if(openAction)result.push(opened?`Opened ${opened} saved tray item${opened===1?'':'s'} in ${owner.name}.${alreadyOpen?` ${alreadyOpen} app shortcut${alreadyOpen===1?' was':'s were'} already open.`:''}`:`No saved items were opened.${alreadyOpen?` ${alreadyOpen} app shortcut${alreadyOpen===1?' was':'s were'} already open.`:''}`);
     for(const action of actions.filter(item=>item.type==='set_timer')){const seconds=action.seconds??0,label=seconds%3600===0?`${seconds/3600} hour${seconds===3600?'':'s'}`:seconds%60===0?`${seconds/60} minute${seconds===60?'':'s'}`:`${seconds} seconds`;const names=action.ids.map(id=>{const widget=nextWorkspace.widgets.find(item=>item.id===id);return widget?widget.title||widgetRegistry[widget.type].name:''}).filter(Boolean);result.push(`Started a ${label} timer on ${names.join(', ')}.`)}
     if(failed.length)result.push(`Could not save: ${failed.join('; ')}`);
@@ -423,50 +423,50 @@ export default function App(){
   async function clearAssistantTray(workspaceId:string):Promise<string>{
     const current=captureState.current,owner=current.workspaces.find(item=>item.id===workspaceId);
     if(!owner||current.activeId!==workspaceId)throw new Error('The active workspace changed. Nothing was removed; try again.');
-    if(!current.presets.length&&!owner.groups.length)return 'The widget tray is already empty. Nothing changed.';
-    if(owner.groups.some(group=>group.widgets.some(entry=>entry.kind==='collected'&&entry.instance?.lockPluginEnabled&&entry.instance.locked)))throw new Error('Unlock widgets collected in Groups before clearing the tray. Nothing was changed.');
+    if(!current.presets.length&&!owner.groups.length)return translate(current.locale,'trayAlreadyEmpty');
+    if(owner.groups.some(group=>group.widgets.some(entry=>entry.kind==='collected'&&entry.instance?.lockPluginEnabled&&entry.instance.locked)))throw new Error(translate(current.locale,'unlockGroupedWidgets'));
     const groupIds=new Set(owner.groups.map(group=>group.id));
     undo.current=current;
     setState({...current,presets:[],workspaces:current.workspaces.map(item=>item.id===workspaceId?{...item,groups:[],widgets:item.widgets.filter(widget=>!widget.groupId||!groupIds.has(widget.groupId))}:item)});
-    for(const group of owner.groups)for(const entry of group.widgets)if(entry.kind==='collected'&&entry.type==='apps'&&appPanel.available)void appPanel.release(entry.id,current.closeAppOnWidgetClose).catch(error=>notify('Tray cleared, but '+entry.name+' could not be released from its native panel: '+String(error)));
+    for(const group of owner.groups)for(const entry of group.widgets)if(entry.kind==='collected'&&entry.type==='apps'&&appPanel.available)void appPanel.release(entry.id,current.closeAppOnWidgetClose).catch(error=>notify(translate(current.locale,'trayClearedAppError').replace('{name}',entry.name).replace('{detail}',String(error))));
     return `Removed ${current.presets.length} saved shortcut${current.presets.length===1?'':'s'} from the shared tray and ${owner.groups.length} Group${owner.groups.length===1?'':'s'} from ${owner.name}. Undo change restores the saved tray data.`;
   }
   async function deleteAssistantWidgets(workspaceId:string):Promise<string>{
     const current=captureState.current,owner=current.workspaces.find(item=>item.id===workspaceId);
     if(!owner||current.activeId!==workspaceId)throw new Error('The active workspace changed. Nothing was removed; try again.');
-    if(owner.role==='dashboard')throw new Error('Dashboard study modules are fixed and cannot be removed.');
-    if(!owner.widgets.length)return `There are no widgets in ${owner.name}. Nothing changed.`;
-    if(owner.widgets.some(widget=>widget.lockPluginEnabled&&widget.locked))throw new Error('Unlock locked widgets before removing the workspace widgets. Nothing was changed.');
+    if(owner.role==='dashboard')throw new Error(translate(current.locale,'dashboardModulesFixed'));
+    if(!owner.widgets.length)return translate(current.locale,'emptyWorkspaceWidgets').replace('{workspace}',owner.name);
+    if(owner.widgets.some(widget=>widget.lockPluginEnabled&&widget.locked))throw new Error(translate(current.locale,'unlockWidgetsBeforeRemove'));
     const count=owner.widgets.length,appIds=owner.widgets.filter(widget=>widget.type==='apps').map(widget=>widget.id);
     undo.current=current;
     setState({...current,workspaces:current.workspaces.map(item=>item.id===workspaceId?{...item,widgets:[]}:item)});
     setAppAttachments(attachments=>Object.fromEntries(Object.entries(attachments).filter(([id])=>!appIds.includes(id))));
-    for(const id of appIds)if(appPanel.available)void appPanel.release(id,current.closeAppOnWidgetClose).catch(error=>notify('Widgets removed, but an attached app could not be released to the desktop: '+String(error)));
+    for(const id of appIds)if(appPanel.available)void appPanel.release(id,current.closeAppOnWidgetClose).catch(error=>notify(translate(current.locale,'widgetsRemovedAppError').replace('{detail}',String(error))));
     return `Removed ${count} widget${count===1?'':'s'} from ${owner.name}. Saved shortcuts and Groups in the tray were kept. Undo change restores the widget cards; attached app windows were returned to the desktop.`;
   }
   async function deleteAssistantWorkspace(workspaceId:string):Promise<string>{
     const current=captureState.current,owner=current.workspaces.find(item=>item.id===workspaceId);
     if(!owner||current.activeId!==workspaceId)throw new Error('The active workspace changed. Nothing was deleted; try again.');
-    if(owner.role==='dashboard'||owner.role==='library')throw new Error('Dashboard and Library are built-in workspaces and cannot be deleted.');
-    if(current.workspaces.length<=1)throw new Error('Still must keep at least one workspace. Nothing was deleted.');
-    if(owner.widgets.some(widget=>widget.lockPluginEnabled&&widget.locked)||owner.groups.some(group=>group.widgets.some(entry=>entry.kind==='collected'&&entry.instance?.lockPluginEnabled&&entry.instance.locked)))throw new Error('Unlock the workspace’s locked widgets before deleting this workspace. Nothing was deleted.');
+    if(owner.role==='dashboard'||owner.role==='library')throw new Error(translate(current.locale,'builtInWorkspace'));
+    if(current.workspaces.length<=1)throw new Error(translate(current.locale,'keepOneWorkspace'));
+    if(owner.widgets.some(widget=>widget.lockPluginEnabled&&widget.locked)||owner.groups.some(group=>group.widgets.some(entry=>entry.kind==='collected'&&entry.instance?.lockPluginEnabled&&entry.instance.locked)))throw new Error(translate(current.locale,'unlockWidgetsBeforeDeleteWorkspace'));
     const remaining=current.workspaces.filter(item=>item.id!==workspaceId),appIds=[...owner.widgets.filter(widget=>widget.type==='apps').map(widget=>widget.id),...owner.groups.flatMap(group=>group.widgets.filter(entry=>entry.kind==='collected'&&entry.type==='apps').map(entry=>entry.id))];
     undo.current=current;setState({...current,activeId:remaining[0].id,workspaces:remaining});setArrange(false);setLayoutMode(null);
     setAppAttachments(attachments=>Object.fromEntries(Object.entries(attachments).filter(([id])=>!appIds.includes(id))));
-    for(const id of appIds)if(appPanel.available)void appPanel.release(id,current.closeAppOnWidgetClose).catch(error=>notify('Workspace deleted, but an attached app could not be released to the desktop: '+String(error)));
-    notify(`Deleted ${owner.name}. Switched to ${remaining[0].name}. Undo change restores the workspace.`);
+    for(const id of appIds)if(appPanel.available)void appPanel.release(id,current.closeAppOnWidgetClose).catch(error=>notify(translate(current.locale,'workspaceDeletedAppError').replace('{detail}',String(error))));
+    notify(translate(current.locale,'workspaceDeletedNotice').replace('{workspace}',owner.name).replace('{next}',remaining[0].name));
     return `Deleted ${owner.name}. Switched to ${remaining[0].name}. Undo change restores the workspace and its widget cards; attached app windows were returned to the desktop.`;
   }
   async function startAssistantTimer(workspaceId:string,seconds:number):Promise<string>{
     const current=captureState.current,owner=current.workspaces.find(item=>item.id===workspaceId);
-    if(!owner||current.activeId!==workspaceId)throw new Error('The active workspace changed. Nothing was changed; try again.');
+    if(!owner||current.activeId!==workspaceId)throw new Error(translate(captureState.current.locale,'activeWorkspaceChanged'));
     const size=assistantDimensions(),next=addFocusForAssistantTimer(owner,size.width,size.height,seconds);
     undo.current=current;setState({...current,workspaces:current.workspaces.map(item=>item.id===workspaceId?next:item)});
     const label=seconds%3600===0?`${seconds/3600} hour${seconds===3600?'':'s'}`:seconds%60===0?`${seconds/60} minute${seconds===60?'':'s'}`:`${seconds} seconds`;
     return `Added a Focus widget and started a ${label} timer.`;
   }
-  function applyAssistantLayout(plan:LayoutPlan){const current=captureState.current,owner=current.workspaces.find(w=>w.id===current.activeId)!;if(owner.role==='dashboard'){notify('Dashboard modules use a fixed home layout. AI layout changes are available in regular workspaces.');return}const size=assistantDimensions(),next=applyLayoutPlan(owner,plan,size.width,size.height);undo.current=current;setState({...current,workspaces:current.workspaces.map(w=>w.id===owner.id?next:w)});notify('AI layout applied. Undo layout or '+shortcutModifier+'+Z restores it.')}
-  function undoAssistantLayout(){if(!undo.current){notify('No previous layout to restore.');return}setState(undo.current);undo.current=null;notify('Previous workspace layout restored.')}
+  function applyAssistantLayout(plan:LayoutPlan){const current=captureState.current,owner=current.workspaces.find(w=>w.id===current.activeId)!;if(owner.role==='dashboard'){notify(translate(current.locale,'dashboardLayoutFixed'));return}const size=assistantDimensions(),next=applyLayoutPlan(owner,plan,size.width,size.height);undo.current=current;setState({...current,workspaces:current.workspaces.map(w=>w.id===owner.id?next:w)});notify(translate(current.locale,'aiLayoutApplied').replace('{shortcut}',shortcutModifier+'+Z'))}
+  function undoAssistantLayout(){if(!undo.current){notify(translate(captureState.current.locale,'noPreviousLayout'));return}setState(undo.current);undo.current=null;notify(translate(captureState.current.locale,'previousLayoutRestored'))}
   const commands=[{label:'Open AI assistant',run:()=>setAssistantOpen(true)},...state.workspaces.map(w=>({label:'Switch to '+w.name,run:()=>switchWorkspace(w.id)})),{label:'Create workspace',run:startCreate},{label:'Add widget',run:()=>setModal('gallery')},{label:'Settings',run:()=>{setSettingsTab('general');setModal('settings')}},{label:'Change appearance',run:()=>{setSettingsTab('appearance');setModal('settings')}},{label:'Keyboard shortcuts',run:()=>setModal('shortcuts')},{label:'Arrange workspace',run:()=>setArrange(true)},{label:sidebarPeek?'Hide sidebar':'Show sidebar',run:toggleSidebar},{label:widgetTrayHidden?'Show bottom apps bar':'Hide bottom apps bar',run:toggleWidgetTray}];
   useEffect(()=>{function onKey(event:KeyboardEvent){if(event.isComposing||modal)return;const editing=!!(event.target as HTMLElement)?.closest('input,textarea,select,[contenteditable=true],[role=textbox]');const action=shortcutAction(event,state.shortcuts,editing);if(!action)return;if((action==='overview'||action==='undo'||action.startsWith('workspace:'))&&editing)return;if(action==='clickThrough'&&!state.enableWholeWindowClickThrough)return;event.preventDefault();if(!event.repeat)runShortcut(action)}document.addEventListener('keydown',onKey);return()=>document.removeEventListener('keydown',onKey)},[state,modal]);
   const matches=commands.filter(c=>c.label.toLowerCase().includes(query.toLowerCase()));
