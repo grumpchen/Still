@@ -82,7 +82,7 @@ unsafe fn jumbo_icon(path:&str)->Option<HICON>{
 fn icon(hwnd:HWND,path:Option<&str>)->Vec<u8>{unsafe{
  let mut owned=false;let mut image=HICON::default();
  if let Some(path)=path{if let Some(jumbo)=jumbo_icon(path){image=jumbo;owned=true}}
- if image.0.is_null(){if let Some(path)=path{let filename=wide(path);if ExtractIconExW(PCWSTR(filename.as_ptr()),0,None,Some(&mut image),1)>0{owned=true}}}
+ if image.0.is_null(){if let Some(path)=path{let filename=wide(path);if ExtractIconExW(PCWSTR(filename.as_ptr()),0,Some(&mut image),None,1)>0{owned=true}}}
  if image.0.is_null(){let mut result=0;SendMessageTimeoutW(hwnd,WM_GETICON,WPARAM(ICON_SMALL2 as usize),LPARAM(0),SMTO_ABORTIFHUNG|SMTO_BLOCK,60,Some(&mut result));image=HICON(result as *mut _);}
  if image.0.is_null(){image=HICON(GetClassLongPtrW(hwnd,GCLP_HICONSM) as *mut _)}
  let result=if image.0.is_null(){Err("No app icon".into())}else{icon_png(image)};
