@@ -11,7 +11,7 @@ ver0.18 adds an open-app picker to the managed application panels introduced in 
 - **Open app…** uses the Windows file picker for an application or ordinary app shortcut when it is not running. You can also open the app normally from Windows and click Refresh. The actual application retains its normal controls and documents.
 - Move or resize the widget using Still's header and bottom-right handle. Native movement, resize, DPI and focus events keep the app aligned. The card grows on first attachment if the app enforces a larger minimum size; a native clip keeps excess content inside the panel instead of hiding it merely because another widget overlaps.
 - Still minimizes or changes workspace: the managed app hides with its panel and is shown again when appropriate. Open-panel intent and geometry persist; picker-created panels reuse a single available matching app after reopening Still, or launch if none exists.
-- **Detach**, removing/changing the widget, or closing Still releases the app back to its desktop placement. Still restores ownership and clipping without closing documents or killing the application. Manually closed app windows can be reopened.
+- **Detach** releases the app back to its desktop placement without closing it. Removing an Apps widget follows **Settings → When an Apps widget closes**: close the window with a normal Windows close request, or leave it open on the desktop. Apps can show their own save prompts. Manually closed app windows can be reopened.
 - Managed app focus is recognized by workspace hotkeys and Chrome visibility. Widget screenshot/export captures include the attached app region.
 
 The ver0.16 tray and saved shortcut features remain:

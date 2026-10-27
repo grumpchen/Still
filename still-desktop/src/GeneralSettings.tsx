@@ -10,6 +10,7 @@ import WidgetRelaunchScope from './WidgetRelaunchScope.tsx';
 
 interface Props{
  appShutdownBehavior:AppShutdownBehavior;
+ closeAppOnWidgetClose:boolean;
  saveAppShortcutsOnAttach:boolean;
  showAppAttachAction:boolean;
  showAppDetachAction:boolean;
@@ -30,13 +31,13 @@ interface Props{
  shortcuts:WorkspaceShortcuts;
  openShortcuts:()=>void;
  runTutorial:()=>void;
- update:(patch:{appShutdownBehavior?:AppShutdownBehavior;saveAppShortcutsOnAttach?:boolean;widgetRelaunchMode?:WidgetRelaunchMode;showAppAttachAction?:boolean;showAppDetachAction?:boolean;showAppSaveAction?:boolean;showWidgetRelaunchAction?:boolean;showWidgetExportPngAction?:boolean;passThroughTransparentBackground?:boolean;enableWholeWindowClickThrough?:boolean;canvasFrameRate?:CanvasFrameRate;followWidgetToWorkspace?:boolean;shortcuts?:WorkspaceShortcuts})=>void;
+ update:(patch:{appShutdownBehavior?:AppShutdownBehavior;closeAppOnWidgetClose?:boolean;saveAppShortcutsOnAttach?:boolean;widgetRelaunchMode?:WidgetRelaunchMode;showAppAttachAction?:boolean;showAppDetachAction?:boolean;showAppSaveAction?:boolean;showWidgetRelaunchAction?:boolean;showWidgetExportPngAction?:boolean;passThroughTransparentBackground?:boolean;enableWholeWindowClickThrough?:boolean;canvasFrameRate?:CanvasFrameRate;followWidgetToWorkspace?:boolean;shortcuts?:WorkspaceShortcuts})=>void;
  setRelaunchColor:(color:WidgetTagColor,mode:WidgetRelaunchMode|null)=>void;
  applyRelaunchModeToAll:()=>void;
  toggleClickThrough:()=>void;
 }
 
-export default function GeneralSettings({appShutdownBehavior,saveAppShortcutsOnAttach,showAppAttachAction,showAppDetachAction,showAppSaveAction,showWidgetRelaunchAction,showWidgetExportPngAction,widgetRelaunchMode,widgetRelaunchColors,shortcuts,openShortcuts,runTutorial,background,passThroughTransparentBackground,enableWholeWindowClickThrough,clickThroughActive,canvasFrameRate,followWidgetToWorkspace,startup,startupLoading,setStartupEnabled,update,setRelaunchColor,applyRelaunchModeToAll,toggleClickThrough}:Props){
+export default function GeneralSettings({appShutdownBehavior,closeAppOnWidgetClose,saveAppShortcutsOnAttach,showAppAttachAction,showAppDetachAction,showAppSaveAction,showWidgetRelaunchAction,showWidgetExportPngAction,widgetRelaunchMode,widgetRelaunchColors,shortcuts,openShortcuts,runTutorial,background,passThroughTransparentBackground,enableWholeWindowClickThrough,clickThroughActive,canvasFrameRate,followWidgetToWorkspace,startup,startupLoading,setStartupEnabled,update,setRelaunchColor,applyRelaunchModeToAll,toggleClickThrough}:Props){
  return <section className="settings-page general-settings" role="tabpanel" id="settings-general" aria-labelledby="settings-tab-general">
   <h3>General settings</h3>
   <h4>Getting started</h4>
@@ -58,6 +59,8 @@ export default function GeneralSettings({appShutdownBehavior,saveAppShortcutsOnA
    <option value="leaveOpen">Leave attached apps open</option>
   </select></label>
   <p className="notice">Closing sends each app a normal Windows close request, so its own save prompts can appear.</p>
+  <label className="settings-row"><span>When an Apps widget closes<small>Choose whether its attached app window should close too.</small></span><select aria-label="When an Apps widget closes" value={closeAppOnWidgetClose?'close':'leaveOpen'} onChange={event=>update({closeAppOnWidgetClose:event.target.value==='close'})}><option value="close">Close the app too</option><option value="leaveOpen">Leave the app open</option></select></label>
+  <p className="notice">Closing sends a normal Windows close request, so the app can show its own save prompt.</p>
   <label className="settings-row general-settings-toggle"><span>Save an Apps shortcut automatically when attaching</span><input aria-label="Save an Apps shortcut automatically when attaching" type="checkbox" checked={saveAppShortcutsOnAttach} onChange={event=>update({saveAppShortcutsOnAttach:event.target.checked})}/></label>
   <p className="notice">The Attach Open App checkbox can still change this choice for one app.</p>
   <h4>Apps widget buttons</h4>

@@ -7,8 +7,8 @@ import {appPanelFit,appPanelGeometry} from './domain/appPanel.ts';
 import {constrainPlacement} from './domain/layout.ts';
 import {observeCanvasScroll} from './platform/canvasScroll.ts';
 
-export default function AppsWidget({widget,update,notify,obscured,workspaceActive=true,relaunchToken=0,onRelaunchStatus,appAttachment,appAttachmentHandled,pickApp}:WidgetProps){
- const host=useRef<HTMLDivElement>(null),picker=useRef<HTMLInputElement>(null),current=useRef({widget,update,notify,obscured,workspaceActive,appAttachment,appAttachmentHandled,onRelaunchStatus});current.current={widget,update,notify,obscured,workspaceActive,appAttachment,appAttachmentHandled,onRelaunchStatus};
+export default function AppsWidget({widget,update,notify,appOpenResult,obscured,workspaceActive=true,relaunchToken=0,onRelaunchStatus,appAttachment,appAttachmentHandled,pickApp}:WidgetProps){
+ const host=useRef<HTMLDivElement>(null),picker=useRef<HTMLInputElement>(null),current=useRef({widget,update,notify,appOpenResult,obscured,workspaceActive,appAttachment,appAttachmentHandled,onRelaunchStatus});current.current={widget,update,notify,appOpenResult,obscured,workspaceActive,appAttachment,appAttachmentHandled,onRelaunchStatus};
  const [busy,setBusy]=useState(false),[ready,setReady]=useState(false),[opening,setOpening]=useState(false),[relaunchFailed,setRelaunchFailed]=useState(false),[externalOpened,setExternalOpened]=useState(false),[error,setError]=useState('');
  const [collectionResumed,setCollectionResumed]=useState(false);
  const schedule=useRef<()=>void>(()=>{}),launch=useRef<()=>Promise<boolean>>(async()=>false),resume=useRef<()=>Promise<boolean>>(async()=>false),detach=useRef<()=>Promise<void>>(async()=>{}),attach=useRef<(window:AppAttachment)=>Promise<boolean>>(async()=>false),relaunch=useRef<()=>Promise<void>>(async()=>{});
@@ -35,8 +35,8 @@ export default function AppsWidget({widget,update,notify,obscured,workspaceActiv
   launch.current=async()=>{
    const c=current.current;if(disposed||opened||launching||c.appAttachment||!c.widget.appKey||!c.workspaceActive||c.obscured)return false;
    launching=true;setOpening(true);setRelaunchFailed(false);setError('');
-   try{const g=geometry(),info=await appPanel.open(widget.id,c.widget.appKey,g.bounds,g.clip,g.grip,c.widget.appReuseExisting);if(disposed)return false;if(info.openedExternally){setExternalOpened(true);setReady(false);current.current.update({appPanelOpen:false});current.current.notify('Chrome opened in its own Windows window.');return true}opened=true;last='';setExternalOpened(false);setReady(true);fit(info);schedule.current();return true}
-   catch(reason){if(!disposed){setError(String(reason));setRelaunchFailed(true);current.current.update({appPanelOpen:false})}return false}finally{launching=false;if(!disposed)setOpening(false)}
+   try{const g=geometry(),info=await appPanel.open(widget.id,c.widget.appKey,g.bounds,g.clip,g.grip,c.widget.appReuseExisting);if(disposed)return false;if(info.openedExternally){setExternalOpened(true);setReady(false);current.current.update({appPanelOpen:false});current.current.notify('Chrome opened in its own Windows window.');current.current.appOpenResult?.(widget.id,true);return true}opened=true;last='';setExternalOpened(false);setReady(true);fit(info);schedule.current();current.current.appOpenResult?.(widget.id,true);return true}
+   catch(reason){if(!disposed){const message=String(reason);setError(message);setRelaunchFailed(true);current.current.update({appPanelOpen:false});current.current.appOpenResult?.(widget.id,false,message)}return false}finally{launching=false;if(!disposed)setOpening(false)}
   };
   resume.current=async()=>{
    if(disposed||opened||launching)return false;launching=true;setOpening(true);setError('');
@@ -44,9 +44,9 @@ export default function AppsWidget({widget,update,notify,obscured,workspaceActiv
    catch(reason){if(!disposed){setCollectionResumed(false);setError(String(reason))}return false}finally{launching=false;if(!disposed)setOpening(false)}
   };
   attach.current=async(window:AppAttachment)=>{
-   const c=current.current;if(disposed||launching||opened||!c.workspaceActive||c.obscured)return false;launching=true;setOpening(true);setError('');
-   try{const g=geometry(),info=await appPanel.attach(widget.id,window,g.bounds,g.clip,g.grip);if(disposed)return false;opened=true;last='';setReady(true);setRelaunchFailed(false);current.current.update({appPanelOpen:true,appWasCollected:false});fit(info);schedule.current();return true}
-   catch(reason){if(!disposed){const message=String(reason);setError(message);current.current.update({appPanelOpen:false});if(window.capture)current.current.notify('Window attachment failed: '+message)}return false}finally{launching=false;c.appAttachmentHandled?.();if(!disposed)setOpening(false)}
+   const c=current.current;if(disposed||launching||!c.workspaceActive||c.obscured)return false;launching=true;setOpening(true);setError('');
+   try{if(opened){opened=false;last='';setReady(false);await appPanel.release(widget.id)}const g=geometry(),info=await appPanel.attach(widget.id,window,g.bounds,g.clip,g.grip);if(disposed)return false;opened=true;last='';setReady(true);setRelaunchFailed(false);current.current.update({appPanelOpen:true,appWasCollected:false});fit(info);schedule.current();current.current.appOpenResult?.(widget.id,true);return true}
+   catch(reason){if(!disposed){const message=String(reason);setError(message);current.current.update({appPanelOpen:false});current.current.appOpenResult?.(widget.id,false,message);if(window.capture&&!current.current.appOpenResult)current.current.notify('Window attachment failed: '+message)}return false}finally{launching=false;c.appAttachmentHandled?.();if(!disposed)setOpening(false)}
   };
   detach.current=async()=>{if(!opened&&!launching)return;opened=false;last='';setCollectionResumed(false);node.dataset.nativeVisible='false';try{await appPanel.release(widget.id);if(!disposed){setReady(false);setError('');current.current.update({appWasCollected:false})}}catch(reason){if(!disposed)setError(String(reason))}};
   relaunch.current=async()=>{
