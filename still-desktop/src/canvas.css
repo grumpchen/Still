@@ -512,6 +512,8 @@ dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
  box-shadow:0 18px 42px rgba(0,0,0,.2),inset 0 1px 0 rgba(255,255,255,.2),inset 0 -1px 0 rgba(35,42,38,.12);
 }
 .app .canvas-card>.card-head{
+ position:relative;
+ overflow:hidden;
  color:#242b28;
  background:linear-gradient(90deg,rgba(255,255,255,.2),transparent 3%,transparent 97%,rgba(0,0,0,.1)),
   linear-gradient(180deg,rgba(255,255,255,.16),transparent 30%,transparent 82%,rgba(0,0,0,.055)),
@@ -522,6 +524,17 @@ dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
  -webkit-backdrop-filter:none;
  box-shadow:inset 0 1px 0 rgba(255,255,255,.62),inset 1px 0 0 rgba(255,255,255,.18),inset -1px 0 0 rgba(255,255,255,.12),inset 0 -1px 0 rgba(25,27,26,.2);
  transition:--reflect-x .12s ease-out,--reflect-y .12s ease-out;
+}
+.app .canvas-card>.card-head::after{
+ content:"";
+ position:absolute;
+ z-index:1;
+ inset:0;
+ pointer-events:none;
+ opacity:.075;
+ mix-blend-mode:soft-light;
+ background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='128' height='128'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.2'/%3E%3C/svg%3E");
+ background-size:128px 128px;
 }
 .app .canvas-card>.card-head svg,
 .app .canvas-card>.card-head .widget-controls button{color:#35403b}
@@ -588,3 +601,4 @@ dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
 .canvas-app.sidebar-peek-open .sidebar,.canvas-app.sidebar-hidden.sidebar-peek-open .sidebar,.canvas-app.focus-mode.sidebar-peek-open .sidebar{display:flex;transform:translateX(0);opacity:1;visibility:visible;pointer-events:auto;transition:transform .24s cubic-bezier(.2,.75,.25,1),opacity .18s ease,visibility 0s}
 .sidebar-reveal-zone{position:fixed;z-index:2147482999;inset:0 auto 0 0;width:10px;pointer-events:auto;background:linear-gradient(90deg,rgba(255,255,255,.045),transparent);cursor:default}
 .canvas-app.sidebar-peek-open .sidebar-reveal-zone{pointer-events:none}
+@media(forced-colors:active){.app .canvas-card>.card-head::after{display:none}}
