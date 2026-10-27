@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-files-move-resource"
+description = "Enables the files_move_resource command without any pre-configured scope."
+commands.allow = ["files_move_resource"]
+
+[[permission]]
+identifier = "deny-files-move-resource"
+description = "Denies the files_move_resource command without any pre-configured scope."
+commands.deny = ["files_move_resource"]

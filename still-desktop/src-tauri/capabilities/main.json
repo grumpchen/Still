@@ -7,9 +7,9 @@
     "core:event:allow-listen", "core:event:allow-unlisten",
     "core:window:allow-is-fullscreen", "core:window:allow-set-fullscreen",
     "allow-chrome-open", "allow-widget-capture", "allow-widget-export",
-    "allow-files-choose", "allow-files-list", "allow-files-open", "allow-files-reuse", "allow-files-preview", "allow-files-extract-pdf-text", "allow-files-library-search", "allow-notes-library-choose", "allow-notes-library-list", "allow-notes-library-read", "allow-notes-library-write", "allow-notes-library-create", "allow-document-open", "allow-document-choose", "allow-document-preview",
+    "allow-files-choose", "allow-files-still-inbox", "allow-files-list", "allow-files-search", "allow-files-open", "allow-files-reuse", "allow-files-preview", "allow-files-extract-pdf-text", "allow-files-library-search", "allow-files-move-resource", "allow-notes-library-choose", "allow-notes-library-list", "allow-notes-library-search", "allow-notes-library-read", "allow-notes-library-write", "allow-notes-library-create", "allow-document-open", "allow-document-choose", "allow-document-preview",
     "allow-app-open", "allow-app-choose", "allow-app-panel-open", "allow-app-panel-prepare-launch", "allow-app-panel-windows", "allow-app-panel-identity", "allow-app-panel-attach", "allow-app-panel-present", "allow-app-panel-release", "allow-app-panel-suspend", "allow-app-panel-resume", "allow-app-panel-configure-shutdown",
-    "allow-app-picker-windows", "allow-app-picker-prepare", "allow-app-picker-preview", "allow-app-picker-installed", "allow-app-picker-installed-icon", "allow-app-picker-select-installed", "allow-app-capture-enable", "allow-shortcuts-configure",
+    "allow-app-picker-windows", "allow-app-picker-prepare", "allow-app-picker-icon", "allow-app-picker-preview", "allow-app-picker-installed", "allow-app-picker-installed-icon", "allow-app-picker-select-installed", "allow-app-capture-enable", "allow-shortcuts-configure",
     "allow-window-input-update-regions", "allow-window-input-configure-toggle", "allow-window-input-set-click-through",
     "allow-startup-status", "allow-startup-set"
   ]

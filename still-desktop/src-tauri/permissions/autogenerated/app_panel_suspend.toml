@@ -1,7 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
 [[permission]]
 identifier = "allow-app-panel-suspend"
-description = "Allows suspending an attached app panel while its widget is collected into a Group."
+description = "Enables the app_panel_suspend command without any pre-configured scope."
+commands.allow = ["app_panel_suspend"]
 
-[permission.commands]
-allow = ["app_panel_suspend"]
-deny = []
+[[permission]]
+identifier = "deny-app-panel-suspend"
+description = "Denies the app_panel_suspend command without any pre-configured scope."
+commands.deny = ["app_panel_suspend"]

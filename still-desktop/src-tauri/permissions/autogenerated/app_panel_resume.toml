@@ -1,7 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
 [[permission]]
 identifier = "allow-app-panel-resume"
-description = "Allows resuming the same attached app window when its collected widget returns to the workspace."
+description = "Enables the app_panel_resume command without any pre-configured scope."
+commands.allow = ["app_panel_resume"]
 
-[permission.commands]
-allow = ["app_panel_resume"]
-deny = []
+[[permission]]
+identifier = "deny-app-panel-resume"
+description = "Denies the app_panel_resume command without any pre-configured scope."
+commands.deny = ["app_panel_resume"]
