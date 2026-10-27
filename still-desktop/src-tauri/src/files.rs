@@ -141,9 +141,18 @@ const NOTE_LIBRARY_MAX_CHARS:usize=256_000;
 const NOTE_LIBRARY_MAX_DIRECTORIES:usize=2000;
 const NOTE_LIBRARY_MAX_DEPTH:usize=24;
 const NOTE_LIBRARY_MAX_SCANNED_ENTRIES:usize=10000;
+const NOTE_LIBRARY_SEARCH_MAX_QUERY_CHARS:usize=120;
+const NOTE_LIBRARY_SEARCH_MAX_BYTES:u64=20*1024*1024;
+const NOTE_LIBRARY_SEARCH_MAX_RESULTS:usize=100;
 #[derive(Serialize)]
 #[serde(rename_all="camelCase")]
 pub(crate) struct NoteLibraryEntry { path:String, name:String, size:u64 }
+#[derive(Serialize)]
+#[serde(rename_all="camelCase")]
+pub(crate) struct NoteLibrarySearchEntry { path:String, name:String, size:u64, snippet:String }
+#[derive(Serialize)]
+#[serde(rename_all="camelCase")]
+pub(crate) struct NoteLibrarySearchResult { results:Vec<NoteLibrarySearchEntry>, truncated:bool }
 fn supported_note(path:&Path)->bool{
     matches!(path.extension().and_then(|value|value.to_str()).unwrap_or("").to_ascii_lowercase().as_str(),"md"|"markdown"|"txt")
 }
@@ -179,12 +188,55 @@ fn note_target(roots:&FolderRoots,id:&str,relative:&str)->Result<PathBuf,String>
     Ok(target)
 }
 fn read_note_file(roots:&FolderRoots,id:&str,relative:&str)->Result<String,String>{
-    let target=note_target(roots,id,relative)?;
+    let root=roots.root(id)?.canonicalize().map_err(|_|"The selected notes folder is unavailable. Choose it again.")?;
+    read_note_from_root_limited(&root,relative,NOTE_LIBRARY_MAX_BYTES)
+}
+fn read_note_from_root_limited(root:&Path,relative:&str,max_bytes:u64)->Result<String,String>{
+    let target=resolve(root,relative)?;
+    if !supported_note(&target){return Err("Choose a Markdown or text file inside the selected notes folder".into())}
     let metadata=fs::metadata(&target).map_err(|_|"This note is no longer available")?;
-    if metadata.len()>NOTE_LIBRARY_MAX_BYTES{return Err("This note exceeds the 1 MB editing limit.".into())}
-    let text=String::from_utf8(fs::read(target).map_err(|_|"Could not read this note")?).map_err(|_|"This note is not valid UTF-8 and cannot be edited here.")?;
+    let cap=max_bytes.min(NOTE_LIBRARY_MAX_BYTES);
+    if metadata.len()>cap{return Err("This note exceeds the available search read limit.".into())}
+    let mut bytes=Vec::with_capacity(metadata.len() as usize);
+    fs::File::open(target).map_err(|_|"Could not read this note")?.take(cap+1).read_to_end(&mut bytes).map_err(|_|"Could not read this note")?;
+    if bytes.len() as u64>cap{return Err("This note exceeds the available search read limit.".into())}
+    let text=String::from_utf8(bytes).map_err(|_|"This note is not valid UTF-8 and cannot be edited here.")?;
     if text.chars().count()>NOTE_LIBRARY_MAX_CHARS{return Err("This note is larger than Still's 256,000-character editing limit.".into())}
     Ok(text)
+}
+fn note_search_snippet(text:&str,needle:&str)->String{
+    let lower=text.to_lowercase();
+    let match_byte=lower.find(needle).unwrap_or(0);
+    let match_char=lower[..match_byte].chars().count();
+    let chars=text.chars().collect::<Vec<_>>();
+    let start=match_char.saturating_sub(88).min(chars.len());
+    let end=(start+224).min(chars.len());
+    let mut snippet=String::new();
+    if start>0{snippet.push('…')}
+    snippet.extend(chars[start..end].iter());
+    if end<chars.len(){snippet.push('…')}
+    snippet
+}
+fn search_notes_in_root(root:&Path,query:&str)->Result<NoteLibrarySearchResult,String>{
+    let needle=query.trim().to_lowercase();
+    if needle.is_empty(){return Ok(NoteLibrarySearchResult{results:Vec::new(),truncated:false})}
+    if needle.chars().count()>NOTE_LIBRARY_SEARCH_MAX_QUERY_CHARS{return Err("Search text is limited to 120 characters.".into())}
+    let mut files=Vec::new();let(mut directories,mut scanned)=(0,0);
+    collect_note_files(root,root,&mut files,&mut directories,&mut scanned,0)?;
+    files.sort_by(|a,b|a.path.to_lowercase().cmp(&b.path.to_lowercase()));
+    let mut remaining=NOTE_LIBRARY_SEARCH_MAX_BYTES;let mut results=Vec::new();let mut truncated=false;
+    for file in files.iter().filter(|item|supported_note(Path::new(&item.path))){
+        if results.len()>=NOTE_LIBRARY_SEARCH_MAX_RESULTS{truncated=true;break}
+        if remaining==0{truncated=true;break}
+        let text=match read_note_from_root_limited(root,&file.path,remaining){Ok(value)=>value,Err(_)=>{truncated=true;continue}};
+        remaining=remaining.saturating_sub(text.len() as u64);
+        if text.to_lowercase().contains(&needle){
+            let snippet=note_search_snippet(&text,&needle);
+            results.push(NoteLibrarySearchEntry{path:file.path.clone(),name:file.name.clone(),size:file.size,snippet});
+        }
+    }
+    if remaining==0{truncated=true}
+    Ok(NoteLibrarySearchResult{results,truncated})
 }
 fn write_note_file(roots:&FolderRoots,id:&str,relative:&str,text:&str,expected:&str)->Result<(),String>{
     if text.len() as u64>NOTE_LIBRARY_MAX_BYTES{return Err("This note exceeds the 1 MB editing limit.".into())}
@@ -243,6 +295,13 @@ pub async fn notes_library_list(webview:Webview,roots:State<'_,FolderRoots>,id:S
     let root=roots.root(&id)?.canonicalize().map_err(|_|"The selected notes folder is unavailable. Choose it again.")?;
     let mut files=Vec::new();let(mut directories,mut scanned)=(0,0);collect_note_files(&root,&root,&mut files,&mut directories,&mut scanned,0)?;
     files.sort_by(|a,b|a.path.to_lowercase().cmp(&b.path.to_lowercase()));Ok(files)
+}
+#[tauri::command]
+pub async fn notes_library_search(webview:Webview,roots:State<'_,FolderRoots>,id:String,query:String)->Result<NoteLibrarySearchResult,String>{
+    crate::security::authorize(&webview)?;valid_id(&id)?;
+    if query.chars().count()>NOTE_LIBRARY_SEARCH_MAX_QUERY_CHARS{return Err("Search text is limited to 120 characters.".into())}
+    let root=roots.root(&id)?.canonicalize().map_err(|_|"The selected notes folder is unavailable. Choose it again.")?;
+    tauri::async_runtime::spawn_blocking(move||search_notes_in_root(&root,&query)).await.map_err(|_|"Could not search this notes library")?
 }
 #[tauri::command]
 pub async fn notes_library_read(webview:Webview,roots:State<'_,FolderRoots>,id:String,path:String)->Result<String,String>{

@@ -381,7 +381,12 @@ dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
 .note-library-files{min-height:0;overflow:auto;border:0;border-right:1px solid var(--border);border-radius:0}
 .note-library-file{display:flex;width:100%;min-height:34px;align-items:center;justify-content:flex-start;gap:7px;padding:6px 7px;border:0;border-bottom:1px solid color-mix(in srgb,var(--border) 72%,transparent);background:transparent;color:var(--text);text-align:left;font-size:11px}
 .note-library-file:hover,.note-library-file.is-selected{background:var(--tint)}
+.note-library-file.has-snippet{min-height:52px;align-items:flex-start}
 .note-library-file small{flex:0 0 auto;margin-left:auto;color:var(--muted);font-size:9px}
+.note-library-file-label{display:flex;flex:1;min-width:0;flex-direction:column;gap:3px}
+.note-library-file-snippet{display:-webkit-box;overflow:hidden;max-height:2.8em;margin:0!important;white-space:normal;overflow-wrap:anywhere;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.note-library-file-meta{max-width:64px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.note-library-search-limited{display:block;padding:6px;color:var(--muted);font-size:9px}
 .note-library-icon{display:grid;flex:0 0 27px;width:27px;height:24px;place-items:center;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--muted);font-size:8px;font-weight:700;letter-spacing:.02em}
 .note-library-icon.is-folder{color:var(--accent);font-size:14px}
 .note-library-file-name{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
