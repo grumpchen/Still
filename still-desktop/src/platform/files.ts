@@ -3,6 +3,7 @@ export interface FileEntry { name:string; path:string; directory:boolean; size:n
 export interface FolderListing { rootName:string; location:string; entries:FileEntry[]; truncated:boolean }
 export interface NativeFilePreview {mimeType:string;base64:string}
 export interface StillInbox {listing:FolderListing;path:string}
+export interface FileMoveResult {sourcePath:string;destinationPath:string}
 const selected=new Map<string,{rootName:string; files:Map<string,File>}>();
 export function programFile(name:string):boolean { return /\.(exe|com|bat|cmd|msi|ps1|psm1|vbs|vbe|js|jse|wsf|wsh|scr|lnk|url|reg|hta|sh|app|desktop)$/i.test(name) }
 export async function openBrowserFile(file:File):Promise<void>{
@@ -56,6 +57,10 @@ export const localFiles={
     if(programFile(file.name))throw new Error('Programs and shortcuts cannot be previewed.');
     if(file.size>20*1024*1024)throw new Error('This file is larger than the 20 MB preview limit. Open it in your default app instead.');
     return file.slice(0,file.size,file.type||mimeFor(file.name));
+  },
+  async moveResource(id:string,sourcePath:string,destinationFolder:string):Promise<FileMoveResult>{
+    if(!this.native)throw new Error('Filing resources is available in the Still desktop app.');
+    return invoke<FileMoveResult>('files_move_resource',{id,sourcePath,destinationFolder});
   },
 };
 
