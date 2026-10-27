@@ -29,8 +29,15 @@ enum SelectedWindowDisposition{AttachToPanel}
 fn selected_window_disposition(_profile_picker:bool)->SelectedWindowDisposition{SelectedWindowDisposition::AttachToPanel}
 fn same_path(a:&str,b:&str)->bool{a.trim_start_matches("\\\\?\\").eq_ignore_ascii_case(b.trim_start_matches("\\\\?\\"))}
 fn existed_before(before:&[WindowIdentity],window:&WindowInfo)->bool{before.contains(&WindowIdentity{hwnd:window.hwnd,pid:window.pid})}
-fn select_window<'a>(launch:&Launch,windows:&'a [WindowInfo],claimed:&[usize])->Option<&'a WindowInfo>{
- windows.iter().find(|w|!existed_before(&launch.before,w)&&!claimed.contains(&w.hwnd)&&((launch.pid!=0&&w.pid==launch.pid)||launch.executable.as_ref().zip(w.executable.as_ref()).is_some_and(|(a,b)|same_path(a,b))))
+fn select_window<'a>(launch:&Launch,windows:&'a [WindowInfo],claimed:&[usize],foreground_hwnd:usize)->Option<&'a WindowInfo>{
+ let launched=windows.iter().find(|w|!existed_before(&launch.before,w)&&!claimed.contains(&w.hwnd)&&((launch.pid!=0&&w.pid==launch.pid)||launch.executable.as_ref().zip(w.executable.as_ref()).is_some_and(|(a,b)|same_path(a,b))));
+ if launched.is_some(){return launched}
+ // ShellExecute can hand off activation to an already-running process. In
+ // that case the visible app window keeps its old PID/HWND and is deliberately
+ // absent from the new-window candidates above. Only adopt it when Windows
+ // has foregrounded a window whose full executable matches this launch.
+ if launch.profile_picker{return None}
+ windows.iter().find(|w|w.hwnd==foreground_hwnd&&!claimed.contains(&w.hwnd)&&launch.executable.as_ref().zip(w.executable.as_ref()).is_some_and(|(a,b)|same_path(a,b)))
 }
 fn selected_profile_window<'a>(picker_hwnd:usize,picker_title:Option<&str>,foreground_hwnd:usize,windows:&'a [WindowInfo],expected:&str,claimed:&[usize],before:&[WindowIdentity])->Option<&'a WindowInfo>{
  if picker_hwnd==0{return None}
@@ -587,9 +594,10 @@ pub async fn app_panel_open(app:AppHandle,webview:Webview,id:String,source_id:St
    loop{
     let claimed={let s=state.0.lock().map_err(|_|"App panels are unavailable")?;if s.closed||s.generation.get(&id)!=Some(&epoch){return Err("App attachment was cancelled.".into())}s.items.values().map(|e|e.hwnd).collect::<Vec<_>>()};
     let choices=if launch.profile_picker&&launch.picker_hwnd.is_some(){profile_windows()}else{windows()};
+    let foreground=unsafe{GetForegroundWindow()}.0 as usize;
     let candidate=if launch.profile_picker{
      if launch.picker_hwnd.is_none(){
-      if let Some(picker)=select_window(&launch,&choices,&claimed){
+      if let Some(picker)=select_window(&launch,&choices,&claimed,foreground){
        launch.picker_hwnd=Some(picker.hwnd);
         launch.picker_title=Some(picker.title.clone());
        let picker_hwnd=handle(picker.hwnd);unsafe{let _=ShowWindow(picker_hwnd,SW_SHOW);let _=SetForegroundWindow(picker_hwnd);}
@@ -601,7 +609,7 @@ pub async fn app_panel_open(app:AppHandle,webview:Webview,id:String,source_id:St
        let foreground=unsafe{GetForegroundWindow()}.0 as usize;
        launch.executable.as_deref().and_then(|expected|selected_profile_window(picker_hwnd,launch.picker_title.as_deref(),foreground,&choices,expected,&claimed,&launch.before))
      }
-    }else{select_window(&launch,&choices,&claimed)};
+    }else{select_window(&launch,&choices,&claimed,foreground)};
     if let Some(candidate)=candidate{
      if launch.profile_picker {
       if let Some(arguments)=chrome_profile_arguments(candidate.hwnd,&path.to_string_lossy()) {
@@ -761,8 +769,8 @@ pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
   let launch=Launch{pid:22,executable:Some("C:\\Office\\WINWORD.EXE".into()),before:vec![WindowIdentity{hwnd:101,pid:22}],profile_picker:false,picker_hwnd:None,picker_title:None};
   let window=|hwnd,pid,path:&str|WindowInfo{hwnd,pid,title:"Document".into(),executable:Some(path.into())};
   let choices=vec![window(101,22,"C:\\Office\\WINWORD.EXE"),window(102,90,"C:\\Apps\\other.exe"),window(103,22,"C:\\Office\\WINWORD.EXE"),window(104,33,"c:\\office\\winword.exe")];
-  assert_eq!(select_window(&launch,&choices,&[103]).map(|w|w.hwnd),Some(104));
-  assert!(select_window(&launch,&choices,&[103,104]).is_none());
+  assert_eq!(select_window(&launch,&choices,&[103],0).map(|w|w.hwnd),Some(104));
+  assert!(select_window(&launch,&choices,&[103,104],0).is_none());
  }
  #[test]fn opening_an_explicit_chrome_profile_does_not_reuse_an_arbitrary_existing_profile_window(){
   let chrome=WindowInfo{hwnd:81,pid:900,title:"Google - Stephen".into(),executable:Some("C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe".into())};
