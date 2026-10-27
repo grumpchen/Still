@@ -72,7 +72,7 @@ test('legacy Browser cards migrate bookmarks into Groups without losing other wo
   const web={id:'old-browser',type:'browser',title:'Course browser',url:'https://example.com/course',bookmarks:[{id:'course',name:'Course page',url:'https://example.com/lectures'}]};w.widgets.push(web);
   const note=w.widgets.find(w=>w.type==='notes');note.text='Do not lose this';delete note.noteDocuments;delete note.activeNoteDocumentId;
   const restored=parseState(JSON.stringify(state)),migrated=restored.workspaces[0];
-  assert.equal(restored.version,9);assert.equal(migrated.layout,'canvas');
+  assert.equal(restored.version,10);assert.equal(migrated.layout,'canvas');
   assert.equal(migrated.widgets.some(w=>w.id===web.id),false);
   assert.ok(migrated.groups[0].shortcuts.some(s=>s.name==='Course page'));assert.ok(migrated.groups[0].shortcuts.some(s=>s.url===web.url));
   assert.equal(migrated.widgets.find(w=>w.type==='notes').text,note.text);
