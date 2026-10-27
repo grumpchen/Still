@@ -82,7 +82,7 @@ dialog{width:min(440px,calc(100vw - 32px));border:1px solid var(--border);border
 .liquid-chrome-backdrop{position:fixed;z-index:-1;inset:0;overflow:hidden;pointer-events:none;background:linear-gradient(135deg,#29312f,#737a7d 48%,#252a2d)}
 .liquid-chrome-backdrop::after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(135deg,rgb(14 20 24 / .14),rgb(12 18 22 / .025) 50%,rgb(8 12 16 / .2))}
 .liquid-glass.dark .liquid-chrome-backdrop::after{background:linear-gradient(135deg,rgb(7 11 15 / .24),rgb(7 10 14 / .11) 50%,rgb(5 8 12 / .32))}
-.wave-wallpaper-backdrop{background-color:#08090b;background-image:url('./assets/wave-metal-wallpaper.png');background-position:center;background-size:contain;background-repeat:no-repeat}
+.wave-wallpaper-backdrop{background-color:#08090b;background-image:url('./assets/wave-metal-wallpaper.png');background-position:center;background-size:cover;background-repeat:no-repeat}
 .wave-wallpaper-backdrop::after{display:none}
 .liquid-glass.dark{--surface:rgb(25 37 30 / var(--glass-alpha,.68));--text:#eef5ef;--muted:#b9cbbb;--border:rgb(230 245 232 / .18);--accent:#9cbaff;--tint:rgb(235 255 238 / .09);--glass-rim:rgb(237 255 241 / .25);--glass-highlight:rgb(226 255 234 / .055);--glass-shadow:rgb(0 12 4 / .3);color-scheme:dark}
 .liquid-glass.dots .content{background-image:none}
