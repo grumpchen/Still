@@ -27,7 +27,7 @@
 
 1. Add a persistent Library workspace role and keep it visible in built-in sidebar navigation.
 2. Build a searchable resource view around a dedicated Still Downloads inbox, selected course folders, Notes Library files, saved links, and recent study documents.
-3. Offer an explicit, reversible setting that redirects the system Downloads location into the Still inbox; never change the system path silently. Only process incoming files after the user opts in.
+3. Create the Still Downloads folder and show its exact path with clear steps for setting a browser's Downloads location there. User changes that browser setting explicitly; Still never changes it silently. Only process files that arrive in the chosen inbox.
 4. Let AI classify useful downloads by course/topic and suggest destinations. Keep unwanted or uncertain files in the inbox for normal user handling; never auto-delete them.
 5. Extend native folder grants only for explicit user-selected roots and return minimal metadata to the frontend. Add resource actions to open, preview, attach to Notes, or send selected context to AI.
 6. Verify persistence, grant boundaries, and UI builds; commit and push.

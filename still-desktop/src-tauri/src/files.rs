@@ -61,6 +61,9 @@ pub(crate) struct FilePreview { mime_type: String, base64: String }
 #[derive(Serialize)]
 #[serde(rename_all="camelCase")]
 pub struct FolderListing { root_name: String, location: String, entries: Vec<FileEntry>, truncated: bool }
+#[derive(Serialize)]
+#[serde(rename_all="camelCase")]
+pub(crate) struct StillInbox { listing:FolderListing,path:String }
 pub(crate) fn valid_id(id: &str) -> Result<(), String> {
     if id.is_empty() || id.len()>80 || !id.bytes().all(|c| c.is_ascii_alphanumeric()||c==b'-') { return Err("Invalid Files widget".into()); }
     Ok(())
@@ -263,6 +266,21 @@ pub async fn files_choose(app: AppHandle, webview: Webview, roots: State<'_,Fold
     folders.insert(id,path);
     drop(folders);persist_roots(&app,&roots)?;
     Ok(Some(result))
+}
+#[tauri::command]
+pub async fn files_still_inbox(app:AppHandle,webview:Webview,roots:State<'_,FolderRoots>,id:String)->Result<StillInbox,String>{
+    crate::security::authorize(&webview)?;valid_id(&id)?;
+    let documents=app.path().document_dir().map_err(|_|"Could not locate your Documents folder")?;
+    let path=documents.join("Still").join("Downloads");
+    fs::create_dir_all(&path).map_err(|_|"Could not create the Still Downloads inbox")?;
+    let path=path.canonicalize().map_err(|_|"Could not open the Still Downloads inbox")?;
+    // Keep an opaque built-in source grant for saved Files shortcuts, then bind
+    // this widget instance to the same root. The UI never supplies a path.
+    let source="still-downloads-inbox";
+    set_root_and_persist(&roots,source,path.clone(),|roots|persist_roots(&app,roots))?;
+    set_root_and_persist(&roots,&id,path.clone(),|roots|persist_roots(&app,roots))?;
+    let listing=listing(&path,"")?;
+    Ok(StillInbox{listing,path:path.to_string_lossy().into_owned()})
 }
 #[tauri::command]
 pub async fn files_reuse(app:AppHandle,webview:Webview,roots:State<'_,FolderRoots>,id:String,source_id:String)->Result<FolderListing,String>{

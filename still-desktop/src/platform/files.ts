@@ -2,6 +2,7 @@ import { invoke, isTauri } from '@tauri-apps/api/core';
 export interface FileEntry { name:string; path:string; directory:boolean; size:number; blocked:boolean }
 export interface FolderListing { rootName:string; location:string; entries:FileEntry[]; truncated:boolean }
 export interface NativeFilePreview {mimeType:string;base64:string}
+export interface StillInbox {listing:FolderListing;path:string}
 const selected=new Map<string,{rootName:string; files:Map<string,File>}>();
 export function programFile(name:string):boolean { return /\.(exe|com|bat|cmd|msi|ps1|psm1|vbs|vbe|js|jse|wsf|wsh|scr|lnk|url|reg|hta|sh|app|desktop)$/i.test(name) }
 export async function openBrowserFile(file:File):Promise<void>{
@@ -21,6 +22,7 @@ export function folderEntries(items:Iterable<{path:string;size:number}>,location
 export const localFiles={
   native:isTauri(),
   choose:(id:string)=>invoke<FolderListing|null>('files_choose',{id}),
+  inbox:(id:string)=>invoke<StillInbox>('files_still_inbox',{id}),
   select(id:string,files:File[]):FolderListing{
     if(!files.length)throw new Error('This folder contains no selectable files.');
     const first=files[0].webkitRelativePath||files[0].name;const rootName=first.includes('/')?first.split('/')[0]:'Selected files';
