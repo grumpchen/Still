@@ -1,5 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import type {WidgetInstance} from './domain/workspaces.ts';
+import {useT} from './localization.tsx';
 
 interface TimerWidgetProps {
  widget:WidgetInstance;
@@ -14,6 +15,7 @@ const minuteMarks=[0,5,10,15,20,25,30,35,40,45,50,55];
 const pad=(value:number)=>String(value).padStart(2,'0');
 
 export default function TimerWidget({widget,variant,workspaceActive=true,update,notify}:TimerWidgetProps){
+ const t=useT();
  const [now,setNow]=useState(Date.now());
  const [mode,setMode]=useState<'hour'|'minute'>('hour');
  const [selected,setSelected]=useState(widget.remaining);
@@ -30,7 +32,7 @@ export default function TimerWidget({widget,variant,workspaceActive=true,update,
   if(workspaceActive&&variant==='focus'&&widget.end&&remaining===0&&completedEnd.current!==widget.end){
    completedEnd.current=widget.end;
    update({end:null,remaining:0});
-   notify(variant==='focus'?'Focus session complete. Take a breath.':'Clock timer complete.');
+   notify(variant==='focus'?t('focusComplete'):t('clockTimerComplete'));
   }
  },[workspaceActive,remaining,widget.end,variant,update,notify]);
 
@@ -59,31 +61,31 @@ export default function TimerWidget({widget,variant,workspaceActive=true,update,
  const dialHour=mode==='hour'?(hours%12)*30:minutes*6;
 
  return <div className={`card-body timer-widget timer-widget-${variant}`}>
-  <div className="timer-widget-top"><span>{variant==='focus'?'Focus session':'Clock timer'}</span><span>{running?'RUNNING':'SET DURATION'}</span></div>
-  <div className="timer-mode-switch" role="group" aria-label="Timer dial unit">
-   <button type="button" aria-pressed={mode==='hour'} onClick={()=>setMode('hour')}>Hour</button>
-   <button type="button" aria-pressed={mode==='minute'} onClick={()=>setMode('minute')}>Min</button>
+  <div className="timer-widget-top"><span>{variant==='focus'?t('focusSession'):t('clockTimer')}</span><span>{running?t('timerRunning'):t('timerSetDuration')}</span></div>
+  <div className="timer-mode-switch" role="group" aria-label={t('timerDialUnit')}>
+   <button type="button" aria-pressed={mode==='hour'} onClick={()=>setMode('hour')}>{t('timerHour')}</button>
+   <button type="button" aria-pressed={mode==='minute'} onClick={()=>setMode('minute')}>{t('timerMinuteShort')}</button>
   </div>
-  <div className="timer-dial" role="group" aria-label="Set timer duration" aria-disabled={running}>
+  <div className="timer-dial" role="group" aria-label={t('setTimerDuration')} aria-disabled={running}>
    <div className="timer-dial-ring" aria-hidden="true"/>
    <div className="timer-dial-hand" aria-hidden="true" style={{transform:`rotate(${running?dialHour:handAngle}deg)`}}/>
    {marks.map((mark,index)=>{
     const angle=index*30*Math.PI/180;
     const label=mode==='hour'?String(mark):pad(mark);
     const isSelected=mode==='hour'?mark===selectedMark:mark===selectedMark;
-    return <button key={mark} type="button" className={`timer-dial-mark ${isSelected?'selected':''}`} style={{left:`${50+Math.sin(angle)*40}%`,top:`${50-Math.cos(angle)*40}%`}} aria-label={mode==='hour'?`Set ${mark} hour${mark===1?'':'s'}`:`Set ${label} minutes`} aria-pressed={isSelected} disabled={running} onClick={()=>setPart(mark)}>{label}</button>;
+    return <button key={mark} type="button" className={`timer-dial-mark ${isSelected?'selected':''}`} style={{left:`${50+Math.sin(angle)*40}%`,top:`${50-Math.cos(angle)*40}%`}} aria-label={mode==='hour'?t('setTimerHour').replace('{count}',String(mark)):t('setTimerMinutes').replace('{count}',label)} aria-pressed={isSelected} disabled={running} onClick={()=>setPart(mark)}>{label}</button>;
    })}
-   <div className="timer-dial-center"><strong>{pad(displayHours)}:{pad(displayMinutes)}</strong><span>{running?pad(displaySeconds)+' SEC':variant==='focus'?'FOCUS':'TIMER'}</span></div>
+   <div className="timer-dial-center"><strong>{pad(displayHours)}:{pad(displayMinutes)}</strong><span>{running?pad(displaySeconds)+' '+t('timerSecondsShort'):variant==='focus'?t('focusLabel'):t('timerLabel')}</span></div>
   </div>
   <div className="timer-range-wrap">
-   <input type="range" aria-label={mode==='hour'?'Timer hours':'Timer minutes'} min={0} max={mode==='hour'?12:59} step={1} value={value} disabled={running} onChange={event=>setPart(Number(event.target.value))}/>
+   <input type="range" aria-label={mode==='hour'?t('timerHours'):t('timerMinutes')} min={0} max={mode==='hour'?12:59} step={1} value={value} disabled={running} onChange={event=>setPart(Number(event.target.value))}/>
    <div className="timer-range-labels" aria-hidden="true">{(mode==='hour'?['0','3','6','9','12']:['00','15','30','45','59']).map(mark=><span key={mark}>{mark}</span>)}</div>
   </div>
   <div className="timer-widget-actions">
-   <button type="button" onClick={cancelSelection} disabled={running}>Cancel</button>
-   <button type="button" className="timer-set-button" onClick={setTime} disabled={running}>Set Time</button>
-   <button type="button" className="timer-start-button" onClick={toggleTimer}>{running?'Pause':'Start'}</button>
-   <button type="button" className="timer-reset-button" onClick={reset}>Reset</button>
+   <button type="button" onClick={cancelSelection} disabled={running}>{t('cancel')}</button>
+   <button type="button" className="timer-set-button" onClick={setTime} disabled={running}>{t('setTimeButton')}</button>
+   <button type="button" className="timer-start-button" onClick={toggleTimer}>{running?t('pauseTimer'):t('startTimer')}</button>
+   <button type="button" className="timer-reset-button" onClick={reset}>{t('resetTimer')}</button>
   </div>
  </div>;
 }
