@@ -6,19 +6,20 @@ import {ASSISTANT_ACTION_TYPES} from '../src/domain/assistant.ts';
 const app=readFileSync(new URL('../src/App.tsx',import.meta.url),'utf8');
 const panel=readFileSync(new URL('../src/AssistantPanel.tsx',import.meta.url),'utf8');
 const widgets=readFileSync(new URL('../src/widgets.tsx',import.meta.url),'utf8');
+const assistantDomain=readFileSync(new URL('../src/domain/assistant.ts',import.meta.url),'utf8');
 const native=readFileSync(new URL('../src-tauri/src/main.rs',import.meta.url),'utf8');
 const capabilities=readFileSync(new URL('../src-tauri/capabilities/main.json',import.meta.url),'utf8');
 
 test('Gemini assistant is reachable from the sidebar and native commands are registered',()=>{
- assert.match(app,/title="AI assistant" aria-label="AI assistant"[\s\S]*?setAssistantOpen/);
+ assert.match(app,/title=\{translate\(state\.locale,'aiAssistant'\)\} aria-label=\{translate\(state\.locale,'aiAssistant'\)\}[\s\S]*?setAssistantOpen/);
  assert.match(app,/<AssistantPanel[\s\S]*?open=\{assistantOpen\}[\s\S]*?apply=\{applyAssistantLayout\}/);
- assert.match(panel,/aria-label="Still AI assistant"/);
+ assert.match(panel,/aria-label=\{t\('aiAssistant'\)\}/);
  assert.match(panel,/assistant-mention-picker/);
  assert.match(panel,/assistantWorkspaceContext\(/);
  assert.match(panel,/assistantRequestLimitError\(input,trayItems\)/);
- assert.match(panel,/This will open saved app shortcuts in Still/);
+ assert.match(panel,/t\('assistantOpenSavedAppsConfirm'\)/);
  assert.match(app,/trayItems=\{assistantTrayItems\(state\.presets,workspace\.groups\)\}/);
- assert.match(panel,/aria-label="AI model"/);
+ assert.match(panel,/aria-label=\{t\('aiModel'\)\}/);
  assert.doesNotMatch(panel,/assistant-modes|Read widget|Arrange layout/);
  assert.match(widgets,/still-open-assistant/);
  for(const command of ['assistant_configured','assistant_models','assistant_set_key','assistant_chat','assistant_key_setup']){
@@ -43,7 +44,7 @@ test('AI assistant has Gemini, OpenAI, and OpenCode Go providers',()=>{
  assert.match(backend,/credential_store::load\(provider\)/,'saved keys load when Still starts');
  assert.match(backend,/credential_store::save\(provider,&key\)/,'connecting a key persists it');
  assert.match(backend,/credential_store::delete\(provider\)/,'Forget deletes the saved key');
- assert.match(panel,/stored securely in Windows Credential Manager/);
+ assert.match(panel,/t\('aiSecureKeyNotice'\)/);
  assert.match(protocol,/Never guess an edit when the requested change is vague/,'the model is told to clarify underspecified edits instead of inventing a change');
  assert.match(protocol,/visible Still workspace canvas, including visible app panels attached inside it/,'a shared image includes attached app panels but remains scoped to the workspace canvas');
  assert.match(protocol,/image alone is not permission to change anything/,'visual context never authorizes workspace edits by itself');
@@ -53,9 +54,10 @@ test('clear all-widget actions are resolved locally before any model request',()
  assert.ok(panel.indexOf('if(localActions){')<panel.indexOf('geminiAssistant.send('),'deterministic workspace actions must not depend on model output');
  assert.match(panel,/!directActions&&!confirmationRequest&&!directTimerRequest&&\(!configured\|\|!currentModels\.includes\(model\)\|\|!geminiAssistant\.available\)/,'local actions remain available without AI credentials');
  assert.match(panel,/result\.layout\.length&&assistantLayoutRequested\(prompt\)/,'only explicit layout requests may show a layout proposal');
- assert.match(panel,/confirmation==='delete_workspace'\?'Delete this workspace\?'/);
- assert.match(panel,/confirmation==='open_saved_apps'\?'Confirm open':confirmation==='delete_workspace'\?'Confirm delete':'Confirm remove'/);
- assert.match(panel,/Confirm removing workspace widgets/);
+ assert.match(panel,/needsConfirmation==='delete_workspace'\?t\('assistantDeleteWorkspaceConfirm'\)/);
+ assert.match(panel,/confirmation==='delete_workspace'\?'confirmDeleteWorkspaceTitle'/);
+ assert.match(panel,/confirmation==='delete_widgets'\?'confirmDeleteWidgetsTitle'/);
+ assert.match(panel,/t\('assistantRemoveWidgetsConfirm'\)/);
  assert.match(panel,/deleteWidgets\(owner\.id\)/);
  assert.match(panel,/settleAssistantConfirmation\(current,receipt\)/,'confirmation result replaces the pending reply instead of breaking chat turn order');
  assert.match(app,/clearTray=\{clearAssistantTray\}/);
@@ -65,7 +67,7 @@ test('clear all-widget actions are resolved locally before any model request',()
  assert.match(app,/undo\.current=current;[\s\S]*presets:\[\],workspaces:/,'tray clearing records state for Undo');
 });
 test('local widget actions always record a nonempty receipt and repair old blank turns',()=>{
- assert.match(app,/assistantAddedWidgetReceipt\(actions\)/,'adding widgets receives a named completion reply');
+ assert.match(assistantDomain,/export function assistantAddedWidgetReceipt\(actions:AssistantAction\[\]\):string/,'adding widgets receives a named completion reply');
  assert.match(panel,/safeAssistantReceipt\(await act\(/,'empty future action replies cannot enter chat history');
  assert.match(panel,/prepareAssistantHistory\(messages\)/,'older blank replies are repaired before the next provider request');
 });

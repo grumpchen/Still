@@ -69,7 +69,7 @@ test('the single chat can use workspace widgets; @ is optional quick selection a
   assert.ok(window.document.querySelector('.assistant-check input[type="checkbox"]'),'the Edge screenshot stays selectable alongside the Timetable content');
 
   await act(async()=>window.document.querySelector('[aria-label="AI settings"]').click());
-  const workspaceImageSetting=window.document.querySelector('[aria-label="Share workspace screenshot with Still AI"]');assert.ok(workspaceImageSetting?.checked,'workspace image sharing is enabled by default in Still AI settings');
+  const workspaceImageSetting=window.document.querySelector('[aria-label="Share the visible workspace with AI messages"]');assert.ok(workspaceImageSetting?.checked,'workspace image sharing is enabled by default in Still AI settings');
   await act(async()=>setReactChecked(workspaceImageSetting,false));assert.equal(window.localStorage.getItem('still-assistant-share-workspace-image'),'false','the setting remembers when sharing is turned off');
   await act(async()=>setReactChecked(workspaceImageSetting,true));
   const provider=window.document.querySelector('.assistant-settings select');
@@ -173,9 +173,9 @@ test('widget add commands show replies and provider chat carries complete action
   await act(async()=>root.render(createElement(AssistantPanel,props)));
   await act(async()=>setReactValue(composer,'remove focus','HTMLTextAreaElement'));
   await act(async()=>window.document.querySelector('.assistant-compose').requestSubmit());
-  await waitFor(()=>window.document.querySelector('[aria-label="Confirm removing selected widgets"]'));
+  await waitFor(()=>window.document.querySelector('.assistant-confirmation'));
   assert.equal(actions.filter(action=>action.type==='remove_widget').length,0,'the widget stays until removal is confirmed');
-  await act(async()=>window.document.querySelector('[aria-label="Confirm removing selected widgets"] button.primary').click());
+  await act(async()=>window.document.querySelector('.assistant-confirmation button.primary').click());
   await waitFor(()=>actions.some(action=>action.type==='remove_widget'&&action.ids[0]===focus.id));
   const beforeIndirect=actions.length;
   await act(async()=>setReactValue(composer,'I need somewhere to take notes','HTMLTextAreaElement'));
