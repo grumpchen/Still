@@ -9,6 +9,7 @@ import './assistant.css';
 type AssistantConfirmation='clear_tray'|'delete_widgets'|'delete_workspace'|'open_saved_apps'|'remove_widgets'|'workspace_actions';
 type Props={workspace:Workspace;canDeleteWorkspace:boolean;sidebarPlugins:SidebarPlugin[];trayItems:AssistantTrayItem[];open:boolean;close:()=>void;dimensions:()=>{width:number;height:number};apply:(plan:LayoutPlan)=>void;act:(workspaceId:string,actions:AssistantAction[],prompt:string)=>Promise<string>;startTimer:(workspaceId:string,seconds:number)=>Promise<string>;clearTray:(workspaceId:string)=>Promise<string>;deleteWidgets:(workspaceId:string)=>Promise<string>;deleteWorkspace:(workspaceId:string)=>Promise<string>;undo:()=>void};
 type Mention={id:string;label:string};
+type LibraryResourceContext={name:string;path:string;size:number;text:string;notes:string};
 const PROVIDERS:AssistantProvider[]=['gemini','openai','opencode'];
 const PROVIDER_NAMES:Record<AssistantProvider,string>={gemini:'Gemini',openai:'OpenAI',opencode:'OpenCode Go'};
 const PREFERENCE_KEY='still-assistant-model';
@@ -27,7 +28,7 @@ export default function AssistantPanel({workspace,canDeleteWorkspace,sidebarPlug
   const [initial]=useState(readPreference);
   const [configured,setConfigured]=useState(false),[settings,setSettings]=useState(false),[key,setKey]=useState('');
   const [provider,setProvider]=useState<AssistantProvider>(initial.provider),[model,setModel]=useState(initial.model),[modelsByProvider,setModelsByProvider]=useState<Record<AssistantProvider,string[]>>({gemini:[],openai:[],opencode:[]});
-  const [input,setInput]=useState(''),[mentions,setMentions]=useState<Mention[]>([]),[mentionOpen,setMentionOpen]=useState(false),[mentionQuery,setMentionQuery]=useState(''),[mentionRange,setMentionRange]=useState({start:0,end:0}),[mentionIndex,setMentionIndex]=useState(0);
+  const [input,setInput]=useState(''),[mentions,setMentions]=useState<Mention[]>([]),[mentionOpen,setMentionOpen]=useState(false),[mentionQuery,setMentionQuery]=useState(''),[mentionRange,setMentionRange]=useState({start:0,end:0}),[mentionIndex,setMentionIndex]=useState(0),[libraryResource,setLibraryResource]=useState<LibraryResourceContext|null>(null);
   const [screenshot,setScreenshot]=useState(false),[shareWorkspaceImage,setShareWorkspaceImage]=useState(readWorkspaceImagePreference),[chatState,setChatState]=useState(()=>({workspaceId:workspace.id,messages:readAssistantChat(workspace.id)})),[busy,setBusy]=useState(false),[error,setError]=useState(''),[pending,setPending]=useState(''),[plan,setPlan]=useState<LayoutPlan|null>(null),[confirmation,setConfirmation]=useState<AssistantConfirmation|null>(null);
   const alive=useRef(true),sending=useRef(false),latest=useRef(workspace),textarea=useRef<HTMLTextAreaElement>(null),log=useRef<HTMLDivElement>(null),pendingActions=useRef<AssistantAction[]|null>(null),pendingPrompt=useRef('');
   latest.current=workspace;
@@ -53,6 +54,7 @@ export default function AssistantPanel({workspace,canDeleteWorkspace,sidebarPlug
   const currentModels=modelsByProvider[provider];
 
   useEffect(()=>{alive.current=true;return()=>{alive.current=false}},[]);
+  useEffect(()=>{const attach=(event:Event)=>{const detail=(event as CustomEvent<Partial<LibraryResourceContext>>).detail;if(!detail||typeof detail.name!=='string'||typeof detail.path!=='string')return;const resource:LibraryResourceContext={name:detail.name.slice(0,260),path:detail.path.slice(0,1000),size:typeof detail.size==='number'?Math.max(0,detail.size):0,text:typeof detail.text==='string'?detail.text.slice(0,24000):'',notes:typeof detail.notes==='string'?detail.notes.slice(0,4000):''};setLibraryResource(resource);setInput(`Suggest a course and topic for “${resource.name}”. Explain the clues and suggest a folder. Do not move or delete the file.`);setMentions([]);setError('')};window.addEventListener('still-assistant-resource',attach);return()=>window.removeEventListener('still-assistant-resource',attach)},[]);
   useEffect(()=>{if(chatState.workspaceId===workspace.id)saveAssistantChat(workspace.id,chatState.messages)},[chatState,workspace.id]);
   useEffect(()=>{if(chatState.workspaceId!==workspace.id){setChatState({workspaceId:workspace.id,messages:readAssistantChat(workspace.id)});setConfirmation(null);pendingActions.current=null;pendingPrompt.current=''}},[workspace.id,chatState.workspaceId]);
   useEffect(()=>{let cancelled=false;setConfigured(false);setModelsByProvider(value=>({...value,[provider]:[]}));setError('');
@@ -149,12 +151,13 @@ export default function AssistantPanel({workspace,canDeleteWorkspace,sidebarPlug
         const receipt=safeAssistantReceipt(await act(owner.id,actionsToApply,actionIntent))+draftNotice;if(!alive.current)return;
         setMessages(current=>[...current,{role:'user',text:prompt},{role:'model',text:receipt}]);setInput('');setMentions([]);setScreenshot(false);return;
       }
-      const context=assistantWorkspaceContext(owner,size.width,size.height,selectedIds,trayItems,sidebarPlugins),serialized=JSON.stringify(context);
+      const context=assistantWorkspaceContext(owner,size.width,size.height,selectedIds,trayItems,sidebarPlugins),serialized=JSON.stringify(libraryResource?{...context,selectedLibraryResource:{...libraryResource,contentOmitted:!libraryResource.text}}:context);
       if(serialized.length>64000)throw new Error('This workspace has unusually large widget data. Type @ to prioritize the widget you want Still to use.');
       image=shareWorkspaceImage?(screenshotWidget?await widgetImage(screenshotWidget.id):await workspaceImage()):screenshot&&screenshotWidget?await widgetImage(screenshotWidget.id):undefined;
       const history=prepareAssistantHistory(messages);
       let result=await geminiAssistant.send({provider:requestProvider,model:requestModel,messages:[...history,{role:'user',text:prompt}],context:serialized,image,session_id:owner.id});
       if(!alive.current)return;
+      if(libraryResource)setLibraryResource(null);
       if(result.actions.length&&assistantReplyNeedsClarification(result.reply)){
         setMessages(current=>[...current,{role:'user',text:prompt},{role:'model',text:result.reply}]);setPlan(null);setInput('');setMentions([]);setScreenshot(false);return;
       }
@@ -239,6 +242,7 @@ export default function AssistantPanel({workspace,canDeleteWorkspace,sidebarPlug
       {screenshotWidget&&<small className="assistant-inline-note">Visual sharing requires a model that accepts images.</small>}
       <div className="assistant-input-wrap">
         {mentionOpen&&<div className="assistant-mention-picker" role="listbox" aria-label="Select widgets to share">{visibleMentions.length?visibleMentions.map((item,index)=><button type="button" role="option" aria-selected={index===mentionIndex} key={item.id} onMouseDown={event=>event.preventDefault()} onClick={()=>selectMention(item)}>{item.label}</button>):<p>No matching widgets</p>}</div>}
+        {libraryResource&&<div className="assistant-resource-context"><span>Selected file for AI: <strong title={libraryResource.path}>{libraryResource.name}</strong>{libraryResource.text?' · text included':' · filename and notes only'}</span><button type="button" aria-label="Remove selected file from AI context" onClick={()=>setLibraryResource(null)}>×</button></div>}
         <label className="sr-only" htmlFor="ai-message">Message Still AI</label><textarea ref={textarea} id="ai-message" value={input} onChange={onInputChange} onKeyDown={onInputKeyDown} maxLength={8000} disabled={busy} placeholder="Message Still AI…" rows={3}/>
       </div>
       {requestLimit&&<p className="assistant-error" role="alert">{requestLimit}</p>}
