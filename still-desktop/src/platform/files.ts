@@ -35,6 +35,11 @@ export const localFiles={
     return {rootName:folder.rootName,location,entries:folderEntries([...folder.files].map(([path,file])=>({path,size:file.size})),location),truncated:false};
   },
   async list(id:string,location:string):Promise<FolderListing>{return this.native?invoke('files_list',{id,location}):this.browserList(id,location)},
+  async search(id:string,query:string):Promise<FileEntry[]>{
+    if(this.native)return invoke<FileEntry[]>('files_search',{id,query});
+    const selectedFolder=selected.get(id);if(!selectedFolder)throw new Error('Choose a folder to search.');
+    const term=query.toLowerCase();return [...selectedFolder.files].filter(([path,file])=>path.toLowerCase().includes(term)).slice(0,500).map(([path,file])=>({name:file.name,path,directory:false,size:file.size,blocked:programFile(file.name)}));
+  },
   async reuse(id:string,sourceId:string):Promise<FolderListing>{
     if(this.native)return invoke('files_reuse',{id,sourceId});
     if(!selected.has(id)){const source=selected.get(sourceId);if(!source)throw new Error('Choose the saved folder again to reconnect it.');selected.set(id,{rootName:source.rootName,files:new Map(source.files)})}

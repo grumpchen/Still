@@ -118,6 +118,22 @@ fn listing(root: &Path, location: &str) -> Result<FolderListing,String> {
     entries.sort_by(|a,b| b.directory.cmp(&a.directory).then(a.name.to_lowercase().cmp(&b.name.to_lowercase())));
     Ok(FolderListing{root_name:root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "Selected folder".into()),location:location.into(),entries,truncated})
 }
+fn search_tree(root:&Path,directory:&Path,query:&str,results:&mut Vec<FileEntry>,scanned:&mut usize,depth:usize)->Result<(),String>{
+    const MAX_SEARCH_RESULTS:usize=500;const MAX_SEARCH_ENTRIES:usize=10000;const MAX_SEARCH_DEPTH:usize=20;
+    if results.len()>=MAX_SEARCH_RESULTS||*scanned>=MAX_SEARCH_ENTRIES||depth>=MAX_SEARCH_DEPTH{return Ok(())}
+    for item in fs::read_dir(directory).map_err(|_|"Could not search this folder")?{
+        if results.len()>=MAX_SEARCH_RESULTS||*scanned>=MAX_SEARCH_ENTRIES{break}
+        *scanned+=1;let Ok(item)=item else{continue};
+        if item.file_type().map(|kind|kind.is_symlink()).unwrap_or(true){continue}
+        let target=match item.path().canonicalize(){Ok(value) if value.starts_with(root)=>value,_=>continue};
+        let Ok(metadata)=fs::metadata(&target)else{continue};if !metadata.is_file()&&!metadata.is_dir(){continue}
+        let name=item.file_name().to_string_lossy().into_owned();
+        let relative=target.strip_prefix(root).map_err(|_|"Search result escaped its selected folder")?.components().map(|part|part.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/");
+        if name.to_lowercase().contains(query){results.push(FileEntry{name,path:relative,directory:metadata.is_dir(),size:metadata.len(),blocked:metadata.is_file()&&blocked(&target)})}
+        if metadata.is_dir(){search_tree(root,&target,query,results,scanned,depth+1)?}
+    }
+    Ok(())
+}
 
 const NOTE_LIBRARY_MAX_FILES:usize=500;
 const NOTE_LIBRARY_MAX_BYTES:u64=1_000_000;
@@ -291,6 +307,14 @@ pub async fn files_reuse(app:AppHandle,webview:Webview,roots:State<'_,FolderRoot
 pub async fn files_list(webview: Webview, roots: State<'_,FolderRoots>, id:String, location:String) -> Result<FolderListing,String> {
     crate::security::authorize(&webview)?;valid_id(&id)?;
     listing(&roots.root(&id)?,&location)
+}
+#[tauri::command]
+pub async fn files_search(webview:Webview,roots:State<'_,FolderRoots>,id:String,query:String)->Result<Vec<FileEntry>,String>{
+    crate::security::authorize(&webview)?;valid_id(&id)?;
+    let query=query.trim().to_lowercase();if query.is_empty()||query.len()>100{return Err("Enter a search term up to 100 characters.".into())}
+    let root=roots.root(&id)?.canonicalize().map_err(|_|"The selected folder is unavailable. Choose it again.")?;
+    let mut results=Vec::new();let mut scanned=0;search_tree(&root,&root,&query,&mut results,&mut scanned,0)?;
+    results.sort_by(|a,b|a.path.to_lowercase().cmp(&b.path.to_lowercase()));Ok(results)
 }
 #[tauri::command]
 pub async fn files_open(app: AppHandle, webview: Webview, roots: State<'_,FolderRoots>, id:String, path:String) -> Result<(),String> {
