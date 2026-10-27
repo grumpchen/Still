@@ -8,7 +8,7 @@ fn main() {
                 "notes_library_choose", "notes_library_list", "notes_library_read", "notes_library_write", "notes_library_create",
                 "document_open", "document_choose", "document_preview",
                 "app_open", "app_choose",
-                "app_panel_open", "app_panel_windows", "app_panel_attach", "app_panel_present", "app_panel_release", "app_panel_configure_shutdown",
+                "app_panel_open", "app_panel_prepare_launch", "app_panel_windows", "app_panel_attach", "app_panel_present", "app_panel_release", "app_panel_configure_shutdown",
                 "app_capture_enable",
                 "app_picker_windows", "app_picker_prepare", "app_picker_preview", "app_picker_installed", "app_picker_installed_icon", "app_picker_select_installed",
                 "shortcuts_configure",
