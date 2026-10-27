@@ -23,12 +23,13 @@ function readWorkspaceImagePreference(){try{return localStorage.getItem(WORKSPAC
 function saveWorkspaceImagePreference(enabled:boolean){try{localStorage.setItem(WORKSPACE_IMAGE_PREFERENCE_KEY,String(enabled))}catch{/* preference is optional */}}
 function canScreenshot(widget:WidgetInstance){return widget.type==='apps'||widget.type==='desmos'||widget.type==='files'}
 import {removeAssistantWidgetMention,resolveAssistantWidgetMentions} from './domain/assistantMentions.ts';
-import {useT} from './localization.tsx';
+import {translate,useLocale,useT} from './localization.tsx';
 
 function formatAssistantText(template:string,values:Record<string,string>){return template.replace(/\{(\w+)\}/g,(_,key:string)=>values[key]??'')}
 
 export default function AssistantPanel({workspace,canDeleteWorkspace,sidebarPlugins,trayItems,open,close,dimensions,apply,act,startTimer,clearTray,deleteWidgets,deleteWorkspace,undo}:Props){
   const t=useT();
+  const locale=useLocale();
   const [initial]=useState(readPreference);
   const [configured,setConfigured]=useState(false),[settings,setSettings]=useState(false),[key,setKey]=useState('');
   const [provider,setProvider]=useState<AssistantProvider>(initial.provider),[model,setModel]=useState(initial.model),[modelsByProvider,setModelsByProvider]=useState<Record<AssistantProvider,string[]>>({gemini:[],openai:[],opencode:[]});
@@ -58,7 +59,7 @@ export default function AssistantPanel({workspace,canDeleteWorkspace,sidebarPlug
   const currentModels=modelsByProvider[provider];
 
   useEffect(()=>{alive.current=true;return()=>{alive.current=false}},[]);
-  useEffect(()=>{const attach=(event:Event)=>{const detail=(event as CustomEvent<Partial<LibraryResourceContext>>).detail;if(!detail||typeof detail.name!=='string'||typeof detail.path!=='string')return;const resource:LibraryResourceContext={name:detail.name.slice(0,260),path:detail.path.slice(0,1000),size:typeof detail.size==='number'?Math.max(0,detail.size):0,text:typeof detail.text==='string'?detail.text.slice(0,24000):'',notes:typeof detail.notes==='string'?detail.notes.slice(0,4000):'',prompt:typeof detail.prompt==='string'?detail.prompt.slice(0,8000):''};setLibraryResource(resource);setInput(resource.prompt||`Suggest a course and topic for “${resource.name}”. Explain the clues and suggest a folder. Do not move or delete the file.`);setMentions([]);setError('')};window.addEventListener('still-assistant-resource',attach);return()=>window.removeEventListener('still-assistant-resource',attach)},[]);
+  useEffect(()=>{const attach=(event:Event)=>{const detail=(event as CustomEvent<Partial<LibraryResourceContext>>).detail;if(!detail||typeof detail.name!=='string'||typeof detail.path!=='string')return;const resource:LibraryResourceContext={name:detail.name.slice(0,260),path:detail.path.slice(0,1000),size:typeof detail.size==='number'?Math.max(0,detail.size):0,text:typeof detail.text==='string'?detail.text.slice(0,24000):'',notes:typeof detail.notes==='string'?detail.notes.slice(0,4000):'',prompt:typeof detail.prompt==='string'?detail.prompt.slice(0,8000):''};setLibraryResource(resource);setInput(resource.prompt||formatAssistantText(translate(locale,'classifyResourcePrompt'),{name:resource.name}));setMentions([]);setError('')};window.addEventListener('still-assistant-resource',attach);return()=>window.removeEventListener('still-assistant-resource',attach)},[locale]);
   useEffect(()=>{if(chatState.workspaceId===workspace.id)saveAssistantChat(workspace.id,chatState.messages)},[chatState,workspace.id]);
   useEffect(()=>{if(chatState.workspaceId!==workspace.id){setChatState({workspaceId:workspace.id,messages:readAssistantChat(workspace.id)});setConfirmation(null);pendingActions.current=null;pendingPrompt.current=''}},[workspace.id,chatState.workspaceId]);
   useEffect(()=>{let cancelled=false;setConfigured(false);setModelsByProvider(value=>({...value,[provider]:[]}));setError('');
