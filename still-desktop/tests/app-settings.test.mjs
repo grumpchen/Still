@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createInitialState,createWidget,parseState} from '../src/domain/workspaces.ts';
-import {backgroundSettingsUpdate,backgroundSettingsValue} from '../src/domain/appearance.ts';
+import {parseGlass} from '../src/domain/appearance.ts';
 
 const app=readFileSync(new URL('../src/App.tsx',import.meta.url),'utf8');
 const general=readFileSync(new URL('../src/GeneralSettings.tsx',import.meta.url),'utf8');
@@ -28,11 +28,11 @@ test('app behavior settings default to automatic shortcut saving and preserve th
 });
 
 test('click-through preferences are optional General settings with transparent-background gating and a restore shortcut',()=>{
- assert.match(general,/Pass clicks through transparent background/);
+ assert.match(general,/t\('passTransparentClicks'\)/);
  assert.match(general,/disabled=\{background!==\x27transparent\x27\}/);
- assert.match(general,/Enable whole-window click-through shortcut/);
+ assert.match(general,/t\('wholeWindowShortcut'\)/);
  assert.match(general,/shortcuts\.clickThrough/);
- assert.match(general,/Customize keyboard shortcuts/);
+ assert.match(general,/t\('customizeShortcuts'\)/);
  assert.match(app,/subscribeActions/);
  assert.match(app,/shortcutAction/);
  assert.match(windowInput,/window_input_update_regions/);
@@ -40,7 +40,7 @@ test('click-through preferences are optional General settings with transparent-b
 });
 
 test('moving a widget between workspaces follows it when enabled and can be disabled in General settings',()=>{
- assert.match(general,/Follow a widget to its workspace/);
+ assert.match(general,/t\('followWidget'\)/);
  assert.match(app,/activeId:s\.followWidgetToWorkspace\?destinationId:s\.activeId/);
  const state=createInitialState();state.followWidgetToWorkspace=false;
  assert.equal(parseState(JSON.stringify(state)).followWidgetToWorkspace,false);
@@ -81,26 +81,24 @@ test('Tag Color Status persists stacked plugin settings for each color',()=>{
 });
 
 test('General settings expose the three app shutdown choices and auto-save preference',()=>{
- assert.match(general,/aria-label="When Still closes"[\s\S]*?value="minimize"[\s\S]*?Minimize attached apps/);
- assert.match(general,/value="close"[\s\S]*?Close attached app windows/);
- assert.match(general,/value="leaveOpen"[\s\S]*?Leave attached apps open/);
- assert.match(general,/Save an Apps shortcut automatically when attaching/);
- for(const action of ['Attach','Detach','Save to tray'])assert.match(general,new RegExp('Show '+action+' button'));
- assert.match(general,/Show Relaunch button/);assert.match(general,/Show Export PNG button/);assert.doesNotMatch(general,/Workspace widget buttons/);
- assert.match(general,/Icon name=\{action\.icon\}/);assert.match(general,/showAppAttachAction',label:'Show Attach button',icon:'attach'/);assert.match(general,/showAppDetachAction',label:'Show Detach button',icon:'eject'/);assert.match(general,/showAppSaveAction',label:'Show Save to tray button',icon:'tray'/);
+ assert.match(general,/aria-label=\{t\('whenStillCloses'\)\}[\s\S]*?value="minimize"[\s\S]*?t\('minimizeAttachedApps'\)/);
+ assert.match(general,/value="close"[\s\S]*?t\('closeAttachedApps'\)/);
+ assert.match(general,/value="leaveOpen"[\s\S]*?t\('leaveAttachedAppsOpen'\)/);
+ assert.match(general,/t\('saveShortcutOnAttach'\)/);
+ for(const key of ['showAppAttachAction','showAppDetachAction','showAppSaveAction'])assert.ok(general.includes("key:'"+key+"'"),key+' is configurable');
+ assert.match(general,/showWidgetRelaunchAction/);assert.match(general,/showWidgetExportPngAction/);assert.doesNotMatch(general,/Workspace widget buttons/);
+ assert.match(general,/Icon name=\{action\.icon\}/);assert.match(general,/label:t\('showAttachButton'\),icon:'attach'/);assert.match(general,/label:t\('showDetachButton'\),icon:'eject'/);assert.match(general,/label:t\('showSaveToTrayButton'\),icon:'tray'/);
  assert.match(general,/<span>\{action\.label\}<Icon name=\{action\.icon\}\/><\/span>/,'icons appear to the right of every action label');
  assert.match(styles,/general-settings-action-toggle input\[type=checkbox\]\{appearance:none;[^}]*width:15px;height:15px;[^}]*border-radius:50%/);assert.match(styles,/general-settings-action-toggle input\[type=checkbox\]:checked\{background:var\(--accent\);border-color:var\(--accent\)\}/,'all five action toggles use a smaller filled circle with no checkmark');
  assert.match(app,/showWidgetRelaunchAction=\{state\.showWidgetRelaunchAction\}/);assert.match(app,/showWidgetExportPngAction=\{state\.showWidgetExportPngAction\}/);
 });
 
-test('Appearance settings offer transparent and solid backgrounds and the existing leaf-photo glass material',()=>{
- assert.match(appearance,/option value="solid">Solid/);assert.match(appearance,/option value="transparent">Transparent/);
- assert.match(appearance,/Liquid Glass · your leaf photo/);
- assert.match(appearance,/option value="leaf-photo">Leaf photo · Liquid Glass/);
- assert.deepEqual(backgroundSettingsUpdate('transparent'),{background:'transparent'},'changing background preserves the current appearance');
- assert.equal(backgroundSettingsValue('liquid-glass','transparent'),'transparent','transparent remains selectable while Liquid Glass is active');
- assert.deepEqual(backgroundSettingsUpdate('leaf-photo'),{appearance:'liquid-glass',background:'solid'});
- assert.match(styles,/body\.liquid-glass\.transparent-background::before[\s\S]*?display:\s*none/,'transparent Liquid Glass must hide its fixed leaf wallpaper layer');
+test('Appearance settings offer selectable workspace surfaces and current metal effects',()=>{
+ assert.match(appearance,/option value="solid">\{t\('solid'\)\}/);assert.match(appearance,/option value="transparent">\{t\('transparent'\)\}/);
+ for(const effect of ['liquid-chrome','line-waves','wave-wallpaper'])assert.ok(appearance.includes('option value="'+effect+'"'),effect+' remains selectable');
+ assert.doesNotMatch(appearance,/leaf-photo|your leaf photo/);
+ assert.equal(parseGlass({backgroundEffect:'line-waves'}).backgroundEffect,'line-waves');
+ assert.equal(parseGlass({backgroundEffect:'wave-wallpaper'}).backgroundEffect,'wave-wallpaper');
 });
 
 test('the attach picker initializes its existing save checkbox from the General preference',()=>{

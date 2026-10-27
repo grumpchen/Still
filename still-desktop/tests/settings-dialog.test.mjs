@@ -13,33 +13,36 @@ const widgetPluginCatalog=readFileSync(new URL('../src/domain/widgetPlugins.ts',
 const canvasStyles=readFileSync(new URL('../src/canvas.css',import.meta.url),'utf8');
 
 test('sidebar Settings opens a tabbed dialog with General, Appearance, and Plugins pages',()=>{
- assert.match(app,/title="Settings" aria-label="Settings" onClick=\{\(\)=>\{setSettingsTab\('general'\);setModal\('settings'\)\}\}/);
- assert.match(app,/role="tablist" aria-label="Settings pages"[\s\S]*?General[\s\S]*?Appearance[\s\S]*?Plugins/);
- assert.match(app,/settingsTab==='appearance'[\s\S]*?<AppearanceSettings/);
+ assert.match(app,/title=\{translate\(state\.locale,'settings'\)\} aria-label=\{translate\(state\.locale,'settings'\)\} onClick=\{\(\)=>\{setSettingsTab\('general'\);setModal\('settings'\)\}\}/);
+ assert.match(app,/className="settings-dialog"><div className="settings-tabs" role="tablist" aria-label=\{translate\(state\.locale,'settingsPages'\)\}/);
+ for(const id of ['general','appearance','plugins'])assert.ok(app.includes("{id:'"+id+"',label:translate(state.locale,'"+id+"')"),id+' is a localized settings tab');
+ assert.match(app,/settingsTab==='appearance'&&<section[^>]*role="tabpanel"[^>]*><AppearanceSettings/);
  assert.match(app,/settingsTab==='general'&&<GeneralSettings/);
- assert.match(general,/<h3>General settings<\/h3>/);
+ assert.match(app,/settingsTab==='plugins'&&<section[^>]*role="tabpanel"[^>]*><h3>\{translate\(state\.locale,'sidebarPlugins'\)\}/);
+ assert.match(general,/t\('generalSettings'\)/);
  assert.doesNotMatch(general,/Toggle workspace map|Minimize a widget with right-click/);
- assert.match(shortcuts,/\['overview','Toggle workspace map','Show or hide the map'\]/);
- assert.match(shortcuts,/Minimize a widget with right-click[\s\S]*?draft\.minimizeModifiers\[modifier\][\s\S]*?setDraft\(value=>\(\{\.\.\.value,minimizeModifiers:/);
- assert.match(general,/Customize keyboard shortcuts/);
- assert.match(general,/Workspace performance[\s\S]*?Widget drag and resize rate[\s\S]*?30 FPS[\s\S]*?60 FPS[\s\S]*?Display refresh/);
+ assert.match(shortcuts,/\['overview','workspaceMap','showHideMap'\]/);
+ assert.match(shortcuts,/t\('rightClickMinimize'\)[\s\S]*?draft\.minimizeModifiers\[modifier\]/);
+ assert.match(general,/t\('keyboardShortcuts'\)/);
+ assert.match(general,/t\('workspacePerformance'\)/);
+ assert.match(general,/canvasFrameRate[\s\S]*?setFrameRate|canvasFrameRate[\s\S]*?update\(\{canvasFrameRate/);
  assert.match(general,/className="shortcut-settings-link" onClick=\{openShortcuts\}/);
  assert.doesNotMatch(appearance,/shortcut-settings-link|Keyboard shortcuts/);
- assert.match(app,/settingsTab==='plugins'[\s\S]*?Sidebar plugins[\s\S]*?<WidgetPluginsSettings/);
+ assert.match(app,/settingsTab==='plugins'[\s\S]*?<WidgetPluginsSettings/);
  for(const [id,name] of [['color-tag','Color Tag'],['clock-timer','Clock Timer'],['screenshot','Screenshot'],['widget-relaunch','Widget Relaunch'],['lock','Lock']])assert.ok(widgetPluginCatalog.includes("id:'"+id+"',name:'"+name+"'"),name+' is registered');
  assert.match(widgetPlugins,/widgetPluginCatalog\.map\(plugin/,'registered widget plugins automatically get a settings section');
- assert.match(widgetPlugins,/plugin\.id==='lock'[\s\S]*?Add Lock from a widget’s \+ menu/);
+ assert.match(widgetPlugins,/plugin\.id==='lock'[\s\S]*?t\('lockHelp'\)/);
  for(const id of ['color-tag','clock-timer','screenshot','widget-relaunch'])assert.ok(widgetPlugins.includes("plugin.id==='"+id+"'"),id+' settings are handled');
- assert.match(widgetPlugins,/Clock plugin scope[\s\S]*?Apply by tag color[\s\S]*?Closed/);
- assert.match(widgetPlugins,/Screenshot plugin scope[\s\S]*?Apply by tag color[\s\S]*?Closed/);
- assert.match(widgetPlugins,/Add a color tag with a widget’s \+ button[\s\S]*?click its tag dot/);
- const sidebarPluginSettings=app.slice(app.indexOf('<h3>Sidebar plugins</h3>'),app.indexOf('<WidgetPluginsSettings'));
+ assert.match(widgetPlugins,/plugin\.id==='clock-timer'[\s\S]*?t\('applyByTag'\)[\s\S]*?t\('showClockFor'\)/);
+ assert.match(widgetPlugins,/plugin\.id==='screenshot'[\s\S]*?t\('applyByTag'\)[\s\S]*?t\('showScreenshotFor'\)/);
+ assert.match(widgetPlugins,/plugin\.id==='color-tag'[\s\S]*?t\('tagHelp'\)/);
+ const sidebarPluginSettings=app.slice(app.indexOf("translate(state.locale,'sidebarPlugins')"),app.indexOf('<WidgetPluginsSettings'));
  assert.doesNotMatch(sidebarPluginSettings,/tag color|Apply by tag/);
- assert.doesNotMatch(tagStatus,/Screenshot plugin scope|Apply by tag color|screenshotPluginMode/);
- assert.match(widgetPlugins,/Disable Widget Relaunch plugin[\s\S]*?Remove Widget Relaunch plugin[\s\S]*?Enable Widget Relaunch plugin/);
- assert.match(relaunchScope,/aria-label="Widget relaunch mode"/);
- assert.match(relaunchScope,/Apply to All/);
- assert.match(relaunchScope,/aria-label=\{color\+' tag relaunch mode'\}/);
+ assert.doesNotMatch(tagStatus,/screenshotPluginMode/);
+ assert.match(widgetPlugins,/t\('disable'\)[\s\S]*?t\('remove'\)[\s\S]*?t\('enable'\)/);
+ assert.match(relaunchScope,/aria-label=\{t\('widgetRelaunch'\)\}/);
+ assert.match(relaunchScope,/applyModeToAll&&<button/);
+ assert.match(relaunchScope,/aria-label=\{t\('tagBehavior'\)/);
 });
 
 test('all checkboxes are compact circles without checkmarks',()=>{
