@@ -4,7 +4,7 @@ import {startupDeferredWidgetIds,applyRelaunchModeToAll,type WidgetRelaunchMode,
 import {type ClockPluginMode} from './domain/clockPlugin.ts';
 import {createNoteDocument,NOTE_DOCUMENT_LIMIT} from './domain/noteDocuments.ts';
 import { Icon } from './Icon.tsx';
-import {LocaleContext,translate,type Locale} from './localization.tsx';
+import {LocaleContext,localizeOperationalMessage,translate,type Locale} from './localization.tsx';
 import BrandMark from './BrandMark.tsx';
 import { widgetRegistry } from './widgets.tsx';
 import {chromeLauncher} from './platform/chrome.ts';
@@ -79,7 +79,7 @@ export default function App(){
   const captureInFlight=useRef(new Set<string>()),pendingAppWidgets=useRef(new Map<string,{workspaceId:string;previous:WidgetInstance|null;name:string}>()),captureState=useRef(state);captureState.current=state;
   const latestState=useRef(state),persistTimer=useRef<ReturnType<typeof setTimeout>|null>(null),persistNow=useRef<()=>void>(()=>{});latestState.current=state;
   const visited=useRef(new Set<string>());visited.current.add(state.activeId);
-  function notify(value:string){setMessage(value)}
+  function notify(value:string){setMessage(localizeOperationalMessage(captureState.current.locale,value))}
   function appOpenResult(id:string,success:boolean,error?:string){
     const pending=pendingAppWidgets.current.get(id);if(!pending)return;
     pendingAppWidgets.current.delete(id);if(success)return;
