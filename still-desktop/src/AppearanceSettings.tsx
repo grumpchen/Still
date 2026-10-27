@@ -1,4 +1,4 @@
-import { backgroundSettingsUpdate,backgroundSettingsValue,defaultGlass,type WorkspaceBackgroundChoice } from './domain/appearance.ts';
+import { defaultGlass,type WorkspaceBackground } from './domain/appearance.ts';
 import type { WorkspaceState } from './domain/workspaces.ts';
 export default function AppearanceSettings({state,update}:{state:WorkspaceState;update:(patch:Partial<WorkspaceState>)=>void}){
   const glass=state.appearance==='liquid-glass';
@@ -11,10 +11,10 @@ export default function AppearanceSettings({state,update}:{state:WorkspaceState;
       </button>)}
     </div>
     {(['theme','density'] as const).map(key=><label className="settings-row" key={key}><span>{key==='density'?'Spacing':'Colour mode'}</span><select aria-label={key==='density'?'Spacing':'Colour mode'} value={state[key]} onChange={event=>update({[key]:event.target.value})}>{(key==='theme'?['light','dark']:['comfortable','compact']).map(option=><option key={option} value={option}>{option[0].toUpperCase()+option.slice(1)}</option>)}</select></label>)}
-    {glass?<section className="glass-controls" aria-label="Liquid Glass settings"><div className="glass-controls-heading"><span>Liquid Glass · your leaf photo</span><button type="button" onClick={()=>update({glass:defaultGlass()})}>Reset look</button></div>
-      {([{key:'blur',label:'Background blur',min:0,max:18,unit:'px'},{key:'saturation',label:'Colour saturation',min:40,max:100,unit:'%'},{key:'opacity',label:'Glass opacity',min:45,max:90,unit:'%'}] as const).map(control=><label key={control.key} className="glass-control"><span>{control.label}</span><output>{state.glass[control.key]}{control.unit}</output><input type="range" aria-label={control.label} min={control.min} max={control.max} value={state.glass[control.key]} onChange={event=>update({glass:{...state.glass,[control.key]:Number(event.target.value)}})}/></label>)}
-      <p className="glass-footnote">A softly defocused background, with crisp text above it. Changes save automatically.</p>
+    {glass?<section className="glass-controls" aria-label="Liquid Chrome settings"><div className="glass-controls-heading"><span>Liquid Chrome · interactive metal</span><button type="button" onClick={()=>update({glass:defaultGlass()})}>Reset look</button></div>
+      <label className="glass-control"><span>Glass opacity</span><output>{state.glass.opacity}%</output><input type="range" aria-label="Glass opacity" min={45} max={90} value={state.glass.opacity} onChange={event=>update({glass:{...state.glass,opacity:Number(event.target.value)}})}/></label>
+      <p className="glass-footnote">A gently flowing chrome surface follows your pointer. Changes save automatically.</p>
     </section>:null}
-    <label className="settings-row"><span>Workspace background</span><select aria-label="Background" value={backgroundSettingsValue(state.appearance,state.background)} onChange={event=>update(backgroundSettingsUpdate(event.target.value as WorkspaceBackgroundChoice))}><option value="solid">Solid</option><option value="transparent">Transparent</option><option value="dots">Dots</option><option value="leaf-photo">Leaf photo · Liquid Glass</option></select></label>
+    <label className="settings-row"><span>Workspace background</span><select aria-label="Background" value={state.background} onChange={event=>update({background:event.target.value as WorkspaceBackground})}><option value="solid">Solid</option><option value="transparent">Transparent</option><option value="dots">Dots</option></select></label>
   </>;
 }
