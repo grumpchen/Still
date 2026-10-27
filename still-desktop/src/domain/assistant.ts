@@ -23,7 +23,7 @@ export type AssistantActionType = typeof ASSISTANT_ACTION_TYPES[number];
 export type AssistantAction = {type:AssistantActionType;ids:string[];seconds?:number;title?:string;text?:string;schedule?:ScheduleEntry[];tagColor?:string;pluginControls?:string[];plugin?:string;enabled?:boolean};
 export type AssistantTrayItem={id:string;name:string;type:WidgetType;kind:'preset'|'group'};
 export type AssistantResponseIntent='chat'|'clarification'|'workspace_action'|'layout';
-export type AssistantFileProposal={destinationFolder:string;reason:string};
+export type AssistantFileProposal={sourceWidgetId:string;sourcePath:string;destinationFolder:string;reason:string};
 export const MAX_ASSISTANT_BATCH=10;
 export const MAX_ASSISTANT_WIDGETS=100;
 export function resolveNamedNotesCreation(prompt:string):{title:string;topic:string}|null{
@@ -159,10 +159,12 @@ export function parseAssistantReply(value:unknown):AssistantReply {
     return {type:action.type,ids:[...action.ids],...(action.type==='set_timer'?{seconds:action.seconds}:{}),...(action.title!==undefined?{title:action.title.trim()}:{}),...(action.text!==undefined?{text:action.text}:{}),...(action.schedule!==undefined?{schedule:action.schedule.map(entry=>({...entry,title:entry.title.trim(),location:entry.location.trim()}))}:{}),...(action.tagColor!==undefined?{tagColor:action.tagColor}:{}),...(action.pluginControls!==undefined?{pluginControls:[...action.pluginControls]}:{}),...(action.plugin!==undefined?{plugin:action.plugin}:{}),...(action.enabled!==undefined?{enabled:action.enabled}:{})};
   });
   const rawFileProposals=(value as Partial<AssistantReply>).fileProposals??[];
-  if(!Array.isArray(rawFileProposals)||rawFileProposals.length>1)throw new Error('The AI returned an invalid file filing proposal. Nothing was moved. Try again.');
+   if(!Array.isArray(rawFileProposals)||rawFileProposals.length>5)throw new Error('The AI returned an invalid file filing proposal. Nothing was moved. Try again.');
+   const proposedSources=new Set<string>();
   const fileProposals:AssistantFileProposal[]=rawFileProposals.map(proposal=>{
-    if(!proposal||typeof proposal.destinationFolder!=='string'||!isSafeFilingFolder(proposal.destinationFolder)||typeof proposal.reason!=='string'||!proposal.reason.trim()||Array.from(proposal.reason).length>600)throw new Error('The AI returned an unsafe file filing proposal. Nothing was moved. Try again.');
-    return {destinationFolder:proposal.destinationFolder,reason:proposal.reason.trim()};
+     if(!proposal||typeof proposal.sourceWidgetId!=='string'||!/^[a-zA-Z0-9-]{1,80}$/.test(proposal.sourceWidgetId)||typeof proposal.sourcePath!=='string'||!isSafeResourcePath(proposal.sourcePath)||typeof proposal.destinationFolder!=='string'||!isSafeFilingFolder(proposal.destinationFolder)||typeof proposal.reason!=='string'||!proposal.reason.trim()||Array.from(proposal.reason).length>600)throw new Error('The AI returned an unsafe file filing proposal. Nothing was moved. Try again.');
+     const sourceKey=proposal.sourceWidgetId+'::'+proposal.sourcePath;if(proposedSources.has(sourceKey))throw new Error('The AI returned duplicate filing proposals for one file. Nothing was moved. Try again.');proposedSources.add(sourceKey);
+     return {sourceWidgetId:proposal.sourceWidgetId,sourcePath:proposal.sourcePath,destinationFolder:proposal.destinationFolder,reason:proposal.reason.trim()};
   });
   let calendarProposals:StudyCalendarEventDraft[]=[];
   try{calendarProposals=checkedStudyCalendarDrafts((value as Partial<AssistantReply>).calendarProposals??[])}catch(error){throw new Error(error instanceof Error?error.message:'The AI returned invalid calendar events. Nothing was added.')}
@@ -188,6 +190,7 @@ function isSafeFilingFolder(value:string):boolean{
     return !/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/i.test(device);
   });
 }
+function isSafeResourcePath(value:string):boolean{return !!value&&new TextEncoder().encode(value).length<=1000&&!value.startsWith('/')&&!value.includes(':')&&!value.includes('\\')&&value.split('/').every(segment=>!!segment&&segment!=='.'&&segment!=='..')}
 function validateAssistantActionFields(action:AssistantAction):void{
   if(action.title!==undefined&&(action.type!=='add_widget'&&action.type!=='edit_widget'&&action.type!=='rename_workspace'||typeof action.title!=='string'||!action.title.trim()||action.title.length>60))throw new Error('Invalid names: use between 1 and 60 characters. Nothing was changed.');
   if(action.text!==undefined&&(action.type!=='add_widget'&&action.type!=='edit_widget'||typeof action.text!=='string'||action.text.length>12000||action.type==='add_widget'&&action.ids.some(id=>id!=='notes')))throw new Error('Text changes are supported only for Notes widgets, up to 12,000 characters. Nothing was changed.');

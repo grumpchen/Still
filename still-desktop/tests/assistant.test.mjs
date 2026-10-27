@@ -148,11 +148,14 @@ test('model responses are parsed without trusting arbitrary fields or geometry',
   assert.throws(()=>parseAssistantReply({reply:'Hello',layout:[{id:'a',x:0.1,y:0,width:100,height:100}]}));
   assert.throws(()=>parseAssistantReply({reply:'Hello',layout:[null]}));
 });
-test('AI file filing proposals are bounded relative folders and never mix with workspace actions',()=>{
-  const proposal={destinationFolder:'Courses/CHEM111',reason:'The selected handout covers chemistry.'};
+test('AI file filing proposals identify selected sources and never mix with workspace actions',()=>{
+  const proposal={sourceWidgetId:'files-1',sourcePath:'CHEM111/handout.pdf',destinationFolder:'Courses/CHEM111',reason:'The selected handout covers chemistry.'};
   assert.deepEqual(parseAssistantReply({reply:'This is a chemistry handout.',layout:[],actions:[],fileProposals:[proposal]}).fileProposals,[proposal]);
+  const another={...proposal,sourceWidgetId:'files-2',sourcePath:'MATH120/notes.md',destinationFolder:'Courses/MATH120'};
+  assert.equal(parseAssistantReply({reply:'Two files are useful.',layout:[],actions:[],fileProposals:[proposal,another]}).fileProposals.length,2);
   assert.throws(()=>parseAssistantReply({reply:'Move it',layout:[],actions:[],fileProposals:[{...proposal,destinationFolder:'../outside'}]}),/unsafe file filing proposal/);
-  assert.throws(()=>parseAssistantReply({reply:'Move it',layout:[],actions:[],fileProposals:[{...proposal,destinationFolder:'CON'}]}),/unsafe file filing proposal/);
+  assert.throws(()=>parseAssistantReply({reply:'Move it',layout:[],actions:[],fileProposals:[{...proposal,sourcePath:'../outside.pdf'}]}),/unsafe file filing proposal/);
+  assert.throws(()=>parseAssistantReply({reply:'Move it',layout:[],actions:[],fileProposals:[proposal,{...proposal}]}),/duplicate filing proposals/);
   assert.throws(()=>parseAssistantReply({reply:'Move it',layout:[],actions:[{type:'remove_widget',ids:['notes-1']}],fileProposals:[proposal]}),/mixed a file filing proposal/);
   assert.deepEqual(parseAssistantReply({intent:'clarification',reply:'Which course?',layout:[],actions:[],fileProposals:[proposal]}).fileProposals,undefined);
 });
