@@ -507,10 +507,9 @@ dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
 }
 .liquid-glass .app .canvas-card,
 .liquid-glass .app.glass-widget-headers .canvas-card{
- border:1px solid transparent;
- background:linear-gradient(transparent,transparent) padding-box,
-  linear-gradient(135deg,rgba(244,248,246,.82),rgba(83,91,87,.78) 24%,rgba(225,231,228,.8) 49%,rgba(77,85,81,.76) 74%,rgba(224,231,227,.82)) border-box;
- box-shadow:0 18px 42px rgba(0,0,0,.2),inset 0 1px 0 rgba(255,255,255,.14);
+ border:1px solid rgba(218,226,221,.64);
+ background:transparent;
+ box-shadow:0 18px 42px rgba(0,0,0,.2),inset 0 1px 0 rgba(255,255,255,.2),inset 0 -1px 0 rgba(35,42,38,.12);
 }
 .liquid-glass .app .canvas-card>.card-head,
 .liquid-glass .app.glass-widget-headers .canvas-card>.card-head{
@@ -539,8 +538,8 @@ dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
 }
 .liquid-glass .app .canvas-card.widget-notes,
 .liquid-glass .app.glass-widget-headers .canvas-card.widget-notes{
- background:linear-gradient(transparent,transparent) padding-box,
-  linear-gradient(135deg,rgba(244,248,246,.82),rgba(83,91,87,.78) 24%,rgba(225,231,228,.8) 49%,rgba(77,85,81,.76) 74%,rgba(224,231,227,.82)) border-box;
+ border-color:transparent;
+ background:transparent;
 }
 .liquid-glass .app .canvas-card.widget-notes>.widget-content,
 .liquid-glass .app.glass-widget-headers .canvas-card.widget-notes>.widget-content{
