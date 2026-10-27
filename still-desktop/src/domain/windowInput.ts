@@ -12,7 +12,7 @@ export function interactiveHitRegions(root:ParentNode,viewportWidth:number,viewp
  const canvasElement=root.querySelector<HTMLElement>('.canvas-viewport');
  const canvasViewport=canvasElement?.getBoundingClientRect();
  const regions:HitRegion[]=[];
- for(const node of root.querySelectorAll<HTMLElement>('.sidebar,.topbar,.widget-tray-shell,.canvas-card,dialog,[role="dialog"],[role="menu"],button,input,select,textarea,[role="button"],[contenteditable="true"]')){
+ for(const node of root.querySelectorAll<HTMLElement>('.sidebar,.sidebar-reveal-zone,.topbar,.widget-tray-shell,.canvas-card,dialog,[role="dialog"],[role="menu"],button,input,select,textarea,[role="button"],[contenteditable="true"]')){
   if(node.getClientRects().length===0)continue;
   const clipped=intersect(node.getBoundingClientRect(),bounds);
   const visible=node.matches('.canvas-card')&&canvasViewport&&clipped?intersect(clipped,canvasViewport):clipped;
