@@ -513,17 +513,23 @@ dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
 }
 .app .canvas-card>.card-head{
  color:#242b28;
- background:radial-gradient(ellipse 27% 145% at var(--reflect-x,46%) var(--reflect-y,34%),rgba(255,255,255,.3),transparent 78%),
+ background:linear-gradient(90deg,rgba(255,255,255,.2),transparent 3%,transparent 97%,rgba(0,0,0,.1)),
+  linear-gradient(180deg,rgba(255,255,255,.16),transparent 30%,transparent 82%,rgba(0,0,0,.055)),
+  radial-gradient(ellipse 27% 145% at var(--reflect-x,46%) var(--reflect-y,34%),rgba(255,255,255,.34),transparent 78%),
   linear-gradient(180deg,#a3a2a0 0%,#92918f 54%,#888785 100%);
  border-bottom:1px solid rgba(35,36,35,.34);
  backdrop-filter:none;
  -webkit-backdrop-filter:none;
- box-shadow:inset 0 1px 0 rgba(255,255,255,.48),inset 0 -1px 0 rgba(25,27,26,.2);
+ box-shadow:inset 0 1px 0 rgba(255,255,255,.62),inset 1px 0 0 rgba(255,255,255,.18),inset -1px 0 0 rgba(255,255,255,.12),inset 0 -1px 0 rgba(25,27,26,.2);
  transition:--reflect-x .12s ease-out,--reflect-y .12s ease-out;
 }
 .app .canvas-card>.card-head svg,
 .app .canvas-card>.card-head .widget-controls button{color:#35403b}
 .app .canvas-card>.card-head .move-grip{color:#46514c}
+.app .canvas-card:not(.widget-notes){
+ border-color:rgba(255,255,255,.34);
+ box-shadow:0 14px 30px rgba(0,0,0,.16),inset 0 1px 0 rgba(255,255,255,.28),inset 1px 0 0 rgba(255,255,255,.16),inset -1px 0 0 rgba(0,0,0,.08),inset 0 -1px 0 rgba(0,0,0,.14);
+}
 .app.canvas-app{
  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Segoe UI Variable","Segoe UI",sans-serif;
  text-rendering:optimizeLegibility;
