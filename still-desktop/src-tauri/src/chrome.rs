@@ -1,6 +1,24 @@
 use std::path::PathBuf;
 use tauri::Webview;
 
+fn profile_directory_from_local_state(bytes: &[u8]) -> Option<String> {
+    let state: serde_json::Value = serde_json::from_slice(bytes).ok()?;
+    let profile = state.get("profile")?;
+    let selected = profile.get("last_used")?.as_str()?;
+    if selected.is_empty() || selected == "." || selected == ".." || selected.contains('/') || selected.contains('\\') {
+        return None;
+    }
+    profile.get("info_cache")?.get(selected)?;
+    Some(selected.to_owned())
+}
+
+pub(crate) fn last_used_profile_directory() -> Option<String> {
+    let root = PathBuf::from(std::env::var_os("LOCALAPPDATA")?).join(r"Google\Chrome\User Data");
+    let bytes = std::fs::read(root.join("Local State")).ok()?;
+    let selected = profile_directory_from_local_state(&bytes)?;
+    root.join(&selected).is_dir().then_some(selected)
+}
+
 pub(crate) fn website(value: &str) -> Result<String, String> {
     if value.len() > 4096 { return Err("Website address is too long".into()); }
     let url = url::Url::parse(value).map_err(|_| "Enter a valid website address")?;
@@ -39,10 +57,12 @@ pub async fn chrome_open(webview: Webview, url: String) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
-        // Only a URL is passed: Chrome selects its normal profile and forwards to its
-        // existing process. No profile, private-window or new-window flags are used.
-        std::process::Command::new(executable()?).arg(destination).creation_flags(0x08000000)
-            .spawn().map_err(|e| format!("Unable to open Chrome: {e}"))?;
+        let mut command = std::process::Command::new(executable()?);
+        if let Some(profile) = last_used_profile_directory() {
+            command.arg(format!("--profile-directory={profile}"));
+        }
+        command.arg("--new-window").arg(destination).creation_flags(0x08000000)
+            .spawn().map_err(|e| format!("Unable to open Chrome in the last-used profile: {e}"))?;
         Ok(())
     }
     #[cfg(target_os = "macos")]
@@ -58,6 +78,14 @@ pub async fn chrome_open(webview: Webview, url: String) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test] fn selects_only_a_profile_directory_present_in_chrome_local_state() {
+        let state = br#"{"profile":{"last_used":"Default","info_cache":{"Default":{"name":"grump"},"Profile 3":{"name":"stephen"}}}}"#;
+        assert_eq!(profile_directory_from_local_state(state).as_deref(), Some("Default"));
+        let missing = br#"{"profile":{"last_used":"Profile 9","info_cache":{"Default":{"name":"grump"}}}}"#;
+        assert_eq!(profile_directory_from_local_state(missing), None);
+        let traversal = br#"{"profile":{"last_used":"../Default","info_cache":{"../Default":{"name":"unsafe"}}}}"#;
+        assert_eq!(profile_directory_from_local_state(traversal), None);
+    }
     #[test] fn accepts_only_website_arguments() {
         assert_eq!(website("https://learn.canterbury.ac.nz/").unwrap(), "https://learn.canterbury.ac.nz/");
         for value in ["--incognito", "javascript:alert(1)", "file:///c:/secret", "http://example.com", "https://u:p@example.com", "https://"] { assert!(website(value).is_err(), "{value}"); }

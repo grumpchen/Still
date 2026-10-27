@@ -24,6 +24,7 @@ function command<T>(id:string,name:string,args:Record<string,unknown>={}):Promis
 export const appPanel={
  available:isTauri(),
  open:(id:string,sourceId:string,bounds:PanelBounds,clip:PanelBounds,grip:PanelBounds|null,reuseExisting=false)=>command<AppPanelInfo>(id,'app_panel_open',{sourceId,bounds,clip,grip,reuseExisting}),
+ prepareLaunch:(sourceId:string,reuseExisting=true)=>invoke<AppWindow>('app_panel_prepare_launch',{sourceId,reuseExisting}),
  present:(id:string,bounds:PanelBounds,clip:PanelBounds,grip:PanelBounds|null,occlusions:PanelBounds[],visible:boolean,stackingRank:number,revision:number,viewportRight:number)=>command<AppPanelInfo>(id,'app_panel_present',{bounds,clip,grip,occlusions,visible:visible&&!retainedForDrag.has(id)&&!retainedForCollection.has(id),stackingRank,revision,viewportRight}),
  attach:(id:string,window:AppAttachment,bounds:PanelBounds,clip:PanelBounds,grip:PanelBounds|null)=>command<AppPanelInfo>(id,'app_panel_attach',{hwnd:window.hwnd,pid:window.pid,bounds,clip,grip,preserveFocus:window.capture===true}),
  windows:()=>invoke<AppWindow[]>('app_panel_windows'),

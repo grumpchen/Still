@@ -50,7 +50,7 @@ fn main() {
             files::notes_library_choose,files::notes_library_list,files::notes_library_read,files::notes_library_write,files::notes_library_create,
             dropped_files::document_open, dropped_files::document_choose,dropped_files::document_preview,
             dropped_files::app_open, dropped_files::app_choose,
-            app_panel::app_panel_open,app_panel::app_panel_windows,app_panel::app_panel_identity,app_panel::app_panel_attach,app_panel::app_panel_present,app_panel::app_panel_release,app_panel::app_panel_suspend,app_panel::app_panel_resume,app_panel::app_panel_configure_shutdown,
+            app_panel::app_panel_open,app_panel::app_panel_prepare_launch,app_panel::app_panel_windows,app_panel::app_panel_identity,app_panel::app_panel_attach,app_panel::app_panel_present,app_panel::app_panel_release,app_panel::app_panel_suspend,app_panel::app_panel_resume,app_panel::app_panel_configure_shutdown,
             app_capture::app_capture_enable,
             app_picker::app_picker_windows,app_picker::app_picker_prepare,app_picker::app_picker_icon,app_picker::app_picker_preview,
             app_picker::app_picker_installed,app_picker::app_picker_installed_icon,app_picker::app_picker_select_installed,
