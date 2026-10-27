@@ -17,7 +17,7 @@ export default function AppsWidget({widget,update,notify,appOpenResult,obscured,
   function selected(app:DroppedResource){if(app.kind!=='app'||!app.sourceId)throw new Error('Choose an app shortcut or application.');update({appKey:app.sourceId,appName:app.name,title:widget.title.trim()||app.name.slice(0,60),appPanelOpen:false,appReuseExisting:false,appMinWidth:undefined,appMinHeight:undefined});setExternalOpened(false);setRelaunchFailed(false);setError('')}
  async function choose(){setError('');if(!localApps.native){picker.current?.click();return}setBusy(true);try{const app=await localApps.choose();if(app)selected(app)}catch(e){setError(String(e))}finally{setBusy(false)}}
  useEffect(()=>{
-  setReady(false);setOpening(false);setRelaunchFailed(false);if(!appPanel.available){relaunch.current=async()=>{setRelaunchFailed(true);setError('Reopening native apps is available in the Windows version of Still.');current.current.onRelaunchStatus?.(true)};return}
+  setReady(false);setOpening(false);setRelaunchFailed(false);if(!appPanel.available){relaunch.current=async()=>{setRelaunchFailed(true);setError(t('nativeAppReopenWindowsOnly'));current.current.onRelaunchStatus?.(true)};return}
   const retainedOnMount=appPanel.consumeCollectionRetention(widget.id),shouldResumeCollection=retainedOnMount||widget.appWasCollected===true;setCollectionResumed(shouldResumeCollection);
   let disposed=false,frame=0,opened=false,launching=false,presenting=false,dirty=false,scrolling=false,last='',revision=0,stop:(()=>void)|undefined,stopScroll:(()=>void)|undefined;
   const node=host.current!,viewport=node.closest('.canvas-viewport') as HTMLElement,canvas=node.closest('.workspace-canvas')!;
@@ -61,7 +61,7 @@ export default function AppsWidget({widget,update,notify,appOpenResult,obscured,
     if(c.widget.appWasCollected||collectionResumed)reopened=await resume.current();
     else if(c.appAttachment)reopened=await attach.current(c.appAttachment);
     else if(c.widget.appKey){c.update({appPanelOpen:true});reopened=await launch.current()}
-    else{setRelaunchFailed(true);setError('The attached app window is no longer available. Reattach it from Apps.')}
+    else{setRelaunchFailed(true);setError(t('attachedAppWindowUnavailable'))}
     current.current.onRelaunchStatus?.(!reopened);
    }catch(reason){if(!disposed){setRelaunchFailed(true);setError(String(reason));current.current.onRelaunchStatus?.(true)}}
   };
@@ -70,7 +70,7 @@ export default function AppsWidget({widget,update,notify,appOpenResult,obscured,
   stopScroll=observeCanvasScroll(viewport,value=>{scrolling=value;if(value){invalidate(true);if(frame){cancelAnimationFrame(frame);frame=0}dirty=true;const g=geometry(),hideRevision=revision;void appPanel.present(widget.id,g.bounds,g.clip,g.grip,g.occlusions??[],false,g.stackingRank,hideRevision,g.viewportRight).then(info=>{if(!disposed&&hideRevision===revision)node.dataset.nativeVisible=String(info.shown)}).catch(()=>undefined)}else{dirty=false;schedule.current()}});
   const scroll=()=>schedule.current();window.addEventListener('resize',scroll);
   const dragFinished=(event:Event)=>{if((event as CustomEvent<{id:string}>).detail?.id===widget.id)schedule.current()};window.addEventListener('still-app-panel-drag-finished',dragFinished);
-  void appPanel.subscribe(event=>{if(disposed||event.id!==widget.id)return;if(!event.open){opened=false;last='';setReady(false);setCollectionResumed(false);setRelaunchFailed(false);node.dataset.nativeVisible='false';current.current.update({appPanelOpen:false,appWasCollected:false});setError('The app was closed. Open it in the panel again.')}else if(event.error!==undefined)setError(event.error??'')}).then(unlisten=>{if(disposed)unlisten();else{stop=unlisten;const c=current.current;if(shouldResumeCollection)void resume.current();else if(c.appAttachment)void attach.current(c.appAttachment);else if(c.widget.appPanelOpen&&c.workspaceActive)void launch.current()}}).catch(reason=>{if(!disposed)setError(String(reason))});
+  void appPanel.subscribe(event=>{if(disposed||event.id!==widget.id)return;if(!event.open){opened=false;last='';setReady(false);setCollectionResumed(false);setRelaunchFailed(false);node.dataset.nativeVisible='false';current.current.update({appPanelOpen:false,appWasCollected:false});setError(t('attachedAppClosed'))}else if(event.error!==undefined)setError(event.error??'')}).then(unlisten=>{if(disposed)unlisten();else{stop=unlisten;const c=current.current;if(shouldResumeCollection)void resume.current();else if(c.appAttachment)void attach.current(c.appAttachment);else if(c.widget.appPanelOpen&&c.workspaceActive)void launch.current()}}).catch(reason=>{if(!disposed)setError(String(reason))});
   return()=>{disposed=true;relaunch.current=async()=>{};invalidate();cancelAnimationFrame(frame);resize.disconnect();mutation.disconnect();window.removeEventListener('resize',scroll);window.removeEventListener('still-app-panel-drag-finished',dragFinished);stopScroll?.();stop?.();if(!appPanel.isCollectionRetained(widget.id))void appPanel.release(widget.id).catch(()=>undefined)};
  },[widget.id,widget.appKey]);
  useEffect(()=>{if(relaunchToken>0)void relaunch.current()},[relaunchToken]);

@@ -75,7 +75,7 @@ export default function AssistantPanel({workspace,canDeleteWorkspace,sidebarPlug
       if(cancelled||!alive.current)return;setConfigured(value);setSettings(!value);
       if(value){try{const available=await geminiAssistant.models(provider);if(cancelled||!alive.current)return;setModelsByProvider(current=>({...current,[provider]:available}));setModel(current=>{const next=available.includes(current)?current:preferredModel(available,provider);savePreference(provider,next);return next})}
         catch(reason){if(!cancelled&&alive.current){setError(assistantKeyError(reason));setSettings(true)}}}
-    }).catch(()=>{if(!cancelled&&alive.current){setSettings(true);setError('AI settings could not be loaded.')}});
+    }).catch(()=>{if(!cancelled&&alive.current){setSettings(true);setError(t('aiSettingsLoadFailed'))}});
     return()=>{cancelled=true};
   },[provider]);
   useEffect(()=>{log.current?.scrollTo({top:log.current.scrollHeight,behavior:'smooth'})},[messages,busy]);
