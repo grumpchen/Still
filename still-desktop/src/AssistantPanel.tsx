@@ -120,22 +120,22 @@ export default function AssistantPanel({workspace,canDeleteWorkspace,sidebarPlug
     if(clarification){setMessages(current=>[...current,{role:'user',text:prompt},{role:'model',text:clarification}]);setInput('');setMentions([]);setScreenshot(false);setError('');setPlan(null);return}
     const acceptedOffer=resolveAcceptedNotesOffer(prompt,messages),notesRequest=resolveNamedNotesCreation(prompt),localActions=acceptedOffer?[acceptedOffer.action]:resolveDirectAssistantActions(prompt,owner,selectedIds,trayItems),actionIntent=acceptedOffer?.intent??prompt,needsConfirmation=unsupportedAssistantRequest(prompt);
     const requestedActions=assistantActionRequest(prompt,trayItems);
-    if(requestedActions.includes('open_saved')&&!trayItems.length){setMessages(current=>[...current,{role:'user',text:prompt},{role:'model',text:'There are no saved shortcuts or Groups in the widget tray yet.'}]);setInput('');setMentions([]);return}
+    if(requestedActions.includes('open_saved')&&!trayItems.length){setMessages(current=>[...current,{role:'user',text:prompt},{role:'model',text:t('assistantNoSavedItems')}]);setInput('');setMentions([]);return}
     const timerWidgets=owner.widgets.filter(widget=>widget.type==='focus'||widget.clockPluginEnabled),needsNewFocus=requestedActions.includes('set_timer')&&!localActions&&timerWidgets.length===0;
-    if(requestedActions.includes('set_timer')&&!localActions&&!needsNewFocus){setError('Select one Focus or Clock-enabled widget with @, then set its timer.');return}
+    if(requestedActions.includes('set_timer')&&!localActions&&!needsNewFocus){setError(t('assistantSelectFocusWidget'));return}
     if(!localActions&&!needsConfirmation&&!needsNewFocus&&(!configured||!currentModels.includes(model)||!geminiAssistant.available))return;
     const size=dimensions(),requestProvider=provider,requestModel=model;
     sending.current=true;setBusy(true);setPending(prompt);setError('');setPlan(null);setMentionOpen(false);
     let image:string|undefined;
     try{
       if(needsConfirmation){
-        if(needsConfirmation==='delete_workspace'&&!canDeleteWorkspace){setMessages(current=>[...current,{role:'user',text:prompt},{role:'model',text:'Still must keep at least one workspace. Nothing was deleted.'}]);setInput('');setMentions([]);return}
-        const explanation=needsConfirmation==='clear_tray'?`This will remove saved shortcuts from the shared widget tray and Groups from ${owner.name}. Nothing has been removed yet. Confirm below to continue; Undo change can restore the saved tray data.`:needsConfirmation==='delete_workspace'?`This will remove the ${owner.name} workspace and its widget cards. Still will switch to another workspace; Undo change can restore it. Nothing has been deleted yet.`:`This will remove every widget card from ${owner.name}, including minimized cards. Saved shortcuts and Groups in the tray stay intact. Nothing has been removed yet. Confirm below to continue; Undo change restores the widget cards. Attached app windows will return to the desktop.`;
+        if(needsConfirmation==='delete_workspace'&&!canDeleteWorkspace){setMessages(current=>[...current,{role:'user',text:prompt},{role:'model',text:t('assistantKeepWorkspace')}]);setInput('');setMentions([]);return}
+        const explanation=needsConfirmation==='clear_tray'?t('assistantClearTrayConfirm').replace('{workspace}',owner.name):needsConfirmation==='delete_workspace'?t('assistantDeleteWorkspaceConfirm').replace('{workspace}',owner.name):t('assistantDeleteWidgetsConfirm').replace('{workspace}',owner.name);
         setMessages(current=>[...current,{role:'user',text:prompt},{role:'model',text:explanation}]);
         setConfirmation(needsConfirmation);setInput('');setMentions([]);setScreenshot(false);return;
       }
       if(needsNewFocus){
-        const seconds=extractAssistantTimerSeconds(prompt);if(seconds===null)throw new Error('Include a timer duration, such as “5 minutes”.');
+        const seconds=extractAssistantTimerSeconds(prompt);if(seconds===null)throw new Error(t('assistantTimerDurationExample'));
         const receipt=await startTimer(owner.id,seconds);if(!alive.current)return;
         setMessages(current=>[...current,{role:'user',text:prompt},{role:'model',text:receipt}]);setInput('');setMentions([]);setScreenshot(false);return;
       }
@@ -144,11 +144,11 @@ export default function AssistantPanel({workspace,canDeleteWorkspace,sidebarPlug
         if(localActions.some(action=>action.type==='remove_widget')){
           pendingActions.current=localActions;pendingPrompt.current=prompt;
           const names=localActions.filter(action=>action.type==='remove_widget').flatMap(action=>action.ids).map(id=>{const widget=owner.widgets.find(item=>item.id===id);return widget?widgetLabel(widget):''}).filter(Boolean);
-          setMessages(current=>[...current,{role:'user',text:prompt},{role:'model',text:`This will remove ${names.join(', ')} from ${owner.name}. Saved shortcuts stay in the tray. Confirm below to continue; Undo change restores the widget${names.length===1?'':'s'}.`}]);setConfirmation('remove_widgets');setInput('');setMentions([]);return;
+          setMessages(current=>[...current,{role:'user',text:prompt},{role:'model',text:t('assistantRemoveWidgetsConfirm').replace('{names}',names.join(', ')).replace('{workspace}',owner.name)}]);setConfirmation('remove_widgets');setInput('');setMentions([]);return;
         }
         if(localActions.some(action=>action.type==='open_saved'&&action.ids.some(id=>trayItems.some(item=>item.id===id&&item.type==='apps')))){
           pendingActions.current=localActions;pendingPrompt.current=prompt;
-          setMessages(current=>[...current,{role:'user',text:prompt},{role:'model',text:'This will open saved app shortcuts in Still. Confirm below to continue.'}]);setConfirmation('open_saved_apps');setInput('');setMentions([]);return;
+          setMessages(current=>[...current,{role:'user',text:prompt},{role:'model',text:t('assistantOpenSavedAppsConfirm')}]);setConfirmation('open_saved_apps');setInput('');setMentions([]);return;
         }
         let actionsToApply=localActions,draftNotice='';
         if(notesRequest?.topic&&localActions.some(action=>action.type==='add_widget'&&action.ids.length===1&&action.ids[0]==='notes')){
@@ -202,11 +202,11 @@ export default function AssistantPanel({workspace,canDeleteWorkspace,sidebarPlug
         if(result.actions.some(action=>action.type==='remove_widget')){
           pendingActions.current=result.actions;pendingPrompt.current=prompt;
           const names=result.actions.filter(action=>action.type==='remove_widget').flatMap(action=>action.ids).map(id=>{const widget=owner.widgets.find(item=>item.id===id);return widget?widgetLabel(widget):''}).filter(Boolean);
-          setMessages(current=>[...current,{role:'user',text:prompt},{role:'model',text:`This will remove ${names.join(', ')} from ${owner.name}. Saved shortcuts stay in the tray. Confirm below to continue; Undo change restores the widget${names.length===1?'':'s'}.`}]);setConfirmation('remove_widgets');setPlan(null);setInput('');setMentions([]);return;
+          setMessages(current=>[...current,{role:'user',text:prompt},{role:'model',text:t('assistantRemoveWidgetsConfirm').replace('{names}',names.join(', ')).replace('{workspace}',owner.name)}]);setConfirmation('remove_widgets');setPlan(null);setInput('');setMentions([]);return;
         }
         if(result.actions.some(action=>action.type==='open_saved'&&action.ids.some(id=>trayItems.some(item=>item.id===id&&item.type==='apps')))){
           pendingActions.current=result.actions;pendingPrompt.current=prompt;
-          setMessages(current=>[...current,{role:'user',text:prompt},{role:'model',text:'This will open saved app shortcuts in Still. Confirm below to continue.'}]);setConfirmation('open_saved_apps');setPlan(null);setInput('');setMentions([]);return;
+          setMessages(current=>[...current,{role:'user',text:prompt},{role:'model',text:t('assistantOpenSavedAppsConfirm')}]);setConfirmation('open_saved_apps');setPlan(null);setInput('');setMentions([]);return;
         }
         const receipt=safeAssistantReceipt(await act(owner.id,result.actions,prompt));if(!alive.current)return;
         setMessages(current=>[...current,{role:'user',text:prompt},{role:'model',text:receipt}]);setPlan(null);setInput('');setMentions([]);setScreenshot(false);return;
