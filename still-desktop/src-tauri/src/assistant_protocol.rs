@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-const GENERAL_ASSISTANT_GUIDANCE:&str="Be a helpful general-purpose AI: answer questions, explain ideas, help write and plan, and discuss topics normally. Understand ordinary wording such as make, build, give me, and I need; users do not need to know action names or widget IDs. Consult supplied capabilities, the widget catalogue, and supplied widget data. Each widget's structured tagColor field is authoritative for its color; use it instead of guessing from screenshot colors. @ is optional; type @ for a widget to prioritize its data when a large workspace requires trimming. For creation use add_widget with the catalogue type ID; optional title names the new widget and optional text supplies initial Notes content. For in-app edits use edit_widget with an exact existing widget ID and only fields supported for that widget: title or tagColor for any widget, text for Notes, schedule for Timetable, and pluginControls for Tag Color Status. Timetable schedule entries require day 0-6, 24-hour HH:MM time, class title, and location; preserve entries using the complete schedule supplied in widget data. The user may type @ as an optional quick-selection hint, but it is not required to answer or edit workspace widgets. Never guess an edit when the requested change is vague: requests such as 'edit the timetable' or 'make it better' need one short follow-up question and an empty actions array. A target alone does not explain what to change. If the user gives a clear value or task, do it directly without needless confirmation. If the target is unclear, ask which widget without actions. If target data is marked contentOmitted, ask the user to @-prioritize that widget. Focus and Clock timers use set_timer. The Clock timer plugin can be enabled or disabled with set_widget_plugin. Add or remove the built-in Stack and Layout sidebar plugins with set_sidebar_plugin using plugin IDs stack or layout and enabled true or false. rename_workspace renames the current workspace. Apps, Files, and Calculator content belongs to their native application. Workspace deletion always requires Still's on-screen confirmation; preserve the final workspace. Do not claim changes succeeded; Still applies them and reports the result. If an intended action is unclear, ask a helpful follow-up question with no actions instead of claiming success.";
+const GENERAL_ASSISTANT_GUIDANCE:&str="Be a helpful general-purpose AI: answer questions, explain ideas, help write and plan, and discuss topics normally. Understand ordinary wording such as make, build, give me, and I need; users do not need to know action names or widget IDs. Consult supplied capabilities, the widget catalogue, and supplied widget data. Each widget's structured tagColor field is authoritative for its color; use it instead of guessing from screenshot colors. @ is optional; type @ for a widget to prioritize its data when a large workspace requires trimming. For creation use add_widget with the catalogue type ID; optional title names the new widget and optional text supplies initial Notes content. For in-app edits use edit_widget with an exact existing widget ID and only fields supported for that widget: title or tagColor for any widget, text for Notes, schedule for Timetable, and pluginControls for Tag Color Status. Timetable schedule entries require day 0-6, 24-hour HH:MM time, class title, and location; preserve entries using the complete schedule supplied in widget data. The user may type @ as an optional quick-selection hint, but it is not required to answer or edit workspace widgets. Never guess an edit when the requested change is vague: requests such as 'edit the timetable' or 'make it better' need one short follow-up question and an empty actions array. A target alone does not explain what to change. If the user gives a clear value or task, do it directly without needless confirmation. If the target is unclear, ask which widget without actions. If target data is marked contentOmitted, ask the user to @-prioritize that widget. Focus and Clock timers use set_timer. The Clock timer plugin can be enabled or disabled with set_widget_plugin. Add or remove the built-in Stack and Layout sidebar plugins with set_sidebar_plugin using plugin IDs stack or layout and enabled true or false. rename_workspace renames the current workspace. Apps, Files, and Calculator content belongs to their native application. When selectedStudyResource says fileActionAllowed is true and the user asks to classify, organize, or file that selected file, you may return at most one fileProposal with a relative destinationFolder and a short reason. Use a simple relative folder path inside the selected Files library, never an absolute path, drive name, source path, or traversal segment. A fileProposal is only a suggestion; Still will show it for review and will not move anything until the user presses Move file. Never propose deletion or claim a file moved, renamed, or deleted. If the file is not useful, advise the user and leave it in the inbox. Otherwise return an empty fileProposals array. Workspace actions and layout proposals must not be mixed with fileProposals. Workspace deletion always requires Still's on-screen confirmation; preserve the final workspace. Do not claim changes succeeded; Still applies them and reports the result. If an intended action is unclear, ask a helpful follow-up question with no actions instead of claiming success.";
 
 #[derive(Deserialize, Serialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
@@ -36,8 +36,11 @@ pub struct ScheduleEntry { pub id:String, pub day:u8, pub time:String, pub title
 #[serde(deny_unknown_fields)]
 pub struct AssistantAction { #[serde(rename = "type")] pub action_type: ActionType, pub ids: Vec<String>, #[serde(skip_serializing_if = "Option::is_none")] pub seconds: Option<u64>, #[serde(skip_serializing_if = "Option::is_none")] pub title: Option<String>, #[serde(skip_serializing_if = "Option::is_none")] pub text: Option<String>, #[serde(skip_serializing_if = "Option::is_none")] pub schedule:Option<Vec<ScheduleEntry>>, #[serde(rename="tagColor",skip_serializing_if = "Option::is_none")] pub tag_color:Option<String>, #[serde(rename="pluginControls",skip_serializing_if = "Option::is_none")] pub plugin_controls:Option<Vec<String>>, #[serde(skip_serializing_if="Option::is_none")] pub plugin:Option<String>, #[serde(skip_serializing_if="Option::is_none")] pub enabled:Option<bool> }
 #[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields,rename_all="camelCase")]
+pub struct FileProposal { pub destination_folder:String, pub reason:String }
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct Reply { #[serde(default,skip_serializing_if="Option::is_none")] pub intent:Option<ResponseIntent>, pub reply: String, pub layout: Vec<LayoutItem>, #[serde(default)] pub actions: Vec<AssistantAction> }
+pub struct Reply { #[serde(default,skip_serializing_if="Option::is_none")] pub intent:Option<ResponseIntent>, pub reply: String, pub layout: Vec<LayoutItem>, #[serde(default)] pub actions: Vec<AssistantAction>, #[serde(default,rename="fileProposals")] pub file_proposals:Vec<FileProposal> }
 
 fn valid_assistant_actions(actions:&[AssistantAction])->bool {
     let mut batch_size=0;let mut change_batch_size=0;
@@ -214,7 +217,7 @@ pub fn body(request: &Request) -> Result<Value, String> {
             "thinkingConfig":{"thinkingBudget":0},
             "responseMimeType":"application/json",
             "responseSchema":{
-                "type":"OBJECT","required":["intent","reply","layout","actions"],
+                "type":"OBJECT","required":["intent","reply","layout","actions","fileProposals"],
                 "properties":{
                     "intent":{"type":"STRING","enum":["chat","clarification","workspace_action","layout"]},
                     "reply":{"type":"STRING"},
@@ -224,7 +227,8 @@ pub fn body(request: &Request) -> Result<Value, String> {
                     "actions":{"type":"ARRAY","items":{"type":"OBJECT","required":["type","ids"],"properties":{
                         "type":{"type":"STRING","enum":["minimize","restore","save_to_tray","set_timer","add_widget","open_saved","remove_widget","edit_widget","set_widget_plugin","set_sidebar_plugin","rename_workspace"]},
                         "ids":{"type":"ARRAY","items":{"type":"STRING"}},"seconds":{"type":"INTEGER"},"title":{"type":"STRING"},"text":{"type":"STRING"},"tagColor":{"type":"STRING"},"pluginControls":{"type":"ARRAY","items":{"type":"STRING"}},"plugin":{"type":"STRING"},"enabled":{"type":"BOOLEAN"},"schedule":{"type":"ARRAY","items":{"type":"OBJECT","required":["id","day","time","title","location"],"properties":{"id":{"type":"STRING"},"day":{"type":"INTEGER"},"time":{"type":"STRING"},"title":{"type":"STRING"},"location":{"type":"STRING"}}}}
-                    }}}
+                    }}},
+                    "fileProposals":{"type":"ARRAY","items":{"type":"OBJECT","required":["destinationFolder","reason"],"properties":{"destinationFolder":{"type":"STRING"},"reason":{"type":"STRING"}}}}
                 }
             }
         }
@@ -246,9 +250,14 @@ fn parse_compatible_response(value:Value,provider:&str)->Result<Reply,String>{
     validate_reply(reply,provider)
 }
 fn validate_reply(mut reply:Reply,provider:&str)->Result<Reply,String>{
-    if reply.reply.len()>24000||reply.layout.len()>100||reply.actions.len()>100{return Err(format!("{provider} returned too much content. Nothing was changed. Try a smaller request."));}
+    if reply.reply.len()>24000||reply.layout.len()>100||reply.actions.len()>100||reply.file_proposals.len()>1{return Err(format!("{provider} returned too much content. Nothing was changed. Try a smaller request."));}
+    for proposal in &reply.file_proposals{
+        if proposal.reason.trim().is_empty()||proposal.reason.chars().count()>600||crate::files::validate_filing_folder(&proposal.destination_folder).is_err(){return Err(format!("{provider} returned an unsafe file filing proposal. Nothing was changed. Try again."));}
+    }
+    if !reply.file_proposals.is_empty()&&(!reply.actions.is_empty()||!reply.layout.is_empty()){return Err(format!("{provider} mixed a file filing proposal with workspace changes. Nothing was changed. Try again."));}
     match reply.intent {
-        Some(ResponseIntent::Chat|ResponseIntent::Clarification)=>{reply.layout.clear();reply.actions.clear();},
+        Some(ResponseIntent::Chat)=>{reply.layout.clear();reply.actions.clear();},
+        Some(ResponseIntent::Clarification)=>{reply.layout.clear();reply.actions.clear();reply.file_proposals.clear();},
         Some(ResponseIntent::WorkspaceAction)=>reply.layout.clear(),
         Some(ResponseIntent::Layout)=>reply.actions.clear(),
         None if !reply.layout.is_empty()&&!reply.actions.is_empty()=>return Err(format!("{provider} mixed a layout proposal with workspace actions. Nothing was changed. Try again.")),
@@ -258,6 +267,7 @@ fn validate_reply(mut reply:Reply,provider:&str)->Result<Reply,String>{
     if reply.reply.trim().is_empty(){
         if !reply.actions.is_empty(){reply.reply="Workspace actions requested.".into();}
         else if !reply.layout.is_empty(){reply.reply="Workspace layout proposal.".into();}
+        else if !reply.file_proposals.is_empty(){reply.reply="I found a possible filing folder. Review it before moving the file.".into();}
         else{return Err(format!("{provider} returned no reply or workspace action. Try again."));}
     }
     Ok(reply)
@@ -331,6 +341,14 @@ mod tests {
         assert!(parse_openai_response(json!({"choices":[{"message":{"content":bad.to_string()}}]})).err().unwrap().contains("invalid workspace action"));
         let empty=json!({"reply":"","layout":[],"actions":[]});
         assert!(parse_openai_response(json!({"choices":[{"message":{"content":empty.to_string()}}]})).err().unwrap().contains("no reply or workspace action"));
+    }
+    #[test]fn file_proposals_are_structured_relative_and_separate_from_workspace_actions(){
+        let payload=body(&request()).unwrap();
+        assert!(payload["generationConfig"]["responseSchema"]["required"].as_array().unwrap().iter().any(|field|field=="fileProposals"));
+        let proposal=json!({"intent":"chat","reply":"This looks like a chemistry handout.","layout":[],"actions":[],"fileProposals":[{"destinationFolder":"Courses/CHEM111","reason":"It contains chemistry course material."}]});
+        let parsed=validate_reply(serde_json::from_value(proposal.clone()).unwrap(),"Gemini").unwrap();assert_eq!(parsed.file_proposals[0].destination_folder,"Courses/CHEM111");
+        let mut traversal=proposal.clone();traversal["fileProposals"][0]["destinationFolder"]=json!("../outside");assert!(validate_reply(serde_json::from_value(traversal).unwrap(),"Gemini").is_err());
+        let mut mixed=proposal;mixed["actions"]=json!([{"type":"remove_widget","ids":["notes-1"]}]);assert!(validate_reply(serde_json::from_value(mixed).unwrap(),"Gemini").is_err());
     }
     fn request() -> Request { Request {provider:Provider::Gemini,model:"gemini-2.5-flash".into(),messages:vec![Message {role:"user".into(),text:"Hello".into()}],context:String::new(),image:None,session_id:None} }
     #[test] fn only_lists_project_models_that_support_content_generation() {

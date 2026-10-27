@@ -148,6 +148,14 @@ test('model responses are parsed without trusting arbitrary fields or geometry',
   assert.throws(()=>parseAssistantReply({reply:'Hello',layout:[{id:'a',x:0.1,y:0,width:100,height:100}]}));
   assert.throws(()=>parseAssistantReply({reply:'Hello',layout:[null]}));
 });
+test('AI file filing proposals are bounded relative folders and never mix with workspace actions',()=>{
+  const proposal={destinationFolder:'Courses/CHEM111',reason:'The selected handout covers chemistry.'};
+  assert.deepEqual(parseAssistantReply({reply:'This is a chemistry handout.',layout:[],actions:[],fileProposals:[proposal]}).fileProposals,[proposal]);
+  assert.throws(()=>parseAssistantReply({reply:'Move it',layout:[],actions:[],fileProposals:[{...proposal,destinationFolder:'../outside'}]}),/unsafe file filing proposal/);
+  assert.throws(()=>parseAssistantReply({reply:'Move it',layout:[],actions:[],fileProposals:[{...proposal,destinationFolder:'CON'}]}),/unsafe file filing proposal/);
+  assert.throws(()=>parseAssistantReply({reply:'Move it',layout:[],actions:[{type:'remove_widget',ids:['notes-1']}],fileProposals:[proposal]}),/mixed a file filing proposal/);
+  assert.deepEqual(parseAssistantReply({intent:'clarification',reply:'Which course?',layout:[],actions:[],fileProposals:[proposal]}).fileProposals,undefined);
+});
 test('assistant response intent separates freeform conversation from workspace operations',()=>{
   const layout=[{id:'notes-1',x:0,y:0,width:300,height:250}],actions=[{type:'edit_widget',ids:['notes-1'],title:'Unexpected edit'}];
   assert.deepEqual(parseAssistantReply({intent:'chat',reply:'A black hole has an event horizon.',layout,actions}),{intent:'chat',reply:'A black hole has an event horizon.',layout:[],actions:[]});

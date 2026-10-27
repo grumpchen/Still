@@ -91,6 +91,7 @@ fn filing_segments(relative:&str)->Result<Vec<&str>,String>{
     if segments.len()>8||segments.iter().any(|segment|!valid_filing_segment(segment)){return Err("The suggested folder name is not safe for this library.".into())}
     Ok(segments)
 }
+pub(crate) fn validate_filing_folder(relative:&str)->Result<(),String>{filing_segments(relative).map(|_|())}
 fn existing_file_without_links(root:&Path,relative:&str)->Result<PathBuf,String>{
     let root=root.canonicalize().map_err(|_|"The selected folder is unavailable. Choose it again.")?;
     if relative.is_empty()||relative.len()>1000||relative.contains(':')||relative.contains('\\')||relative.contains('\0')||Path::new(relative).components().any(|part|!matches!(part,Component::Normal(_))){return Err("Choose a file within the selected Files library.".into())}

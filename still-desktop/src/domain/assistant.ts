@@ -22,6 +22,7 @@ export type AssistantActionType = typeof ASSISTANT_ACTION_TYPES[number];
 export type AssistantAction = {type:AssistantActionType;ids:string[];seconds?:number;title?:string;text?:string;schedule?:ScheduleEntry[];tagColor?:string;pluginControls?:string[];plugin?:string;enabled?:boolean};
 export type AssistantTrayItem={id:string;name:string;type:WidgetType;kind:'preset'|'group'};
 export type AssistantResponseIntent='chat'|'clarification'|'workspace_action'|'layout';
+export type AssistantFileProposal={destinationFolder:string;reason:string};
 export const MAX_ASSISTANT_BATCH=10;
 export const MAX_ASSISTANT_WIDGETS=100;
 export function resolveNamedNotesCreation(prompt:string):{title:string;topic:string}|null{
@@ -31,7 +32,7 @@ export function resolveNamedNotesCreation(prompt:string):{title:string;topic:str
   if(!title||title.length>60||topic.length>12000)return null;
   return {title,topic};
 }
-export type AssistantReply = {intent?:AssistantResponseIntent;reply:string; layout:LayoutItem[]; actions:AssistantAction[]};
+export type AssistantReply = {intent?:AssistantResponseIntent;reply:string; layout:LayoutItem[]; actions:AssistantAction[];fileProposals?:AssistantFileProposal[]};
 export type LayoutPlan = {workspaceId:string; fingerprint:string; width:number; height:number; items:LayoutItem[]};
 export const DEFAULT_MODEL = 'gemini-2.5-flash';
 export const DEFAULT_MODELS:Record<AssistantProvider,string> = {gemini:DEFAULT_MODEL,openai:'gpt-4o-mini',opencode:'mimo-v2.6-flash'};
@@ -156,6 +157,13 @@ export function parseAssistantReply(value:unknown):AssistantReply {
     validateAssistantActionFields(action);
     return {type:action.type,ids:[...action.ids],...(action.type==='set_timer'?{seconds:action.seconds}:{}),...(action.title!==undefined?{title:action.title.trim()}:{}),...(action.text!==undefined?{text:action.text}:{}),...(action.schedule!==undefined?{schedule:action.schedule.map(entry=>({...entry,title:entry.title.trim(),location:entry.location.trim()}))}:{}),...(action.tagColor!==undefined?{tagColor:action.tagColor}:{}),...(action.pluginControls!==undefined?{pluginControls:[...action.pluginControls]}:{}),...(action.plugin!==undefined?{plugin:action.plugin}:{}),...(action.enabled!==undefined?{enabled:action.enabled}:{})};
   });
+  const rawFileProposals=(value as Partial<AssistantReply>).fileProposals??[];
+  if(!Array.isArray(rawFileProposals)||rawFileProposals.length>1)throw new Error('The AI returned an invalid file filing proposal. Nothing was moved. Try again.');
+  const fileProposals:AssistantFileProposal[]=rawFileProposals.map(proposal=>{
+    if(!proposal||typeof proposal.destinationFolder!=='string'||!isSafeFilingFolder(proposal.destinationFolder)||typeof proposal.reason!=='string'||!proposal.reason.trim()||Array.from(proposal.reason).length>600)throw new Error('The AI returned an unsafe file filing proposal. Nothing was moved. Try again.');
+    return {destinationFolder:proposal.destinationFolder,reason:proposal.reason.trim()};
+  });
+  if(fileProposals.length&&(items.length||actions.length))throw new Error('The AI mixed a file filing proposal with workspace changes. Nothing was moved. Try again.');
   if(actions.filter(action=>action.type==='add_widget'||action.type==='open_saved').reduce((total,action)=>total+action.ids.length,0)>MAX_ASSISTANT_BATCH)throw new Error('The AI returned too many widget actions. Nothing was changed. Try a smaller request.');
   if(actions.filter(action=>action.type==='edit_widget'||action.type==='set_widget_plugin'||action.type==='set_sidebar_plugin').reduce((total,action)=>total+action.ids.length,0)>MAX_ASSISTANT_BATCH)throw new Error('The AI returned too many workspace changes. Nothing was changed. Try a smaller request.');
   if(!intent&&items.length&&actions.length)throw new Error('The AI mixed a layout proposal with workspace actions. Nothing was changed. Try again.');
@@ -163,7 +171,17 @@ export function parseAssistantReply(value:unknown):AssistantReply {
   const safeActions=intent==='chat'||intent==='clarification'||intent==='layout'?[]:actions;
   if(!reply.trim()&&!safeActions.length&&!safeLayout.length)throw new Error('The AI returned no reply. Try again.');
   const normalizedReply=reply.trim()?reply:safeActions.length?'Workspace actions requested.':'Workspace layout proposal.';
-  return {...(intent?{intent}:{}),reply:normalizedReply,layout:safeLayout,actions:safeActions};
+   const safeFileProposals=intent==='clarification'?[]:fileProposals;
+   return {...(intent?{intent}:{}),reply:normalizedReply,layout:safeLayout,actions:safeActions,...(safeFileProposals.length?{fileProposals:safeFileProposals}:{})};
+}
+function isSafeFilingFolder(value:string):boolean{
+  const segments=value.split('/');
+  if(!value||new TextEncoder().encode(value).length>240||segments.length>8)return false;
+  return segments.every(segment=>{
+    if(!segment||segment==='.'||segment==='..'||new TextEncoder().encode(segment).length>100||/[ .]$/.test(segment)||/[<>:"/\\|?*\u0000-\u001f]/.test(segment))return false;
+    const device=segment.split('.')[0].replace(/[ .]+$/,'');
+    return !/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/i.test(device);
+  });
 }
 function validateAssistantActionFields(action:AssistantAction):void{
   if(action.title!==undefined&&(action.type!=='add_widget'&&action.type!=='edit_widget'&&action.type!=='rename_workspace'||typeof action.title!=='string'||!action.title.trim()||action.title.length>60))throw new Error('Invalid names: use between 1 and 60 characters. Nothing was changed.');
