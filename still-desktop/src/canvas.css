@@ -611,3 +611,7 @@ dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
 .canvas-app.sidebar-peek-open .sidebar-reveal-zone{pointer-events:none}
 @media(forced-colors:active){.app .canvas-card>.card-head::after{display:none}}
 .canvas-card .widget-controls .widget-active-tag{width:18px;height:22px}.canvas-card .widget-active-tag .widget-tag-dot{width:9px;height:9px;border-width:1px}.widget-minimized-tag{width:9px;height:9px;flex:none;border:1px solid currentColor;border-radius:50%;opacity:.9}.widget-minimized-tag[data-tag-color=red]{background:#e65d58;border-color:#e65d58}.widget-minimized-tag[data-tag-color=orange]{background:#ed9849;border-color:#ed9849}.widget-minimized-tag[data-tag-color=yellow]{background:#d8b83e;border-color:#d8b83e}.widget-minimized-tag[data-tag-color=green]{background:#42a66a;border-color:#42a66a}.widget-minimized-tag[data-tag-color=blue]{background:#4b8fe8;border-color:#4b8fe8}.widget-minimized-tag[data-tag-color=purple]{background:#a36bd1;border-color:#a36bd1}.widget-minimized-tag[data-tag-color=gray]{background:#89949b;border-color:#89949b}
+
+/* Keep the assistant in a visible side column while the canvas stays full-width. */
+.canvas-app.assistant-open{grid-template-columns:minmax(0,1fr) 360px!important}
+@media(max-width:1000px){.canvas-app.assistant-open{grid-template-columns:minmax(0,1fr) 310px!important}}
