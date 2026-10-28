@@ -22,7 +22,7 @@ pub fn load(provider: Provider) -> Result<Option<String>, String> {
     let mut credential: *mut CREDENTIALW = ptr::null_mut();
     let read = unsafe { CredReadW(PCWSTR(name.as_ptr()), CRED_TYPE_GENERIC, None, &mut credential) };
     if let Err(error) = read {
-        if error.code().0 as u32 == 1168 { return Ok(None); }
+        if is_credential_not_found(error.code().0 as u32) { return Ok(None); }
         return Err("Could not read the saved AI key from Windows Credential Manager.".into());
     }
     if credential.is_null() { return Err("Windows returned an invalid saved AI key.".into()); }
@@ -73,7 +73,7 @@ pub fn delete(provider: Provider) -> Result<(), String> {
     let name = target_name(provider).encode_utf16().chain(Some(0)).collect::<Vec<_>>();
     match unsafe { CredDeleteW(PCWSTR(name.as_ptr()), CRED_TYPE_GENERIC, None) } {
         Ok(()) => Ok(()),
-        Err(error) if error.code().0 as u32 == 1168 => Ok(()),
+        Err(error) if is_credential_not_found(error.code().0 as u32) => Ok(()),
         Err(_) => Err("Could not remove the saved AI key from Windows Credential Manager.".into()),
     }
 }
@@ -101,3 +101,17 @@ mod tests {
         assert!(target_name(Provider::Opencode).starts_with("Still.AI."));
     }
 }
+
+#[cfg(test)]
+mod credential_error_tests {
+    use super::is_credential_not_found;
+
+    #[test]
+    fn treats_windows_credential_not_found_hresult_as_an_empty_slot() {
+        assert!(is_credential_not_found(1168));
+        assert!(is_credential_not_found(0x80070490));
+        assert!(!is_credential_not_found(5));
+    }
+}
+
+fn is_credential_not_found(code:u32)->bool { code==1168 || code==0x80070490 }
