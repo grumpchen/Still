@@ -10,7 +10,8 @@
     "test": "tsx --test --test-concurrency=1 tests/*.test.mjs",
     "build": "tsc --noEmit && vite build",
     "tauri": "tauri",
-    "publish-preview": "node scripts/publish-preview.mjs"
+    "publish-preview": "node scripts/publish-preview.mjs",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@tauri-apps/api": "2.12.1",
@@ -20,6 +21,7 @@
     "react-dom": "19.3.0"
   },
   "devDependencies": {
+    "@playwright/test": "1.64.1",
     "@tauri-apps/cli": "2.12.1",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
@@ -28,5 +30,6 @@
     "tsx": "^4.23.15",
     "typescript": "7.0.2",
     "vite": "8.3.2"
-  }
+  },
+  "packageManager": "pnpm@11.24.0"
 }
