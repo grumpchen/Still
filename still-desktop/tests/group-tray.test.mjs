@@ -5,14 +5,16 @@ import * as workspaces from '../src/domain/workspaces.ts';
 import {shortcut} from '../src/domain/webShortcuts.ts';
 import {setNoteText} from './fixtures.mjs';
 
+function parseWorkspace(state,id=state.activeId){return workspaces.parseState(JSON.stringify(state)).workspaces.find(workspace=>workspace.id===id)}
+
 test('a saved group stays in the tray when its canvas instance is removed and can be reopened',()=>{
- const state=workspaces.createInitialState();
- state.workspaces[0].widgets.push({...workspaces.createWidget('group'),title:'CHEM111',shortcuts:[shortcut({name:'Lecture',url:'https://example.com/lecture'})]});
- let workspace=workspaces.parseState(JSON.stringify(state)).workspaces[0];
+ const state=workspaces.createInitialState(),owner=state.workspaces.find(workspace=>workspace.role==='study');
+ owner.widgets.push({...workspaces.createWidget('group'),title:'CHEM111',shortcuts:[shortcut({name:'Lecture',url:'https://example.com/lecture'})]});state.activeId=owner.id;
+ let workspace=parseWorkspace(state,owner.id);
  assert.equal(workspace.groups?.length,1);
  const group=workspace.groups[0];assert.equal(group.name,'CHEM111');assert.equal(group.shortcuts[0].name,'Lecture');
  workspace={...workspace,widgets:workspace.widgets.filter(w=>w.type!=='group')};
- const saved=workspaces.parseState(JSON.stringify({...state,workspaces:[workspace],activeId:workspace.id})).workspaces[0];
+ const saved=parseWorkspace({...state,workspaces:[workspace],activeId:workspace.id},workspace.id);
  assert.equal(saved.groups.length,1);
  const first=workspaces.openSavedGroup(saved,group.id,{x:10,y:20});
  const second=workspaces.openSavedGroup(first,group.id,{x:30,y:40});
@@ -27,7 +29,7 @@ test('group widget entries open fresh instances and keep their catalogue after r
  assert.equal(workspace.groups?.length,1);
  const entry=workspaces.groupWidgetEntry({type:'notes',name:'Lab notes',icon:'N'});
  const group={...workspace.groups[0],name:'CHEM111',expanded:true,widgets:[entry]};
- const saved=workspaces.parseState(JSON.stringify({...workspaces.createInitialState(),workspaces:[{...workspace,groups:[group]}],activeId:workspace.id})).workspaces[0];
+ const saved=parseWorkspace({...workspaces.createInitialState(),workspaces:[{...workspace,groups:[group]}],activeId:workspace.id},workspace.id);
  assert.equal(saved.groups[0].expanded,true);assert.equal(saved.groups[0].widgets[0].name,'Lab notes');
  const first=workspaces.createWidgetFromGroupEntry(entry,saved.widgets,{x:0,y:0});
  const second=workspaces.createWidgetFromGroupEntry(entry,[...saved.widgets,first],{x:30,y:40});
@@ -54,7 +56,7 @@ test('saving an open widget creates or appends a reusable group entry without ch
  assert.equal(appended.groups.at(-1).widgets[1].name,'Calculator');
  assert.equal(appended.widgets.find(widget=>widget.id===source.id).text,'Keep these notes');
  const restored=workspaces.parseState(JSON.stringify({...workspaces.createInitialState(),workspaces:[appended],activeId:appended.id}));
- assert.deepEqual(restored.workspaces[0].groups.at(-1).widgets.map(entry=>entry.type),['notes','desmos']);
+ assert.deepEqual(restored.workspaces.find(item=>item.id===appended.id).groups.at(-1).widgets.map(entry=>entry.type),['notes','desmos']);
  assert.throws(()=>workspaces.saveWidgetToGroup(appended,workspaces.createWidget('group')));
  assert.throws(()=>workspaces.saveWidgetToGroup(appended,source,'missing-group'));
 });
@@ -68,8 +70,8 @@ test('renaming a group updates its instances and duplicate workspaces keep indep
  assert.notEqual(copy.groups[0].id,id);assert.equal(copy.widgets[0].groupId,copy.groups[0].id);
  copy.groups[0].name='Other';assert.equal(renamed.groups[0].name,'CHEM111');
  const state={...workspaces.createInitialState(),workspaces:[renamed,copy],activeId:renamed.id};
- const roundtrip=workspaces.parseState(JSON.stringify(state));assert.equal(roundtrip.workspaces[1].groups[0].name,'Other');
- assert.equal(roundtrip.workspaces[0].groups[0].name,'CHEM111');
+ const roundtrip=workspaces.parseState(JSON.stringify(state));assert.equal(roundtrip.workspaces.find(item=>item.id===copy.id).groups[0].name,'Other');
+ assert.equal(roundtrip.workspaces.find(item=>item.id===renamed.id).groups[0].name,'CHEM111');
 });
 
 test('collecting a canvas widget moves its full state and restores the same instance from a Group',()=>{
@@ -83,7 +85,7 @@ test('collecting a canvas widget moves its full state and restores the same inst
  assert.equal(collected.groups.find(group=>group.id===groupId).widgets[0].kind,'collected');
  assert.equal(collected.groups.find(group=>group.id===groupId).widgets[0].instance.text,source.text);
  assert.equal(collected.groups.find(group=>group.id===groupId).widgets[0].instance.placement.x,310);
- const restored=workspaces.parseState(JSON.stringify({...workspaces.createInitialState(),workspaces:[collected],activeId:collected.id})).workspaces[0];
+ const restored=parseWorkspace({...workspaces.createInitialState(),workspaces:[collected],activeId:collected.id},collected.id);
  assert.equal(restored.groups.find(group=>group.id===groupId).widgets[0].instance.text,source.text);
  const reopened=workspaces.restoreCollectedWidget(restored,source.id,1000,700);
  const same=reopened.widgets.find(widget=>widget.id===source.id);
@@ -102,7 +104,7 @@ test('collected Apps retain safe relaunch configuration without saving transient
  assert.equal(entry.instance.appKey,'grant-123');assert.equal(entry.instance.appName,'Editor');
  assert.equal(entry.instance.appPanelOpen,false);assert.equal('hwnd' in entry.instance,false);assert.equal('pid' in entry.instance,false);
  assert.equal(entry.instance.appWasCollected,true,'the Group snapshot records recovery intent without HWND/PID');
- const restored=workspaces.parseState(JSON.stringify({...workspaces.createInitialState(),workspaces:[collected],activeId:collected.id})).workspaces[0];
+ const restored=parseWorkspace({...workspaces.createInitialState(),workspaces:[collected],activeId:collected.id},collected.id);
  const snapshot=restored.groups[0].widgets[0].instance;
  assert.equal(snapshot.appKey,'grant-123');assert.equal('hwnd' in snapshot,false);assert.equal('pid' in snapshot,false);
  assert.equal(snapshot.appWasCollected,true);
@@ -114,7 +116,7 @@ test('collected Ctrl+Shift Apps retain restart recovery intent without requiring
  const collected=workspaces.collectWidgetIntoGroup(workspace,source.id,workspace.widgets.find(widget=>widget.type==='group').groupId);
  const saved=collected.groups[0].widgets[0].instance;
  assert.equal(saved.appWasCollected,true);assert.equal(saved.appPanelOpen,false);assert.equal(saved.appKey,null);
- const reopened=workspaces.parseState(JSON.stringify({...workspaces.createInitialState(),workspaces:[collected],activeId:collected.id})).workspaces[0];
+ const reopened=parseWorkspace({...workspaces.createInitialState(),workspaces:[collected],activeId:collected.id},collected.id);
  assert.equal(reopened.groups[0].widgets[0].instance.appWasCollected,true);
  assert.equal('hwnd' in reopened.groups[0].widgets[0].instance,false);assert.equal('pid' in reopened.groups[0].widgets[0].instance,false);
 });
@@ -126,7 +128,7 @@ test('collected widgets cannot be nested, duplicated, or silently removed with t
  assert.throws(()=>workspaces.collectWidgetIntoGroup(collected,source.id,groupWidget.groupId));
  assert.throws(()=>workspaces.createWidgetFromGroupEntry(collected.groups[0].widgets[0],collected.widgets));
  const corrupted=structuredClone(collected);corrupted.widgets.push({...source});
- const repaired=workspaces.parseState(JSON.stringify({...workspaces.createInitialState(),workspaces:[corrupted],activeId:corrupted.id})).workspaces[0];
+ const repaired=parseWorkspace({...workspaces.createInitialState(),workspaces:[corrupted],activeId:corrupted.id},corrupted.id);
  assert.equal(repaired.widgets.filter(widget=>widget.id===source.id).length,1);
  assert.equal(repaired.groups[0].widgets.some(entry=>entry.id===source.id),false);
 });
@@ -144,7 +146,7 @@ test('deleting a saved Group removes its collected state and its canvas cards wi
  assert.equal(deleted.widgets.some(widget=>widget.groupId===first.id),false);
  assert.equal(deleted.groups.some(group=>group.id===second.id),true);
  assert.equal(workspaces.savedGroupHasContents(second),false);
- const persisted=workspaces.parseState(JSON.stringify({...workspaces.createInitialState(),workspaces:[deleted],activeId:deleted.id})).workspaces[0];
+ const persisted=parseWorkspace({...workspaces.createInitialState(),workspaces:[deleted],activeId:deleted.id},deleted.id);
  assert.equal(persisted.groups.some(group=>group.id===first.id),false);
  assert.equal(persisted.groups[0].widgets.length,0);
  const {deleteCanvasWidget}=await import('../src/domain/trayActions.ts');
@@ -153,7 +155,7 @@ test('deleting a saved Group removes its collected state and its canvas cards wi
  assert.equal(cardOnly.groups.find(group=>group.id===first.id).widgets[0].instance.text,'Do not orphan this data');
 });
 
-test('Group deletion uses one confirm path and releases collected native panels without closing external apps',()=>{
+test('Group deletion confirms first and releases collected native panels using the selected close behavior',()=>{
  const app=readFileSync(new URL('../src/App.tsx',import.meta.url),'utf8');
  const apps=readFileSync(new URL('../src/platform/appPanel.ts',import.meta.url),'utf8');
  const native=readFileSync(new URL('../src-tauri/src/app_panel.rs',import.meta.url),'utf8');
@@ -161,16 +163,17 @@ test('Group deletion uses one confirm path and releases collected native panels 
  const capability=readFileSync(new URL('../src-tauri/capabilities/main.json',import.meta.url),'utf8');
  const permission=readFileSync(new URL('../src-tauri/permissions/autogenerated/app_panel_release.toml',import.meta.url),'utf8');
  assert.match(app,/function removeGroup\([\s\S]*?savedGroupHasContents\(group\)[\s\S]*?performRemoval\(target\)/);
- assert.match(app,/Delete All/);assert.match(app,/Cancel/);
+ assert.match(app,/translate\(state\.locale,pendingRemoval\.kind==='group'\?'deleteAll':'confirmRemoval'\)/);assert.match(app,/translate\(state\.locale,'cancel'\)/);
  assert.match(app,/deleteSavedGroup\(w,target\.id\)/);
- assert.match(app,/entry\.type==='apps'&&appPanel\.available\?appPanel\.release\(entry\.id\)/);
- assert.match(apps,/release:async\(id:string\)=>\{retainedForDrag\.delete\(id\);retainedForCollection\.delete\(id\);await command<void>\(id,'app_panel_release'\)\}/);
- assert.match(native,/pub async fn app_panel_release[\s\S]*?release\(&app,&id\)/);
+ assert.match(app,/if\(group\)for\(const entry of group\.widgets\)if\(entry\.kind==='collected'\)[\s\S]*?entry\.type==='apps'&&appPanel\.available\?appPanel\.release\(entry\.id,current\.closeAppOnWidgetClose\)/);
+ assert.match(apps,/release:async\(id:string,closeApp=false\)=>\{retainedForDrag\.delete\(id\);retainedForCollection\.delete\(id\);await command<void>\(id,'app_panel_release',\{closeApp\}\)\}/);
+ assert.match(native,/pub async fn app_panel_release[\s\S]*?release\(&app,&id,close_app\.unwrap_or\(false\)\)/);
  assert.match(manifest,/"app_panel_release"/);assert.match(capability,/"allow-app-panel-release"/);
  assert.match(permission,/commands\.allow = \["app_panel_release"\]/);
  const release=native.slice(native.indexOf('pub async fn app_panel_release'),native.indexOf('pub async fn app_panel_suspend'));
  assert.doesNotMatch(release,/WM_CLOSE|PostMessageW|RemovePropW/);
- assert.match(native,/fn release\(app:&AppHandle,id:&str\)[\s\S]*?clear_collection_marker\(&mut entry\);restore\(&mut entry\)/);
+ assert.match(native,/fn release\(app:&AppHandle,id:&str,close_app:bool\)[\s\S]*?let should_close=close_app&&valid_window\(&entry\)/);
+ assert.match(native,/if should_close\{apply_shutdown_action\(hwnd,ShutdownAction::Close\);\}/);
 });
 
 test('workspace duplication gives collected widgets independent instance identities',()=>{
@@ -192,9 +195,9 @@ test('canvas Groups collapse to a compact standard-height card and expand at the
  const restored=workspaces.toggleGroupCollapsed(moved,1200,800);
  assert.equal(restored.groupCollapsed,false);assert.equal(restored.placement.x,520);assert.equal(restored.placement.y,180);
  assert.equal(restored.placement.width,460);assert.equal(restored.placement.height,370);
- const roundtrip=workspaces.parseState(JSON.stringify({...workspaces.createInitialState(),workspaces:[{...workspace,widgets:[compact]}],activeId:workspace.id})).workspaces[0].widgets[0];
+ const roundtrip=parseWorkspace({...workspaces.createInitialState(),workspaces:[{...workspace,widgets:[compact]}],activeId:workspace.id},workspace.id).widgets[0];
  assert.equal(roundtrip.groupCollapsed,true);assert.equal(roundtrip.placement.height,43);assert.equal(roundtrip.placement.width,204);assert.equal(roundtrip.groupExpandedPlacement.height,370);
- const minimized=workspaces.minimizeWidgetInstance(compact,1200,800),minimizedRoundtrip=workspaces.parseState(JSON.stringify({...workspaces.createInitialState(),workspaces:[{...workspace,widgets:[minimized]}],activeId:workspace.id})).workspaces[0].widgets[0];
+ const minimized=workspaces.minimizeWidgetInstance(compact,1200,800),minimizedRoundtrip=parseWorkspace({...workspaces.createInitialState(),workspaces:[{...workspace,widgets:[minimized]}],activeId:workspace.id},workspace.id).widgets[0];
  const restoredMinimized=workspaces.restoreWidgetInstance(minimizedRoundtrip,1200,800);
  assert.equal(restoredMinimized.groupCollapsed,true);assert.equal(workspaces.constrainGroupCollapsedPlacement(restoredMinimized.placement,1200,800).height,43);
  const count=workspaces.collectedWidgetCount({id:'g',name:'',shortcuts:[],widgets:[{id:'a',type:'notes',name:'Legacy',icon:'LE',kind:'shortcut'},{id:'b',type:'notes',name:'Collected',icon:'CO',kind:'collected',instance:{...group,type:'notes',id:'b'}}],expanded:false});
@@ -256,8 +259,8 @@ test('a header-saved group name is normalized, updates linked cards, and survive
  assert.equal(renamed.groups[0].name,'CHEM111');
  assert.equal(renamed.widgets[0].title,'CHEM111');
  const restored=workspaces.parseState(JSON.stringify({...workspaces.createInitialState(),workspaces:[renamed],activeId:renamed.id}));
- assert.equal(restored.workspaces[0].groups[0].name,'CHEM111');
- assert.equal(restored.workspaces[0].widgets[0].title,'CHEM111');
+ assert.equal(restored.workspaces.find(item=>item.id===renamed.id).groups[0].name,'CHEM111');
+ assert.equal(restored.workspaces.find(item=>item.id===renamed.id).widgets[0].title,'CHEM111');
  assert.throws(()=>workspaces.saveGroupName(workspace,id,'x'.repeat(61)));
 });
 
@@ -267,7 +270,7 @@ test('invalid group entries are discarded while valid groups and old notes survi
  workspace.groups[0].widgets=[{id:'ok',type:'desmos',name:'Calculator',icon:'∑'},{id:'bad',type:'missing'},null];
  workspace.groups[0].shortcuts=[{id:'safe',name:'Course',url:'https://example.com/'},{id:'bad-url',name:'Unsafe',url:'javascript:alert(1)'}];
  const state={...workspaces.createInitialState(),workspaces:[workspace],activeId:workspace.id};
- const saved=workspaces.parseState(JSON.stringify(state)).workspaces[0];
+ const saved=parseWorkspace(state,workspace.id);
  assert.deepEqual(saved.groups[0].widgets.map(w=>w.type),['desmos']);assert.equal(saved.groups[0].shortcuts.length,1);
  assert.equal(saved.widgets[0].text,'Keep my notes');
 });
@@ -282,7 +285,7 @@ test('group app icons persist within size limits and over-budget icons fall back
  const source=workspaces.createWidget('apps');source.title='Word';source.appIconData=icon;
  const saved=workspaces.saveWidgetToGroup(workspace,source);
  assert.equal(saved.groups.at(-1).widgets[0].iconData,icon);
- const roundtrip=workspaces.parseState(JSON.stringify({...workspaces.createInitialState(),workspaces:[saved],activeId:saved.id})).workspaces[0];
+ const roundtrip=parseWorkspace({...workspaces.createInitialState(),workspaces:[saved],activeId:saved.id},saved.id);
  assert.equal(roundtrip.groups.at(-1).widgets[0].iconData,icon);
  const tooMuch={...source,appIconData:'data:image/png;base64,iVBORw0KGgo='+'.'.repeat(385*1024)};
  const fallback=workspaces.saveWidgetToGroup(workspace,tooMuch);
@@ -299,7 +302,7 @@ test('the workspace icon budget is enforced without dropping saved group entries
  const source=workspaces.createWidget('apps');source.appIconData='data:image/png;base64,iVBORw0KGgo='+'A'.repeat(400*1024);
  const saved=workspaces.saveWidgetToGroup(workspace,source,'g1');
  assert.equal(saved.groups[0].widgets.length,2);assert.equal(saved.groups[0].widgets[1].iconData,undefined);
- const restored=workspaces.parseState(JSON.stringify({...workspaces.createInitialState(),workspaces:[saved],activeId:saved.id})).workspaces[0];
+ const restored=parseWorkspace({...workspaces.createInitialState(),workspaces:[saved],activeId:saved.id},saved.id);
  assert.equal(restored.groups[0].widgets.length,2);assert.equal(restored.groups[0].widgets[1].iconData,undefined);
 });
 
@@ -308,7 +311,7 @@ test('parsing caps app icon data across all groups in one workspace',()=>{
  const workspace=workspaces.createWorkspace('Icon library',[]);
  workspace.groups=Array.from({length:70},(_,index)=>({id:'group-'+index,name:'Group '+index,shortcuts:[],widgets:[{id:'entry-'+index,type:'apps',name:'App '+index,icon:'AP',iconData:icon}],expanded:false}));
  const state={...workspaces.createInitialState(),workspaces:[workspace],activeId:workspace.id};
- const restored=workspaces.parseState(JSON.stringify(state)).workspaces[0];
+ const restored=parseWorkspace(state,workspace.id);
  assert.equal(restored.groups.reduce((count,group)=>count+group.widgets.length,0),70);
  const total=restored.groups.reduce((sum,group)=>sum+(group.widgets[0].iconData?.length??0),0);
  assert.ok(total<=1024*1024);assert.ok(restored.groups.some(group=>!group.widgets[0].iconData));

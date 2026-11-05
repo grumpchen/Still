@@ -27,7 +27,7 @@ test('round-trips custom workspaces and migrates the original design study',()=>
   state.workspaces.push(custom);state.activeId=custom.id;
   assert.equal(parseState(JSON.stringify(state)).activeId,custom.id);
   const migrated=migratePreview({active:'Study',theme:'dark',density:'compact',background:'dots',workspaces:{Study:[{id:'old',type:'notes',text:'keep this',wide:false}]}});
-  assert.equal(migrated.workspaces[0].widgets.find(w=>w.type==='notes').text,'keep this');
+  assert.equal(migrated.workspaces.find(workspace=>workspace.role==='study').widgets.find(w=>w.type==='notes').text,'keep this');
   assert.equal(migrated.theme,'dark');
   assert.throws(()=>parseState('{bad'));
   assert.throws(()=>parseState(JSON.stringify({...state,activeId:'missing'})));

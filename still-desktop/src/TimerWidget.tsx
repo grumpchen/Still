@@ -73,7 +73,8 @@ export default function TimerWidget({widget,variant,workspaceActive=true,update,
     const angle=index*30*Math.PI/180;
     const label=mode==='hour'?String(mark):pad(mark);
     const isSelected=mode==='hour'?mark===selectedMark:mark===selectedMark;
-    return <button key={mark} type="button" className={`timer-dial-mark ${isSelected?'selected':''}`} style={{left:`${50+Math.sin(angle)*40}%`,top:`${50-Math.cos(angle)*40}%`}} aria-label={mode==='hour'?t('setTimerHour').replace('{count}',String(mark)):t('setTimerMinutes').replace('{count}',label)} aria-pressed={isSelected} disabled={running} onClick={()=>setPart(mark)}>{label}</button>;
+    const accessibleLabel=mode==='hour'?t('setTimerHour').replace('{count}',String(mark)).replace('(s)',mark===1?'':'s'):t('setTimerMinutes').replace('{count}',label);
+    return <button key={mark} type="button" className={`timer-dial-mark ${isSelected?'selected':''}`} style={{left:`${50+Math.sin(angle)*40}%`,top:`${50-Math.cos(angle)*40}%`}} aria-label={accessibleLabel} aria-pressed={isSelected} disabled={running} onClick={()=>setPart(mark)}>{label}</button>;
    })}
    <div className="timer-dial-center"><strong>{pad(displayHours)}:{pad(displayMinutes)}</strong><span>{running?pad(displaySeconds)+' '+t('timerSecondsShort'):variant==='focus'?t('focusLabel'):t('timerLabel')}</span></div>
   </div>

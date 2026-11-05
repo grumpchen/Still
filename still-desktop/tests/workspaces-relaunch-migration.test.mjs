@@ -9,7 +9,7 @@ test('new workspace state defaults relaunch to automatic with the built-in plugi
 });
 
 test('workspace parser accepts already decoded state for startup without parsing large saved profiles twice',()=>{
- const state=createInitialState();state.workspaces[0].widgets=[createWidget('notes')];
+ const state=createInitialState(),study=state.workspaces.find(workspace=>workspace.role==='study');study.widgets=[createWidget('notes')];
  const decoded=JSON.parse(JSON.stringify(state));
  assert.deepEqual(parseState(decoded),parseState(JSON.stringify(state)));
 });
@@ -29,9 +29,9 @@ test('loading older workspace state keeps cards in place and adds safe relaunch 
 });
 
 test('version 5 settings migrate to the new optional action defaults without losing workspace data',()=>{
- const state=createInitialState(),widget=createWidget('notes');widget.id='legacy-note';setNoteText(widget,'Still saved');state.workspaces[0].widgets=[widget];
+ const state=createInitialState(),study=state.workspaces.find(workspace=>workspace.role==='study'),widget=createWidget('notes');widget.id='legacy-note';setNoteText(widget,'Still saved');study.widgets=[widget];
  const old={...state,version:5};delete old.showAppAttachAction;delete old.showAppDetachAction;delete old.showAppSaveAction;delete old.screenshotPluginMode;delete old.screenshotPluginColors;
- const restored=parseState(JSON.stringify(old));assert.equal(restored.version,10);assert.equal(restored.workspaces[0].role,'dashboard');assert.equal(restored.workspaces[1].role,'library');assert.equal(restored.showAppAttachAction,false);assert.equal(restored.showAppDetachAction,false);assert.equal(restored.showAppSaveAction,false);assert.equal(restored.screenshotPluginMode,'global');assert.equal(restored.workspaces[2].widgets[0].text,'Still saved');
+ const restored=parseState(JSON.stringify(old));assert.equal(restored.version,10);assert.equal(restored.workspaces[0].role,'dashboard');assert.equal(restored.workspaces[1].role,'library');assert.equal(restored.showAppAttachAction,false);assert.equal(restored.showAppDetachAction,false);assert.equal(restored.showAppSaveAction,false);assert.equal(restored.screenshotPluginMode,'global');assert.equal(restored.workspaces.find(workspace=>workspace.id===study.id).widgets[0].text,'Still saved');
 });
 
 test('widget and relaunch settings survive persistence',()=>{
@@ -51,7 +51,7 @@ test('removed Widget Relaunch keeps its preferences for re-enabling later',()=>{
 });
 
 test('removing the optional Tag Color Status card preserves independent relaunch settings',()=>{
- const state=createInitialState(),status=createWidget('tagStatus');status.id='status';state.workspaces[0].widgets=[status];state.widgetRelaunchColors={red:'automatic',blue:'manual'};
+ const state=createInitialState(),workspace=createWorkspace('Plugin test',[]),status=createWidget('tagStatus');status.id='status';state.workspaces=[workspace];state.activeId=workspace.id;workspace.widgets=[status];state.widgetRelaunchColors={red:'automatic',blue:'manual'};
  const afterRemovingCard={...state,workspaces:state.workspaces.map(workspace=>({...workspace,widgets:workspace.widgets.filter(widget=>widget.id!=='status')}))};
- const restored=parseState(JSON.stringify(afterRemovingCard));assert.equal(restored.workspaces[0].widgets.length,0);assert.deepEqual(restored.widgetRelaunchColors,{red:'automatic',blue:'manual'});
+ const restored=parseState(JSON.stringify(afterRemovingCard));assert.equal(restored.workspaces.find(item=>item.id===workspace.id).widgets.length,0);assert.deepEqual(restored.widgetRelaunchColors,{red:'automatic',blue:'manual'});
 });
