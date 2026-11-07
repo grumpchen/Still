@@ -1,7 +1,8 @@
-import {useEffect,useState} from 'react';
+import {useEffect,useRef,useState} from 'react';
 import type {Workspace,WidgetInstance} from './domain/workspaces.ts';
 import type {WebShortcut} from './domain/webShortcuts.ts';
-import {readRecentLibraryFiles,type RecentLibraryFile} from './domain/libraryRecents.ts';
+import {readRecentLibraryFiles,transferRecentLibraryFile,type RecentLibraryFile} from './domain/libraryRecents.ts';
+import {FILE_NOTE_LIMIT,FILE_NOTE_TOTAL_LIMIT} from './domain/fileNotes.ts';
 import {localFiles,type LibrarySearchResponse} from './platform/files.ts';
 import {widgetRegistry} from './widgets.tsx';
 import {Icon} from './Icon.tsx';
@@ -26,6 +27,7 @@ type LibrarySection='files'|'notes'|'links'|'search'|'inbox';
 export default function LibraryHome({workspace,workspaces,update,notify,workspaceActive,links,openLink,addInbox}:LibraryHomeProps){
  const t=useT(),locale=useLocale(),[section,setSection]=useState<LibrarySection|'recent'>(()=>workspace.widgets.some(widget=>widget.type==='files'&&widget.folderKey==='still-downloads-inbox')?'inbox':'recent'),[recent,setRecent]=useState<RecentLibraryFile[]>(readRecentLibraryFiles),[selectedFolderId,setSelectedFolderId]=useState(''),[searchQuery,setSearchQuery]=useState(''),[searchResults,setSearchResults]=useState<LibrarySearchResponse|null>(null),[searching,setSearching]=useState(false),[searchError,setSearchError]=useState(''),[selectedSourcesBusy,setSelectedSourcesBusy]=useState(false),[selectedSourceKeys,setSelectedSourceKeys]=useState<string[]>([]);
  const folderWidgets=workspaces.flatMap(owner=>owner.widgets.filter(widget=>widget.type==='files'&&!widget.fileKey));
+ const inboxTransferBusy=useRef(false);
  const notesWidgets=workspaces.flatMap(owner=>owner.widgets.filter(widget=>widget.type==='notes'));
  const inbox=workspace.widgets.find(widget=>widget.type==='files'&&widget.folderKey==='still-downloads-inbox');
  const files=section==='inbox'?inbox:folderWidgets.find(widget=>widget.id===selectedFolderId)??folderWidgets.find(widget=>widget.folderKey!=='still-downloads-inbox');
@@ -42,6 +44,21 @@ export default function LibraryHome({workspace,workspaces,update,notify,workspac
 
  useEffect(()=>{const changed=(event:Event)=>{const detail=(event as CustomEvent<{widgetId?:string}>).detail;if(!detail?.widgetId||!folderIds.includes(detail.widgetId))return;setSearchResults(null);setSelectedSourceKeys([]);setSearchError('');setRecent(readRecentLibraryFiles())};window.addEventListener('still-files-resource-moved',changed);return()=>window.removeEventListener('still-files-resource-moved',changed)},[folderIds.join('|')]);
 
+ useEffect(()=>{const dropped=(event:Event)=>{const detail=(event as CustomEvent<{widgetId:string;path:string}>).detail;if(!detail||inboxTransferBusy.current||!workspaceActive)return;
+  const source=folderWidgets.find(widget=>widget.id===detail.widgetId),destination=inbox;if(!source||!destination){notify('Open Downloads Inbox before moving a file into it.');return}
+  const name=detail.path.split('/').at(-1)??'',note=source.fileNotes[detail.path];
+  if(Object.hasOwn(destination.fileNotes,name)&&!(source.id===destination.id&&detail.path===name)){notify('An inbox note already exists for that name. Nothing was moved.');return}
+  if(note!==undefined&&source.id!==destination.id&&(Object.keys(destination.fileNotes).length>=FILE_NOTE_LIMIT||Object.values(destination.fileNotes).reduce((n,text)=>n+text.length,0)+note.length>FILE_NOTE_TOTAL_LIMIT)){notify('The inbox cannot hold this file’s note. Nothing was moved.');return}
+  inboxTransferBusy.current=true;
+  void (async()=>{try{await localFiles.inbox(destination.id);const moved=await localFiles.moveToInbox(source.id,detail.path,destination.id);
+   if(note!==undefined){if(source.id===destination.id){const notes={...source.fileNotes,[moved.destinationPath]:note};delete notes[detail.path];update(source.id,{fileNotes:notes})}else{const notes={...source.fileNotes};delete notes[detail.path];update(destination.id,{fileNotes:{...destination.fileNotes,[moved.destinationPath]:note}});update(source.id,{fileNotes:notes})}}
+   setRecent(transferRecentLibraryFile(source.id,detail.path,destination.id,moved.destinationPath));
+   window.dispatchEvent(new CustomEvent('still-files-resource-moved',{detail:{widgetId:source.id,sourcePath:detail.path,destinationPath:moved.destinationPath}}));
+   if(source.id!==destination.id)window.dispatchEvent(new CustomEvent('still-files-resource-moved',{detail:{widgetId:destination.id}}));
+   setSearchResults(null);setSelectedFolderId('');setSection('inbox');notify('Moved to Downloads Inbox.');
+  }catch(error){notify(String(error))}finally{inboxTransferBusy.current=false}})();
+ };window.addEventListener('still-library-drop-inbox',dropped);return()=>window.removeEventListener('still-library-drop-inbox',dropped)},[workspaces,inbox,workspaceActive,notify,update]);
+
  function openRecentFile(file:RecentLibraryFile){setSelectedFolderId(file.widgetId);setSection(file.widgetId===inbox?.id?'inbox':'files');requestAnimationFrame(()=>window.setTimeout(()=>window.dispatchEvent(new CustomEvent('still-open-library-recent-file',{detail:{widgetId:file.widgetId,path:file.path}})),0))}
  function openInbox(){if(!inbox)addInbox();setSelectedFolderId('');setSection('inbox')}
  async function runLibrarySearch(){const query=searchQuery.trim();if(!query)return;setSelectedSourceKeys([]);const targets=folderWidgets.filter(widget=>!!widget.folderName||!!widget.folderKey);if(!targets.length){setSearchError(t('librarySearchNoFolders'));setSearchResults(null);return}setSearching(true);setSearchError('');try{setSearchResults(await localFiles.searchLibrary(targets.map(widget=>widget.id),query))}catch{setSearchResults(null);setSearchError(t('librarySearchFailed'))}finally{setSearching(false)}}
@@ -57,7 +74,7 @@ export default function LibraryHome({workspace,workspaces,update,notify,workspac
    <div className="library-rail-heading"><span className="library-rail-mark"><Icon name="files"/></span><div><strong>{t('library')}</strong><small>{t('libraryPageDescription')}</small></div></div>
    <div className="library-rail-group">
     <span className="library-rail-label library-page-nav-label">{t('libraryContents')}</span>
-    <button type="button" className={section==='inbox'?'active':''} aria-current={section==='inbox'?'page':undefined} onClick={openInbox}><Icon name="files"/><span>{t('downloadsInbox')}</span></button>
+    <button type="button" data-library-inbox-drop className={section==='inbox'?'active':''} aria-current={section==='inbox'?'page':undefined} onClick={openInbox}><Icon name="files"/><span>{t('downloadsInbox')}</span></button>
     <button type="button" className={section==='search'?'active':''} aria-current={section==='search'?'page':undefined} onClick={()=>setSection('search')}><Icon name="search"/><span>{t('searchAcrossLibrary')}</span></button>
     <button type="button" className={section==='links'?'active':''} aria-current={section==='links'?'page':undefined} onClick={()=>setSection('links')}><Icon name="browser"/><span>{t('savedStudyLinks')}</span></button>
     <button type="button" className={section==='recent'?'active':''} aria-current={section==='recent'?'page':undefined} onClick={()=>setSection('recent')}><Icon name="clock"/><span>{t('recentLibraryFiles')}</span></button>

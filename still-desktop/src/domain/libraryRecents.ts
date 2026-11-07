@@ -20,6 +20,12 @@ export function remapRecentLibraryFiles(widgetIds:Set<string>,source:string,dest
  return next;
 }
 
+export function transferRecentLibraryFile(sourceId:string,sourcePath:string,destinationId:string,destinationPath:string){
+ const next=readRecentLibraryFiles().map(item=>item.widgetId===sourceId&&item.path===sourcePath?{...item,widgetId:destinationId,path:destinationPath,name:destinationPath.split('/').at(-1)!}:item);
+ try{localStorage.setItem(STORAGE_KEY,JSON.stringify(next))}catch{/* Recent history is optional. */}
+ return next;
+}
+
 export function rememberRecentLibraryFile(value:RecentLibraryFile):RecentLibraryFile[]{
  if(!validRecentFile(value))return readRecentLibraryFiles();
  const next=[value,...readRecentLibraryFiles().filter(item=>item.widgetId!==value.widgetId||item.path!==value.path)].slice(0,RECENT_LIBRARY_FILES_LIMIT);

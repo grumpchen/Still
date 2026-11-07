@@ -490,6 +490,31 @@ pub async fn files_create_folder(webview:Webview,roots:State<'_,FolderRoots>,id:
     listing(&root,&location)
 }
 #[tauri::command]
+pub async fn files_move_to_inbox(webview:Webview,roots:State<'_,FolderRoots>,source_id:String,source_path:String,inbox_id:String)->Result<FileMoveResult,String>{
+    crate::security::authorize(&webview)?;valid_id(&source_id)?;valid_id(&inbox_id)?;
+    let source_root=roots.root(&source_id)?;
+    let root=roots.root(&inbox_id)?.canonicalize().map_err(|_|"The inbox folder is unavailable. Choose it again.")?;
+    let inbox_root=roots.root("still-downloads-inbox")?.canonicalize().map_err(|_|"The inbox folder is unavailable. Choose it again.")?;
+    if root!=inbox_root{return Err("The selected destination is not the Downloads Inbox.".into())}
+    tauri::async_runtime::spawn_blocking(move||move_file_to_inbox(&source_root,&source_path,&root)).await.map_err(|_|"Could not move the file to the inbox.")?
+}
+fn move_file_to_inbox(source_root:&Path,source_path:&str,root:&Path)->Result<FileMoveResult,String>{
+    let source=existing_file_without_links(source_root,source_path)?;
+    let name=source.file_name().ok_or("This file has no usable name")?;
+    if !valid_filing_segment(&name.to_string_lossy()){return Err("This file name cannot be safely moved.".into())}
+    let destination=root.join(name);
+    if source==destination{return Err("This file is already in the inbox.".into())}
+    let before=fs::metadata(&source).map_err(|_|"The source file is unavailable.")?;
+    let mut input=fs::File::open(&source).map_err(|_|"Could not open the source file.")?;
+    let mut output=fs::OpenOptions::new().write(true).create_new(true).open(&destination).map_err(|e|if e.kind()==std::io::ErrorKind::AlreadyExists{"A file with this name already exists in the inbox. Nothing was replaced."}else{"Could not create a file in the inbox."})?;
+    let copied=std::io::copy(&mut input,&mut output).and_then(|_|output.sync_all());drop(output);drop(input);
+    if copied.is_err(){let _=fs::remove_file(&destination);return Err("The file could not be copied to the inbox; the original remains in place.".into())}
+    let after=fs::metadata(&source).map_err(|_|"The source file changed; check both folders.")?;
+    if before.len()!=after.len()||before.modified().ok()!=after.modified().ok(){let _=fs::remove_file(&destination);return Err("The source changed during the move; it was left in place.".into())}
+    if fs::remove_file(&source).is_err(){let _=fs::remove_file(&destination);return Err("The source could not be removed; it was left in place.".into())}
+    Ok(FileMoveResult{source_path:source_path.into(),destination_path:name.to_string_lossy().into_owned()})
+}
+#[tauri::command]
 pub async fn files_search(webview:Webview,roots:State<'_,FolderRoots>,id:String,query:String)->Result<Vec<FileEntry>,String>{
     crate::security::authorize(&webview)?;valid_id(&id)?;
     let query=query.trim().to_lowercase();if query.is_empty()||query.len()>100{return Err("Enter a search term up to 100 characters.".into())}
@@ -547,6 +572,21 @@ pub async fn files_move_resource(webview:Webview,roots:State<'_,FolderRoots>,id:
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn moves_to_inbox_without_overwriting_existing_files(){
+        let fixture=std::env::temp_dir().join(format!("still-inbox-move-{}-{}",std::process::id(),std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let source=fixture.join("source");let inbox=fixture.join("inbox");
+        fs::create_dir_all(&source).unwrap();fs::create_dir_all(&inbox).unwrap();
+        fs::write(source.join("lecture.txt"),"original").unwrap();fs::write(inbox.join("lecture.txt"),"existing").unwrap();
+        assert!(move_file_to_inbox(&source,"lecture.txt",&inbox).is_err());
+        assert_eq!(fs::read_to_string(source.join("lecture.txt")).unwrap(),"original");
+        assert_eq!(fs::read_to_string(inbox.join("lecture.txt")).unwrap(),"existing");
+        fs::remove_file(inbox.join("lecture.txt")).unwrap();
+        let receipt=move_file_to_inbox(&source,"lecture.txt",&inbox).unwrap();
+        assert_eq!(receipt.destination_path,"lecture.txt");assert!(!source.join("lecture.txt").exists());
+        assert_eq!(fs::read_to_string(inbox.join("lecture.txt")).unwrap(),"original");
+        fs::remove_dir_all(fixture).unwrap();
+    }
     #[test]
     fn failed_notes_library_grant_persistence_restores_previous_root() {
         let old = PathBuf::from("old-library");
