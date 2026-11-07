@@ -2,6 +2,7 @@ import type {WidgetInstance,Workspace} from './domain/workspaces.ts';
 import {widgetRegistry} from './widgets.tsx';
 import {Icon} from './Icon.tsx';
 import {useLocale,useT} from './localization.tsx';
+import {useState} from 'react';
 
 interface DashboardHomeProps {
  dashboard:Workspace;
@@ -19,13 +20,14 @@ interface DashboardHomeProps {
 
 export default function DashboardHome({dashboard,library,update,notify,workspaceActive,workspaceChoices,openWorkspace,openLibrary,addCalendarEvent,planStudy,askAi}:DashboardHomeProps){
  const t=useT(),locale=useLocale(),widgets=dashboard.widgets;
+ const [timetableEditId,setTimetableEditId]=useState<string|null>(null);
  const calendar=widgets.find(widget=>widget.type==='calendar'),focus=widgets.find(widget=>widget.type==='focus'),timetable=widgets.find(widget=>widget.type==='timetable');
  const resources=library?.widgets.find(widget=>widget.type==='files');
  const date=new Intl.DateTimeFormat(locale==='zh-CN'?'zh-CN':undefined,{weekday:'long',month:'long',day:'numeric'}).format(new Date());
  function moduleContent(widget:WidgetInstance|undefined){
   if(!widget)return <p className="dashboard-module-empty">{t('dashboardTitle')}</p>;
   const Renderer=widgetRegistry[widget.type].component;
-  return <Renderer widget={widget} update={patch=>update(widget.id,patch)} obscured={false} workspaceActive={workspaceActive} workspaceChoices={workspaceChoices} openWorkspace={openWorkspace} notify={notify}/>;
+  return <Renderer widget={widget} update={patch=>update(widget.id,patch)} obscured={false} workspaceActive={workspaceActive} workspaceChoices={workspaceChoices} openWorkspace={openWorkspace} notify={notify} timetableSchedule={widget.type==='calendar'?timetable?.schedule:undefined} editTimetableClass={widget.type==='calendar'?id=>{setTimetableEditId(id);document.querySelector('.dashboard-timetable-module')?.scrollIntoView({behavior:'smooth',block:'start'})}:undefined} timetableEditId={widget.type==='timetable'?timetableEditId:null} clearTimetableEdit={()=>setTimetableEditId(null)}/>;
  }
  return <section className="dashboard-home" aria-label={t('dashboardWorkspace')}>
   <header className="dashboard-hero">
