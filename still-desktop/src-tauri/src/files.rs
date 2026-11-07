@@ -122,7 +122,7 @@ fn filing_segments(relative:&str)->Result<Vec<&str>,String>{
     if segments.len()>8||segments.iter().any(|segment|!valid_filing_segment(segment)){return Err("The suggested folder name is not safe for this library.".into())}
     Ok(segments)
 }
-pub(crate) fn validate_filing_folder(relative:&str)->Result<(),String>{filing_segments(relative).map(|_|())}
+pub(crate) fn validate_filing_folder(relative:&str)->Result<(),String>{if relative.is_empty(){Ok(())}else{filing_segments(relative).map(|_|())}}
 fn existing_file_without_links(root:&Path,relative:&str)->Result<PathBuf,String>{
     let root=root.canonicalize().map_err(|_|"The selected folder is unavailable. Choose it again.")?;
     if relative.is_empty()||relative.len()>1000||relative.contains(':')||relative.contains('\\')||relative.contains('\0')||Path::new(relative).components().any(|part|!matches!(part,Component::Normal(_))){return Err("Choose a file within the selected Files library.".into())}
@@ -157,9 +157,8 @@ fn ensure_filing_folder(root:&Path,relative:&str)->Result<PathBuf,String>{
     Ok(current)
 }
 fn move_file_within_root(root:&Path,source_relative:&str,destination_folder:&str)->Result<FileMoveResult,String>{
-    let segments=filing_segments(destination_folder)?;
     let source=existing_file_without_links(root,source_relative)?;
-    let destination_folder=ensure_filing_folder(root,&segments.join("/"))?;
+    let destination_folder=if destination_folder.is_empty(){root.canonicalize().map_err(|_|"The selected folder is unavailable. Choose it again.")?}else{let segments=filing_segments(destination_folder)?;ensure_filing_folder(root,&segments.join("/"))?};
     let name=source.file_name().ok_or("This file has no usable name")?;
     if !valid_filing_segment(&name.to_string_lossy()){return Err("This file name cannot be safely filed.".into())}
     let destination=destination_folder.join(name);
@@ -657,8 +656,9 @@ mod tests {
         let root=fixture.join("inbox");fs::create_dir_all(&root).unwrap();fs::write(root.join("lecture.pdf"),b"course material").unwrap();
         let moved=move_file_within_root(&root,"lecture.pdf","Courses/CHEM111").unwrap();
         assert_eq!(moved.source_path,"lecture.pdf");assert_eq!(moved.destination_path,"Courses/CHEM111/lecture.pdf");assert_eq!(fs::read(root.join(&moved.destination_path)).unwrap(),b"course material");assert!(!root.join("lecture.pdf").exists());
-        assert!(move_file_within_root(&root,&moved.destination_path,"../../outside").is_err());
-        assert!(move_file_within_root(&root,&moved.destination_path,"CON").is_err());
+        let returned=move_file_within_root(&root,&moved.destination_path,"").unwrap();assert_eq!(returned.destination_path,"lecture.pdf");assert_eq!(fs::read(root.join("lecture.pdf")).unwrap(),b"course material");
+        assert!(move_file_within_root(&root,&returned.destination_path,"../../outside").is_err());
+        assert!(move_file_within_root(&root,&returned.destination_path,"CON").is_err());
         fs::write(root.join("collision.pdf"),b"new source").unwrap();fs::write(root.join("Courses/CHEM111/collision.pdf"),b"keep target").unwrap();
         assert!(move_file_within_root(&root,"collision.pdf","Courses/CHEM111").is_err());assert_eq!(fs::read(root.join("collision.pdf")).unwrap(),b"new source");assert_eq!(fs::read(root.join("Courses/CHEM111/collision.pdf")).unwrap(),b"keep target");
         fs::write(root.join("setup.exe"),b"program").unwrap();assert!(move_file_within_root(&root,"setup.exe","Courses").is_err());

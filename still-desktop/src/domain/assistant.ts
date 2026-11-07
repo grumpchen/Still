@@ -218,7 +218,7 @@ export function parseAssistantReply(value:unknown):AssistantReply {
    if(!Array.isArray(rawFileProposals)||rawFileProposals.length>5)throw new Error('The AI returned an invalid file filing proposal. Nothing was moved. Try again.');
    const proposedSources=new Set<string>();
   const fileProposals:AssistantFileProposal[]=rawFileProposals.map(proposal=>{
-     if(!proposal||typeof proposal.sourceWidgetId!=='string'||!/^[a-zA-Z0-9-]{1,80}$/.test(proposal.sourceWidgetId)||typeof proposal.sourcePath!=='string'||!isSafeResourcePath(proposal.sourcePath)||typeof proposal.destinationFolder!=='string'||!isSafeFilingFolder(proposal.destinationFolder)||typeof proposal.reason!=='string'||!proposal.reason.trim()||Array.from(proposal.reason).length>600)throw new Error('The AI returned an unsafe file filing proposal. Nothing was moved. Try again.');
+     if(!proposal||typeof proposal.sourceWidgetId!=='string'||!/^[a-zA-Z0-9-]{1,80}$/.test(proposal.sourceWidgetId)||typeof proposal.sourcePath!=='string'||!isSafeResourcePath(proposal.sourcePath)||typeof proposal.destinationFolder!=='string'||(proposal.destinationFolder!==''&&!isSafeFilingFolder(proposal.destinationFolder))||typeof proposal.reason!=='string'||!proposal.reason.trim()||Array.from(proposal.reason).length>600)throw new Error('The AI returned an unsafe file filing proposal. Nothing was moved. Try again.');
      const sourceKey=proposal.sourceWidgetId+'::'+proposal.sourcePath;if(proposedSources.has(sourceKey))throw new Error('The AI returned duplicate filing proposals for one file. Nothing was moved. Try again.');proposedSources.add(sourceKey);
      return {sourceWidgetId:proposal.sourceWidgetId,sourcePath:proposal.sourcePath,destinationFolder:proposal.destinationFolder,reason:proposal.reason.trim()};
   });
@@ -233,10 +233,10 @@ export function parseAssistantReply(value:unknown):AssistantReply {
   const safeIntent:AssistantResponseIntent|undefined=conflictingLegacyProposal?'clarification':intent;
   const safeLayout=safeIntent==='chat'||safeIntent==='clarification'||safeIntent==='workspace_action'?[]:items;
   const safeActions=safeIntent==='chat'||safeIntent==='clarification'||safeIntent==='layout'?[]:actions;
-  if(!reply.trim()&&!safeActions.length&&!safeLayout.length&&!calendarProposals.length&&!libraryProposal)throw new Error('The AI returned no reply. Try again.');
+  if(!reply.trim()&&!safeActions.length&&!safeLayout.length&&!fileProposals.length&&!calendarProposals.length&&!libraryProposal)throw new Error('The AI returned no reply. Try again.');
   const normalizedReply=conflictingLegacyProposal
     ?'I received conflicting workspace suggestions, so I did not change anything. What would you like me to do?'
-    :reply.trim()?reply:libraryProposal?'Review the proposed Library changes before applying them.':safeActions.length?'Workspace actions requested.':calendarProposals.length?'Review the proposed calendar events before adding them.':'Workspace layout proposal.';
+    :reply.trim()?reply:libraryProposal?'Review the proposed Library changes before applying them.':safeActions.length?'Workspace actions requested.':fileProposals.length?'Review the proposed file move.':calendarProposals.length?'Review the proposed calendar events before adding them.':'Workspace layout proposal.';
    const safeFileProposals=safeIntent==='clarification'?[]:fileProposals;
    const safeCalendarProposals=safeIntent==='clarification'?[]:calendarProposals;
    return {...(safeIntent?{intent:safeIntent}:{}),...(libraryProposal&&safeIntent!=='clarification'?{libraryProposal}:{}),reply:normalizedReply,layout:safeLayout,actions:safeActions,...(safeFileProposals.length?{fileProposals:safeFileProposals}:{}),...(safeCalendarProposals.length?{calendarProposals:safeCalendarProposals}:{})};

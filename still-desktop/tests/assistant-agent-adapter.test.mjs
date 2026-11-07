@@ -216,3 +216,16 @@ test('memory storage failure returns an uncertain receipt and is not resumed as 
   const approved=await pending.approve();assert.deepEqual(approved.execution,{status:'failed',mutation:'unknown',error:'Still could not confirm whether the memory was saved. Check local assistant memory before retrying.'});assert.equal(calls,1,'failed storage execution is not sent back for a provider success claim');
  }finally{clearMocks();dom.window.close();for(const key of old.keys()){const descriptor=old.get(key);if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}}
 });
+
+test('agent inspects inbox names before returning a file move proposal',async()=>{
+ const dom=new JSDOM('',{url:'http://localhost'}),{window}=dom,old=new Map();
+ for(const key of ['window','document','navigator','__TAURI_INTERNALS__'])old.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
+ const requests=[];
+ try{
+  for(const [key,value] of Object.entries({window,document:window.document,navigator:window.navigator,__TAURI_INTERNALS__:{}}))Object.defineProperty(globalThis,key,{configurable:true,value});
+  mockIPC((command,args)=>{assert.equal(command,'assistant_agent_turn');requests.push(args.request);if(requests.length===1)return {kind:'tool_calls',assistantMessage:{role:'assistant',tool_calls:[{id:'inbox-1',type:'function',function:{name:'inspect_inbox',arguments:'{}'}}]},calls:[{id:'inbox-1',name:'inspect_inbox',input:{}}]};return {kind:'final',response:{intent:'chat',reply:'Please review the move.',layout:[],actions:[],fileProposals:[{sourceWidgetId:'inbox-1',sourcePath:'lecture.pdf',destinationFolder:'Courses',reason:'Requested by the user.'}]}}},{shouldMockEvents:true});
+  const result=await runProviderAgent({provider:'openai',model:'gpt-test',sessionId:'study',messages:[{role:'user',content:'Move lecture.pdf into Courses in my inbox'}],inspectInbox:()=>({sourceWidgetId:'inbox-1',entries:[{path:'lecture.pdf',directory:false},{path:'Courses',directory:true}],contentShared:false})});
+  assert.equal(requests[0].enable_inbox_tool,true);assert.equal(JSON.parse(requests[1].messages.at(-1).content).result.entries[0].path,'lecture.pdf');
+  assert.equal(result.status,'final');assert.equal(result.response.fileProposals[0].destinationFolder,'Courses');
+ }finally{clearMocks();dom.window.close();for(const [key,descriptor] of old)if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}
+});
