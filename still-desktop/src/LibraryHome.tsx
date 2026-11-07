@@ -23,8 +23,8 @@ interface LibraryHomeProps {
 interface LibrarySavedLink extends WebShortcut {workspaceId:string;workspaceName:string;groupName:string}
 type LibrarySection='files'|'notes'|'links'|'search'|'inbox';
 
-export default function LibraryHome({workspace,workspaces,update,notify,workspaceActive,links,openLink,addFolder,addInbox,removeFolder}:LibraryHomeProps){
- const t=useT(),locale=useLocale(),[section,setSection]=useState<LibrarySection|'recent'>(()=>workspace.widgets.some(widget=>widget.type==='files'&&widget.folderKey==='still-downloads-inbox')?'inbox':'files'),[recent,setRecent]=useState<RecentLibraryFile[]>(readRecentLibraryFiles),[selectedFolderId,setSelectedFolderId]=useState(''),[searchQuery,setSearchQuery]=useState(''),[searchResults,setSearchResults]=useState<LibrarySearchResponse|null>(null),[searching,setSearching]=useState(false),[searchError,setSearchError]=useState(''),[selectedSourcesBusy,setSelectedSourcesBusy]=useState(false),[selectedSourceKeys,setSelectedSourceKeys]=useState<string[]>([]);
+export default function LibraryHome({workspace,workspaces,update,notify,workspaceActive,links,openLink,addInbox}:LibraryHomeProps){
+ const t=useT(),locale=useLocale(),[section,setSection]=useState<LibrarySection|'recent'>(()=>workspace.widgets.some(widget=>widget.type==='files'&&widget.folderKey==='still-downloads-inbox')?'inbox':'recent'),[recent,setRecent]=useState<RecentLibraryFile[]>(readRecentLibraryFiles),[selectedFolderId,setSelectedFolderId]=useState(''),[searchQuery,setSearchQuery]=useState(''),[searchResults,setSearchResults]=useState<LibrarySearchResponse|null>(null),[searching,setSearching]=useState(false),[searchError,setSearchError]=useState(''),[selectedSourcesBusy,setSelectedSourcesBusy]=useState(false),[selectedSourceKeys,setSelectedSourceKeys]=useState<string[]>([]);
  const folderWidgets=workspaces.flatMap(owner=>owner.widgets.filter(widget=>widget.type==='files'&&!widget.fileKey));
  const notesWidgets=workspaces.flatMap(owner=>owner.widgets.filter(widget=>widget.type==='notes'));
  const inbox=workspace.widgets.find(widget=>widget.type==='files'&&widget.folderKey==='still-downloads-inbox');
@@ -44,8 +44,6 @@ export default function LibraryHome({workspace,workspaces,update,notify,workspac
 
  function openRecentFile(file:RecentLibraryFile){setSelectedFolderId(file.widgetId);setSection(file.widgetId===inbox?.id?'inbox':'files');requestAnimationFrame(()=>window.setTimeout(()=>window.dispatchEvent(new CustomEvent('still-open-library-recent-file',{detail:{widgetId:file.widgetId,path:file.path}})),0))}
  function openInbox(){if(!inbox)addInbox();setSelectedFolderId('');setSection('inbox')}
- function createFolder(){const id=addFolder();if(id){setSelectedFolderId(id);setSection('files')}}
- function deleteFolder(id:string){const next=folderWidgets.find(widget=>widget.id!==id);if(id===files?.id&&next)setSelectedFolderId(next.id);setSelectedSourceKeys(keys=>keys.filter(key=>!key.startsWith(id+'::')));setSearchResults(result=>result?{...result,results:result.results.filter(hit=>hit.widgetId!==id),unavailableWidgetIds:result.unavailableWidgetIds.filter(widgetId=>widgetId!==id)}:null);removeFolder(id)}
  async function runLibrarySearch(){const query=searchQuery.trim();if(!query)return;setSelectedSourceKeys([]);const targets=folderWidgets.filter(widget=>!!widget.folderName||!!widget.folderKey);if(!targets.length){setSearchError(t('librarySearchNoFolders'));setSearchResults(null);return}setSearching(true);setSearchError('');try{setSearchResults(await localFiles.searchLibrary(targets.map(widget=>widget.id),query))}catch{setSearchResults(null);setSearchError(t('librarySearchFailed'))}finally{setSearching(false)}}
  function openSearchResult(widgetId:string,path:string,directory:boolean,name:string){if(!folderWidgets.some(widget=>widget.id===widgetId))return;setSelectedFolderId(widgetId);setSection(widgetId===inbox?.id?'inbox':'files');requestAnimationFrame(()=>window.setTimeout(()=>window.dispatchEvent(new CustomEvent(directory?'still-open-library-location':'still-open-library-recent-file',{detail:{widgetId,path,...(directory?{}:{name})}})),0))}
  function searchHitKey(hit:LibrarySearchResponse['results'][number]){return hit.widgetId+'::'+hit.entry.path}
@@ -58,16 +56,12 @@ export default function LibraryHome({workspace,workspaces,update,notify,workspac
   <aside className="library-rail" aria-label={t('library')}>
    <div className="library-rail-heading"><span className="library-rail-mark"><Icon name="files"/></span><div><strong>{t('library')}</strong><small>{t('libraryPageDescription')}</small></div></div>
    <div className="library-rail-group">
-    <span className="library-rail-label library-folder-label">{t('libraryFolders')}</span>
-    {workspaces.map(owner=><div className="library-workspace-tree" key={owner.id}><span className="library-rail-label">{owner.name}</span>{owner.widgets.filter(widget=>widget.type==='files'&&!widget.fileKey&&widget.id!==inbox?.id).map(folder=><div className="library-folder-nav" key={folder.id}><button type="button" className={section==='files'&&files?.id===folder.id?'active':''} aria-current={section==='files'&&files?.id===folder.id?'page':undefined} onClick={()=>{setSelectedFolderId(folder.id);setSection('files')}}><Icon name="files"/><span>{folderLabel(folder)}</span></button>{folderWidgets.length>1&&<button type="button" className="library-folder-remove" aria-label={t('removeLibraryFolder')} title={t('removeLibraryFolder')} onClick={()=>deleteFolder(folder.id)}><Icon name="trash"/></button>}</div>)}{owner.widgets.filter(widget=>widget.type==='notes').map(note=><button type="button" key={note.id} className={'library-note-nav '+(section==='notes'&&notes?.id===note.id?'active':'')} aria-current={section==='notes'&&notes?.id===note.id?'page':undefined} onClick={()=>{setSelectedFolderId(note.id);setSection('notes')}}><Icon name="notes"/><span>{note.notesLibraryName||note.title||t('widget_notes')}</span></button>)}</div>)}
-    <button type="button" className="library-add-folder" onClick={createFolder}><Icon name="add"/><span>{t('addCourseFolder')}</span></button>
     <span className="library-rail-label library-page-nav-label">{t('libraryContents')}</span>
     <button type="button" className={section==='inbox'?'active':''} aria-current={section==='inbox'?'page':undefined} onClick={openInbox}><Icon name="files"/><span>{t('downloadsInbox')}</span></button>
     <button type="button" className={section==='search'?'active':''} aria-current={section==='search'?'page':undefined} onClick={()=>setSection('search')}><Icon name="search"/><span>{t('searchAcrossLibrary')}</span></button>
     <button type="button" className={section==='links'?'active':''} aria-current={section==='links'?'page':undefined} onClick={()=>setSection('links')}><Icon name="browser"/><span>{t('savedStudyLinks')}</span></button>
     <button type="button" className={section==='recent'?'active':''} aria-current={section==='recent'?'page':undefined} onClick={()=>setSection('recent')}><Icon name="clock"/><span>{t('recentLibraryFiles')}</span></button>
    </div>
-   <p className="library-rail-footnote">{t('filesStayLocal')}</p>
   </aside>
   <main className="library-main">
    <header className="library-page-header"><div><span className="library-page-eyebrow">{t('library')}</span><h2>{title}</h2><p>{description}</p></div></header>
