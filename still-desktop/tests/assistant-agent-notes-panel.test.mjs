@@ -188,6 +188,29 @@ test('separately opted-in minimize action is described, reviewed, and applied th
  }
 });
 
+test('ChatGPT plan enables reviewed workspace actions by default',async()=>{
+ const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true}),{window}=dom,old=new Map();
+ for(const key of ['window','document','navigator','localStorage','HTMLElement','Element','Node','MutationObserver','requestAnimationFrame','cancelAnimationFrame','IS_REACT_ACT_ENVIRONMENT','isTauri'])old.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
+ const calls=[];let root,executions=0;
+ try{
+  for(const [key,value] of Object.entries({window,document:window.document,navigator:window.navigator,localStorage:window.localStorage,HTMLElement:window.HTMLElement,Element:window.Element,Node:window.Node,MutationObserver:window.MutationObserver,requestAnimationFrame:callback=>setTimeout(()=>callback(Date.now()),0),cancelAnimationFrame:clearTimeout,IS_REACT_ACT_ENVIRONMENT:true,isTauri:true}))setGlobal(key,value);
+  window.HTMLElement.prototype.scrollTo=function(){};window.HTMLTextAreaElement.prototype.focus=function(){};window.__TAURI_INTERNALS__={};window.localStorage.setItem('still-assistant-share-workspace-image','false');window.localStorage.setItem('still-assistant-model','chatgpt::gpt-test');
+  mockIPC((command,args)=>{calls.push({command,args});if(command==='chatgpt_plan_status')return {connected:true,email:null};if(command==='chatgpt_plan_models')return [{slug:'gpt-test',display_name:'Test model'}];if(command!=='chatgpt_plan_agent_turn')return null;const count=calls.filter(call=>call.command==='chatgpt_plan_agent_turn').length,request=args.request;assert.equal(request.enable_add_widget_tool,true);assert.equal(request.enable_safe_workspace_action_tool,true);if(count===1)return {kind:'tool_calls',assistantMessage:{role:'assistant',tool_calls:[{id:'inspect-1',type:'function',function:{name:'inspect_workspace',arguments:'{}'}}]},calls:[{id:'inspect-1',name:'inspect_workspace',input:{}}]};if(count===2){const inspected=JSON.parse(request.messages.at(-1).content).result;return {kind:'tool_calls',assistantMessage:{role:'assistant',tool_calls:[{id:'action-1',type:'function',function:{name:'propose_workspace_action',arguments:JSON.stringify({snapshotRevision:inspected.revision,action:{type:'minimize',ids:[note.id]}})}}]},calls:[{id:'action-1',name:'propose_workspace_action',input:{snapshotRevision:inspected.revision,action:{type:'minimize',ids:[note.id]}}}]}}assert.deepEqual(JSON.parse(request.messages.at(-1).content),{status:'succeeded',mutation:'applied',result:{receipt:'Minimized Notes 1.'}});return {kind:'final',response:{intent:'chat',reply:'Minimized Notes 1.',layout:[],actions:[]}}},{shouldMockEvents:true});
+  const {default:AssistantPanel}=await vite.ssrLoadModule('/src/AssistantPanel.tsx'),workspace=createWorkspace('Study',['notes']),note=workspace.widgets[0];root=createRoot(window.document.querySelector('#root'));
+  await act(async()=>root.render(createElement(AssistantPanel,{workspace,workspaces:[{id:workspace.id,name:workspace.name}],trayItems:[],sidebarPlugins:[],open:true,close(){},dimensions:()=>({width:900,height:700}),apply(){},undo(){},act:async(_id,actions)=>{executions++;assert.deepEqual(actions,[{type:'minimize',ids:[note.id]}]);return 'Minimized Notes 1.'}})));
+  await waitFor(()=>window.document.querySelector('#ai-model option[value="chatgpt::gpt-test"]'));
+  const composer=window.document.querySelector('#ai-message');await act(async()=>setReactValue(composer,'Minimize Notes.','HTMLTextAreaElement'));await act(async()=>window.document.querySelector('.assistant-compose').requestSubmit());
+  await waitFor(()=>window.document.querySelector('[aria-label="Review workspace action"]'));
+  assert.match(window.document.querySelector('[aria-label="Review workspace action"]').textContent,/Minimize/i);assert.equal(executions,0,'proposal is not applied before explicit review');
+  await act(async()=>window.document.querySelector('[aria-label="Review workspace action"] button.primary').click());
+  await waitFor(()=>executions===1&&calls.filter(call=>call.command==='chatgpt_plan_agent_turn').length===3);
+  assert.ok([...window.document.querySelectorAll('.assistant-message.model p')].some(node=>node.textContent==='Minimized Notes 1.'));
+ }finally{
+  if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();
+  for(const key of old.keys()){const descriptor=old.get(key);if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}
+ }
+});
+
 test('Gemini preview is provider-specific and preserves its native tool round through approval',async()=>{
  const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true}),{window}=dom,old=new Map();
  for(const key of ['window','document','navigator','localStorage','HTMLElement','Element','Node','MutationObserver','requestAnimationFrame','cancelAnimationFrame','IS_REACT_ACT_ENVIRONMENT','isTauri'])old.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
