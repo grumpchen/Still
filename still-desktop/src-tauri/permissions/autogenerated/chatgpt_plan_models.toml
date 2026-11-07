@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-chatgpt-plan-models"
+description = "Enables the chatgpt_plan_models command without any pre-configured scope."
+commands.allow = ["chatgpt_plan_models"]
+
+[[permission]]
+identifier = "deny-chatgpt-plan-models"
+description = "Denies the chatgpt_plan_models command without any pre-configured scope."
+commands.deny = ["chatgpt_plan_models"]

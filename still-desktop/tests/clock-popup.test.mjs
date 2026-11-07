@@ -25,5 +25,7 @@ test('Clock popup styling is approximately half the default Focus widget size',(
  const css=readFileSync(new URL('../src/canvas.css',import.meta.url),'utf8');
  assert.match(css,/\.widget-clock-popover\{[^}]*width:min\(180px/);
  assert.match(css,/\.widget-clock-popover\{[^}]*max-height:min\(220px/);
- assert.match(css,/\.widget-clock-popover \.timer-dial\{width:min\(100%,100px\)\}/);
+ assert.match(css,/\.widget-clock-popover \.timer-value-wheel\{height:68px/);
+ assert.match(css,/\.timer-duration-editor\{[^}]*grid-template-columns:minmax\(0,1\.1fr\) repeat\(2,minmax\(64px,\.75fr\)\)/);
+ assert.match(css,/\.timer-value-option\[data-distance="0"\][^{]*\{[^}]*font-size:26px/);
 });

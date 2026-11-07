@@ -1,3 +1,4 @@
+import {remapLibraryPath} from './libraryOrganisation.ts';
 export interface RecentLibraryFile {widgetId:string;name:string;path:string;openedAt:number}
 const STORAGE_KEY='still-library-recent-files-v1';
 export const RECENT_LIBRARY_FILES_LIMIT=12;
@@ -11,6 +12,12 @@ function validRecentFile(value:unknown):value is RecentLibraryFile{
 
 export function readRecentLibraryFiles():RecentLibraryFile[]{
  try{const value=JSON.parse(localStorage.getItem(STORAGE_KEY)??'[]');if(!Array.isArray(value))return[];return value.filter(validRecentFile).slice(0,RECENT_LIBRARY_FILES_LIMIT)}catch{return[]}
+}
+
+export function remapRecentLibraryFiles(widgetIds:Set<string>,source:string,destination:string){
+ const next=readRecentLibraryFiles().map(item=>{if(!widgetIds.has(item.widgetId))return item;const path=remapLibraryPath(item.path,source,destination);return path===item.path?item:{...item,path,name:path.split('/').at(-1)!}});
+ try{localStorage.setItem(STORAGE_KEY,JSON.stringify(next))}catch{/* Native receipts remain the durable recovery record. */}
+ return next;
 }
 
 export function rememberRecentLibraryFile(value:RecentLibraryFile):RecentLibraryFile[]{

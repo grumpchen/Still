@@ -1,0 +1,2665 @@
+[
+  {
+    "name": "valid dependency",
+    "valid": true,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "rename",
+    "valid": true,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "rename_1",
+            "type": "rename",
+            "entryId": "file:1",
+            "expectedRevision": "revision:1",
+            "name": "课件.md",
+            "reason": "Clear name."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "bad proposal version 2",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 2,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "bad proposal rootId ''",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "bad proposal rootId 'rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr'",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "bad proposal rootId 'C:/test'",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "C:/test",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "bad proposal rootId 'root\\\\test'",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root\\test",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "bad proposal rootId 'root\\x00'",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root\u0000",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "bad proposal rootId '根'",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "根",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "bad create version 2",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 2,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "bad create id ",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "bad create id bad.id",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "bad.id",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "bad create id xxxxxxxxxxxxxxx",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "bad create type delete",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "delete",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "bad create reason  ",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": " "
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "bad create reason xxxxxxxxxxxxxxx",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "bad create parentId ",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "bad create path outside",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise.",
+            "path": "outside"
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "bad create expectedRevision None",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise.",
+            "expectedRevision": null
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "unsafe name ''",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "unsafe name '.'",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": ".",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "unsafe name '..'",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "..",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "unsafe name '../outside'",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "../outside",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "unsafe name 'a/b'",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "a/b",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "unsafe name 'a\\\\b'",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "a\\b",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "unsafe name 'a:stream'",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "a:stream",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "unsafe name 'a?b'",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "a?b",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "unsafe name 'a*b'",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "a*b",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "unsafe name 'a|b'",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "a|b",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "unsafe name 'a<b'",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "a<b",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "unsafe name 'a>b'",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "a>b",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "unsafe name 'a\"b'",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "a\"b",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "unsafe name 'folder.'",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "folder.",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "unsafe name 'folder '",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "folder ",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "unsafe name 'a\\x00b'",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "a\u0000b",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "unsafe name 'a\\x7fb'",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "ab",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "unsafe name 'a\\x85b'",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "ab",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "unsafe name 'CON'",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "CON",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "unsafe name 'con.txt'",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "con.txt",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "unsafe name 'COM1.txt'",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "COM1.txt",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "unsafe name 'LPT9'",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "LPT9",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "unsafe name 'AUX'",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "AUX",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "unsafe name 'PRN'",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "PRN",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "unsafe name 'NUL'",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "NUL",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "unsafe name 'COM¹.txt'",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "COM¹.txt",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "unsafe name 'COM¹ .txt'",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "COM¹ .txt",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "unsafe name 'LPT².log'",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "LPT².log",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "unsafe name 'ééééééééééééééééééééééééééééééééééééééééééééééééééé'",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "ééééééééééééééééééééééééééééééééééééééééééééééééééé",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "safe name CONSOLE",
+    "valid": true,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "CONSOLE",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "safe name COM10.txt",
+    "valid": true,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "COM10.txt",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "safe name Documents",
+    "valid": true,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Documents",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "safe name 学业",
+    "valid": true,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "学业",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "safe name a.b",
+    "valid": true,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "a.b",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "unknown proposal field",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ],
+        "path": "C:/"
+      }
+    }
+  },
+  {
+    "name": "null proposal",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": null
+    }
+  },
+  {
+    "name": "empty operations",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": []
+      }
+    }
+  },
+  {
+    "name": "too many operations",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "new-0",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "new-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "new-2",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "new-3",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "new-4",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "new-5",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "new-6",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "new-7",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "new-8",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "new-9",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "new-10",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "new-11",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "new-12",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "new-13",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "new-14",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "new-15",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "new-16",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "new-17",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "new-18",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "new-19",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "new-20",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "20 operations",
+    "valid": true,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "new-0",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "new-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "new-2",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "new-3",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "new-4",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "new-5",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "new-6",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "new-7",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "new-8",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "new-9",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "new-10",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "new-11",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "new-12",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "new-13",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "new-14",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "new-15",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "new-16",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "new-17",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "new-18",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "new-19",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "duplicate ids",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "forward dependency",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "self dependency",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "create-1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "root move",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "root:1",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "self move",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "entry:2",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "duplicate source",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "rename",
+            "type": "rename",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "name": "file.md",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "missing move entryId",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "missing move expectedRevision",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "missing move destinationFolderId",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "unexpected move name",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise.",
+            "name": "other.md"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "mixed actions before intent stripping",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [
+        {
+          "type": "minimize",
+          "ids": [
+            "notes-1"
+          ]
+        }
+      ],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "mixed layout before intent stripping",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [
+        {
+          "id": "notes-1",
+          "x": 0,
+          "y": 0,
+          "width": 300,
+          "height": 300
+        }
+      ],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "mixed filing",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      },
+      "fileProposals": [
+        {
+          "sourceWidgetId": "files-1",
+          "sourcePath": "file.md",
+          "destinationFolder": "Docs",
+          "reason": "Organise."
+        }
+      ]
+    }
+  },
+  {
+    "name": "mixed calendar",
+    "valid": false,
+    "reply": {
+      "intent": "chat",
+      "reply": "Review changes.",
+      "layout": [],
+      "actions": [],
+      "libraryProposal": {
+        "version": 1,
+        "rootId": "root:1",
+        "operations": [
+          {
+            "version": 1,
+            "id": "create-1",
+            "type": "create_folder",
+            "parentId": "root:1",
+            "name": "Courses",
+            "reason": "Organise."
+          },
+          {
+            "version": 1,
+            "id": "move-1",
+            "type": "move",
+            "entryId": "entry:2",
+            "expectedRevision": "rev:1",
+            "destinationFolderId": "create-1",
+            "reason": "Organise."
+          }
+        ]
+      },
+      "calendarProposals": [
+        {
+          "date": "2026-11-05",
+          "title": "Study",
+          "time": "",
+          "category": "study"
+        }
+      ]
+    }
+  }
+]

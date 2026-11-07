@@ -1,6 +1,7 @@
 use std::{collections::HashMap,sync::Mutex};
 use tauri::{State, Webview};
 use crate::assistant_protocol::{self, Provider, Reply, Request};
+use crate::assistant_agent_protocol;
 use tauri_plugin_opener::OpenerExt;
 
 // Keys live only in memory here; Windows Credential Manager owns persisted copies.
@@ -198,6 +199,61 @@ pub async fn assistant_chat(webview:Webview,state:State<'_,AssistantState>,reque
     match provider {
         Provider::Gemini=>assistant_protocol::parse_response(value),
         Provider::Openai=>assistant_protocol::parse_openai_response(value),Provider::Opencode=>assistant_protocol::parse_opencode_response(value),
+    }
+}
+
+/// One native tool-calling provider turn. The webview's bounded agent loop
+/// executes only allowlisted calls and sends their exact receipts on the next
+/// invocation; existing assistant_chat behavior remains unchanged.
+#[tauri::command]
+pub async fn assistant_agent_turn(webview:Webview,state:State<'_,AssistantState>,request:assistant_agent_protocol::AgentRequest) -> Result<assistant_agent_protocol::AgentTurn,String> {
+    crate::security::authorize(&webview)?;
+    let provider=request.provider;
+    let key=state.keys.lock().map_err(|_|"AI settings are unavailable.")?.get(&provider).cloned().unwrap_or_default();
+    if key.trim().is_empty() {
+        return Err(format!("Connect an {} API key in AI settings first.",match provider {Provider::Gemini=>"Gemini",Provider::Openai=>"OpenAI",Provider::Opencode=>"OpenCode Go"}));
+    }
+    let body=match provider {
+        Provider::Gemini=>assistant_agent_protocol::gemini_agent_body(&request)?,
+        Provider::Openai=>assistant_agent_protocol::openai_agent_body(&request)?,
+        Provider::Opencode=>assistant_agent_protocol::opencode_agent_body(&request)?,
+    };
+    let client=reqwest::Client::builder().timeout(std::time::Duration::from_secs(45))
+        .redirect(reqwest::redirect::Policy::none()).build()
+        .map_err(|_|"Could not start the AI connection.")?;
+    let endpoint=match provider {
+        Provider::Gemini=>format!("https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",request.model),
+        Provider::Openai=>"https://api.openai.com/v1/chat/completions".into(),
+        Provider::Opencode=>"https://opencode.ai/zen/go/v1/chat/completions".into(),
+    };
+    let builder=client.post(endpoint).json(&body);
+    let builder=match provider {
+        Provider::Gemini=>builder.header("x-goog-api-key",&key),
+        Provider::Openai=>builder.bearer_auth(&key),
+        Provider::Opencode=>{
+            let session_id=request.session_id.as_deref().expect("OpenCode session validated by agent request body");
+            builder.bearer_auth(&key).header("user-agent","Still-Desktop").header("x-opencode-session",session_id)
+        }
+    };
+    let mut response=builder.send().await.map_err(|_|match provider {
+        Provider::Gemini=>"Gemini could not be reached or the request timed out. Check your connection and try again.",
+        Provider::Openai=>"OpenAI could not be reached or the request timed out. Check your connection and try again.",
+        Provider::Opencode=>"OpenCode Go could not be reached or the request timed out. Check your connection and try again.",
+    })?;
+    if !response.status().is_success() {
+        let status=response.status().as_u16();
+        return Err(match provider {Provider::Gemini=>assistant_protocol::http_error(status),Provider::Openai=>openai_http_error(status),Provider::Opencode=>opencode_http_error(status)});
+    }
+    let mut bytes=Vec::new();
+    while let Some(chunk)=response.chunk().await.map_err(|_|"The AI response could not be read.")? {
+        if bytes.len()+chunk.len()>256_000 { return Err("The AI response is too large. Try a shorter message.".into()); }
+        bytes.extend_from_slice(&chunk);
+    }
+    let value=serde_json::from_slice(&bytes).map_err(|_|"The AI returned an unreadable response.")?;
+    match provider {
+        Provider::Gemini=>assistant_agent_protocol::parse_gemini_agent_response(value,&format!("gemini-local-{}",request.messages.len()),request.enable_add_widget_tool,request.enable_safe_workspace_action_tool,request.enable_assistant_memory_tool),
+        Provider::Openai=>assistant_agent_protocol::parse_openai_agent_response_with_all_tools(value,request.enable_add_widget_tool,request.enable_safe_workspace_action_tool,request.enable_assistant_memory_tool),
+        Provider::Opencode=>assistant_agent_protocol::parse_opencode_agent_response_with_all_tools(value,request.enable_add_widget_tool,request.enable_safe_workspace_action_tool,request.enable_assistant_memory_tool),
     }
 }
 

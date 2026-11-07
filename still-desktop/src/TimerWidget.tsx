@@ -1,4 +1,5 @@
 import {useEffect,useRef,useState} from 'react';
+import type {KeyboardEvent,WheelEvent} from 'react';
 import type {WidgetInstance} from './domain/workspaces.ts';
 import {useT} from './localization.tsx';
 
@@ -10,14 +11,11 @@ interface TimerWidgetProps {
  notify:(message:string)=>void;
 }
 
-const hourMarks=[1,2,3,4,5,6,7,8,9,10,11,12];
-const minuteMarks=[0,5,10,15,20,25,30,35,40,45,50,55];
 const pad=(value:number)=>String(value).padStart(2,'0');
 
 export default function TimerWidget({widget,variant,workspaceActive=true,update,notify}:TimerWidgetProps){
  const t=useT();
  const [now,setNow]=useState(Date.now());
- const [mode,setMode]=useState<'hour'|'minute'>('hour');
  const [selected,setSelected]=useState(widget.remaining);
  const completedEnd=useRef<number|null>(null);
  useEffect(()=>{
@@ -38,14 +36,32 @@ export default function TimerWidget({widget,variant,workspaceActive=true,update,
 
  const hours=Math.min(12,Math.floor(selected/3600));
  const minutes=Math.floor(selected%3600/60);
- const marks=mode==='hour'?hourMarks:minuteMarks;
- const selectedMark=mode==='hour'?(hours||0):Math.round(minutes/5)*5%60;
- const dialValue=mode==='hour'?(hours||12):Math.round(minutes/5)%12;
- const handAngle=dialValue*30;
- const value=mode==='hour'?hours:minutes;
  const duration=Math.max(0,selected);
- function setPart(next:number){
-  setSelected(mode==='hour'?Math.max(0,Math.min(12,next))*3600+minutes*60:hours*3600+Math.max(0,Math.min(59,next))*60);
+ function setPart(next:number,unit:'hour'|'minute'){
+  setSelected(unit==='hour'?Math.max(0,Math.min(12,next))*3600+minutes*60:hours*3600+Math.max(0,Math.min(59,next))*60);
+ }
+ function handlePickerWheel(event:WheelEvent<HTMLDivElement>,unit:'hour'|'minute'){
+  if(running||event.deltaY===0)return;
+  event.preventDefault();
+  const currentValue=unit==='hour'?hours:minutes;
+  setPart(currentValue+(event.deltaY>0?1:-1),unit);
+ }
+ function handlePickerKeyDown(event:KeyboardEvent<HTMLDivElement>,unit:'hour'|'minute'){
+  if(running)return;
+  const currentValue=unit==='hour'?hours:minutes;
+  if(event.key==='ArrowDown'||event.key==='ArrowUp'){
+   event.preventDefault();
+   setPart(currentValue+(event.key==='ArrowDown'?1:-1),unit);
+  }else if(event.key==='PageDown'||event.key==='PageUp'){
+   event.preventDefault();
+   setPart(currentValue+(event.key==='PageDown'?5:-5),unit);
+  }else if(event.key==='Home'){
+   event.preventDefault();
+   setPart(0,unit);
+  }else if(event.key==='End'){
+   event.preventDefault();
+   setPart(unit==='hour'?12:59,unit);
+  }
  }
  function cancelSelection(){setSelected(widget.end?remaining:widget.remaining)}
  function setTime(){update({remaining:duration,end:null});completedEnd.current=null}
@@ -58,29 +74,29 @@ export default function TimerWidget({widget,variant,workspaceActive=true,update,
  const running=!!widget.end;
  const displayed=running?remaining:duration;
  const displayHours=Math.floor(displayed/3600),displayMinutes=Math.floor(displayed%3600/60),displaySeconds=displayed%60;
- const dialHour=mode==='hour'?(hours%12)*30:minutes*6;
+ function pickerValues(unit:'hour'|'minute'){
+  const value=unit==='hour'?hours:minutes;
+  return Array.from({length:5},(_,index)=>value+index-2).filter(mark=>mark>=0&&mark<=(unit==='hour'?12:59));
+ }
+ function valuePicker(unit:'hour'|'minute'){
+  const value=unit==='hour'?hours:minutes;
+  const label=unit==='hour'?t('timerHour'):t('timerMinuteShort');
+  return <div className="timer-value-column"><span className="timer-value-label">{label}</span><div className="timer-value-wheel" role="listbox" tabIndex={running?-1:0} aria-label={unit==='hour'?t('timerHours'):t('timerMinutes')} aria-disabled={running} onWheel={event=>handlePickerWheel(event,unit)} onKeyDown={event=>handlePickerKeyDown(event,unit)}>
+   {pickerValues(unit).map(mark=>{
+    const distance=Math.abs(mark-value);
+    const accessibleLabel=unit==='hour'?t('setTimerHour').replace('{count}',String(mark)).replace('(s)',mark===1?'':'s'):t('setTimerMinutes').replace('{count}',pad(mark));
+    return <button key={mark} type="button" role="option" aria-label={accessibleLabel} aria-selected={mark===value} className="timer-value-option" data-distance={distance} disabled={running} onClick={()=>setPart(mark,unit)}>{unit==='hour'?String(mark):pad(mark)}</button>;
+   })}
+  </div></div>;
+ }
 
  return <div className={`card-body timer-widget timer-widget-${variant}`}>
   <div className="timer-widget-top"><span>{variant==='focus'?t('focusSession'):t('clockTimer')}</span><span>{running?t('timerRunning'):t('timerSetDuration')}</span></div>
-  <div className="timer-mode-switch" role="group" aria-label={t('timerDialUnit')}>
-   <button type="button" aria-pressed={mode==='hour'} onClick={()=>setMode('hour')}>{t('timerHour')}</button>
-   <button type="button" aria-pressed={mode==='minute'} onClick={()=>setMode('minute')}>{t('timerMinuteShort')}</button>
-  </div>
-  <div className="timer-dial" role="group" aria-label={t('setTimerDuration')} aria-disabled={running}>
-   <div className="timer-dial-ring" aria-hidden="true"/>
-   <div className="timer-dial-hand" aria-hidden="true" style={{transform:`rotate(${running?dialHour:handAngle}deg)`}}/>
-   {marks.map((mark,index)=>{
-    const angle=index*30*Math.PI/180;
-    const label=mode==='hour'?String(mark):pad(mark);
-    const isSelected=mode==='hour'?mark===selectedMark:mark===selectedMark;
-    const accessibleLabel=mode==='hour'?t('setTimerHour').replace('{count}',String(mark)).replace('(s)',mark===1?'':'s'):t('setTimerMinutes').replace('{count}',label);
-    return <button key={mark} type="button" className={`timer-dial-mark ${isSelected?'selected':''}`} style={{left:`${50+Math.sin(angle)*40}%`,top:`${50-Math.cos(angle)*40}%`}} aria-label={accessibleLabel} aria-pressed={isSelected} disabled={running} onClick={()=>setPart(mark)}>{label}</button>;
-   })}
-   <div className="timer-dial-center"><strong>{pad(displayHours)}:{pad(displayMinutes)}</strong><span>{running?pad(displaySeconds)+' '+t('timerSecondsShort'):variant==='focus'?t('focusLabel'):t('timerLabel')}</span></div>
-  </div>
-  <div className="timer-range-wrap">
-   <input type="range" aria-label={mode==='hour'?t('timerHours'):t('timerMinutes')} min={0} max={mode==='hour'?12:59} step={1} value={value} disabled={running} onChange={event=>setPart(Number(event.target.value))}/>
-   <div className="timer-range-labels" aria-hidden="true">{(mode==='hour'?['0','3','6','9','12']:['00','15','30','45','59']).map(mark=><span key={mark}>{mark}</span>)}</div>
+  <div className="timer-duration-editor" role="group" aria-label={t('setTimerDuration')} aria-disabled={running}>
+   <div className="timer-duration-readout" aria-live="polite"><strong>{pad(displayHours)}:{pad(displayMinutes)}</strong><span>{running?pad(displaySeconds)+' '+t('timerSecondsShort'):variant==='focus'?t('focusLabel'):t('timerLabel')}</span></div>
+   {valuePicker('hour')}
+   {valuePicker('minute')}
+   <span className="timer-wheel-hint" aria-hidden="true">{t('timerScrollHint')}</span>
   </div>
   <div className="timer-widget-actions">
    <button type="button" onClick={cancelSelection} disabled={running}>{t('cancel')}</button>

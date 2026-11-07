@@ -35,6 +35,7 @@ test('the single chat can use workspace widgets; @ is optional quick selection a
    return null;
   },{shouldMockEvents:true});
   const {default:AssistantPanel}=await vite.ssrLoadModule('/src/AssistantPanel.tsx');
+  window.localStorage.setItem('still-assistant-memory-v1',JSON.stringify([{id:'memory-test',text:'Prefers concise examples',createdAt:1}]));
   const workspace=createWorkspace('Study',[]),note=createWidget('notes'),timer=createWidget('focus'),app=createWidget('apps'),timetable=createWidget('timetable');note.text='My private note';note.placement={x:0,y:0,width:300,height:250};timer.placement={x:330,y:0,width:300,height:350};app.placement={x:660,y:0,width:300,height:350};app.title='Microsoft Edge';workspace.widgets=[note,timer,app,timetable];
   const appCard=window.document.createElement('article');appCard.id='widget-'+app.id;appCard.className='canvas-card';appCard.getBoundingClientRect=()=>({left:100,top:100,right:400,bottom:300,width:300,height:200,x:100,y:100,toJSON(){}});const nativeHost=window.document.createElement('div');nativeHost.dataset.nativeAppId=app.id;nativeHost.dataset.nativeVisible='true';nativeHost.getBoundingClientRect=()=>({left:110,top:130,right:390,bottom:290,width:280,height:160,x:110,y:130,toJSON(){}});appCard.append(nativeHost);canvas.append(appCard);
   root=createRoot(window.document.querySelector('#root'));
@@ -61,6 +62,7 @@ test('the single chat can use workspace widgets; @ is optional quick selection a
   assert.equal(context.widgetData.find(widget=>widget.type==='notes').text,'My private note');
   assert.equal(context.widgetData.find(widget=>widget.type==='focus').remainingSeconds,1500,'the assistant can access Focus state without requiring @');
   assert.equal(context.widgetData.find(widget=>widget.title==='Microsoft Edge').quickSelected,false);
+  assert.match(context.userMemory,/Prefers concise examples/,'user-managed memory is included as background in assistant request context');
   assert.equal(window.document.querySelector('[aria-label="Read widget"]'),null);
   assert.equal(window.document.querySelector('[aria-label="Arrange layout"]'),null);
 
@@ -70,11 +72,13 @@ test('the single chat can use workspace widgets; @ is optional quick selection a
 
   await act(async()=>window.document.querySelector('[aria-label="AI settings"]').click());
   const workspaceImageSetting=window.document.querySelector('[aria-label="Share the visible workspace with AI messages"]');assert.ok(workspaceImageSetting?.checked,'workspace image sharing is enabled by default in Still AI settings');
+  assert.match(window.document.querySelector('.assistant-memory p')?.textContent??'',/sent to the selected provider \(Gemini\)/,'memory disclosure names the provider that receives saved memories');
   await act(async()=>setReactChecked(workspaceImageSetting,false));assert.equal(window.localStorage.getItem('still-assistant-share-workspace-image'),'false','the setting remembers when sharing is turned off');
   await act(async()=>setReactChecked(workspaceImageSetting,true));
   const provider=window.document.querySelector('.assistant-settings select');
   await act(async()=>{provider.value='openai';provider.dispatchEvent(new window.Event('change',{bubbles:true}))});
   await waitFor(()=>calls.some(call=>call.command==='assistant_configured'&&call.args.provider==='openai'));
+  assert.match(window.document.querySelector('.assistant-memory p')?.textContent??'',/selected provider \(OpenAI\)/,'memory disclosure follows provider selection');
   const key=window.document.querySelector('.assistant-settings input[type="password"]');
   await act(async()=>setReactValue(key,'test-openai-key-123','HTMLInputElement'));
   await act(async()=>window.document.querySelector('.assistant-settings').requestSubmit());
@@ -106,6 +110,38 @@ test('the single chat can use workspace widgets; @ is optional quick selection a
  }
 });
 
+test('opted-in provider agent proposals still pass through Still removal confirmation',async()=>{
+ const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true}),{window}=dom,old=new Map();
+ for(const key of ['window','document','navigator','localStorage','HTMLElement','Element','Node','MutationObserver','requestAnimationFrame','cancelAnimationFrame','IS_REACT_ACT_ENVIRONMENT','isTauri'])old.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
+ const calls=[];let root;
+ try{
+  for(const [key,value] of Object.entries({window,document:window.document,navigator:window.navigator,localStorage:window.localStorage,HTMLElement:window.HTMLElement,Element:window.Element,Node:window.Node,MutationObserver:window.MutationObserver,requestAnimationFrame:callback=>setTimeout(()=>callback(Date.now()),0),cancelAnimationFrame:clearTimeout,IS_REACT_ACT_ENVIRONMENT:true,isTauri:true}))setGlobal(key,value);
+  window.HTMLElement.prototype.scrollTo=function(){};window.HTMLTextAreaElement.prototype.focus=function(){};window.__TAURI_INTERNALS__={};
+  window.localStorage.setItem('still-assistant-share-workspace-image','false');
+  window.localStorage.setItem('still-assistant-model','openai::gpt-test');
+  mockIPC((command,args)=>{calls.push({command,args});if(command==='assistant_configured')return true;if(command==='assistant_models')return ['gpt-test'];if(command==='assistant_agent_turn')return {kind:'final',response:{intent:'workspace_action',reply:'I can remove the Notes widget.',layout:[],actions:[{type:'remove_widget',ids:[note.id]}]}};return null},{shouldMockEvents:true});
+  const {default:AssistantPanel}=await vite.ssrLoadModule('/src/AssistantPanel.tsx');
+  const workspace=createWorkspace('Study',[]),note=createWidget('notes');workspace.widgets=[note];let mutations=0;
+  root=createRoot(window.document.querySelector('#root'));
+  await act(async()=>root.render(createElement(AssistantPanel,{workspace,open:true,close(){},dimensions:()=>({width:900,height:700}),apply(){},undo(){},act:async()=>{mutations++;return 'Removed.'}})));
+  await act(async()=>window.document.querySelector('[aria-label="AI settings"]').click());
+  await waitFor(()=>window.document.querySelectorAll('.assistant-settings input[type="checkbox"]').length>1);
+  await waitFor(()=>window.document.querySelector('#ai-model option[value="openai::gpt-test"]'));
+  await act(async()=>window.document.querySelectorAll('.assistant-settings input[type="checkbox"]')[1].click());
+  const model=window.document.querySelector('#ai-model');await act(async()=>{model.value='openai::gpt-test';model.dispatchEvent(new window.Event('change',{bubbles:true}))});
+  const composer=window.document.querySelector('#ai-message');await act(async()=>setReactValue(composer,'what is a black hole?','HTMLTextAreaElement'));
+  await act(async()=>window.document.querySelector('.assistant-compose').requestSubmit());
+  await waitFor(()=>calls.some(call=>call.command==='assistant_agent_turn'));
+  await waitFor(()=>window.document.querySelector('.assistant-confirmation'));
+  assert.equal(calls.some(call=>call.command==='assistant_chat'),false,'the opted-in request uses the agent adapter without fallback');
+  assert.equal(mutations,0,'the model proposal is not applied before Still confirmation');
+  assert.match(window.document.querySelector('.assistant-confirmation').textContent,/Notes 1/);
+ }finally{
+  if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();
+  for(const key of old.keys()){const descriptor=old.get(key);if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}
+ }
+});
+
 test('widget add commands show replies and provider chat carries complete action history',async()=>{
  const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true}),{window}=dom,old=new Map();
  for(const key of ['window','document','navigator','localStorage','HTMLElement','Element','Node','MutationObserver','requestAnimationFrame','cancelAnimationFrame','IS_REACT_ACT_ENVIRONMENT','isTauri'])old.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
@@ -123,6 +159,7 @@ test('widget add commands show replies and provider chat carries complete action
     if(prompt==='I need somewhere to take notes')return{reply:'',layout:[],actions:[{type:'add_widget',ids:['notes'],title:'My notes',text:'Ready to write.'}]};
     if(prompt==='create notes with content')return{reply:'What would you like the note to contain?',layout:[],actions:[]};
     if(prompt==='open focus with details')return{reply:'I can restore Focus.',layout:[],actions:[{type:'restore',ids:[workspace.widgets.find(widget=>widget.type==='focus').id]}]};
+    if(prompt==='change timetable color to blue')return{intent:'workspace_action',reply:'Done.',layout:[],actions:[]};
     return{reply:'Still is ready.',layout:[],actions:[]};
   }return null},{shouldMockEvents:true});
   const {default:AssistantPanel}=await vite.ssrLoadModule('/src/AssistantPanel.tsx');
@@ -169,7 +206,7 @@ test('widget add commands show replies and provider chat carries complete action
   const history=calls.filter(call=>call.command==='assistant_chat').at(-1).args.request.messages;
   assert.ok(history.every(message=>message.text.trim()),'legacy empty assistant replies are not sent to the provider');
   assert.equal(history.find(message=>message.text==='Added a Focus widget.')?.role,'model','the action receipt is included in future chat history');
-  const focus=createWidget('focus');workspace.widgets.push(focus);
+  const focus=createWidget('focus');focus.minimized=true;workspace.widgets.push(focus);
   await act(async()=>root.render(createElement(AssistantPanel,props)));
   await act(async()=>setReactValue(composer,'remove focus','HTMLTextAreaElement'));
   await act(async()=>window.document.querySelector('.assistant-compose').requestSubmit());
@@ -198,6 +235,71 @@ test('widget add commands show replies and provider chat carries complete action
   await act(async()=>window.document.querySelector('[aria-label="Confirm suggested widget changes"] button.primary').click());
   await waitFor(()=>actions.length===beforeRestore+1);
   assert.equal(actions.at(-1).type,'restore','confirmed model interpretation passes the same action checks as App');
+  await act(async()=>setReactValue(composer,'change timetable color to blue','HTMLTextAreaElement'));
+  await act(async()=>window.document.querySelector('.assistant-compose').requestSubmit());
+  await waitFor(()=>[...window.document.querySelectorAll('.assistant-message.model p')].some(message=>message.textContent.includes('I may have misunderstood')));
+  assert.equal(actions.length,beforeRestore+1,'a model that says an action succeeded without returning any action cannot create a false success receipt');
+ }finally{
+  if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();
+  for(const key of old.keys()){const descriptor=old.get(key);if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}
+ }
+});
+
+test('assistant rejects stale timetable edits during a response and during review',async()=>{
+ const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true}),{window}=dom,old=new Map();
+ for(const key of ['window','document','navigator','localStorage','HTMLElement','Element','Node','MutationObserver','requestAnimationFrame','cancelAnimationFrame','IS_REACT_ACT_ENVIRONMENT','isTauri'])old.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
+ let root,release,requests=0,applied=0;
+ try{
+  for(const [key,value] of Object.entries({window,document:window.document,navigator:window.navigator,localStorage:window.localStorage,HTMLElement:window.HTMLElement,Element:window.Element,Node:window.Node,MutationObserver:window.MutationObserver,requestAnimationFrame:callback=>setTimeout(()=>callback(Date.now()),0),cancelAnimationFrame:clearTimeout,IS_REACT_ACT_ENVIRONMENT:true,isTauri:true}))setGlobal(key,value);
+  window.HTMLElement.prototype.scrollTo=function(){};window.HTMLTextAreaElement.prototype.focus=function(){};window.__TAURI_INTERNALS__={};window.localStorage.setItem('still-assistant-share-workspace-image','false');
+  const workspace=createWorkspace('Study',[]),timetable=createWidget('timetable');workspace.widgets=[timetable];
+  const response={intent:'workspace_action',reply:'I suggest updating the timetable.',layout:[],actions:[{type:'edit_widget',ids:[timetable.id],schedule:[{id:'proposed',day:1,time:'09:00',title:'Chemistry',location:'Room 1'}]}]};
+  mockIPC((command)=>{if(command==='assistant_configured')return true;if(command==='assistant_models')return ['gemini-2.5-flash'];if(command==='assistant_chat'){requests++;return requests===1?new Promise(resolve=>{release=()=>resolve(response)}):response}return null},{shouldMockEvents:true});
+  const {default:AssistantPanel}=await vite.ssrLoadModule('/src/AssistantPanel.tsx');root=createRoot(window.document.querySelector('#root'));
+  const props={workspace,trayItems:[],open:true,close(){},dimensions:()=>({width:900,height:700}),apply(){},undo(){},act:async()=>{applied++;return 'Applied'}};
+  await act(async()=>root.render(createElement(AssistantPanel,props)));
+  await waitFor(()=>window.document.querySelector('#ai-model option[value="gemini::gemini-2.5-flash"]'));
+  const input=window.document.querySelector('#ai-message');
+  await act(async()=>setReactValue(input,'edit timetable with details','HTMLTextAreaElement'));
+  await act(async()=>window.document.querySelector('.assistant-compose').requestSubmit());
+  await waitFor(()=>typeof release==='function');
+  const changed=structuredClone(workspace);changed.widgets[0].schedule=[{id:'user',day:2,time:'10:00',title:'Physics',location:''}];
+  await act(async()=>root.render(createElement(AssistantPanel,{...props,workspace:changed})));
+  await act(async()=>release());
+  await waitFor(()=>window.document.querySelector('.assistant-error')?.textContent.includes('changed while Still AI was responding'));
+  assert.equal(applied,0,'a delayed response cannot replace a newer timetable');
+  await act(async()=>root.render(createElement(AssistantPanel,props)));
+  await act(async()=>setReactValue(input,'Please help organise my classes','HTMLTextAreaElement'));
+  await act(async()=>window.document.querySelector('.assistant-compose').requestSubmit());
+  await waitFor(()=>window.document.querySelector('[aria-label="Confirm suggested widget changes"]'));
+  await act(async()=>root.render(createElement(AssistantPanel,{...props,workspace:changed})));
+  await act(async()=>window.document.querySelector('[aria-label="Confirm suggested widget changes"] button.primary').click());
+  await waitFor(()=>window.document.querySelector('.assistant-error')?.textContent.includes('changed after this suggestion'));
+  assert.equal(applied,0,'a reviewed suggestion cannot overwrite changes made before confirmation');
+ }finally{
+  if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();
+  for(const key of old.keys()){const descriptor=old.get(key);if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}
+ }
+});
+
+test('assistant previews a requested resize before applying it',async()=>{
+ const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true}),{window}=dom,old=new Map();
+ for(const key of ['window','document','navigator','localStorage','HTMLElement','Element','Node','MutationObserver','requestAnimationFrame','cancelAnimationFrame','IS_REACT_ACT_ENVIRONMENT','isTauri'])old.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
+ let root,applied=null;
+ try{
+  for(const [key,value] of Object.entries({window,document:window.document,navigator:window.navigator,localStorage:window.localStorage,HTMLElement:window.HTMLElement,Element:window.Element,Node:window.Node,MutationObserver:window.MutationObserver,requestAnimationFrame:callback=>setTimeout(()=>callback(Date.now()),0),cancelAnimationFrame:clearTimeout,IS_REACT_ACT_ENVIRONMENT:true,isTauri:true}))setGlobal(key,value);
+  window.HTMLElement.prototype.scrollTo=function(){};window.HTMLTextAreaElement.prototype.focus=function(){};window.__TAURI_INTERNALS__={};window.localStorage.setItem('still-assistant-share-workspace-image','false');
+  const workspace=createWorkspace('Study',[]),note=createWidget('notes');note.placement={x:20,y:20,width:300,height:250};workspace.widgets=[note];
+  mockIPC((command)=>{if(command==='assistant_configured')return true;if(command==='assistant_models')return ['gemini-2.5-flash'];if(command==='assistant_chat')return {intent:'layout',reply:'Here is a taller note.',actions:[],layout:[{id:note.id,x:20,y:20,width:300,height:300}]};return null},{shouldMockEvents:true});
+  const {default:AssistantPanel}=await vite.ssrLoadModule('/src/AssistantPanel.tsx');root=createRoot(window.document.querySelector('#root'));
+  await act(async()=>root.render(createElement(AssistantPanel,{workspace,workspaces:[{id:workspace.id,name:workspace.name}],trayItems:[],sidebarPlugins:[],open:true,close(){},dimensions:()=>({width:900,height:700}),apply:plan=>{applied=plan},undo(){}})));
+  await waitFor(()=>window.document.querySelector('#ai-model option[value="gemini::gemini-2.5-flash"]'));
+  await act(async()=>setReactValue(window.document.querySelector('#ai-message'),'@Notes 1 make it taller','HTMLTextAreaElement'));
+  await act(async()=>window.document.querySelector('.assistant-compose').requestSubmit());
+  await waitFor(()=>window.document.querySelector('[aria-label="Proposed layout"]'));
+  assert.equal(applied,null,'no resize happens before review');
+  await act(async()=>window.document.querySelector('[aria-label="Proposed layout"] button.primary').click());
+  assert.equal(applied.items[0].height,300);
  }finally{
   if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();
   for(const key of old.keys()){const descriptor=old.get(key);if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}

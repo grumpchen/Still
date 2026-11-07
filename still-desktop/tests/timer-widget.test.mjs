@@ -9,7 +9,7 @@ import {createWidget} from '../src/domain/workspaces.ts';
 const vite=await createServer({server:{middlewareMode:true,hmr:false},appType:'custom',optimizeDeps:{noDiscovery:true,entries:[]}});
 after(()=>vite.close());
 
-test('the Clock add-on exposes the duration dial and commits selected time without starting it',async()=>{
+test('the Clock add-on exposes a straight scroll picker and commits selected time without starting it',async()=>{
  const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true});
  const old={window:globalThis.window,document:globalThis.document,IS_REACT_ACT_ENVIRONMENT:globalThis.IS_REACT_ACT_ENVIRONMENT};
  globalThis.window=dom.window;globalThis.document=dom.window.document;globalThis.IS_REACT_ACT_ENVIRONMENT=true;
@@ -18,9 +18,12 @@ test('the Clock add-on exposes the duration dial and commits selected time witho
  const widget=createWidget('notes');widget.clockPluginEnabled=true;const updates=[];
  try{
   await act(async()=>root.render(createElement(TimerWidget,{widget,variant:'clock',update:patch=>updates.push(patch),notify:()=>{}})));
-  assert.ok(dom.window.document.querySelector('[aria-label="Set timer duration"]'));
+  assert.ok(dom.window.document.querySelector('.timer-duration-editor[aria-label="Set timer duration"]'));
+  assert.equal(dom.window.document.querySelector('input[type="range"]'),null,'duration no longer uses a drag slider');
+  assert.equal(dom.window.document.querySelectorAll('.timer-value-wheel').length,2,'hours and minutes stay visible in adjacent columns');
+  assert.equal(dom.window.document.querySelector('.timer-mode-switch'),null,'there is no mode switch');
   const hourButton=[...dom.window.document.querySelectorAll('button')].find(button=>button.getAttribute('aria-label')==='Set 1 hour');
-  assert.ok(hourButton,'the dial exposes a selectable one-hour position');
+  assert.ok(hourButton,'the picker exposes a selectable one-hour value');
   await act(async()=>hourButton.click());
   await act(async()=>[...dom.window.document.querySelectorAll('button')].find(button=>button.textContent==='Set Time').click());
   assert.deepEqual(updates.at(-1),{remaining:5100,end:null});
@@ -33,7 +36,7 @@ test('the Clock add-on exposes the duration dial and commits selected time witho
  }
 });
 
-test('the Focus widget uses the same clock dial surface',async()=>{
+test('scrolling the Focus picker updates its selected value and digital clock immediately',async()=>{
  const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true});
  const old={window:globalThis.window,document:globalThis.document,IS_REACT_ACT_ENVIRONMENT:globalThis.IS_REACT_ACT_ENVIRONMENT};
  globalThis.window=dom.window;globalThis.document=dom.window.document;globalThis.IS_REACT_ACT_ENVIRONMENT=true;
@@ -41,8 +44,15 @@ test('the Focus widget uses the same clock dial surface',async()=>{
  const root=createRoot(dom.window.document.querySelector('#root')),widget=createWidget('focus');
  try{
   await act(async()=>root.render(createElement(TimerWidget,{widget,variant:'focus',update:()=>{},notify:()=>{}})));
-  assert.ok(dom.window.document.querySelector('[aria-label="Set timer duration"]'));
+  assert.ok(dom.window.document.querySelector('.timer-duration-editor[aria-label="Set timer duration"]'));
   assert.ok([...dom.window.document.querySelectorAll('button')].some(button=>button.textContent==='Set Time'));
+  const pickers=dom.window.document.querySelectorAll('.timer-value-wheel');
+  assert.equal(pickers.length,2,'hours and minutes stay visible in separate columns');
+  assert.ok(pickers[0].previousElementSibling?.classList.contains('timer-value-label'),'each scroll column has its own unit label');
+  const picker=pickers[1];
+  await act(async()=>picker.dispatchEvent(new dom.window.WheelEvent('wheel',{deltaY:100,cancelable:true,bubbles:true})));
+  assert.ok([...picker.querySelectorAll('[role="option"]')].some(option=>option.getAttribute('aria-selected')==='true'&&option.textContent==='26'));
+  assert.ok(dom.window.document.querySelector('.timer-duration-readout strong').textContent.includes('00:26'),'digital display follows scroll changes');
  }finally{
   await act(async()=>root.unmount());dom.window.close();
   if(old.window===undefined)delete globalThis.window;else globalThis.window=old.window;

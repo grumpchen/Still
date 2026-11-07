@@ -52,6 +52,19 @@ test('legacy lecture data migrates to canvas while preserving and bounding widge
   const clamped=parseState(JSON.stringify(state)).workspaces[0].widgets.find(widget=>widget.type==='notes').placement;
   assert.deepEqual(clamped,{x:500,y:0,width:3000,height:3000});
 });
+test('timetable course environment links survive persistence and reject malformed workspace IDs',()=>{
+  const state=createInitialState(),scheduleWidget=state.workspaces.find(workspace=>workspace.role==='dashboard').widgets.find(widget=>widget.type==='timetable');
+  const environment=createWorkspace('EMTH118',[]);state.workspaces.push(environment);
+  scheduleWidget.schedule=[{id:'course-1',day:3,time:'13:00',title:'EMTH118',location:'',workspaceId:environment.id}];
+  const restored=parseState(JSON.stringify(state)),restoredEntry=restored.workspaces.find(workspace=>workspace.role==='dashboard').widgets.find(widget=>widget.type==='timetable').schedule[0];
+  assert.equal(restoredEntry.workspaceId,environment.id);
+  scheduleWidget.schedule[0].workspaceId='bad id with spaces';
+  const malformed=parseState(JSON.stringify(state)).workspaces.find(workspace=>workspace.role==='dashboard').widgets.find(widget=>widget.type==='timetable').schedule[0];
+  assert.equal(malformed.workspaceId,undefined);
+  scheduleWidget.schedule[0].workspaceId='deleted-workspace';
+  const stale=parseState(JSON.stringify(state)).workspaces.find(workspace=>workspace.role==='dashboard').widgets.find(widget=>widget.type==='timetable').schedule[0];
+  assert.equal(stale.workspaceId,undefined);
+});
 test('omnibox URL normalization separates searches from safe web addresses',()=>{
   assert.equal(browserDestination('how to integrate x squared'),'https://www.google.com/search?q=how%20to%20integrate%20x%20squared');
   assert.equal(browserDestination('desmos.com/scientific'),'https://desmos.com/scientific');

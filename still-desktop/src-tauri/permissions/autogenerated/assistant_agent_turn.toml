@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-assistant-agent-turn"
+description = "Enables the assistant_agent_turn command without any pre-configured scope."
+commands.allow = ["assistant_agent_turn"]
+
+[[permission]]
+identifier = "deny-assistant-agent-turn"
+description = "Denies the assistant_agent_turn command without any pre-configured scope."
+commands.deny = ["assistant_agent_turn"]

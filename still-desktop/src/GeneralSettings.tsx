@@ -17,7 +17,7 @@ interface Props{
  showAppAttachAction:boolean;
  showAppDetachAction:boolean;
  showAppSaveAction:boolean;
- showWidgetRelaunchAction:boolean;
+
  showWidgetExportPngAction:boolean;
  widgetRelaunchMode:WidgetRelaunchMode;
  widgetRelaunchColors:Partial<Record<WidgetTagColor,WidgetRelaunchMode>>;
@@ -27,19 +27,20 @@ interface Props{
  clickThroughActive:boolean;
  canvasFrameRate:CanvasFrameRate;
  followWidgetToWorkspace:boolean;
+ autoOpenCourseEnvironments:boolean;
  startup:StartupStatus;
  startupLoading:boolean;
  setStartupEnabled:(enabled:boolean)=>void;
  shortcuts:WorkspaceShortcuts;
  openShortcuts:()=>void;
  runTutorial:()=>void;
- update:(patch:{locale?:Locale;appShutdownBehavior?:AppShutdownBehavior;closeAppOnWidgetClose?:boolean;saveAppShortcutsOnAttach?:boolean;widgetRelaunchMode?:WidgetRelaunchMode;showAppAttachAction?:boolean;showAppDetachAction?:boolean;showAppSaveAction?:boolean;showWidgetRelaunchAction?:boolean;showWidgetExportPngAction?:boolean;passThroughTransparentBackground?:boolean;enableWholeWindowClickThrough?:boolean;canvasFrameRate?:CanvasFrameRate;followWidgetToWorkspace?:boolean;shortcuts?:WorkspaceShortcuts})=>void;
+ update:(patch:{locale?:Locale;appShutdownBehavior?:AppShutdownBehavior;closeAppOnWidgetClose?:boolean;saveAppShortcutsOnAttach?:boolean;widgetRelaunchMode?:WidgetRelaunchMode;showAppAttachAction?:boolean;showAppDetachAction?:boolean;showWidgetExportPngAction?:boolean;passThroughTransparentBackground?:boolean;enableWholeWindowClickThrough?:boolean;canvasFrameRate?:CanvasFrameRate;followWidgetToWorkspace?:boolean;autoOpenCourseEnvironments?:boolean;shortcuts?:WorkspaceShortcuts})=>void;
  setRelaunchColor:(color:WidgetTagColor,mode:WidgetRelaunchMode|null)=>void;
  applyRelaunchModeToAll:()=>void;
  toggleClickThrough:()=>void;
 }
 
-export default function GeneralSettings({locale,appShutdownBehavior,closeAppOnWidgetClose,saveAppShortcutsOnAttach,showAppAttachAction,showAppDetachAction,showAppSaveAction,showWidgetRelaunchAction,showWidgetExportPngAction,widgetRelaunchMode,widgetRelaunchColors,shortcuts,openShortcuts,runTutorial,background,passThroughTransparentBackground,enableWholeWindowClickThrough,clickThroughActive,canvasFrameRate,followWidgetToWorkspace,startup,startupLoading,setStartupEnabled,update,setRelaunchColor,applyRelaunchModeToAll,toggleClickThrough}:Props){
+export default function GeneralSettings({locale,appShutdownBehavior,closeAppOnWidgetClose,saveAppShortcutsOnAttach,showAppAttachAction,showAppDetachAction,showAppSaveAction,showWidgetExportPngAction,widgetRelaunchMode,widgetRelaunchColors,shortcuts,openShortcuts,runTutorial,background,passThroughTransparentBackground,enableWholeWindowClickThrough,clickThroughActive,canvasFrameRate,followWidgetToWorkspace,autoOpenCourseEnvironments,startup,startupLoading,setStartupEnabled,update,setRelaunchColor,applyRelaunchModeToAll,toggleClickThrough}:Props){
  const t=useT();
  return <section className="settings-page general-settings" role="tabpanel" id="settings-general" aria-labelledby="settings-tab-general">
   <h3>{t('generalSettings')}</h3>
@@ -52,6 +53,7 @@ export default function GeneralSettings({locale,appShutdownBehavior,closeAppOnWi
   <h4>{t('workspacePerformance')}</h4>
   <label className="settings-row"><span>{t('widgetMotionRate')}<small>{t('widgetMotionRateDescription')}</small></span><select aria-label={t('widgetMotionRate')} value={canvasFrameRate} onChange={event=>update({canvasFrameRate:event.target.value==='30'?30:event.target.value==='60'?60:'display'})}><option value="30">30 FPS · {t('reducedLoad')}</option><option value="60">60 FPS · {t('balanced')}</option><option value="display">{t('displayRefresh')} · {t('smoothest')}</option></select></label>
   <label className="settings-row general-settings-toggle"><span>{t('followWidget')}<small>{t('followWidgetDescription')}</small></span><input aria-label={t('followWidget')} type="checkbox" checked={followWidgetToWorkspace} onChange={event=>update({followWidgetToWorkspace:event.target.checked})}/></label>
+  <label className="settings-row general-settings-toggle"><span>{t('autoOpenCourseEnvironments')}<small>{t('autoOpenCourseEnvironmentsDescription')}</small></span><input aria-label={t('autoOpenCourseEnvironments')} type="checkbox" checked={autoOpenCourseEnvironments} onChange={event=>update({autoOpenCourseEnvironments:event.target.checked})}/></label>
  <h4>{t('keyboardShortcuts')}</h4>
   <button className="shortcut-settings-link" onClick={openShortcuts}><span>{t('customizeShortcuts')}</span><kbd>{shortcutLabel(shortcuts.up)} / {shortcutLabel(shortcuts.down)}</kbd><span aria-hidden="true">→</span></button>
   <h4>{t('clickThrough')}</h4>
@@ -70,7 +72,7 @@ export default function GeneralSettings({locale,appShutdownBehavior,closeAppOnWi
   <p className="notice">{t('attachCheckboxNote')}</p>
   <h4>{t('appsWidgetButtons')}</h4>
   {([{key:'showAppAttachAction',label:t('showAttachButton'),icon:'attach',checked:showAppAttachAction},{key:'showAppDetachAction',label:t('showDetachButton'),icon:'eject',checked:showAppDetachAction},{key:'showAppSaveAction',label:t('showSaveToTrayButton'),icon:'tray',checked:showAppSaveAction}] as const).map(action=><label key={action.key} className="settings-row general-settings-toggle general-settings-action-toggle"><span>{action.label}<Icon name={action.icon}/></span><input type="checkbox" aria-label={action.label} checked={action.checked} onChange={event=>update({[action.key]:event.target.checked})}/></label>)}
-  {([{key:'showWidgetRelaunchAction',label:t('showRelaunchButton'),icon:'restart',checked:showWidgetRelaunchAction},{key:'showWidgetExportPngAction',label:t('showExportPngButton'),icon:'download',checked:showWidgetExportPngAction}] as const).map(action=><label key={action.key} className="settings-row general-settings-toggle general-settings-action-toggle"><span>{action.label}<Icon name={action.icon}/></span><input type="checkbox" aria-label={action.label} checked={action.checked} onChange={event=>update({[action.key]:event.target.checked})}/></label>)}
+  {([{key:'showWidgetExportPngAction',label:t('showExportPngButton'),icon:'download',checked:showWidgetExportPngAction}] as const).map(action=><label key={action.key} className="settings-row general-settings-toggle general-settings-action-toggle"><span>{action.label}<Icon name={action.icon}/></span><input type="checkbox" aria-label={action.label} checked={action.checked} onChange={event=>update({[action.key]:event.target.checked})}/></label>)}
   <h3>{t('widgetRelaunch')}</h3>
   <WidgetRelaunchScope mode={widgetRelaunchMode} colors={widgetRelaunchColors} setMode={mode=>update({widgetRelaunchMode:mode})} setColor={setRelaunchColor} applyModeToAll={applyRelaunchModeToAll}/>
   <p className="notice">{t('nextStartupSettings')}</p>
