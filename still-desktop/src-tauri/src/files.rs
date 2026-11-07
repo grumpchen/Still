@@ -441,9 +441,12 @@ pub async fn files_choose(app: AppHandle, webview: Webview, roots: State<'_,Fold
 #[tauri::command]
 pub async fn files_still_inbox(app:AppHandle,webview:Webview,roots:State<'_,FolderRoots>,id:String)->Result<StillInbox,String>{
     crate::security::authorize(&webview)?;valid_id(&id)?;
-    let documents=app.path().document_dir().map_err(|_|"Could not locate your Documents folder")?;
-    let path=documents.join("Still").join("Downloads");
-    fs::create_dir_all(&path).map_err(|_|"Could not create the Still Downloads inbox")?;
+    let path=match roots.root("still-downloads-inbox") {
+        Ok(path)=>path,
+        Err(_)=>{let documents=app.path().document_dir().map_err(|_|"Could not locate your Documents folder")?;
+            let path=documents.join("Still").join("Downloads");
+            fs::create_dir_all(&path).map_err(|_|"Could not create the Still Downloads inbox")?;path}
+    };
     let path=path.canonicalize().map_err(|_|"Could not open the Still Downloads inbox")?;
     // Keep an opaque built-in source grant for saved Files shortcuts, then bind
     // this widget instance to the same root. The UI never supplies a path.
@@ -452,6 +455,18 @@ pub async fn files_still_inbox(app:AppHandle,webview:Webview,roots:State<'_,Fold
     set_root_and_persist(&roots,&id,path.clone(),|roots|persist_roots(&app,roots))?;
     let listing=listing(&path,"")?;
     Ok(StillInbox{listing,path:path.to_string_lossy().into_owned()})
+}
+#[tauri::command]
+pub async fn files_choose_inbox(app:AppHandle,webview:Webview,roots:State<'_,FolderRoots>,id:String)->Result<Option<StillInbox>,String>{
+    crate::security::authorize(&webview)?;valid_id(&id)?;
+    let handle=app.clone();
+    let selected=tauri::async_runtime::spawn_blocking(move||handle.dialog().file().set_title("Choose your Downloads Inbox folder").blocking_pick_folder()).await.map_err(|e|e.to_string())?;
+    let Some(selected)=selected else{return Ok(None)};
+    let path=selected.into_path().map_err(|e|e.to_string())?.canonicalize().map_err(|e|e.to_string())?;
+    let listing=listing(&path,"")?;
+    set_root_and_persist(&roots,"still-downloads-inbox",path.clone(),|roots|persist_roots(&app,roots))?;
+    set_root_and_persist(&roots,&id,path.clone(),|roots|persist_roots(&app,roots))?;
+    Ok(Some(StillInbox{listing,path:path.to_string_lossy().into_owned()}))
 }
 #[tauri::command]
 pub async fn files_reuse(app:AppHandle,webview:Webview,roots:State<'_,FolderRoots>,id:String,source_id:String)->Result<FolderListing,String>{
