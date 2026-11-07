@@ -60,4 +60,6 @@ Open a pull request to `main` and have the other developer review the change and
 
 The AI agent currently exposes only a subset of Still actions to the model. Timer phrases also have a local execution path. General control of every Still feature remains unfinished, and provider-backed flows need real desktop verification.
 
+The 7 November development snapshot passed TypeScript and production build checks. A full test run reported failures involving appearance settings and app reopening and had not finished at the time of this handoff. Treat these as open work and check the current results before release.
+
 The repository and product are currently named Still. Decide any new name together before renaming the repository, app identifiers or release artifacts.
