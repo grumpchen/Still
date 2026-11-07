@@ -28,6 +28,7 @@ export const localFiles={
   choose:(id:string)=>invoke<FolderListing|null>('files_choose',{id}),
   inbox:(id:string)=>invoke<StillInbox>('files_still_inbox',{id}),
   chooseInbox:(id:string)=>invoke<StillInbox|null>('files_choose_inbox',{id}),
+  createFolder:(id:string,location:string,name:string)=>invoke<FolderListing>('files_create_folder',{id,location,name}),
   select(id:string,files:File[]):FolderListing{
     if(!files.length)throw new Error('This folder contains no selectable files.');
     const first=files[0].webkitRelativePath||files[0].name;const rootName=first.includes('/')?first.split('/')[0]:'Selected files';

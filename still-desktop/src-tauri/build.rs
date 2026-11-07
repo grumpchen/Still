@@ -5,7 +5,7 @@ fn main() {
                 "assistant_configured", "assistant_models", "assistant_set_key", "assistant_chat", "assistant_agent_turn", "assistant_key_setup",
                 "chatgpt_plan_status", "chatgpt_plan_connect", "chatgpt_plan_disconnect", "chatgpt_plan_models", "chatgpt_plan_agent_turn",
                 "chrome_open", "widget_capture", "widget_export",
-                "files_choose", "files_still_inbox", "files_choose_inbox", "files_list", "files_search", "files_open", "files_reuse", "files_preview", "files_extract_pdf_text", "files_library_search", "files_move_resource",
+                "files_choose", "files_still_inbox", "files_choose_inbox", "files_list", "files_create_folder", "files_search", "files_open", "files_reuse", "files_preview", "files_extract_pdf_text", "files_library_search", "files_move_resource",
                 "notes_library_choose", "notes_library_list", "notes_library_search", "notes_library_read", "notes_library_write", "notes_library_create",
                 "document_open", "document_choose", "document_preview",
                 "app_open", "app_choose",

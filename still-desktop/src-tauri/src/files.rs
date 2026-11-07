@@ -479,6 +479,17 @@ pub async fn files_list(webview: Webview, roots: State<'_,FolderRoots>, id:Strin
     listing(&roots.root(&id)?,&location)
 }
 #[tauri::command]
+pub async fn files_create_folder(webview:Webview,roots:State<'_,FolderRoots>,id:String,location:String,name:String)->Result<FolderListing,String>{
+    crate::security::authorize(&webview)?;valid_id(&id)?;
+    let name=name.trim();
+    if !valid_filing_segment(name){return Err("Choose a valid folder name without path separators or Windows reserved names.".into())}
+    let root=roots.root(&id)?;
+    let parent=resolve(&root,&location)?;
+    if !parent.is_dir(){return Err("Choose a folder in the selected library.".into())}
+    fs::create_dir(parent.join(name)).map_err(|error|if error.kind()==std::io::ErrorKind::AlreadyExists{"A file or folder with that name already exists."}else{"Could not create the folder. Check permissions and try again."})?;
+    listing(&root,&location)
+}
+#[tauri::command]
 pub async fn files_search(webview:Webview,roots:State<'_,FolderRoots>,id:String,query:String)->Result<Vec<FileEntry>,String>{
     crate::security::authorize(&webview)?;valid_id(&id)?;
     let query=query.trim().to_lowercase();if query.is_empty()||query.len()>100{return Err("Enter a search term up to 100 characters.".into())}
