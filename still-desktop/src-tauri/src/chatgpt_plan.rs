@@ -55,22 +55,24 @@ impl PlanRecord {
     }
 }
 
-fn expected_subject_for_reauthorization(registration: Option<&Registration>) -> Option<&str> {
-    // OpenID subject identifiers may be pairwise per OAuth client. Only
-    // compare the prior subject when this is a reauthorization of that client.
-    registration
-        .filter(|registration| registration.client_id == chatgpt_auth::CLIENT_ID)
-        .map(|registration| registration.identity.subject.as_str())
-}
-
 fn validate_reauthorization_identity(
     registration: Option<&Registration>,
     identity: &VerifiedIdentity,
 ) -> Result<(), &'static str> {
-    if let Some(previous_account_id) = registration
-        .and_then(|registration| registration.identity.account_id.as_deref())
-    {
-        if identity.account_id.as_deref() != Some(previous_account_id) {
+    if let Some(previous) = registration.map(|registration| &registration.identity) {
+        if let Some(previous_account_id) = previous.account_id.as_deref() {
+            if identity.account_id.as_deref() != Some(previous_account_id) {
+                return Err("ChatGPT account identity changed during reauthorization.");
+            }
+        } else if let Some(previous_email) = previous.email.as_deref() {
+            if !identity
+                .email
+                .as_deref()
+                .is_some_and(|email| email.eq_ignore_ascii_case(previous_email))
+            {
+                return Err("ChatGPT account identity changed during reauthorization.");
+            }
+        } else if identity.subject != previous.subject {
             return Err("ChatGPT account identity changed during reauthorization.");
         }
     }
@@ -327,9 +329,8 @@ pub async fn chatgpt_plan_connect(app: AppHandle, webview: Webview) -> Result<Pl
     drop(listener);
     let result = async {
         let jwks = chatgpt_auth::fetch_openai_jwks(&client).await?;
-        let subject = expected_subject_for_reauthorization(record.registration.as_ref());
         let session =
-            chatgpt_auth::exchange_and_validate(&client, attempt, code, &jwks, subject).await?;
+            chatgpt_auth::exchange_and_validate(&client, attempt, code, &jwks, None).await?;
         validate_reauthorization_identity(record.registration.as_ref(), &session.identity)?;
         record.registration = Some(Registration {
             client_id: session.client_id.clone(),
@@ -446,7 +447,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn reauthorization_does_not_compare_subjects_from_a_different_oauth_client() {
+    fn reauthorization_does_not_use_pairwise_subject_as_account_identity() {
         let legacy_registration = Registration {
             client_id: "oaiapp_issued".into(),
             identity: VerifiedIdentity {
@@ -455,25 +456,22 @@ mod tests {
                 account_id: None,
             },
         };
-        assert_eq!(
-            expected_subject_for_reauthorization(Some(&legacy_registration)),
-            None
-        );
-    }
-
-    #[test]
-    fn reauthorization_still_checks_subject_for_the_same_oauth_client() {
-        let registration = Registration {
-            client_id: chatgpt_auth::CLIENT_ID.into(),
-            identity: VerifiedIdentity {
-                subject: "stable-subject".into(),
-                email: Some("test@example.invalid".into()),
-                account_id: None,
-            },
+        let next_identity = VerifiedIdentity {
+            subject: "new-pairwise-subject".into(),
+            email: Some("test@example.invalid".into()),
+            account_id: None,
         };
         assert_eq!(
-            expected_subject_for_reauthorization(Some(&registration)),
-            Some("stable-subject")
+            validate_reauthorization_identity(Some(&legacy_registration), &next_identity),
+            Ok(())
+        );
+        let other_email = VerifiedIdentity {
+            email: Some("other@example.invalid".into()),
+            ..next_identity
+        };
+        assert_eq!(
+            validate_reauthorization_identity(Some(&legacy_registration), &other_email),
+            Err("ChatGPT account identity changed during reauthorization.")
         );
     }
 
@@ -488,7 +486,7 @@ mod tests {
             },
         };
         let same_account = VerifiedIdentity {
-            subject: "codex-client-subject".into(),
+            subject: "changed-subject-after-workspace-selection".into(),
             email: Some("test@example.invalid".into()),
             account_id: Some("acct-previous".into()),
         };

@@ -174,7 +174,9 @@ struct TokenResponse {
     id_token: String,
     token_type: String,
     expires_in: u64,
-    scope: String,
+    // OAuth omits `scope` when it is unchanged from the authorization request.
+    #[serde(default)]
+    scope: Option<String>,
 }
 
 impl std::fmt::Debug for TokenResponse {
@@ -323,6 +325,8 @@ fn validate_token_response(
     }
     let scopes: Vec<String> = response
         .scope
+        .as_deref()
+        .unwrap_or(SCOPE)
         .split_ascii_whitespace()
         .map(str::to_owned)
         .collect();
@@ -841,8 +845,10 @@ mod tests {
             id_token: signed_id_token(serde_json::json!({})),
             token_type: "Bearer".into(),
             expires_in: 3600,
-            scope: "openid profile email offline_access api.connectors.read api.connectors.invoke"
-                .into(),
+            scope: Some(
+                "openid profile email offline_access api.connectors.read api.connectors.invoke"
+                    .into(),
+            ),
         };
         let session = validate_token_response(
             response(),
@@ -861,7 +867,7 @@ mod tests {
         )
         .is_err());
         let mut missing_scope = response();
-        missing_scope.scope = "openid profile".into();
+        missing_scope.scope = Some("openid profile".into());
         assert!(validate_token_response(
             missing_scope,
             "app_EMoamEEZ73f0CkXaXp7hrann",
@@ -877,6 +883,30 @@ mod tests {
     }
 
     #[test]
+    fn accepts_codex_token_response_when_unchanged_scope_is_omitted() {
+        let body = serde_json::json!({
+            "access_token": "access-secret",
+            "refresh_token": "refresh-secret",
+            "id_token": signed_id_token(serde_json::json!({})),
+            "token_type": "Bearer",
+            "expires_in": 3600
+        });
+        let response: TokenResponse = serde_json::from_value(body).unwrap();
+        assert_eq!(response.scope, None);
+        let session = validate_token_response(
+            response,
+            CLIENT_ID,
+            &test_jwks(),
+            Some("test-nonce"),
+            None,
+        )
+        .unwrap();
+        assert!(session
+            .scopes
+            .contains(&"api.connectors.invoke".to_owned()));
+    }
+
+    #[test]
     fn token_response_validation_reports_safe_field_categories() {
         let jwks = test_jwks();
         let response = || TokenResponse {
@@ -885,8 +915,10 @@ mod tests {
             id_token: signed_id_token(serde_json::json!({})),
             token_type: "Bearer".into(),
             expires_in: 3600,
-            scope: "openid profile email offline_access api.connectors.read api.connectors.invoke"
-                .into(),
+            scope: Some(
+                "openid profile email offline_access api.connectors.read api.connectors.invoke"
+                    .into(),
+            ),
         };
         let cases = [
             (
@@ -954,8 +986,10 @@ mod tests {
             id_token: signed_id_token(serde_json::json!({})),
             token_type: "Bearer".into(),
             expires_in: 7 * 24 * 60 * 60,
-            scope: "openid profile email offline_access api.connectors.read api.connectors.invoke"
-                .into(),
+            scope: Some(
+                "openid profile email offline_access api.connectors.read api.connectors.invoke"
+                    .into(),
+            ),
         };
 
         assert!(validate_token_response(
