@@ -408,6 +408,14 @@ dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
 .note-library-preview-empty>span{font-size:20px;opacity:.65}
 .note-library-preview-empty p,.note-library-preview-empty small{margin:0;font-size:10px}
 .note-library-preview-empty small{max-width:200px;line-height:1.4;opacity:.8}
+.note-library-preview .document-preview:has(.note-rich-file-editor){display:flex;align-items:stretch;justify-content:stretch;background:transparent}
+.note-rich-file-editor{display:flex;width:100%;min-width:0;min-height:0;flex:1;flex-direction:column;overflow:hidden}
+.note-rich-file-editor .notes-search{flex:none;padding:6px 9px 0}
+.note-rich-file-editor .note-tabs{flex:none;max-width:100%;padding-inline:8px}
+.note-rich-file-editor .note-editor{position:relative;flex:1;overflow:auto;padding:9px;gap:7px}
+.note-rich-file-editor .note-editor>.note-ai-actions{top:8px;right:8px}
+.note-rich-file-editor .note-status{flex:none;padding:4px 9px 7px}
+.note-rich-file-editor .note-links{flex:none;padding:6px 9px}
 .note-library-files>p{margin:10px;color:var(--muted);font-size:11px}
 .note-heading-input:disabled{opacity:1;cursor:default}
 .note-editor{display:flex;flex:1;flex-direction:column;gap:8px;min-height:0;padding:14px}
