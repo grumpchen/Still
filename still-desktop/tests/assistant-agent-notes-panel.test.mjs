@@ -345,3 +345,46 @@ test('selected Library context cannot widen the agent to the inbox or workspace 
   assert.equal(requests.length,2);
  }finally{if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();for(const [key,descriptor] of old)if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}
 });
+
+test('Study with AI hides its prompt, generates a summary, and saves only after review',async()=>{
+ const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true}),{window}=dom,old=new Map();
+ const globals={window,document:window.document,navigator:window.navigator,localStorage:window.localStorage,HTMLElement:window.HTMLElement,Element:window.Element,Node:window.Node,MutationObserver:window.MutationObserver,CustomEvent:window.CustomEvent,Event:window.Event,IS_REACT_ACT_ENVIRONMENT:true,isTauri:true};
+ for(const key of Object.keys(globals))old.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
+ let root;const requests=[],creates=[];
+ try{
+  for(const [key,value] of Object.entries(globals))setGlobal(key,value);
+  window.HTMLElement.prototype.scrollTo=function(){};window.HTMLTextAreaElement.prototype.focus=function(){};window.__TAURI_INTERNALS__={};
+  window.localStorage.setItem('still-assistant-model','gemini::gemini-test');
+  window.localStorage.setItem('still-assistant-share-workspace-image','false');
+  mockIPC((command,args)=>{
+   if(command==='assistant_configured')return true;
+   if(command==='assistant_models')return ['gemini-test'];
+   if(command==='assistant_chat'){
+    requests.push(args.request);
+    return {intent:'chat',reply:'## Core ideas\n\n- A source backed idea.\n- A second key point.',layout:[],actions:[]};
+   }
+   return null;
+  },{shouldMockEvents:true});
+  const {default:AssistantPanel}=await vite.ssrLoadModule('/src/AssistantPanel.tsx'),workspace=createWorkspace('Study',[]),note=createWidget('notes');
+  workspace.widgets=[note];root=createRoot(window.document.querySelector('#root'));
+  await act(async()=>root.render(createElement(AssistantPanel,{workspace,workspaces:[workspace],trayItems:[],sidebarPlugins:[],open:true,close(){},dimensions:()=>({width:900,height:700}),apply(){},undo(){},act:async()=>''})));
+  await waitFor(()=>window.document.querySelector('#ai-model option[value="gemini::gemini-test"]'));
+  const title='Lecture 1';
+  window.addEventListener('still-notes-create-ai-summary',event=>{
+   const detail=event.detail;creates.push(detail);
+   detail.resolve(`Created ${detail.title} in the same folder. The source note was unchanged.`);
+  },{once:true});
+  await act(async()=>window.dispatchEvent(new window.CustomEvent('still-assistant-resource',{detail:{name:'Lecture 1.md',path:'CHEM/lecture-1.md',size:120,text:'Source backed lecture text',notes:'',prompt:'Write a faithful summary of the selected lecture.',autoSubmit:true,workflow:'summary-note',requestId:'summary-1',fileWidgetId:note.id,fileActionAllowed:true,noteTarget:{widgetId:note.id,noteId:'lecture-note',expectedText:'Source backed lecture text'}}})));
+  await waitFor(()=>requests.length===1&&window.document.querySelector('[aria-label="Review summary note"]'));
+  assert.equal(requests[0].messages.at(-1).text,'Write a faithful summary of the selected lecture.');
+  assert.equal(window.document.querySelectorAll('.assistant-message.user').length,0,'the auto-submit prompt stays hidden');
+  assert.match(window.document.body.textContent,/Core ideas/,'the generated answer is visible in the review draft');
+  assert.equal(creates.length,0,'generation alone does not write a file');
+  const nameInput=window.document.querySelector('[aria-label="New note name"]');
+  assert.ok(nameInput);assert.match(nameInput.value,/Lecture 1 - Summary/);
+  await act(async()=>setReactValue(nameInput,title,'HTMLInputElement'));
+  await act(async()=>window.document.querySelector('[aria-label="Review summary note"] button.primary').click());
+  await waitFor(()=>creates.length===1&&window.document.body.textContent.includes('Created Lecture 1 in the same folder'));
+  assert.deepEqual({widgetId:creates[0].widgetId,sourceNoteId:creates[0].sourceNoteId,sourcePath:creates[0].sourcePath,expectedText:creates[0].expectedText,title:creates[0].title,draft:creates[0].draft},{widgetId:note.id,sourceNoteId:'lecture-note',sourcePath:'CHEM/lecture-1.md',expectedText:'Source backed lecture text',title, draft:'## Core ideas\n\n- A source backed idea.\n- A second key point.'});
+ }finally{if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();for(const [key,descriptor] of old)if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}
+});
