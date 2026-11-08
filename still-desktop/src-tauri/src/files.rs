@@ -650,6 +650,17 @@ pub async fn files_open(app: AppHandle, webview: Webview, roots: State<'_,Folder
     app.opener().open_path(target.to_string_lossy(),None::<&str>).map_err(|e| e.to_string())
 }
 #[tauri::command]
+pub fn files_open_with(app: AppHandle, webview: Webview, roots: State<'_,FolderRoots>, id:String, path:String) -> Result<bool,String> {
+    crate::security::authorize(&webview)?;valid_id(&id)?;
+    let target=resolve(&roots.root(&id)?,&path)?;
+    if !target.is_file() || blocked(&target) { return Err("Choose a document, image or media file to open".into()); }
+    let Some(selected)=app.dialog().file().set_title("Choose an application").add_filter("Applications",&["exe"]).blocking_pick_file() else {return Ok(false)};
+    let program=selected.into_path().map_err(|error|error.to_string())?.canonicalize().map_err(|_|"The selected application is no longer available")?;
+    if !program.is_file()||program.extension().and_then(|extension|extension.to_str()).is_none_or(|extension|!extension.eq_ignore_ascii_case("exe")){return Err("Choose a Windows application (.exe).".into())}
+    app.opener().open_path(target.to_string_lossy(),Some(program.to_string_lossy().to_string())).map_err(|error|error.to_string())?;
+    Ok(true)
+}
+#[tauri::command]
 pub async fn files_preview(webview:Webview,roots:State<'_,FolderRoots>,id:String,path:String)->Result<FilePreview,String>{
     crate::security::authorize(&webview)?;valid_id(&id)?;
     let target=resolve(&roots.root(&id)?,&path)?;

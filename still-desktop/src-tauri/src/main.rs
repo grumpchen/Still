@@ -53,7 +53,7 @@ fn main() {
             assistant::assistant_configured, assistant::assistant_models, assistant::assistant_set_key, assistant::assistant_chat, assistant::assistant_agent_turn, assistant::assistant_key_setup,
             chatgpt_plan::chatgpt_plan_status, chatgpt_plan::chatgpt_plan_connect, chatgpt_plan::chatgpt_plan_disconnect, chatgpt_plan::chatgpt_plan_models, chatgpt_plan::chatgpt_plan_agent_turn,
             chrome::chrome_open, capture::widget_capture, capture::widget_export,
-            files::files_choose,files::files_still_inbox,files::files_choose_inbox, files::files_list,files::files_create_folder,files::files_move_to_inbox,files::files_search,files::files_library_search, files::files_open,files::files_reuse,files::files_preview,files::files_extract_pdf_text,files::files_move_resource,
+            files::files_choose,files::files_still_inbox,files::files_choose_inbox, files::files_list,files::files_create_folder,files::files_move_to_inbox,files::files_search,files::files_library_search, files::files_open,files::files_open_with,files::files_reuse,files::files_preview,files::files_extract_pdf_text,files::files_move_resource,
             files::notes_library_choose,files::notes_library_list,files::notes_library_search,files::notes_library_read,files::notes_library_write,files::notes_library_create,
             assistant_journal::assistant_journal_plan,assistant_journal::assistant_journal_start,assistant_journal::assistant_journal_finish,assistant_journal::assistant_journal_list,assistant_journal::assistant_journal_dismiss,
             files::notes_library_agent_grant,files::notes_library_agent_list,files::notes_library_agent_search,files::notes_library_agent_read,files::notes_library_agent_write,

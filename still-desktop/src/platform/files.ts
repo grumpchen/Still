@@ -70,6 +70,10 @@ export const localFiles={
     const file=selected.get(id)?.files.get(path);if(!file)throw new Error('Select the folder again to open this file.');
     return openBrowserFile(file);
   },
+  async openWith(id:string,path:string):Promise<boolean>{
+    if(!this.native)throw new Error('Choose another application from the Still desktop app.');
+    return invoke<boolean>('files_open_with',{id,path});
+  },
   async preview(id:string,path:string):Promise<Blob>{
     if(this.native){const result=await invoke<NativeFilePreview>('files_preview',{id,path});return previewBlob(result)}
     const file=selected.get(id)?.files.get(path);if(!file)throw new Error('Select the folder again to preview this file.');
