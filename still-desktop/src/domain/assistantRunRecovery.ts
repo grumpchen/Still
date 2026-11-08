@@ -1,4 +1,4 @@
-export type AssistantRunRecoveryStage='awaiting_review'|'applying';
+export type AssistantRunRecoveryStage='awaiting_review'|'applying'|'receipt_saved';
 export type AssistantRunRecoveryKind='add_widget'|'workspace_action'|'inbox_moves'|'library_edit'|'assistant_memory';
 export type AssistantRunRecovery={version:1;workspaceId:string;runId:string;stage:AssistantRunRecoveryStage;kind:AssistantRunRecoveryKind;updatedAt:number};
 
@@ -12,14 +12,14 @@ export function readAssistantRunRecovery(workspaceId:string,storage=defaultStora
  try{
   const raw=storage.getItem(key(workspaceId));if(!raw)return null;
   const value=JSON.parse(raw) as Partial<AssistantRunRecovery>;
-  if(value.version!==1||value.workspaceId!==workspaceId||typeof value.runId!=='string'||! /^[a-zA-Z0-9-]{1,100}$/.test(value.runId)||!KINDS.has(value.kind as AssistantRunRecoveryKind)||value.stage!=='awaiting_review'&&value.stage!=='applying'||typeof value.updatedAt!=='number'||!Number.isFinite(value.updatedAt))return null;
+  if(value.version!==1||value.workspaceId!==workspaceId||typeof value.runId!=='string'||! /^[a-zA-Z0-9-]{1,100}$/.test(value.runId)||!KINDS.has(value.kind as AssistantRunRecoveryKind)||value.stage!=='awaiting_review'&&value.stage!=='applying'&&value.stage!=='receipt_saved'||typeof value.updatedAt!=='number'||!Number.isFinite(value.updatedAt))return null;
   return value as AssistantRunRecovery;
  }catch{return null}
 }
 
 /** Stores only recovery metadata. Prompts, proposals, paths, and provider data stay out of this journal. */
 export function writeAssistantRunRecovery(input:Omit<AssistantRunRecovery,'version'|'updatedAt'>,storage=defaultStorage(),now=Date.now()):boolean{
- if(!input.workspaceId||!input.runId||!KINDS.has(input.kind)||input.stage!=='awaiting_review'&&input.stage!=='applying'||!storage)return false;
+ if(!input.workspaceId||!input.runId||!KINDS.has(input.kind)||input.stage!=='awaiting_review'&&input.stage!=='applying'&&input.stage!=='receipt_saved'||!storage)return false;
  try{storage.setItem(key(input.workspaceId),JSON.stringify({version:1,...input,updatedAt:now} satisfies AssistantRunRecovery));return true}catch{return false}
 }
 
@@ -30,5 +30,6 @@ export function clearAssistantRunRecovery(workspaceId:string,runId?:string,stora
 
 export function assistantRunRecoveryMessage(record:AssistantRunRecovery):string{
  if(record.stage==='awaiting_review')return 'A previous agent change was still awaiting review when Still closed. That approval expired and no change was applied by recovery. Inspect the workspace, then ask Still to prepare a fresh proposal.';
+ if(record.stage==='receipt_saved')return 'A previous agent change has a saved execution receipt in this chat. Recovery did not repeat it.';
  return 'Still closed while an approved agent change was being applied. Its result may be incomplete or uncertain. Recovery did not repeat the change. Inspect the workspace before asking Still to retry.';
 }

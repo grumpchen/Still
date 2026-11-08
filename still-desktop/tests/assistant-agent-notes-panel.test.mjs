@@ -163,9 +163,33 @@ test('approved Notes receipt remains visible when resumed provider turn fails',a
   await waitFor(()=>window.document.querySelector('[aria-label="Add one widget?"]'));await act(async()=>window.document.querySelector('[aria-label="Add one widget?"] button.primary').click());
   await waitFor(()=>executions===1&&window.document.querySelector('.assistant-error'));
   assert.ok([...window.document.querySelectorAll('.assistant-message.model p')].some(node=>node.textContent==='Added a Notes widget (Notes 1).'),'actual execution receipt is in chat despite provider resume failure');
+  assert.equal(window.localStorage.getItem('still-assistant-run-recovery-v1:'+encodeURIComponent(workspace.id)),null,'a saved execution receipt clears the old applying marker before provider continuation');
  }finally{
   if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();
   for(const key of old.keys()){const descriptor=old.get(key);if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}
+ }
+});
+
+test('provider continuation stops when the approved action receipt cannot be saved locally',async()=>{
+ const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true}),{window}=dom,old=new Map();
+ for(const key of ['window','document','navigator','localStorage','HTMLElement','Element','Node','MutationObserver','requestAnimationFrame','cancelAnimationFrame','IS_REACT_ACT_ENVIRONMENT','isTauri'])old.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
+ const calls=[];let root,executions=0;
+ try{
+  for(const [key,value] of Object.entries({window,document:window.document,navigator:window.navigator,localStorage:window.localStorage,HTMLElement:window.HTMLElement,Element:window.Element,Node:window.Node,MutationObserver:window.MutationObserver,requestAnimationFrame:callback=>setTimeout(()=>callback(Date.now()),0),cancelAnimationFrame:clearTimeout,IS_REACT_ACT_ENVIRONMENT:true,isTauri:true}))setGlobal(key,value);
+  window.HTMLElement.prototype.scrollTo=function(){};window.HTMLTextAreaElement.prototype.focus=function(){};window.__TAURI_INTERNALS__={};window.localStorage.setItem('still-assistant-share-workspace-image','false');window.localStorage.setItem('still-assistant-model','openai::gpt-test');
+  mockIPC((command,args)=>{calls.push({command,args});if(command==='assistant_configured')return true;if(command==='assistant_models')return ['gpt-test'];if(command!=='assistant_agent_turn')return null;const request=args.request,count=calls.filter(call=>call.command==='assistant_agent_turn').length;assert.equal(request.enable_add_widget_tool,true);if(count===1)return {kind:'tool_calls',assistantMessage:{role:'assistant',tool_calls:[{id:'inspect-1',type:'function',function:{name:'inspect_workspace',arguments:'{}'}}]},calls:[{id:'inspect-1',name:'inspect_workspace',input:{}}]};if(count===2){const inspected=JSON.parse(request.messages.at(-1).content).result;return {kind:'tool_calls',assistantMessage:{role:'assistant',tool_calls:[{id:'add-1',type:'function',function:{name:'add_widget',arguments:JSON.stringify({widgetType:'notes',snapshotRevision:inspected.revision})}}]},calls:[{id:'add-1',name:'add_widget',input:{widgetType:'notes',snapshotRevision:inspected.revision}}]}}throw new Error('Provider continuation must stop when the receipt cannot be persisted.');},{shouldMockEvents:true});
+  const {default:AssistantPanel}=await vite.ssrLoadModule('/src/AssistantPanel.tsx'),workspace=createWorkspace('Study',[]);root=createRoot(window.document.querySelector('#root'));
+  await act(async()=>root.render(createElement(AssistantPanel,{workspace,workspaces:[{id:workspace.id,name:workspace.name}],trayItems:[],sidebarPlugins:[],open:true,close(){},dimensions:()=>({width:900,height:700}),apply(){},undo(){},act:async()=>{executions++;return 'Added a Notes widget (Notes 1).'}})));
+  await waitFor(()=>window.document.querySelector('#ai-model option[value="openai::gpt-test"]'));await act(async()=>window.document.querySelector('[aria-label="AI settings"]').click());await act(async()=>window.document.querySelectorAll('.assistant-settings input[type="checkbox"]')[1].click());
+  const composer=window.document.querySelector('#ai-message');await act(async()=>setReactValue(composer,'Please add a Notes widget.','HTMLTextAreaElement'));await act(async()=>window.document.querySelector('.assistant-compose').requestSubmit());
+  await waitFor(()=>window.document.querySelector('[aria-label="Add one widget?"]'));
+  const storagePrototype=Object.getPrototypeOf(window.localStorage),originalSet=storagePrototype.setItem;Object.defineProperty(storagePrototype,'setItem',{configurable:true,writable:true,value:function(key,value){if(key.startsWith('still-assistant-chat-v1:'))throw new Error('quota exceeded');return originalSet.call(this,key,value)}});
+  await act(async()=>window.document.querySelector('[aria-label="Add one widget?"] button.primary').click());
+  await waitFor(()=>executions===1&&/could not save the verified action receipt/i.test(window.document.querySelector('.assistant-error')?.textContent??''));
+  assert.equal(calls.filter(call=>call.command==='assistant_agent_turn').length,2,'the provider is not resumed after receipt persistence fails');
+  assert.match(window.localStorage.getItem('still-assistant-run-recovery-v1:'+encodeURIComponent(workspace.id)),/"stage":"applying"/,'the applying marker remains for cautious recovery');
+ }finally{
+  if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();for(const key of old.keys()){const descriptor=old.get(key);if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}
  }
 });
 

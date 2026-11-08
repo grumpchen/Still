@@ -19,6 +19,12 @@ test('applying recovery warns about uncertainty and never retries',()=>{
  assert.match(message,/uncertain/i);assert.match(message,/did not repeat/i);
 });
 
+test('saved execution receipts are described as complete without replay',()=>{
+ const storage=store();writeAssistantRunRecovery({workspaceId:'study',runId:'run-3',stage:'receipt_saved',kind:'workspace_action'},storage);
+ const message=assistantRunRecoveryMessage(readAssistantRunRecovery('study',storage));
+ assert.match(message,/saved execution receipt/i);assert.match(message,/did not repeat/i);
+});
+
 test('stale run completion cannot clear a newer review',()=>{
  const storage=store();writeAssistantRunRecovery({workspaceId:'study',runId:'old',stage:'applying',kind:'workspace_action'},storage);
  writeAssistantRunRecovery({workspaceId:'study',runId:'new',stage:'awaiting_review',kind:'add_widget'},storage);
