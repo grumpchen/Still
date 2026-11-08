@@ -42,9 +42,9 @@ export function readAssistantChat(workspaceId:string,storage:Pick<Storage,'getIt
  try{const value=storage.getItem(storageKey(workspaceId));return value?checkedMessages(JSON.parse(value)):[]}catch{return []}
 }
 
-export function saveAssistantChat(workspaceId:string,messages:ChatMessage[],storage:Pick<Storage,'setItem'>|undefined=defaultStorage()):void{
- if(!workspaceId||!storage)return;
- try{storage.setItem(storageKey(workspaceId),JSON.stringify(checkedMessages(messages)))}catch{/* chat saving is best-effort when storage is unavailable or full */}
+export function saveAssistantChat(workspaceId:string,messages:ChatMessage[],storage:Pick<Storage,'setItem'>|undefined=defaultStorage()):boolean{
+ if(!workspaceId||!storage)return false;
+ try{storage.setItem(storageKey(workspaceId),JSON.stringify(checkedMessages(messages)));return true}catch{return false}
 }
 
 export function deleteAssistantChat(workspaceId:string,storage:Pick<Storage,'removeItem'>|undefined=defaultStorage()):void{

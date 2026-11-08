@@ -241,6 +241,35 @@ test('explicit memory request shows exact text and selected provider, then displ
  }finally{if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();for(const key of old.keys()){const descriptor=old.get(key);if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}}
 });
 
+test('restart expires an agent approval, restores a recovery receipt, and never replays it',async()=>{
+ const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true}),{window}=dom,old=new Map();
+ for(const key of ['window','document','navigator','localStorage','HTMLElement','Element','Node','MutationObserver','requestAnimationFrame','cancelAnimationFrame','IS_REACT_ACT_ENVIRONMENT','isTauri'])old.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
+ let root;const calls=[];
+ try{
+  for(const [key,value] of Object.entries({window,document:window.document,navigator:window.navigator,localStorage:window.localStorage,HTMLElement:window.HTMLElement,Element:window.Element,Node:window.Node,MutationObserver:window.MutationObserver,requestAnimationFrame:callback=>setTimeout(()=>callback(Date.now()),0),cancelAnimationFrame:clearTimeout,IS_REACT_ACT_ENVIRONMENT:true,isTauri:true}))setGlobal(key,value);
+  window.HTMLElement.prototype.scrollTo=function(){};window.HTMLTextAreaElement.prototype.focus=function(){};window.__TAURI_INTERNALS__={};window.localStorage.setItem('still-assistant-model','openai::gpt-test');
+  mockIPC(command=>{calls.push(command);if(command==='assistant_configured')return true;if(command==='assistant_models')return ['gpt-test'];if(command==='assistant_journal_list')return [];return null},{shouldMockEvents:true});
+  const {default:AssistantPanel}=await vite.ssrLoadModule('/src/AssistantPanel.tsx'),workspace=createWorkspace('Recovery',[]),key='still-assistant-run-recovery-v1:'+encodeURIComponent(workspace.id);
+  window.localStorage.setItem(key,JSON.stringify({version:1,workspaceId:workspace.id,runId:'crashed-review',stage:'awaiting_review',kind:'add_widget',updatedAt:Date.now()}));
+  const props={workspace,workspaces:[{id:workspace.id,name:workspace.name}],trayItems:[],sidebarPlugins:[],open:true,close(){},dimensions:()=>({width:900,height:700}),apply(){},undo(){},act:async()=>{throw new Error('an expired approval must not execute')}};
+  root=createRoot(window.document.querySelector('#root'));await act(async()=>root.render(createElement(AssistantPanel,props)));
+  await waitFor(()=>window.document.querySelector('.assistant-message.model')?.textContent.includes('That approval expired'));
+  assert.equal(window.document.querySelector('[aria-label="Add one widget?"]'),null);
+  assert.equal(window.localStorage.getItem(key),null,'recovery receipt is saved before its marker is removed');
+  const stored=JSON.parse(window.localStorage.getItem('still-assistant-chat-v1:'+encodeURIComponent(workspace.id)));
+  assert.ok(stored.some(message=>message.text.includes('That approval expired')));
+  assert.equal(calls.includes('assistant_agent_turn'),false,'restart does not recreate or replay the provider action');
+  const applyingWorkspace=createWorkspace('Interrupted apply',[]),applyingKey='still-assistant-run-recovery-v1:'+encodeURIComponent(applyingWorkspace.id);
+  window.localStorage.setItem(applyingKey,JSON.stringify({version:1,workspaceId:applyingWorkspace.id,runId:'crashed-apply',stage:'applying',kind:'workspace_action',updatedAt:Date.now()}));
+  await act(async()=>root.render(createElement(AssistantPanel,{...props,workspace:applyingWorkspace,workspaces:[{id:applyingWorkspace.id,name:applyingWorkspace.name}]})));
+  await waitFor(()=>[...window.document.querySelectorAll('.assistant-message.model')].some(message=>message.textContent.includes('Its result may be incomplete or uncertain')));
+  assert.equal(window.localStorage.getItem(applyingKey),null);
+  assert.equal(calls.includes('assistant_agent_turn'),false,'uncertain actions are never replayed automatically');
+ }finally{
+  if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();for(const key of old.keys()){const descriptor=old.get(key);if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}
+ }
+});
+
 test('memory storage failure is disclosed as uncertain and never resumes a success claim',async()=>{
  const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true}),{window}=dom,old=new Map();
  for(const key of ['window','document','navigator','localStorage','HTMLElement','Element','Node','MutationObserver','requestAnimationFrame','cancelAnimationFrame','IS_REACT_ACT_ENVIRONMENT','isTauri'])old.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
