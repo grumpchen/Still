@@ -2,7 +2,7 @@ import type { AgentToolExecution, AgentToolHandler } from './agentLoop.ts';
 import type { AssistantAction, AssistantTrayItem, AssistantWorkspaceChoice } from './assistant.ts';
 import type { Workspace } from './workspaces.ts';
 import { addAssistantMemory, ASSISTANT_MEMORY_TEXT_LIMIT, AssistantMemoryError, type AssistantMemoryEntry } from './assistantMemory.ts';
-import { widgetCatalog, type WidgetType } from './widgetCatalog.ts';
+import { workspaceWidgetTypes, type WidgetType } from './widgetCatalog.ts';
 import { constrainPlacement } from './layout.ts';
 
 /** A fresh, app-owned view of the state that existing UI operations validate against. */
@@ -364,7 +364,7 @@ function parseAddWidgetInput(input: unknown): { revision: string; widgetType: Wi
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Expected an add Notes widget request.');
   const value = input as Record<string, unknown>;
   if (Object.keys(value).some(key => key !== 'widgetType' && key !== 'snapshotRevision')
-    || typeof value.widgetType !== 'string' || !Object.hasOwn(widgetCatalog, value.widgetType)
+    || typeof value.widgetType !== 'string' || !workspaceWidgetTypes.includes(value.widgetType as WidgetType)
     || typeof value.snapshotRevision !== 'string'
     || !value.snapshotRevision
     || value.snapshotRevision.length > 256) {

@@ -66,31 +66,32 @@ test('geometry action proposal carries exact before and after placement and reje
   assert.doesNotThrow(()=>validateReviewedGeometryIntent('move the selected widget to x=320 y=140',move,[target.id]));
 });
 
-test('add_widget accepts catalog types with a fresh revision and stops at a proposal',async()=>{
+test('add_widget accepts only workspace-available types with a fresh revision and stops at a proposal',async()=>{
   let validations=0,executions=0;
-  const registry=createStillWorkspaceToolRegistry({getSnapshot:()=>snapshot(),validate(_state,actions){validations++;assert.deepEqual(actions,[{type:'add_widget',ids:['files']}])},validateIntent(){},execute(){executions++;return 'Added.'}});
+  const registry=createStillWorkspaceToolRegistry({getSnapshot:()=>snapshot(),validate(_state,actions){validations++;assert.deepEqual(actions,[{type:'add_widget',ids:['notes']}])},validateIntent(){},execute(){executions++;return 'Added.'}});
   assert.equal((await registry.tools.add_widget({widgetType:'not-a-widget',snapshotRevision:'rev-1'})).status,'failed');
+  assert.equal((await registry.tools.add_widget({widgetType:'files',snapshotRevision:'rev-1'})).status,'failed','the legacy Files type is retained for saved workspaces, not new creation');
   assert.equal((await registry.tools.add_widget({widgetType:'notes',snapshotRevision:'stale'})).status,'failed');
   assert.equal(validations,0);
-  const prepared=await registry.tools.add_widget({widgetType:'files',snapshotRevision:'rev-1'});
+  const prepared=await registry.tools.add_widget({widgetType:'notes',snapshotRevision:'rev-1'});
   assert.equal(prepared.status,'requires_confirmation');
   assert.equal(validations,1);
   assert.equal(executions,0,'model tool dispatch never executes a mutation');
   assert.equal(Object.isFrozen(prepared.proposal),true);
-  assert.equal(prepared.proposal.widgetType,'files');
+  assert.equal(prepared.proposal.widgetType,'notes');
 });
 
 test('approval is bound to the exact proposal object and returns the exact executor receipt',async()=>{
   let validations=0,executed;
-  const receipt='Added a Notes widget. (instance 3)';
+  const receipt='Added a Files widget. (instance 3)';
   const registry=createStillWorkspaceToolRegistry({getSnapshot:()=>snapshot(),validate(){validations++},validateIntent(){},execute:(state,actions)=>{executed={revision:state.revision,actions};return receipt}});
-  const prepared=await registry.tools.add_widget({widgetType:'files',snapshotRevision:'rev-1'});
+  const prepared=await registry.tools.add_widget({widgetType:'notes',snapshotRevision:'rev-1'});
   assert.equal(prepared.status,'requires_confirmation');
   const proposal=prepared.proposal;
   const copied={...proposal};
   assert.deepEqual(await registry.executeConfirmed(copied),{status:'failed',mutation:'none',error:'This proposal is no longer available for approval. Nothing was changed.'});
   const result=await registry.executeConfirmed(proposal);
-  assert.deepEqual(executed,{revision:'rev-1',actions:[{type:'add_widget',ids:['files']}]});
+  assert.deepEqual(executed,{revision:'rev-1',actions:[{type:'add_widget',ids:['notes']}]});
   assert.deepEqual(result,{status:'succeeded',mutation:'applied',result:{receipt}});
   assert.equal(validations,2,'the app validator is rerun at approval time');
   assert.equal((await registry.executeConfirmed(proposal)).status,'failed','approval is single-use');

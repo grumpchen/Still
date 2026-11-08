@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {assistantEditTargetsUnchanged,assistantWidgetPluginClarification,assistantCourseAutoOpenClarification,assistantCourseEnvironmentClarification,assistantRemovedControlReply} from '../src/domain/assistant.ts';
 import {assistantResizeClarification,validateAssistantLayoutIntent} from '../src/domain/assistant.ts';
 import {createWidget,createWorkspace} from '../src/domain/workspaces.ts';
-import {widgetTypes} from '../src/domain/widgetCatalog.ts';
+import {workspaceWidgetTypes} from '../src/domain/widgetCatalog.ts';
 import {assistantActionRequest,assistantCreationClarification,assistantEditClarification,assistantMoveClarification,assistantNoteDocumentClarification,assistantNoteStyleClarification,assistantNoteTagClarification,assistantShortcutClarification,assistantTimerControlClarification,assistantReplyNeedsClarification,assistantLayoutRequested,assistantRequestLimitError,assistantTrayItems,unsupportedAssistantRequest,extractAssistantTimerSeconds,resolveAssistantSetting,assistantWorkspaceClarification,resolveDirectAssistantActions,resolveAcceptedNotesOffer,addFocusForAssistantTimer,settleAssistantConfirmation,assistantKeyError,assistantWorkspaceContext,preferredModel,widgetContext,layoutContext,layoutFingerprint,parseAssistantReply,validateAssistantActionIntent,validateAssistantActions,applyAssistantWidgetActions,updateAssistantShortcut,validateLayout,applyLayoutPlan,prepareAssistantHistory,assistantAddedWidgetReceipt,safeAssistantReceipt,MAX_ASSISTANT_BATCH,MAX_ASSISTANT_WIDGETS} from '../src/domain/assistant.ts';
 
 function fixture(){
@@ -135,7 +135,7 @@ test('Still AI closes only a clearly identified note tab and asks before an ambi
 });
 test('sharing a selected widget omits grants, URLs, bookmarks, and unrelated content',()=>{
   const note=createWidget('notes');note.text='Only this note';note.fileKey='secret-grant';note.url='https://example.org/private';
-  assert.deepEqual(widgetContext(note),{type:'notes',title:'Notes 1',tagColor:null,text:'Only this note',noteDocuments:[{id:note.noteDocuments[0].id,title:'',tags:[],active:true,libraryFile:false}]});
+  assert.deepEqual(widgetContext(note),{type:'notes',title:'Files 1',tagColor:null,text:'Only this note',noteDocuments:[{id:note.noteDocuments[0].id,title:'',tags:[],active:true,libraryFile:false}]});
   const app=createWidget('apps');app.appKey='secret-app';assert.ok(!JSON.stringify(widgetContext(app)).includes('secret-app'));
   const {workspace}=fixture();workspace.widgets[0].text='private note';assert.ok(!JSON.stringify(layoutContext(workspace,900,700)).includes('private note'));
 });
@@ -322,7 +322,7 @@ test('Still AI changes a bounded set of reversible app preferences and rejects u
 });
 test('Still AI can create a named workspace with bounded starting widgets and asks when its name is missing',()=>{
  const {workspace}=fixture(),create=resolveDirectAssistantActions('create a workspace named Chemistry with Notes and Files',workspace,[]);
- assert.deepEqual(create,[{type:'create_workspace',ids:['notes','files'],title:'Chemistry'}]);
+  assert.deepEqual(create,[{type:'create_workspace',ids:['notes'],title:'Chemistry'}]);
  assert.doesNotThrow(()=>validateAssistantActions(workspace,create));
  assert.doesNotThrow(()=>validateAssistantActionIntent('create a workspace named Chemistry with Notes and Files',workspace,create));
  assert.deepEqual(resolveDirectAssistantActions('create a blank workspace called Research',workspace,[]),[{type:'create_workspace',ids:[],title:'Research'}]);
@@ -470,8 +470,8 @@ test('ambiguous note-file creation asks before acting and spelled-out counts obe
   assert.match(assistantRequestLimitError('make one hundred thousand notes widgets'),/at most 10 widgets/i);
   assert.match(assistantRequestLimitError('add ten thousand saved widgets'),/at most 10 saved items/i);
   assert.throws(()=>validateAssistantActionIntent('make three notes widgets',workspace,[{type:'add_widget',ids:['notes','notes']}]),/requested number/i);
-  assert.throws(()=>validateAssistantActionIntent('make one Files widget',workspace,[{type:'add_widget',ids:['notes']}]),/type does not match/i);
-  assert.deepEqual(resolveDirectAssistantActions('make Notes and Files widgets',workspace,[]),[{type:'add_widget',ids:['notes','files']}]);
+  assert.doesNotThrow(()=>validateAssistantActionIntent('make one Files widget',workspace,[{type:'add_widget',ids:['notes']}]),'Files is now the combined Notes widget');
+  assert.deepEqual(resolveDirectAssistantActions('make Notes and Files widgets',workspace,[]),[{type:'add_widget',ids:['notes']}]);
 });
 test('resize requests use a reviewed layout and preserve other widgets',()=>{
  const {workspace,items}=fixture(),prompt='make Notes 1 taller',target=workspace.widgets[0];
@@ -612,7 +612,9 @@ test('make notes widget is a permitted local creation command instead of a provi
   assert.deepEqual(resolveDirectAssistantActions('make 3 notes',workspace,[]),[{type:'add_widget',ids:['notes','notes','notes']}]);
   for(const verb of ['make','build','spawn','create','add','open','new'])assert.deepEqual(resolveDirectAssistantActions(`${verb} notes widget`,workspace,[]),[{type:'add_widget',ids:['notes']}]);
   assert.deepEqual(assistantActionRequest('open focus with details'),[],'opening a named widget without asking for a new widget must not be misclassified as widget creation');
-  for(const type of widgetTypes)assert.deepEqual(resolveDirectAssistantActions(`make ${type} widget`,workspace,[]),[{type:'add_widget',ids:[type]}]);
+  for(const type of workspaceWidgetTypes)assert.deepEqual(resolveDirectAssistantActions(`make ${type} widget`,workspace,[]),[{type:'add_widget',ids:[type]}]);
+  assert.deepEqual(resolveDirectAssistantActions('make files widget',workspace,[]),[{type:'add_widget',ids:['notes']}]);
+  assert.throws(()=>validateAssistantActions(workspace,[{type:'add_widget',ids:['files']}]),/widget type/i);
   assert.equal(resolveDirectAssistantActions('How do I make notes widgets?',workspace,[]),null);
   assert.equal(resolveDirectAssistantActions("don't make a notes widget",workspace,[]),null);
   assert.equal(resolveDirectAssistantActions('Write an email saying make notes widget',workspace,[]),null,'writing and explanation requests remain general chat');
@@ -633,6 +635,7 @@ test('valid action-only responses do not require invented assistant prose',()=>{
 test('the model receives the full creation catalogue and can create named Notes with content',()=>{
   const workspace=createWorkspace('Empty',[]),context=assistantWorkspaceContext(workspace,900,700,[]);
   assert.ok(context.capabilities.creatableWidgets.some(item=>item.id==='notes'));
+  assert.equal(context.capabilities.creatableWidgets.some(item=>item.id==='files'),false,'the legacy Files type must not be offered as a second widget');
   assert.ok(context.capabilities.creatableWidgets.some(item=>item.id==='apps'));
   assert.ok(context.capabilities.actions.includes('remove_widget'));
   assert.equal(context.capabilities.maxAddOrOpenItems,10);
@@ -691,8 +694,8 @@ test('settling a destructive-action confirmation preserves valid provider chat h
 test('added widgets get a real reply and a prior blank reply cannot poison provider history',()=>{
   const {workspace}=fixture(),actions=[{type:'add_widget',ids:['focus','notes']}];
   const receipt=assistantAddedWidgetReceipt(actions);
-  assert.equal(receipt,'Added a Focus widget and a Notes widget.');
-  assert.equal(assistantAddedWidgetReceipt([{type:'add_widget',ids:['notes','notes']}]),'Added 2 Notes widgets.');
+  assert.equal(receipt,'Added a Focus widget and a Files widget.');
+  assert.equal(assistantAddedWidgetReceipt([{type:'add_widget',ids:['notes','notes']}]),'Added 2 Files widgets.');
   assert.equal(safeAssistantReceipt('  '),'Still could not confirm whether that action completed. Check the workspace before trying again.');
   const history=prepareAssistantHistory([
     {role:'user',text:'hi'},

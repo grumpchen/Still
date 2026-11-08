@@ -15,4 +15,4 @@ export const widgetCatalog = {
 export type WidgetType = keyof typeof widgetCatalog;
 export const widgetTypes = Object.keys(widgetCatalog) as WidgetType[];
 /** Files is retained for existing Library folders and saved layouts, but new workspaces use the combined Notes/Files widget. */
-export const workspaceWidgetTypes = widgetTypes.filter(type=>type!=='files');
+export const workspaceWidgetTypes:WidgetType[] = widgetTypes.filter(type=>type!=='files');
