@@ -382,7 +382,7 @@ dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
 .note-library-location button{padding:3px 6px;border:0;border-radius:6px;background:transparent;color:var(--muted);font-size:10px}
 .note-library-location button:hover{background:var(--tint);color:var(--text)}
 .note-library-location span{display:flex;align-items:center;gap:5px}.note-library-location i{color:var(--muted);font-style:normal;opacity:.65}
-.note-library-explorer{display:grid;grid-template-columns:minmax(118px,.86fr) minmax(0,1.14fr);flex:1;min-height:0;overflow:hidden;border:1px solid var(--border);border-radius:10px;background:color-mix(in srgb,var(--surface) 70%,transparent)}
+.note-library-explorer{display:grid;grid-template-columns:minmax(118px,.86fr) minmax(0,1.14fr);flex:1;min-height:0;margin-left:-12px;overflow:hidden;border:1px solid var(--border);border-radius:0 10px 10px 0;background:color-mix(in srgb,var(--surface) 70%,transparent)}
 .note-library-explorer.is-sidebar-collapsed{grid-template-columns:minmax(0,1fr)}
 .note-library-explorer.is-sidebar-collapsed .note-library-files{display:none}
 .note-library-files{position:relative;min-height:0;overflow:auto;border:0;border-right:1px solid var(--border);border-radius:0;user-select:none}
