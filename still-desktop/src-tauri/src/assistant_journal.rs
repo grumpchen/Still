@@ -2,6 +2,7 @@
 //! data or file contents; the journal is bounded and replaced atomically.
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::HashSet,
     fs,
     path::{Path, PathBuf},
     sync::Mutex,
@@ -33,6 +34,8 @@ pub struct Operation {
 struct Journal {
     version: u8,
     records: Vec<Operation>,
+    #[serde(skip, default)]
+    live_attempts: HashSet<String>,
 }
 pub struct AssistantJournal {
     path: PathBuf,
@@ -47,16 +50,17 @@ impl AssistantJournal {
                 Journal {
                     version: 1,
                     records: vec![],
+                    live_attempts: HashSet::new(),
                 },
                 Some("Journal storage location is unavailable".to_string()),
             ),
             Ok(dir) => {
                 let path = dir.join("assistant-reviewed-operations.json");
                 match fs::read(&path){
-     Err(e) if e.kind()==std::io::ErrorKind::NotFound=>(path,Journal{version:1,records:vec![]},None),
-     Err(_)=>(path,Journal{version:1,records:vec![]},Some("Existing reviewed operation journal cannot be read".to_string())),
-     Ok(bytes) if bytes.len()>MAX_BYTES=>(path,Journal{version:1,records:vec![]},Some("Existing reviewed operation journal exceeds its size limit".to_string())),
-     Ok(bytes)=>match serde_json::from_slice::<Journal>(&bytes){Ok(j) if j.version==1&&j.records.len()<=MAX_RECORDS=>(path,j,None),_=>(path,Journal{version:1,records:vec![]},Some("Existing reviewed operation journal is invalid; it was not overwritten".to_string()))}
+     Err(e) if e.kind()==std::io::ErrorKind::NotFound=>(path,Journal{version:1,records:vec![],live_attempts:HashSet::new()},None),
+     Err(_)=>(path,Journal{version:1,records:vec![],live_attempts:HashSet::new()},Some("Existing reviewed operation journal cannot be read".to_string())),
+     Ok(bytes) if bytes.len()>MAX_BYTES=>(path,Journal{version:1,records:vec![],live_attempts:HashSet::new()},Some("Existing reviewed operation journal exceeds its size limit".to_string())),
+     Ok(bytes)=>match serde_json::from_slice::<Journal>(&bytes){Ok(j) if j.version==1&&j.records.len()<=MAX_RECORDS=>(path,j,None),_=>(path,Journal{version:1,records:vec![],live_attempts:HashSet::new()},Some("Existing reviewed operation journal is invalid; it was not overwritten".to_string()))}
     }
             }
         };
@@ -103,6 +107,7 @@ impl AssistantJournal {
         let mut next = Journal {
             version: 1,
             records: lock.records.clone(),
+            live_attempts: lock.live_attempts.clone(),
         };
         change(&mut next)?;
         self.persist(&next)?;
@@ -146,6 +151,17 @@ fn reconcile(op: &Operation, root: &Path) -> &'static str {
             "interrupted_before_move"
         }
         _ => "ambiguous",
+    }
+}
+fn reconcile_workspace(journal: &mut Journal, workspace_id: &str, root: &Path) {
+    let live = journal.live_attempts.clone();
+    for op in journal.records.iter_mut().filter(|r| {
+        r.workspace_id == workspace_id
+            && (r.state == "attempting" || r.state == "uncertain")
+            && !live.contains(&r.id)
+    }) {
+        op.state = reconcile(op, root).into();
+        op.updated_at = now();
     }
 }
 fn probe(root: &Path, relative: &str) -> Result<Option<(String, u64, Option<String>)>, ()> {
@@ -359,6 +375,7 @@ pub fn assistant_journal_start(
         }
         op.state = "attempting".into();
         op.updated_at = now();
+        j.live_attempts.insert(id.clone());
         Ok(())
     })?;
     Ok(id)
@@ -376,7 +393,7 @@ pub fn assistant_journal_finish(
     journal.update(|j|{let r=j.records.iter_mut().find(|r|r.id==id).ok_or("Operation record unavailable")?;if r.state!="attempting"{return Err("Operation is not awaiting a receipt".into())}
   let current=roots.root("still-downloads-inbox").ok().and_then(|p|p.canonicalize().ok());let evidence=current.as_ref().filter(|p|fingerprint(p)==r.root_fingerprint).map(|p|(probe(p,&r.source_path),probe(p,&r.destination_path)));
   verified=success&&r.source_identity.is_some()&&matches!(evidence,Some((Ok(None),Ok(Some((ref revision,size,Some(ref identity)))))) if revision==&r.source_revision&&size==r.source_size&&identity==r.source_identity.as_ref().unwrap());
-  r.state=if verified{"completed"}else{"uncertain"}.into();r.outcome=Some(if verified{"verified file identity at destination"}else{"execution outcome could not be verified"}.into());r.updated_at=now();Ok(())})?;
+  r.state=if verified{"completed"}else{"uncertain"}.into();r.outcome=Some(if verified{"verified file identity at destination"}else{"execution outcome could not be verified"}.into());r.updated_at=now();j.live_attempts.remove(&id);Ok(())})?;
     if success && !verified {
         return Err("The move returned, but Still could not verify its durable outcome. Inspect both folders before trying again.".into());
     }
@@ -401,13 +418,8 @@ pub fn assistant_journal_list(
         .data
         .lock()
         .map_err(|_| "Reviewed operation journal is unavailable")?;
-    for op in lock.records.iter_mut().filter(|r| {
-        r.workspace_id == workspace_id && (r.state == "attempting" || r.state == "uncertain")
-    }) {
-        if let Some(p) = root.as_ref() {
-            op.state = reconcile(op, p).into();
-            op.updated_at = now()
-        }
+    if let Some(p) = root.as_ref() {
+        reconcile_workspace(&mut lock, &workspace_id, p);
     }
     // Persist reconciliation; if it fails, preserve the in-memory facts but report them honestly.
     let result = lock
@@ -425,6 +437,7 @@ pub fn assistant_journal_list(
     let snapshot = Journal {
         version: 1,
         records: lock.records.clone(),
+        live_attempts: lock.live_attempts.clone(),
     };
     journal.persist(&snapshot)?;
     Ok(result)
@@ -465,6 +478,7 @@ mod tests {
             data: Mutex::new(Journal {
                 version: 1,
                 records: vec![],
+                live_attempts: HashSet::new(),
             }),
             load_error: None,
         };
@@ -493,7 +507,8 @@ mod tests {
         assert!(j
             .persist(&Journal {
                 version: 1,
-                records: vec![]
+                records: vec![],
+                live_attempts: HashSet::new(),
             })
             .is_ok());
         fs::remove_dir_all(dir).unwrap();
@@ -537,6 +552,43 @@ mod tests {
         }
         op.state = "pending_review".into();
         assert_eq!(op.state, "pending_review");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_live_attempt_is_not_reconciled_until_its_receipt_or_process_restart() {
+        let dir = std::env::temp_dir().join(format!("still-live-recovery-{}", now()));
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("source.txt"), b"same").unwrap();
+        let (revision, size) = crate::files::journal_file_revision(&dir, "source.txt").unwrap();
+        let op = Operation {
+            id: "run-1".into(),
+            workspace_id: "w".into(),
+            run_id: "run".into(),
+            sequence: 1,
+            root_fingerprint: fingerprint(&dir),
+            source_path: "source.txt".into(),
+            destination_path: "dest.txt".into(),
+            source_revision: revision,
+            source_size: size,
+            source_identity: crate::files::journal_file_identity(&dir, "source.txt"),
+            state: "attempting".into(),
+            outcome: None,
+            updated_at: now(),
+        };
+        let mut journal = Journal {
+            version: 1,
+            records: vec![op],
+            live_attempts: HashSet::from(["run-1".into()]),
+        };
+        reconcile_workspace(&mut journal, "w", &dir);
+        assert_eq!(journal.records[0].state, "attempting");
+        let bytes = serde_json::to_vec(&journal).unwrap();
+        assert!(!String::from_utf8_lossy(&bytes).contains("liveAttempts"));
+        let mut restarted: Journal = serde_json::from_slice(&bytes).unwrap();
+        assert!(restarted.live_attempts.is_empty());
+        reconcile_workspace(&mut restarted, "w", &dir);
+        assert_eq!(restarted.records[0].state, "interrupted_before_move");
         fs::remove_dir_all(dir).unwrap();
     }
 }
