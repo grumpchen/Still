@@ -1,5 +1,6 @@
-import {useCallback,useEffect,useMemo,useRef,useState,type PointerEvent as ReactPointerEvent} from 'react';
+import {useCallback,useEffect,useLayoutEffect,useRef,useState,type PointerEvent as ReactPointerEvent} from 'react';
 import type {PDFDocumentProxy,PDFPageProxy,RenderTask} from 'pdfjs-dist';
+import type {TextLayer as PdfTextLayer} from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import {localFiles} from './platform/files.ts';
 import {pdfOperationAt,scanPdfNumbers,togglePdfNumberSelection,type PdfArithmeticOperation} from './domain/pdfCalculations.ts';
@@ -14,17 +15,29 @@ interface Wheel {x:number;y:number;operation:PdfArithmeticOperation|null;pointer
 const operations:[PdfArithmeticOperation,string][]=[['+','pdfOperationAdd'],['-','pdfOperationSubtract'],['×','pdfOperationMultiply'],['÷','pdfOperationDivide']];
 
 export default function PdfNumberViewer({widgetId,path,name='PDF',createCalculation}:Props){
- const t=useT(),stage=useRef<HTMLDivElement>(null),canvas=useRef<HTMLCanvasElement>(null),pageRef=useRef<PDFPageProxy|null>(null),detectionRun=useRef(0),textCache=useRef(new Map<number,PdfTextSpan[]>()),pendingKeywordRequest=useRef(''),pendingKeywordText=useRef(''),selectedRef=useRef<NumberToken[]>([]);
- const [document,setDocument]=useState<PDFDocumentProxy|null>(null),[pageNumber,setPageNumber]=useState(1),[scale,setScale]=useState(1),[renderScale,setRenderScale]=useState(1),[busy,setBusy]=useState(true),[error,setError]=useState(''),[numberMode,setNumberMode]=useState(false),[numbers,setNumbers]=useState<NumberToken[]>([]),[selected,setSelected]=useState<NumberToken[]>([]),[selectionError,setSelectionError]=useState(''),[wheel,setWheel]=useState<Wheel|null>(null),[stageSize,setStageSize]=useState({width:0,height:0}),[pdfFingerprint,setPdfFingerprint]=useState(''),[pageText,setPageText]=useState<PdfTextSpan[]>([]),[appliedKeywords,setAppliedKeywords]=useState<string[]>([]),[proposedKeywords,setProposedKeywords]=useState<string[]>([]),[keywordBusy,setKeywordBusy]=useState(false),[keywordError,setKeywordError]=useState('');
+ const t=useT(),stage=useRef<HTMLDivElement>(null),canvas=useRef<HTMLCanvasElement>(null),textLayerContainer=useRef<HTMLDivElement>(null),pageRef=useRef<PDFPageProxy|null>(null),detectionRun=useRef(0),textCache=useRef(new Map<number,PdfTextSpan[]>()),pendingKeywordRequest=useRef(''),pendingKeywordText=useRef(''),selectedRef=useRef<NumberToken[]>([]);
+ const [document,setDocument]=useState<PDFDocumentProxy|null>(null),[pageNumber,setPageNumber]=useState(1),[scale,setScale]=useState(1),[renderScale,setRenderScale]=useState(1),[busy,setBusy]=useState(true),[error,setError]=useState(''),[numberMode,setNumberMode]=useState(false),[numbers,setNumbers]=useState<NumberToken[]>([]),[selected,setSelected]=useState<NumberToken[]>([]),[selectionError,setSelectionError]=useState(''),[wheel,setWheel]=useState<Wheel|null>(null),[stageSize,setStageSize]=useState({width:0,height:0}),[pdfFingerprint,setPdfFingerprint]=useState(''),[textDivs,setTextDivs]=useState<HTMLElement[]>([]),[positionedKeywords,setPositionedKeywords]=useState<PositionedKeywordRange[]>([]),[appliedKeywords,setAppliedKeywords]=useState<string[]>([]),[proposedKeywords,setProposedKeywords]=useState<string[]>([]),[keywordBusy,setKeywordBusy]=useState(false),[keywordError,setKeywordError]=useState('');
  const storageKey=pdfFingerprint?pdfHighlightStorageKey(widgetId,path,pdfFingerprint):'';
- const keywordRanges=useMemo<PositionedKeywordRange[]>(()=>{
-  const viewport=pageRef.current?.getViewport({scale:renderScale});if(!viewport||!appliedKeywords.length)return[];
-  return findPdfHighlightRanges(pageText.map(item=>item.str),appliedKeywords).flatMap(range=>{const item=pageText[range.spanIndex];if(!item||!item.str.length)return[];const origin=viewport.convertToViewportPoint(item.transform[4],item.transform[5]),fontHeight=Math.max(10,Math.hypot(item.transform[2],item.transform[3])*viewport.scale),characterWidth=Math.max(fontHeight*.25,item.width*viewport.scale/item.str.length);return[{...range,left:origin[0]+characterWidth*range.start,top:origin[1]-fontHeight*.92,width:Math.max(2,characterWidth*(range.end-range.start)),height:fontHeight*1.12}]});
- },[pageText,appliedKeywords,renderScale]);
+ useLayoutEffect(()=>{
+  const target=stage.current,container=textLayerContainer.current;if(!target||!container||!textDivs.length||!appliedKeywords.length){setPositionedKeywords([]);return}
+  const bounds=target.getBoundingClientRect(),ranges=findPdfHighlightRanges(textDivs.map(div=>div.textContent??''),appliedKeywords),rectangles:PositionedKeywordRange[]=[];
+  for(const range of ranges){
+   const div=textDivs[range.spanIndex];if(!div)continue;
+   const walker=div.ownerDocument.createTreeWalker(div,NodeFilter.SHOW_TEXT),nodes:Text[]=[];let node:Node|null=walker.nextNode(),length=0;
+   while(node){nodes.push(node as Text);length+=node.textContent?.length??0;node=walker.nextNode()}
+   if(range.start<0||range.end>length||range.end<=range.start)continue;
+   const locate=(offset:number,isEnd:boolean):{node:Text;offset:number}|null=>{let remaining=offset;for(const textNode of nodes){const size=textNode.textContent?.length??0;if(remaining<size||isEnd&&remaining===size)return{node:textNode,offset:remaining};remaining-=size}return null};
+   const start=locate(range.start,false),end=locate(range.end,true);if(!start||!end)continue;
+   const textRange=div.ownerDocument.createRange();textRange.setStart(start.node,start.offset);textRange.setEnd(end.node,end.offset);
+   for(const rect of textRange.getClientRects())if(rect.width>0&&rect.height>0)rectangles.push({...range,left:rect.left-bounds.left,top:rect.top-bounds.top,width:rect.width,height:rect.height});
+   textRange.detach();
+  }
+  setPositionedKeywords(rectangles);
+ },[appliedKeywords,textDivs,stageSize]);
 
  useEffect(()=>{
   let live=true,loading:{promise:Promise<PDFDocumentProxy>;destroy:()=>Promise<void>}|null=null;
-  setBusy(true);setError('');setDocument(null);setNumbers([]);setSelected([]);setNumberMode(false);setPageNumber(1);setScale(1);setRenderScale(1);setPdfFingerprint('');setPageText([]);setAppliedKeywords([]);setProposedKeywords([]);setKeywordBusy(false);setKeywordError('');textCache.current.clear();
+  setBusy(true);setError('');setDocument(null);setNumbers([]);setSelected([]);setNumberMode(false);setPageNumber(1);setScale(1);setRenderScale(1);setPdfFingerprint('');setTextDivs([]);setPositionedKeywords([]);setAppliedKeywords([]);setProposedKeywords([]);setKeywordBusy(false);setKeywordError('');textCache.current.clear();
   void localFiles.preview(widgetId,path).then(blob=>blob.arrayBuffer()).then(async buffer=>{
    const {getDocument,GlobalWorkerOptions}=await import('pdfjs-dist');
    if(!live)return;GlobalWorkerOptions.workerSrc=workerUrl;loading=getDocument({data:new Uint8Array(buffer),maxImageSize:16_777_216});
@@ -40,20 +53,22 @@ export default function PdfNumberViewer({widgetId,path,name='PDF',createCalculat
 
  useEffect(()=>{
   if(!document||!canvas.current)return;
-  let live=true,renderTask:RenderTask|null=null;const target=canvas.current;setPageText([]);
+  let live=true,renderTask:RenderTask|null=null,textLayer:PdfTextLayer|null=null;const target=canvas.current,container=textLayerContainer.current;setTextDivs([]);setPositionedKeywords([]);container?.replaceChildren();
   void document.getPage(pageNumber).then(async page=>{
-   if(!live)return;pageRef.current=page;
+   if(!live||!container)return;pageRef.current=page;
    const viewport=page.getViewport({scale:renderScale}),pixelRatio=Math.min(2,window.devicePixelRatio||1,Math.sqrt(16_777_216/(viewport.width*viewport.height))),context=target.getContext('2d');
    if(!context)throw new Error('PDF canvas is unavailable.');
    target.width=Math.ceil(viewport.width*pixelRatio);target.height=Math.ceil(viewport.height*pixelRatio);
    target.style.width=`${viewport.width}px`;target.style.height=`${viewport.height}px`;
    setStageSize({width:viewport.width,height:viewport.height});
    renderTask=page.render({canvas:target,canvasContext:context,viewport,transform:pixelRatio===1?undefined:[pixelRatio,0,0,pixelRatio,0,0]});
-   await renderTask.promise;
-   const spans=await loadPageText(page);if(!live)return;setPageText(spans);
+   const content=await page.getTextContent(),spans=content.items.flatMap(item=>'str'in item&&item.str?[{str:item.str,transform:[...item.transform],width:item.width}]:[]);textCache.current.set(page.pageNumber,spans);
+   container.replaceChildren();container.style.setProperty('--scale-factor',String(renderScale));container.style.setProperty('--total-scale-factor',String(renderScale));container.style.setProperty('--scale-round-x','1px');container.style.setProperty('--scale-round-y','1px');container.style.width=`${viewport.width}px`;container.style.height=`${viewport.height}px`;
+   const {TextLayer}=await import('pdfjs-dist');if(!live)return;textLayer=new TextLayer({textContentSource:content,container,viewport});
+   await Promise.all([renderTask.promise,textLayer.render()]);if(!live)return;setTextDivs(textLayer.textDivs);
    if(numberMode)await detectPageNumbers(page,viewport,spans);
   }).catch(reason=>{if(live&&(reason as Error)?.name!=='RenderingCancelledException')setError(String(reason))});
-  return()=>{live=false;detectionRun.current++;renderTask?.cancel()};
+  return()=>{live=false;detectionRun.current++;renderTask?.cancel();textLayer?.cancel()};
  },[document,pageNumber,renderScale,numberMode]);
 
  async function loadPageText(page:PDFPageProxy):Promise<PdfTextSpan[]>{
@@ -149,7 +164,8 @@ export default function PdfNumberViewer({widgetId,path,name='PDF',createCalculat
   {busy&&<p className="files-message" role="status">{t('loadingFiles')}</p>}{error&&<p className="widget-error" role="alert">{error}</p>}
   <div className="pdf-scroll-viewport"><div ref={stage} className={'pdf-page-stage'+(numberMode?' is-number-mode':'')} style={{width:stageSize.width||undefined,height:stageSize.height||undefined}}>
    <canvas ref={canvas} aria-label={`${t('pdfPage').replace('{page}',String(pageNumber)).replace('{count}',String(pageCount||'—'))}`}/>
-   {keywordRanges.map((range,index)=><span key={`${range.spanIndex}:${range.start}:${range.end}:${range.keyword}:${index}`} className="pdf-keyword-highlight" aria-hidden="true" style={{left:range.left,top:range.top,width:range.width,height:range.height}}/>)}
+   <div ref={textLayerContainer} className="pdf-text-layer" aria-hidden="true"/>
+   {positionedKeywords.map((range,index)=><span key={`${range.spanIndex}:${range.start}:${range.end}:${range.keyword}:${range.left}:${index}`} className="pdf-keyword-highlight" aria-hidden="true" style={{left:range.left,top:range.top,width:range.width,height:range.height}}/>)}
    {numberMode&&numbers.map(token=><button type="button" draggable key={token.id} className={'pdf-number-token'+(selected.some(item=>item.id===token.id)?' is-selected':'')} style={{left:token.left,top:token.top,width:token.width,height:token.height}} aria-label={`${token.raw}, ${token.value}`} aria-pressed={selected.some(item=>item.id===token.id)} onDragStart={event=>{const values=(selected.some(item=>item.id===token.id)?selected:[token]).map(item=>item.value);try{event.dataTransfer.setData('application/x-still-pdf-numbers',JSON.stringify({values,operation:'+'}));event.dataTransfer.setData('text/plain',values.join(' + '));event.dataTransfer.effectAllowed='copy'}catch{event.preventDefault()}}} onPointerDown={event=>chooseNumber(event,token)}>{token.raw}</button>)}
    {wheel&&<div className="pdf-operation-wheel" style={{left:wheel.x,top:wheel.y}} role="group" aria-label={t('pdfSelectionHint')}>
     {operations.map(([operation,label],index)=><button type="button" key={operation} className={`pdf-wheel-operation pos-${index}${wheel.operation===operation?' is-active':''}`} aria-label={t(label)} onPointerEnter={()=>setWheel(value=>value?{...value,operation}:null)} onClick={()=>applyWheel(operation)}>{operation}</button>)}
