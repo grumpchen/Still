@@ -5,6 +5,7 @@ import {createRoot} from 'react-dom/client';
 import {JSDOM} from 'jsdom';
 import {mockIPC,clearMocks} from '@tauri-apps/api/mocks';
 import {createInitialState,createWidget,minimizeWidgetInstance} from '../src/domain/workspaces.ts';
+import {folderEntries} from '../src/platform/files.ts';
 import {createServer} from 'vite';
 import {setNoteText} from './fixtures.mjs';
 
@@ -39,6 +40,10 @@ async function setup(widgets,{identity={hwnd:451,pid:902},startupDeferredIds=new
   if(command==='chrome_panel_present')return args.visible;
   if(command==='app_panel_open'||command==='app_panel_present')return info(args);
   if(command==='app_panel_identity')return identity;
+  if(command==='files_list'){
+   const source=responses.notes_library_list,items=typeof source==='function'?source(args):Array.isArray(source)?source:[];
+   return{rootName:'Study',location:args.location,entries:folderEntries(items,args.location),truncated:false};
+  }
   if(Object.hasOwn(responses,command))return typeof responses[command]==='function'?responses[command](args):responses[command];
   return null;
  },{shouldMockEvents:true});

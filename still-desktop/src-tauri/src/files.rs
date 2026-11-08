@@ -778,11 +778,18 @@ mod tests {
     }
     #[test]fn notes_library_lists_reads_creates_and_safely_replaces_supported_files(){
         let fixture=std::env::temp_dir().join(format!("still-notes-library-{}-{}",std::process::id(),std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
-        let root=fixture.join("library");fs::create_dir_all(root.join("course")).unwrap();
+        let root=fixture.join("library");fs::create_dir_all(root.join("course")).unwrap();fs::create_dir_all(root.join("empty-folder")).unwrap();
         fs::write(root.join("course/week1.MARKDOWN"),"first draft").unwrap();fs::write(root.join("ignored.html"),"no").unwrap();fs::write(root.join("large.txt"),vec![b'x';(NOTE_LIBRARY_MAX_BYTES+1) as usize]).unwrap();fs::write(root.join("large-chars.md"),"x".repeat(NOTE_LIBRARY_MAX_CHARS+1)).unwrap();
         let root=root.canonicalize().unwrap();
         let roots=FolderRoots(Mutex::new(HashMap::from([("notes-widget".into(),root.clone())])));
-        fs::write(root.join("course/diagram.pdf"),b"%PDF sample").unwrap();
+        fs::write(root.join("course/diagram.pdf"),b"%PDF sample").unwrap();fs::write(root.join("course/handout.docx"),b"office attachment").unwrap();
+        let root_listing=listing(&root,"").unwrap();
+        assert!(root_listing.entries.iter().any(|entry|entry.path=="empty-folder"&&entry.directory),"empty folders remain visible in the Files explorer");
+        assert!(root_listing.entries.iter().any(|entry|entry.path=="course"&&entry.directory),"nested folders are listed explicitly");
+        assert!(root_listing.entries.iter().any(|entry|entry.path=="ignored.html"&&!entry.directory),"unsupported document types remain visible for external opening");
+        let course_listing=listing(&root,"course").unwrap();
+        assert!(course_listing.entries.iter().any(|entry|entry.path=="course/handout.docx"&&!entry.directory),"Office documents remain visible as files");
+        assert!(course_listing.entries.iter().any(|entry|entry.path=="course/diagram.pdf"&&!entry.directory),"PDF remains visible");
         let mut entries=Vec::new();let(mut directories,mut scanned)=(0,0);collect_note_files(&root,&root,&mut entries,&mut directories,&mut scanned,0).unwrap();assert_eq!(entries.len(),3);assert!(entries.iter().any(|entry|entry.path=="course/week1.MARKDOWN"));assert!(entries.iter().any(|entry|entry.path=="course/diagram.pdf"));
         assert_eq!(read_note_file(&roots,"notes-widget","course/week1.MARKDOWN").unwrap(),"first draft");
         assert!(read_note_file(&roots,"notes-widget","large-chars.md").unwrap_err().contains("256,000-character"));

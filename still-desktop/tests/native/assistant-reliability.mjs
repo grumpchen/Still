@@ -319,6 +319,10 @@ async function runLibrary(page) {
     const folder=join(notesRoot,'Course','Week 2');
     const note=join(folder,'Welcome.md');
     await mkdir(join(notesRoot,'Course'),{recursive:true});
+    await writeFile(join(notesRoot,'Course','Existing.md'),'Existing fixture note.\n');
+    await expect(page.locator('[data-file-path="Course"]')).toBeVisible();
+    await page.locator('[data-file-path="Course"]').click();
+    await expect(page.locator('.note-library-location')).toContainText('Course');
     await openAssistant(page);
     await mentionNotes(page,'Create a Week 2 folder inside Course in my Notes Library, then create a Welcome note in it with a short heading.');
     await page.locator('.assistant-compose').evaluate(form=>form.requestSubmit());
@@ -326,6 +330,7 @@ async function runLibrary(page) {
     await expect(review).toContainText('Course/Week 2/');
     await assert.rejects(stat(folder));
     await review.getByRole('button',{name:'Approve and create folder',exact:true}).click();
+    await expect(page.locator('[data-file-path="Course/Week 2"]')).toBeVisible();
     await expect(page.getByRole('region',{name:'Review new Notes Library note',exact:true})).toContainText('Course/Week 2/Welcome.md');
     assert((await stat(folder)).isDirectory());
     await assert.rejects(readFile(note));
@@ -335,6 +340,8 @@ async function runLibrary(page) {
     await page.getByRole('region',{name:'Review new Notes Library note',exact:true}).getByRole('button',{name:'Approve and create note',exact:true}).click();
     await expect(page.getByText('Fixture Library folder and note workflow complete.',{exact:true})).toBeVisible();
     assert.equal(await readFile(note,'utf8'),'## Week 2\nCreated through the reviewed folder workflow.');
+    await page.locator('[data-file-path="Course/Week 2"]').click();
+    await expect(page.locator('[data-file-path="Course/Week 2/Welcome.md"]')).toBeVisible();
     const noteReceipt=await page.evaluate(()=>JSON.parse(window.__fixtureTurns[2].messages.at(-1).content));
     assert.equal(noteReceipt.mutation,'applied');
     assert.equal(noteReceipt.result.entry.path,'Course/Week 2/Welcome.md');
