@@ -365,9 +365,10 @@ dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
 .note-tab-add{min-width:28px;width:28px;padding:4px;font-size:16px;line-height:1}
 .note-library-toggle{flex:0 0 auto;max-width:135px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-left:auto;padding:5px 9px;border:1px solid var(--border);border-radius:9px;background:var(--surface);color:var(--muted);font-size:11px}
 .note-library{display:flex;flex:1 1 0;flex-direction:column;min-height:0;max-height:none;padding:9px 12px;gap:8px;overflow:hidden;border-bottom:1px solid var(--border);background:var(--surface)}
-.note-library-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:30px;color:var(--text);font-size:12px}
+.note-library-heading{display:flex;align-items:center;justify-content:flex-start;gap:8px;min-height:30px;color:var(--text);font-size:12px}
 .note-library-heading>strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
-.note-library-heading>div{display:flex;gap:5px;flex:0 0 auto}
+.note-library-heading>div{display:flex;gap:5px;flex:0 0 auto;margin-left:auto}
+.note-library-heading>.note-library-sidebar-toggle{flex:none;width:30px;height:28px;padding:0;border-radius:10px;font-size:16px;line-height:1}
 .note-library-heading button,.note-library-new button{padding:5px 8px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:11px}
 .note-library-new{display:flex;gap:6px}
 .note-library-new input{min-width:0;flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:12px}
