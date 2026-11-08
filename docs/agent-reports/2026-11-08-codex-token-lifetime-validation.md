@@ -16,8 +16,9 @@
 - `cargo test --offline --test chatgpt_auth_scaffold accepts_codex_token_lifetimes_longer_than_one_day -- --nocapture` failed before the fix at the old 86,400-second ceiling.
 - `cargo test --offline --test chatgpt_auth_scaffold -- --nocapture` passed (13 tests) after the fix.
 - The lifetime mismatch is a code-level reproduction of the screenshot's generic validation error, but the exact lifetime in the user's private token response was not observed.
-- Native rebuild is in progress; successful live OAuth reconnect has not yet been verified.
+- Native `Still · Live Development` rebuild from this checkout completed and launched against its Vite frontend. A successful live OAuth reconnect has not yet been verified.
 
 ## Handoff
 - Verify the rebuilt Still · Live Development window, reconnect once, and confirm the error is gone and Codex models load. If a new categorized error appears, use it to continue without exposing callback URLs or token contents. No release executable was run, replaced, pushed, or merged.
+
 
