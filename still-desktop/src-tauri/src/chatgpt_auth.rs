@@ -316,7 +316,9 @@ fn validate_token_response(
     if !response.token_type.eq_ignore_ascii_case("bearer") {
         return Err("Codex returned an unsupported token type.");
     }
-    if !(1..=86_400).contains(&response.expires_in) {
+    // Codex controls the token lifetime. Reject zero (already expired), but do
+    // not apply the legacy flow's arbitrary one-day ceiling to its OAuth data.
+    if response.expires_in == 0 {
         return Err("Codex returned an invalid token lifetime.");
     }
     let scopes: Vec<String> = response
@@ -942,6 +944,28 @@ mod tests {
             assert!(!error.contains("access-secret"));
             assert!(!error.contains("refresh-secret"));
         }
+    }
+
+    #[test]
+    fn accepts_codex_token_lifetimes_longer_than_one_day() {
+        let response = TokenResponse {
+            access_token: "access-secret".into(),
+            refresh_token: "refresh-secret".into(),
+            id_token: signed_id_token(serde_json::json!({})),
+            token_type: "Bearer".into(),
+            expires_in: 7 * 24 * 60 * 60,
+            scope: "openid profile email offline_access api.connectors.read api.connectors.invoke"
+                .into(),
+        };
+
+        assert!(validate_token_response(
+            response,
+            "app_EMoamEEZ73f0CkXaXp7hrann",
+            &test_jwks(),
+            Some("test-nonce"),
+            None,
+        )
+        .is_ok());
     }
 
     #[test]
