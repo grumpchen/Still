@@ -74,18 +74,37 @@ test('distinguishes validation failure, thrown possibly-mutating failure, and su
   assert.equal(outcome.actionOutcome,'no_mutation');
 });
 
-test('stops after the configured tool-round budget and returns the real last tool result',async()=>{
+test('allows a final response after the configured tool-round budget',async()=>{
   let modelRequests=0,executions=0;
   const outcome=await runAgentLoop({history:[userMessage],maxSteps:1,
-    requestModel:async()=>{modelRequests++;return {kind:'tool_calls',assistantMessage:{role:'assistant'},calls:[{id:'c1',name:'read',input:{}}]};},
+    requestModel:async()=>{modelRequests++;return modelRequests===1
+      ? {kind:'tool_calls',assistantMessage:{role:'assistant'},calls:[{id:'c1',name:'read',input:{}}]}
+      : {kind:'final',response:'The read completed.'};},
+    executeTool:async()=>{executions++;return {status:'succeeded',mutation:'none',result:{value:'actual'}};},
+    appendToolRound,
+  });
+  assert.equal(outcome.status,'final');
+  assert.equal(outcome.response,'The read completed.');
+  assert.equal(outcome.steps,1);
+  assert.equal(modelRequests,2);
+  assert.equal(executions,1);
+  assert.deepEqual(outcome.toolResults[0].execution,{status:'succeeded',mutation:'none',result:{value:'actual'}});
+});
+
+test('does not execute a new tool after the configured budget but reports the refusal',async()=>{
+  let modelRequests=0,executions=0;
+  const outcome=await runAgentLoop({history:[userMessage],maxSteps:1,
+    requestModel:async()=>{modelRequests++;return {kind:'tool_calls',assistantMessage:{role:'assistant'},calls:[{id:`c${modelRequests}`,name:'read',input:{}}]};},
     executeTool:async()=>{executions++;return {status:'succeeded',mutation:'none',result:{value:'actual'}};},
     appendToolRound,
   });
   assert.equal(outcome.status,'step_limit');
   assert.equal(outcome.steps,1);
-  assert.equal(modelRequests,1);
+  assert.equal(modelRequests,2);
   assert.equal(executions,1);
+  assert.equal(outcome.toolResults.length,2);
   assert.deepEqual(outcome.toolResults[0].execution,{status:'succeeded',mutation:'none',result:{value:'actual'}});
+  assert.deepEqual(outcome.toolResults[1].execution,{status:'failed',mutation:'none',error:'Step limit reached; this call was not executed.'});
 });
 
 test('enforces total tool-call limit and returns failures for calls it refused to run',async()=>{

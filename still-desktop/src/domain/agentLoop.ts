@@ -279,7 +279,9 @@ async function runAgentLoopFromState<Message, Final>(
 
     if (wasCancelled || options.signal?.aborted) return loopResult('cancelled', history, toolResults, steps, toolCalls);
     if (overToolLimit) return loopResult('tool_limit', history, toolResults, steps, toolCalls);
-    if (steps >= maxSteps) return loopResult('step_limit', history, toolResults, steps, toolCalls);
+    // Ask the provider to summarize the results of the last permitted tool
+    // round. If it asks for more tools, the budget check at the top of this
+    // loop returns step_limit without executing them.
   }
 }
 
