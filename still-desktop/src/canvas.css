@@ -368,7 +368,7 @@ dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
 .note-library-heading{display:flex;align-items:center;justify-content:flex-start;gap:8px;min-height:30px;color:var(--text);font-size:12px}
 .note-library-heading>strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
 .note-library-heading>div{display:flex;gap:5px;flex:0 0 auto;margin-left:auto}
-.note-library-heading>.note-library-sidebar-toggle{flex:none;width:30px;height:28px;padding:0;border-radius:10px;font-size:16px;line-height:1}
+.note-library-heading>.note-library-sidebar-toggle{flex:none;width:30px;height:28px;padding:0;border-radius:10px;font-size:16px;line-height:1;margin-left:-3px}
 .note-library-heading button,.note-library-new button{padding:5px 8px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:11px}
 .note-library-new{display:flex;gap:6px}
 .note-library-new input{min-width:0;flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:12px}
