@@ -62,3 +62,21 @@ test('Files selects rows with a pointer marquee and does not add checkbox contro
   assert.equal(window.document.querySelectorAll('.note-library-files input[type="checkbox"]').length,0,'selection is performed by dragging a box, not by persistent checkboxes');
  }finally{if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();for(const [key,descriptor] of old)if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}
 });
+
+test('Files keeps the newest Markdown selection when an older file read finishes last',async()=>{
+ const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true}),{window}=dom;
+ const globals={window,document:window.document,navigator:window.navigator,localStorage:window.localStorage,HTMLElement:window.HTMLElement,Element:window.Element,Node:window.Node,Event:window.Event,CustomEvent:window.CustomEvent,MutationObserver:window.MutationObserver,IS_REACT_ACT_ENVIRONMENT:true,isTauri:true};
+ const old=Object.keys(globals).map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]);let root;
+ try{
+  for(const [key,value] of Object.entries(globals))setGlobal(key,value);
+  window.__TAURI_INTERNALS__={};
+  mockIPC(async(command,args)=>{if(command==='notes_library_read'){await new Promise(resolve=>setTimeout(resolve,args.path==='slow.md'?70:5));return args.path==='slow.md'?'OLDER CONTENT':'NEWER CONTENT'}return null},{shouldMockEvents:true});
+  const {default:NotesLibraryExplorer}=await vite.ssrLoadModule('/src/NotesLibraryExplorer.tsx');
+  root=createRoot(window.document.querySelector('#root'));
+  await act(async()=>root.render(createElement(NotesLibraryExplorer,{widgetId:'course-library',connected:true,libraryName:'Course',entries:[{name:'slow.md',path:'slow.md',size:14},{name:'fast.md',path:'fast.md',size:14}],busy:false,error:'',newName:'',onNewName(){},onRefresh(){},onChoose(){},onCreate:async()=>null,onOpenNote:async()=>{},renderNoteEditor:()=>null})));
+  const older=window.document.querySelector('[data-file-path="slow.md"]'),newer=window.document.querySelector('[data-file-path="fast.md"]');
+  await act(async()=>{older.click();newer.click();await new Promise(resolve=>setTimeout(resolve,100))});
+  assert.equal(window.document.querySelector('.note-library-preview-head strong')?.textContent,'fast.md');
+  assert.equal(window.document.querySelector('.note-library-editor')?.value,'NEWER CONTENT','the late response from the first file must not replace the latest selection');
+ }finally{if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();for(const [key,descriptor] of old)if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}
+});

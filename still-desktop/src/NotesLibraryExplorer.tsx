@@ -34,6 +34,7 @@ export default function NotesLibraryExplorer({widgetId,connected,libraryName,ent
  const [location,setLocation]=useState(''),[filter,setFilter]=useState(''),[sidebarCollapsed,setSidebarCollapsed]=useState(false),[selectedFilePaths,setSelectedFilePaths]=useState<string[]>([]),[selectionBox,setSelectionBox]=useState<SelectionBox|null>(null),[selected,setSelected]=useState<FileEntry|null>(null),[preview,setPreview]=useState<Preview|null>(null),[previewError,setPreviewError]=useState(''),[previewBusy,setPreviewBusy]=useState(false),[folderName,setFolderName]=useState(''),[folderError,setFolderError]=useState(''),[folderBusy,setFolderBusy]=useState(false),[showFolderForm,setShowFolderForm]=useState(false);
  const mounted=useRef(true),noteBaseline=useRef(new Map<string,string>()),noteDrafts=useRef(new Map<string,string>());
  const fileSelectionStart=useRef<{x:number;y:number;list:HTMLDivElement;moved:boolean}|null>(null),ignoreFileClick=useRef(false);
+ const selectionRequest=useRef(0);
  const [noteDraft,setNoteDraft]=useState(''),[noteSaving,setNoteSaving]=useState(false);
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false}},[]);
  const openRequest=useRef<string|null>(null);
@@ -41,22 +42,24 @@ export default function NotesLibraryExplorer({widgetId,connected,libraryName,ent
  useEffect(()=>()=>{if(preview?.url)URL.revokeObjectURL(preview.url)},[preview?.url]);
  const rows=useMemo<FileEntry[]>(()=>{const needle=filter.trim().toLocaleLowerCase();return folderEntries(entries,location).filter(file=>!needle||`${file.name} ${file.path}`.toLocaleLowerCase().includes(needle))},[entries,location,filter]);
  const parts=location?location.split('/'):[];
- function navigate(next:string){setLocation(next);setFilter('');setSelected(null);setPreview(null);setPreviewError('');setSelectedFilePaths([])}
+ function navigate(next:string){selectionRequest.current++;setLocation(next);setFilter('');setSelected(null);setPreview(null);setPreviewError('');setSelectedFilePaths([])}
  function beginFileSelection(event:ReactPointerEvent<HTMLDivElement>){if(event.button!==0||!connected||busy)return;const list=event.currentTarget,start={x:event.clientX,y:event.clientY,list,moved:false};fileSelectionStart.current=start;const update=(pointX:number,pointY:number)=>{const current=fileSelectionStart.current;if(!current)return;if(Math.hypot(pointX-current.x,pointY-current.y)<4)return;current.moved=true;const bounds=current.list.getBoundingClientRect(),left=Math.min(current.x,pointX),right=Math.max(current.x,pointX),top=Math.min(current.y,pointY),bottom=Math.max(current.y,pointY);setSelectionBox({left:left-bounds.left+current.list.scrollLeft,top:top-bounds.top+current.list.scrollTop,width:right-left,height:bottom-top});const selected=Array.from(current.list.querySelectorAll<HTMLElement>('[data-file-path]')).filter(node=>{const rect=node.getBoundingClientRect();return rect.left<right&&rect.right>left&&rect.top<bottom&&rect.bottom>top}).map(node=>node.dataset.filePath!).filter(Boolean);setSelectedFilePaths(selected)};const move=(pointer:globalThis.PointerEvent)=>{if(pointer.pointerId!==event.pointerId)return;update(pointer.clientX,pointer.clientY);if(fileSelectionStart.current?.moved)pointer.preventDefault()};const finish=(pointer:globalThis.PointerEvent)=>{if(pointer.pointerId!==event.pointerId)return;const current=fileSelectionStart.current;if(current&&!current.moved&&pointer.target===list)setSelectedFilePaths([]);if(current?.moved){ignoreFileClick.current=true;setTimeout(()=>{ignoreFileClick.current=false},250)}fileSelectionStart.current=null;setSelectionBox(null);window.removeEventListener('pointermove',move,true);window.removeEventListener('pointerup',finish,true);window.removeEventListener('pointercancel',finish,true)};window.addEventListener('pointermove',move,true);window.addEventListener('pointerup',finish,true);window.addEventListener('pointercancel',finish,true)}
  async function selectFile(file:FileEntry){
   if(file.directory){navigate(file.path);return}
+  const request=++selectionRequest.current,isCurrent=()=>mounted.current&&request===selectionRequest.current;
   setSelected(file);setPreview(null);setNoteDraft('');setPreviewError('');setPreviewBusy(true);
   try{
    if(editableNote(file.name)){
     await onOpenNote({path:file.path,name:file.name,size:file.size});
-    const text=await notesLibrary.read(widgetId,file.path);if(mounted.current){if(!noteBaseline.current.has(file.path))noteBaseline.current.set(file.path,text);setNoteDraft(noteDrafts.current.get(file.path)??text);setPreview({url:null,mimeType:'text/plain',text})};
+    if(!isCurrent())return;
+    const text=await notesLibrary.read(widgetId,file.path);if(isCurrent()){if(!noteBaseline.current.has(file.path))noteBaseline.current.set(file.path,text);setNoteDraft(noteDrafts.current.get(file.path)??text);setPreview({url:null,mimeType:'text/plain',text})};
    }else if(/\.pdf$/i.test(file.name)){
     setPreview({url:null,mimeType:'application/pdf',text:null});
    }else{
     const blob=await localFiles.preview(widgetId,file.path),url=URL.createObjectURL(blob),mimeType=blob.type||'application/octet-stream',text=mimeType==='text/plain'?await blob.text():null;
-    if(mounted.current)setPreview({url,mimeType,text});else URL.revokeObjectURL(url);
+    if(isCurrent())setPreview({url,mimeType,text});else URL.revokeObjectURL(url);
    }
-  }catch(reason){if(mounted.current)setPreviewError(String(reason))}finally{if(mounted.current)setPreviewBusy(false)}
+  }catch(reason){if(isCurrent())setPreviewError(String(reason))}finally{if(isCurrent())setPreviewBusy(false)}
  }
  function openPath(path:string){const file=entries.find(entry=>entry.path===path);if(!file)return;const folder=path.includes('/')?path.slice(0,path.lastIndexOf('/')):'';setLocation(folder);setFilter('');setSelectedFilePaths([]);void selectFile({...file,directory:false,blocked:false})}
  function createNoteInCurrentFolder(){void(async()=>{const created=await onCreate(location);if(created)await selectFile({...created,directory:false,blocked:false})})()}
@@ -64,8 +67,8 @@ export default function NotesLibraryExplorer({widgetId,connected,libraryName,ent
  async function openExternal(){if(!selected)return;try{await localFiles.open(widgetId,selected.path)}catch(reason){setPreviewError(String(reason))}}
  async function openWithAnotherApp(){if(!selected)return;try{await localFiles.openWith(widgetId,selected.path)}catch(reason){setPreviewError(String(reason))}}
 
- async function saveSelectedNote(){if(!selected||!editableNote(selected.name)||noteSaving)return;const expected=noteBaseline.current.get(selected.path);if(expected===undefined){setPreviewError(t('noteDraftSaveFailed'));return}setNoteSaving(true);setPreviewError('');try{await notesLibrary.write(widgetId,selected.path,noteDraft,expected);noteBaseline.current.set(selected.path,noteDraft);noteDrafts.current.delete(selected.path);setPreview({url:null,mimeType:'text/plain',text:noteDraft})}catch(reason){setPreviewError(String(reason))}finally{if(mounted.current)setNoteSaving(false)}}
- async function reloadSelectedNote(){if(!selected||!editableNote(selected.name)||noteSaving)return;setNoteSaving(true);setPreviewError('');try{const text=await notesLibrary.read(widgetId,selected.path);noteBaseline.current.set(selected.path,text);noteDrafts.current.delete(selected.path);setNoteDraft(text);setPreview({url:null,mimeType:'text/plain',text})}catch(reason){setPreviewError(String(reason))}finally{if(mounted.current)setNoteSaving(false)}}
+ async function saveSelectedNote(){if(!selected||!editableNote(selected.name)||noteSaving)return;const file=selected,draft=noteDraft,request=selectionRequest.current,expected=noteBaseline.current.get(file.path);if(expected===undefined){setPreviewError(t('noteDraftSaveFailed'));return}setNoteSaving(true);setPreviewError('');try{await notesLibrary.write(widgetId,file.path,draft,expected);noteBaseline.current.set(file.path,draft);noteDrafts.current.delete(file.path);if(mounted.current&&selectionRequest.current===request){setPreview({url:null,mimeType:'text/plain',text:draft})}}catch(reason){if(mounted.current&&selectionRequest.current===request)setPreviewError(String(reason))}finally{if(mounted.current)setNoteSaving(false)}}
+ async function reloadSelectedNote(){if(!selected||!editableNote(selected.name)||noteSaving)return;const file=selected,request=selectionRequest.current;setNoteSaving(true);setPreviewError('');try{const text=await notesLibrary.read(widgetId,file.path);if(!mounted.current||selectionRequest.current!==request)return;noteBaseline.current.set(file.path,text);noteDrafts.current.delete(file.path);setNoteDraft(text);setPreview({url:null,mimeType:'text/plain',text})}catch(reason){if(mounted.current&&selectionRequest.current===request)setPreviewError(String(reason))}finally{if(mounted.current)setNoteSaving(false)}}
 
  const crumbPaths=parts.map((part,index)=>({name:part,path:parts.slice(0,index+1).join('/')}));
  if(!connected)return <section className="note-library" aria-label={t('chooseNotesFolder')}><div className="note-library-heading"><strong>{t('chooseNotesFolder')}</strong><button type="button" disabled={busy} onClick={onChoose}>{t('chooseFolder')}…</button></div><div className="note-library-preview-empty"><span>▤</span><p>{t('openNotesFolderHelp')}</p><small>{t('filesStayLocal')}</small></div>{error&&<p className="widget-error" role="alert">{error}</p>}</section>;

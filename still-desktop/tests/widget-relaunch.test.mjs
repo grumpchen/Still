@@ -117,6 +117,20 @@ test('Notes library opens Markdown tabs beside local notes and writes edits to t
  }finally{await app.cleanup()}
 });
 
+test('Notes library keeps the latest tab when file reads resolve out of order',async()=>{
+ const widget=createWidget('notes'),app=await setup([widget],{responses:{notes_library_choose:'Study',notes_library_list:[{name:'slow.md',path:'slow.md',size:5},{name:'fast.md',path:'fast.md',size:5}],notes_library_read:async args=>{await new Promise(resolve=>setTimeout(resolve,args.path==='slow.md'?70:5));return args.path==='slow.md'?'OLD':'NEW'}}});
+ try{
+  const choose=[...app.window.document.querySelectorAll('.note-library-heading button')].find(button=>button.textContent.includes('Choose folder'));
+  await act(async()=>choose.click());
+  const slow=app.window.document.querySelector('[data-file-path="slow.md"]'),fast=app.window.document.querySelector('[data-file-path="fast.md"]');
+  await act(async()=>{slow.click();fast.click();await new Promise(resolve=>setTimeout(resolve,120))});
+  const selected=app.currentState.workspaces[0].widgets[0].noteDocuments.find(note=>note.sourcePath==='fast.md');
+  assert.ok(selected,'the newest Markdown file remains the active note tab');
+  assert.equal(selected.text,'NEW','the older, slower read cannot replace newer tab content');
+  assert.equal(app.window.document.querySelector('.note-library-preview-head strong')?.textContent,'fast.md');
+ }finally{await app.cleanup()}
+});
+
 test('AI summary notes use the selected folder and preserve the source note',async()=>{
  const widget=createWidget('notes');widget.notesLibraryKey=widget.id;widget.notesLibraryName='Study';const source={...widget.noteDocuments[0],id:'lecture-source',title:'Lecture',text:'Original lecture facts',sourcePath:'Chemistry/lecture.md'};widget.noteDocuments=[source];widget.activeNoteDocumentId=source.id;widget.title=source.title;widget.text=source.text;
  let summaryText='';const sourceEntry={name:'lecture.md',path:'Chemistry/lecture.md',size:22};
