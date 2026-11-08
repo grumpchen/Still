@@ -1,9 +1,9 @@
 export type AssistantRunRecoveryStage='awaiting_review'|'applying'|'receipt_saved';
-export type AssistantRunRecoveryKind='add_widget'|'workspace_action'|'inbox_moves'|'library_edit'|'library_create_note'|'assistant_memory'|'assistant_review';
+export type AssistantRunRecoveryKind='add_widget'|'workspace_action'|'inbox_moves'|'library_edit'|'library_create_note'|'library_create_folder'|'assistant_memory'|'assistant_review';
 export type AssistantRunRecovery={version:1;workspaceId:string;runId:string;stage:AssistantRunRecoveryStage;kind:AssistantRunRecoveryKind;updatedAt:number};
 
 const PREFIX='still-assistant-run-recovery-v1:';
-const KINDS=new Set<AssistantRunRecoveryKind>(['add_widget','workspace_action','inbox_moves','library_edit','library_create_note','assistant_memory','assistant_review']);
+const KINDS=new Set<AssistantRunRecoveryKind>(['add_widget','workspace_action','inbox_moves','library_edit','library_create_note','library_create_folder','assistant_memory','assistant_review']);
 function defaultStorage():Pick<Storage,'getItem'|'setItem'|'removeItem'>|undefined{try{return globalThis.localStorage}catch{return undefined}}
 function key(workspaceId:string){return PREFIX+encodeURIComponent(workspaceId)}
 

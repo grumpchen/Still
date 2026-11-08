@@ -56,7 +56,7 @@ fn main() {
             files::files_choose,files::files_still_inbox,files::files_choose_inbox, files::files_list,files::files_create_folder,files::files_move_to_inbox,files::files_search,files::files_library_search, files::files_open,files::files_open_with,files::files_reuse,files::files_preview,files::files_extract_pdf_text,files::files_move_resource,
             files::notes_library_choose,files::notes_library_list,files::notes_library_search,files::notes_library_read,files::notes_library_write,files::notes_library_create,
             assistant_journal::assistant_journal_plan,assistant_journal::assistant_journal_start,assistant_journal::assistant_journal_finish,assistant_journal::assistant_journal_list,assistant_journal::assistant_journal_dismiss,
-            files::notes_library_agent_grant,files::notes_library_agent_list,files::notes_library_agent_search,files::notes_library_agent_read,files::notes_library_agent_write,files::notes_library_agent_create,
+            files::notes_library_agent_grant,files::notes_library_agent_list,files::notes_library_agent_search,files::notes_library_agent_read,files::notes_library_agent_write,files::notes_library_agent_create,files::notes_library_agent_create_folder,
             dropped_files::document_open, dropped_files::document_choose,dropped_files::document_preview,
             dropped_files::app_open, dropped_files::app_choose,
             app_panel::app_panel_open,app_panel::app_panel_prepare_launch,app_panel::app_panel_windows,app_panel::app_panel_identity,app_panel::app_panel_attach,app_panel::app_panel_present,app_panel::app_panel_release,app_panel::app_panel_suspend,app_panel::app_panel_resume,app_panel::app_panel_configure_shutdown,

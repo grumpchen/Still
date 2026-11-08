@@ -47,3 +47,9 @@ test('malformed recovery records fail closed and storage failures are reported',
  const full={getItem:()=>null,setItem:()=>{throw new Error('full')},removeItem:()=>{}};
  assert.equal(writeAssistantRunRecovery({workspaceId:'study',runId:'run',stage:'awaiting_review',kind:'workspace_action'},full),false);
 });
+
+test('Library folder proposals are valid recoverable review records',()=>{
+ const storage=store();
+ assert.equal(writeAssistantRunRecovery({workspaceId:'study',runId:'folder-1',stage:'awaiting_review',kind:'library_create_folder'},storage),true);
+ assert.equal(readAssistantRunRecovery('study',storage)?.kind,'library_create_folder');
+});

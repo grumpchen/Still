@@ -136,7 +136,7 @@ fn resolve(root: &Path, relative: &str) -> Result<PathBuf, String> {
     if !target.starts_with(&root) { return Err("This shortcut points outside the selected folder".into()); }
     Ok(target)
 }
-fn valid_filing_segment(segment:&str)->bool{
+pub(crate) fn valid_filing_segment(segment:&str)->bool{
     if segment.is_empty()||segment=="."||segment==".."||segment.len()>100||segment.ends_with(' ')||segment.ends_with('.')||segment.chars().any(|value|value.is_control()||matches!(value,'<'|'>'|':'|'"'|'/'|'\\'|'|'|'?'|'*')){return false}
     let device=segment.split('.').next().unwrap_or("").trim_end_matches(|value|value==' '||value=='.').to_ascii_uppercase();
     !matches!(device.as_str(),"CON"|"PRN"|"AUX"|"NUL")&&!(device.strip_prefix("COM").or_else(||device.strip_prefix("LPT")).is_some_and(|number|matches!(number,"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9")))
@@ -369,6 +369,18 @@ fn notes_agent_create(roots:&FolderRoots,id:&str,grant:&str,location:&str,title:
     if text.chars().count()>NOTES_AGENT_MAX_CREATE_CHARS{return Err("Agent-created notes are limited to 12,000 characters.".into())}
     create_note_at_root(&root,location,title,text)
 }
+fn notes_agent_create_folder(roots:&FolderRoots,id:&str,grant:&str,location:&str,name:&str)->Result<String,String>{
+    let root=verify_notes_agent_grant(roots,id,grant)?;
+    validate_filing_folder(location)?;
+    if !valid_filing_segment(name){return Err("Choose a valid new folder name.".into())}
+    let parent=if location.is_empty(){root.canonicalize().map_err(|_|"The selected notes folder is unavailable. Choose it again.")?}else{ensure_filing_folder(&root,location,false)?};
+    if !parent.is_dir(){return Err("The selected parent folder is unavailable.".into())}
+    let target=parent.join(name);
+    fs::create_dir(&target).map_err(|_|"Could not create this folder. It may already exist or the parent is unavailable.".to_string())?;
+    let canonical=target.canonicalize().map_err(|_|"Could not verify the new folder.")?;
+    if !canonical.starts_with(&root){let _=fs::remove_dir(&target);return Err("The new folder is outside the selected notes folder.".into())}
+    Ok(if location.is_empty(){name.to_owned()}else{format!("{location}/{name}")})
+}
 fn read_note_from_root_limited(root:&Path,relative:&str,max_bytes:u64)->Result<String,String>{
     let target=resolve(root,relative)?;
     if !supported_note(&target){return Err("Choose a Markdown or text file inside the selected notes folder".into())}
@@ -518,6 +530,10 @@ pub async fn notes_library_agent_write(webview:Webview,roots:State<'_,FolderRoot
 #[tauri::command]
 pub async fn notes_library_agent_create(webview:Webview,roots:State<'_,FolderRoots>,id:String,grant:String,location:String,title:String,text:String)->Result<NoteLibraryEntry,String>{
     crate::security::authorize(&webview)?;notes_agent_create(&roots,&id,&grant,&location,&title,&text)
+}
+#[tauri::command]
+pub async fn notes_library_agent_create_folder(webview:Webview,roots:State<'_,FolderRoots>,id:String,grant:String,location:String,name:String)->Result<String,String>{
+    crate::security::authorize(&webview)?;notes_agent_create_folder(&roots,&id,&grant,&location,&name)
 }
 #[tauri::command]
 pub async fn notes_library_write(webview:Webview,roots:State<'_,FolderRoots>,id:String,path:String,text:String,expected:String)->Result<(),String>{
@@ -812,6 +828,20 @@ mod tests {
         roots.0.lock().unwrap().insert("notes-widget".into(),other);
         assert!(notes_agent_create(&roots,"notes-widget",&grant,"","Wrong folder","no").err().unwrap().contains("grant changed"));
         assert!(!root.join("Wrong folder.md").exists());
+        fs::remove_dir_all(fixture).unwrap();
+    }
+    #[test]fn agent_folder_creation_requires_the_current_grant_and_existing_parent(){
+        let fixture=std::env::temp_dir().join(format!("still-agent-create-folder-{}-{}",std::process::id(),std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let root=fixture.join("granted");let other=fixture.join("other");fs::create_dir_all(root.join("Course")).unwrap();fs::create_dir_all(&other).unwrap();
+        let root=root.canonicalize().unwrap();let other=other.canonicalize().unwrap();let roots=FolderRoots(Mutex::new(HashMap::from([("notes-widget".into(),root.clone())])));let grant=notes_agent_grant_token(&roots,"notes-widget").unwrap();
+        assert_eq!(notes_agent_create_folder(&roots,"notes-widget",&grant,"Course","Week 2").unwrap(),"Course/Week 2");assert!(root.join("Course/Week 2").is_dir());
+        assert_eq!(notes_agent_create_folder(&roots,"notes-widget",&grant,"","New Folder").unwrap(),"New Folder");
+        assert!(notes_agent_create_folder(&roots,"notes-widget",&grant,"Course","Week 2").is_err());
+        assert!(notes_agent_create_folder(&roots,"notes-widget",&grant,"Missing","Nested").is_err());
+        assert!(notes_agent_create_folder(&roots,"notes-widget",&grant,"../other","Outside").is_err());
+        assert!(notes_agent_create_folder(&roots,"notes-widget",&grant,"Course","CON").is_err());
+        roots.0.lock().unwrap().insert("notes-widget".into(),other);
+        assert!(notes_agent_create_folder(&roots,"notes-widget",&grant,"","Wrong grant").unwrap_err().contains("grant changed"));assert!(!root.join("Wrong grant").exists());
         fs::remove_dir_all(fixture).unwrap();
     }
     #[test]fn files_can_be_filed_only_inside_the_granted_root_without_overwriting(){

@@ -15,6 +15,7 @@ node --import tsx tests/native/assistant-reliability.mjs resize-widget
 node --import tsx tests/native/assistant-reliability.mjs library-edit
 node --import tsx tests/native/assistant-reliability.mjs library-conflict
 node --import tsx tests/native/assistant-reliability.mjs library-create
+node --import tsx tests/native/assistant-reliability.mjs library-folder-create
 node --import tsx tests/native/assistant-reliability.mjs pdf-highlights
 node --import tsx tests/native/assistant-reliability.mjs files-viewers
 ```

@@ -13,7 +13,7 @@ import { createInitialState, createWidget, createWorkspace } from '../../src/dom
 const mode = process.argv[2];
 const expect=playwrightExpect.configure({timeout:15_000});
 assert(process.platform === 'win32' && process.env.APPDATA, 'This fixture requires Windows with WebView2.');
-assert(['success','stale','timeout','restart','revoke','theme','move-widget','resize-widget','library-edit','library-conflict','library-create','pdf-highlights','files-viewers'].includes(mode), 'Specify an acceptance case from tests/native/README.md.');
+assert(['success','stale','timeout','restart','revoke','theme','move-widget','resize-widget','library-edit','library-conflict','library-create','library-folder-create','pdf-highlights','files-viewers'].includes(mode), 'Specify an acceptance case from tests/native/README.md.');
 const libraryCase = mode.startsWith('library-');
 const pdfCase = mode==='pdf-highlights';
 const filesViewerCase = mode==='files-viewers';
@@ -180,6 +180,12 @@ geminiAssistant.agentTurn=async function(request){
   if(receipt?.result?.receipt!=='Created Course/AI Summary.md in the selected Notes Library after review.')throw new Error('Did not receive the verified native creation receipt.');
   return {kind:'final',response:{intent:'chat',reply:'Fixture Library note creation complete.',layout:[],actions:[]}};
  }
+ if(${JSON.stringify(mode==='library-folder-create')}){
+  if(!request.enable_library_tool||!request.enable_library_edit_tool)throw new Error('The selected Notes Library and folder creation tool are not enabled.');
+  if(records.length===1)return call('propose_library_create_folder',{location:'Course',name:'Week 2'},'fixture-library-folder-create');
+  if(receipt?.result?.receipt!=='Created folder Course/Week 2 in the selected Notes Library after review.')throw new Error('Did not receive the verified native folder creation receipt.');
+  return {kind:'final',response:{intent:'chat',reply:'Fixture Library folder creation complete.',layout:[],actions:[]}};
+ }
  if(${JSON.stringify(libraryCase)}){
   if(!request.enable_library_tool||!request.enable_library_edit_tool)throw new Error('The selected Notes Library and edit tools are not enabled.');
   if(records.length===1)return call('inspect_library',{},'fixture-library-inspect');
@@ -307,6 +313,23 @@ async function runControl(page) {
 }
 
 async function runLibrary(page) {
+  if(mode==='library-folder-create'){
+    const folder=join(notesRoot,'Course','Week 2');
+    await mkdir(join(notesRoot,'Course'),{recursive:true});
+    await openAssistant(page);
+    await mentionNotes(page,'Create a Week 2 folder inside Course in my Notes Library.');
+    await page.locator('.assistant-compose').evaluate(form=>form.requestSubmit());
+    const review=page.getByRole('region',{name:'Review new Library folder',exact:true});
+    await expect(review).toContainText('Course/Week 2/');
+    await assert.rejects(stat(folder));
+    await review.getByRole('button',{name:'Approve and create folder',exact:true}).click();
+    await expect(page.getByText('Fixture Library folder creation complete.',{exact:true})).toBeVisible();
+    assert((await stat(folder)).isDirectory());
+    const receipt=await page.evaluate(()=>JSON.parse(window.__fixtureTurns[1].messages.at(-1).content));
+    assert.equal(receipt.mutation,'applied');
+    assert.equal(receipt.result.receipt,'Created folder Course/Week 2 in the selected Notes Library after review.');
+    return;
+  }
   if(mode==='library-create'){
     const note=join(notesRoot,'Course','AI Summary.md');
     await mkdir(join(notesRoot,'Course'),{recursive:true});
