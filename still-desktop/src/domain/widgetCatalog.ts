@@ -2,7 +2,7 @@
 export const widgetCatalog = {
   group: {name:'Group', icon:'group', description:'Named tray collections · reusable widget types and course links', width:400, height:360, minWidth:280, minHeight:240},
   desmos: {name:'Calculator', icon:'desmos', description:'Live Desmos scientific calculator', width:440, height:490, minWidth:280, minHeight:300},
-  notes: {name:'Notes', icon:'notes', description:'Independent notes, saved locally', width:400, height:340, minWidth:240, minHeight:180},
+  notes: {name:'Files', icon:'notes', description:'Notes and local files in one workspace', width:400, height:340, minWidth:240, minHeight:180},
   focus: {name:'Focus', icon:'focus', description:'A timer for your next study session', width:360, height:430, minWidth:280, minHeight:330},
   files: {name:'Files', icon:'files', description:'Your local course files', width:400, height:380, minWidth:280, minHeight:240},
   apps: {name:'Apps', icon:'apps', description:'Real desktop apps inside movable panels', width:360, height:280, minWidth:280, minHeight:220},
@@ -13,3 +13,5 @@ export const widgetCatalog = {
 } as const;
 export type WidgetType = keyof typeof widgetCatalog;
 export const widgetTypes = Object.keys(widgetCatalog) as WidgetType[];
+/** Files is retained for existing Library folders and saved layouts, but new workspaces use the combined Notes/Files widget. */
+export const workspaceWidgetTypes = widgetTypes.filter(type=>type!=='files');
