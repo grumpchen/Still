@@ -413,9 +413,13 @@ dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
 .note-library-preview .document-preview:has(.pdf-number-viewer){display:flex;align-items:stretch;justify-content:stretch;background:transparent}
 .pdf-number-viewer{display:flex;flex:1;min-width:0;min-height:0;flex-direction:column;overflow:hidden;background:rgba(25,27,30,.58)}
 .pdf-viewer-toolbar,.pdf-number-footer{display:flex;flex:none;align-items:center;justify-content:space-between;gap:8px;padding:6px 9px;border-bottom:1px solid var(--line);background:rgba(30,32,35,.74)}
-.pdf-viewer-toolbar>div{display:flex;align-items:center;gap:5px}.pdf-viewer-toolbar button,.pdf-number-footer button{min-height:28px;padding:3px 8px}.pdf-viewer-toolbar span{min-width:62px;text-align:center;font-size:11px}
+.pdf-viewer-toolbar>div{display:flex;align-items:center;gap:5px;flex-wrap:wrap}.pdf-viewer-toolbar button,.pdf-number-footer button{min-height:28px;padding:3px 8px}.pdf-viewer-toolbar span{min-width:62px;text-align:center;font-size:11px}
 .pdf-scroll-viewport{flex:1;min-height:0;overflow:auto;padding:14px;background:rgba(0,0,0,.2)}
 .pdf-page-stage{position:relative;margin:0 auto 16px;box-shadow:0 3px 14px #0008;background:white}.pdf-page-stage canvas{display:block;max-width:none}
+.pdf-keyword-highlight{position:absolute;z-index:1;display:block;border-radius:2px;background:rgba(255,208,74,.48);box-shadow:0 0 0 1px rgba(193,133,0,.24);pointer-events:none}
+.pdf-keyword-review{display:flex;flex:none;flex-direction:column;gap:6px;max-height:120px;overflow:auto;padding:7px 10px;border-top:1px solid var(--line);background:rgba(30,32,35,.74);font-size:11px}
+.pdf-keyword-review>div{display:flex;flex-wrap:wrap;gap:4px 10px}.pdf-keyword-review label{display:inline-flex;align-items:center;gap:4px}.pdf-keyword-review input{accent-color:#e3ad32}
+.pdf-keyword-review footer{display:flex;align-items:center;gap:6px}.pdf-keyword-review footer span{flex:1;color:var(--muted)}.pdf-keyword-review button{min-height:25px;padding:2px 7px;font-size:10px}.pdf-keyword-error{flex:none;margin:4px 9px;font-size:11px}
 .pdf-page-stage.is-number-mode{user-select:none}.pdf-number-token{position:absolute;z-index:1;overflow:visible;min-width:12px;padding:0;border:1px solid transparent;border-radius:3px;background:rgba(255,195,65,.2);color:#1c2025;font:600 11px/1.1 'Segoe UI',sans-serif;text-align:center;white-space:nowrap;cursor:grab;user-select:none;touch-action:none}
 .pdf-number-token:hover{border-color:#ffc342;background:rgba(255,195,65,.55)}.pdf-number-token.is-selected{border:2px solid #1673ff;background:rgba(53,137,255,.48);color:#061b3d}
 .pdf-number-footer{flex-wrap:wrap;justify-content:flex-start;border-top:1px solid var(--line);border-bottom:0}.pdf-number-footer>span:first-child{max-width:54%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pdf-number-footer small{flex:1 1 100%;color:var(--muted);font-size:10px}
