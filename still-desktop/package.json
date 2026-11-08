@@ -11,7 +11,8 @@
     "build": "tsc --noEmit && vite build",
     "tauri": "tauri",
     "publish-preview": "node scripts/publish-preview.mjs",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:pdf": "playwright test --config playwright.pdf.config.ts"
   },
   "dependencies": {
     "@tauri-apps/api": "2.12.1",
