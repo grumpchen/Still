@@ -445,6 +445,40 @@ test('Study with AI hides its prompt, generates a summary, and saves only after 
  }finally{if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();for(const [key,descriptor] of old)if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}
 });
 
+test('PDF keyword workflow sends only selected text and returns validated highlights or a clear failure',async()=>{
+ const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true}),{window}=dom,old=new Map();
+ const globals={window,document:window.document,navigator:window.navigator,localStorage:window.localStorage,HTMLElement:window.HTMLElement,Element:window.Element,Node:window.Node,MutationObserver:window.MutationObserver,CustomEvent:window.CustomEvent,Event:window.Event,IS_REACT_ACT_ENVIRONMENT:true,isTauri:true};
+ for(const key of Object.keys(globals))old.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
+ let root;const requests=[],ready=[],failed=[];
+ try{
+  for(const [key,value] of Object.entries(globals))setGlobal(key,value);
+  window.HTMLElement.prototype.scrollTo=function(){};window.HTMLTextAreaElement.prototype.focus=function(){};window.__TAURI_INTERNALS__={};
+  window.localStorage.setItem('still-assistant-model','gemini::gemini-test');window.localStorage.setItem('still-assistant-share-workspace-image','true');
+  mockIPC((command,args)=>{
+   if(command==='assistant_configured')return true;
+   if(command==='assistant_models')return ['gemini-test'];
+   if(command==='assistant_chat'){requests.push(args.request);return{intent:'chat',reply:requests.length===1?'{"keywords":["Mitochondria","ATP"]}':'{"keywords":["not present"]}',layout:[],actions:[]}}
+   return null;
+  },{shouldMockEvents:true});
+  window.addEventListener('still-pdf-keywords-ready',event=>ready.push(event.detail));window.addEventListener('still-pdf-keywords-error',event=>failed.push(event.detail));
+  const {default:AssistantPanel}=await vite.ssrLoadModule('/src/AssistantPanel.tsx'),workspace=createWorkspace('Study',[]);root=createRoot(window.document.querySelector('#root'));
+  await act(async()=>root.render(createElement(AssistantPanel,{workspace,workspaces:[workspace],trayItems:[],sidebarPlugins:[],open:true,close(){},dimensions:()=>({width:900,height:700}),apply(){},undo(){},act:async()=>''})));
+  await waitFor(()=>window.document.querySelector('#ai-model option[value="gemini::gemini-test"]'));
+  const selectedText='Mitochondria produce ATP.';
+  const ask=async requestId=>act(async()=>window.dispatchEvent(new window.CustomEvent('still-assistant-resource',{detail:{name:'Lecture.pdf',path:'Biology/Lecture.pdf',size:1234,text:selectedText,notes:'must not be shared',prompt:'Return exact study keywords as JSON.',autoSubmit:true,workflow:'pdf-keywords',requestId,fileWidgetId:'fixture-widget'}})));
+  await ask('pdf-pass');await waitFor(()=>ready.length===1);
+  assert.deepEqual(ready[0],{requestId:'pdf-pass',keywords:['Mitochondria','ATP']});
+  const context=JSON.parse(requests[0].context);
+  assert.deepEqual(context,{selectedPdfText:selectedText});
+  assert.equal(requests[0].context.includes('Biology/Lecture.pdf'),false,'file paths are not included in provider context');
+  assert.equal(requests[0].context.includes('must not be shared'),false,'unrelated Notes metadata is not included');
+  assert.equal(requests[0].image,undefined,'PDF highlighting does not capture a workspace screenshot');
+  await ask('pdf-fail');await waitFor(()=>failed.length===1);
+  assert.equal(failed[0].requestId,'pdf-fail');assert.match(failed[0].error,/could not be matched/i);
+  assert.equal(ready.length,1,'invalid provider output never produces highlight candidates');
+ }finally{if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();for(const [key,descriptor] of old)if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}
+});
+
 test('Explain and Summarize answer directly without exposing their generated prompts',async()=>{
  const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true}),{window}=dom,old=new Map();
  const globals={window,document:window.document,navigator:window.navigator,localStorage:window.localStorage,HTMLElement:window.HTMLElement,Element:window.Element,Node:window.Node,MutationObserver:window.MutationObserver,CustomEvent:window.CustomEvent,Event:window.Event,IS_REACT_ACT_ENVIRONMENT:true,isTauri:true};
