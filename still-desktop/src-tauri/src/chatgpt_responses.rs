@@ -337,11 +337,13 @@ fn parse_turn(response: Value, request: &AgentRequest) -> Result<Value, String> 
     }
     let message = json!({"content":text,"tool_calls":calls});
     let wire = json!({"choices":[{"finish_reason":if tool_turn {"tool_calls"} else {"stop"},"message":message}]});
-    let turn = assistant_agent_protocol::parse_openai_agent_response_with_all_tools(
+    let turn = assistant_agent_protocol::parse_openai_agent_response_with_library_edit_tool(
         wire,
         request.enable_add_widget_tool,
         request.enable_safe_workspace_action_tool,
         request.enable_assistant_memory_tool,
+        request.enable_library_tool,
+        request.enable_library_edit_tool,
     )?;
     let turn = assistant_agent_protocol::validate_inbox_tool_availability(turn, request)?;
     let mut value =

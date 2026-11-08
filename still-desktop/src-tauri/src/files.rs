@@ -320,6 +320,55 @@ fn read_note_file(roots:&FolderRoots,id:&str,relative:&str)->Result<String,Strin
     let root=roots.root(id)?.canonicalize().map_err(|_|"The selected notes folder is unavailable. Choose it again.")?;
     read_note_from_root_limited(&root,relative,NOTE_LIBRARY_MAX_BYTES)
 }
+// Agent calls use an opaque fingerprint so a grant re-selection during a run
+// cannot silently redirect later reads or an approved edit to another folder.
+fn notes_agent_grant_token(roots:&FolderRoots,id:&str)->Result<String,String>{
+    use std::hash::{Hash,Hasher};
+    valid_id(id)?;
+    let root=roots.root(id)?.canonicalize().map_err(|_|"The selected notes folder is unavailable. Choose it again.")?;
+    let mut hasher=std::collections::hash_map::DefaultHasher::new();
+    root.hash(&mut hasher);
+    Ok(format!("{:016x}",hasher.finish()))
+}
+fn verify_notes_agent_grant(roots:&FolderRoots,id:&str,expected:&str)->Result<PathBuf,String>{
+    if expected.len()!=16||!expected.bytes().all(|byte|byte.is_ascii_hexdigit()){return Err("The Library grant changed. Start a new request.".into())}
+    let root=roots.root(id)?.canonicalize().map_err(|_|"The selected notes folder is unavailable. Choose it again.")?;
+    if notes_agent_grant_token(roots,id)?!=expected{return Err("The Library grant changed. Start a new request.".into())}
+    Ok(root)
+}
+const NOTES_AGENT_MAX_READ_CHARS:usize=24_000;
+const NOTES_AGENT_MAX_LIST:usize=200;
+#[derive(Serialize)]
+#[serde(rename_all="camelCase")]
+pub(crate) struct NotesAgentRead { text:String, truncated:bool }
+#[derive(Serialize)]
+#[serde(rename_all="camelCase")]
+pub(crate) struct NotesAgentListing { entries:Vec<NoteLibraryEntry>, truncated:bool }
+fn notes_agent_list(roots:&FolderRoots,id:&str,grant:&str)->Result<NotesAgentListing,String>{
+    let root=verify_notes_agent_grant(roots,id,grant)?;
+    let mut files=Vec::new();let(mut directories,mut scanned)=(0,0);
+    collect_note_files(&root,&root,&mut files,&mut directories,&mut scanned,0)?;
+    files.retain(|entry|supported_note(Path::new(&entry.path)));
+    files.sort_by(|a,b|a.path.to_lowercase().cmp(&b.path.to_lowercase()));
+    let truncated=files.len()>NOTES_AGENT_MAX_LIST||files.len()>=NOTE_LIBRARY_MAX_FILES||directories>=NOTE_LIBRARY_MAX_DIRECTORIES||scanned>=NOTE_LIBRARY_MAX_SCANNED_ENTRIES;
+    files.truncate(NOTES_AGENT_MAX_LIST);
+    Ok(NotesAgentListing{entries:files,truncated})
+}
+fn notes_agent_search(roots:&FolderRoots,id:&str,grant:&str,query:&str)->Result<NoteLibrarySearchResult,String>{
+    let root=verify_notes_agent_grant(roots,id,grant)?;
+    search_notes_in_root(&root,query)
+}
+fn notes_agent_read(roots:&FolderRoots,id:&str,grant:&str,path:&str)->Result<NotesAgentRead,String>{
+    let root=verify_notes_agent_grant(roots,id,grant)?;
+    let text=read_note_from_root_limited(&root,path,NOTE_LIBRARY_MAX_BYTES)?;
+    let truncated=text.chars().count()>NOTES_AGENT_MAX_READ_CHARS;
+    Ok(NotesAgentRead{text:text.chars().take(NOTES_AGENT_MAX_READ_CHARS).collect(),truncated})
+}
+fn notes_agent_write(roots:&FolderRoots,id:&str,grant:&str,path:&str,text:&str,expected:&str)->Result<(),String>{
+    let root=verify_notes_agent_grant(roots,id,grant)?;
+    if text.chars().count()>NOTES_AGENT_MAX_READ_CHARS||expected.chars().count()>NOTES_AGENT_MAX_READ_CHARS{return Err("Agent Library edits are limited to 24,000 characters. Nothing was written.".into())}
+    write_note_at_root(&root,path,text,expected)
+}
 fn read_note_from_root_limited(root:&Path,relative:&str,max_bytes:u64)->Result<String,String>{
     let target=resolve(root,relative)?;
     if !supported_note(&target){return Err("Choose a Markdown or text file inside the selected notes folder".into())}
@@ -368,10 +417,15 @@ fn search_notes_in_root(root:&Path,query:&str)->Result<NoteLibrarySearchResult,S
     Ok(NoteLibrarySearchResult{results,truncated})
 }
 fn write_note_file(roots:&FolderRoots,id:&str,relative:&str,text:&str,expected:&str)->Result<(),String>{
+    let root=roots.root(id)?.canonicalize().map_err(|_|"The selected notes folder is unavailable. Choose it again.")?;
+    write_note_at_root(&root,relative,text,expected)
+}
+fn write_note_at_root(root:&Path,relative:&str,text:&str,expected:&str)->Result<(),String>{
     if text.len() as u64>NOTE_LIBRARY_MAX_BYTES{return Err("This note exceeds the 1 MB editing limit.".into())}
     if text.chars().count()>NOTE_LIBRARY_MAX_CHARS{return Err("This note is larger than Still's 256,000-character editing limit.".into())}
-    let target=note_target(roots,id,relative)?;
-    let current=read_note_file(roots,id,relative)?;
+    let target=resolve(root,relative)?;
+    if !target.is_file()||!supported_note(&target){return Err("Choose a Markdown or text file inside the selected notes folder".into())}
+    let current=read_note_from_root_limited(root,relative,NOTE_LIBRARY_MAX_BYTES)?;
     if current!=expected{return Err("This file changed outside Still. Reload it from the library before saving.".into())}
     let parent=target.parent().ok_or("This note has no parent folder")?;
     let stamp=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|_|"System clock is unavailable")?.as_nanos();
@@ -435,6 +489,26 @@ pub async fn notes_library_search(webview:Webview,roots:State<'_,FolderRoots>,id
 #[tauri::command]
 pub async fn notes_library_read(webview:Webview,roots:State<'_,FolderRoots>,id:String,path:String)->Result<String,String>{
     crate::security::authorize(&webview)?;read_note_file(&roots,&id,&path)
+}
+#[tauri::command]
+pub async fn notes_library_agent_grant(webview:Webview,roots:State<'_,FolderRoots>,id:String)->Result<String,String>{
+    crate::security::authorize(&webview)?;notes_agent_grant_token(&roots,&id)
+}
+#[tauri::command]
+pub async fn notes_library_agent_list(webview:Webview,roots:State<'_,FolderRoots>,id:String,grant:String)->Result<NotesAgentListing,String>{
+    crate::security::authorize(&webview)?;notes_agent_list(&roots,&id,&grant)
+}
+#[tauri::command]
+pub async fn notes_library_agent_search(webview:Webview,roots:State<'_,FolderRoots>,id:String,grant:String,query:String)->Result<NoteLibrarySearchResult,String>{
+    crate::security::authorize(&webview)?;notes_agent_search(&roots,&id,&grant,&query)
+}
+#[tauri::command]
+pub async fn notes_library_agent_read(webview:Webview,roots:State<'_,FolderRoots>,id:String,grant:String,path:String)->Result<NotesAgentRead,String>{
+    crate::security::authorize(&webview)?;notes_agent_read(&roots,&id,&grant,&path)
+}
+#[tauri::command]
+pub async fn notes_library_agent_write(webview:Webview,roots:State<'_,FolderRoots>,id:String,grant:String,path:String,text:String,expected:String)->Result<(),String>{
+    crate::security::authorize(&webview)?;notes_agent_write(&roots,&id,&grant,&path,&text,&expected)
 }
 #[tauri::command]
 pub async fn notes_library_write(webview:Webview,roots:State<'_,FolderRoots>,id:String,path:String,text:String,expected:String)->Result<(),String>{
@@ -683,6 +757,23 @@ mod tests {
         assert!(create_note_file(&roots,"notes-widget","course","Week two").is_err());assert!(create_note_file(&roots,"notes-widget","../outside","Nope").is_err());
         assert!(read_note_file(&roots,"notes-widget","../ignored.html").is_err());assert!(write_note_file(&roots,"notes-widget","ignored.html","no","").is_err());
         assert!(write_note_file(&roots,"notes-widget","course/week1.MARKDOWN",&"x".repeat((NOTE_LIBRARY_MAX_BYTES+1) as usize),"").is_err());
+        fs::remove_dir_all(fixture).unwrap();
+    }
+    #[test]fn agent_library_tools_are_bounded_grant_scoped_and_compare_before_write(){
+        let fixture=std::env::temp_dir().join(format!("still-agent-library-{}-{}",std::process::id(),std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let root=fixture.join("granted");let other=fixture.join("other");fs::create_dir_all(root.join("Course")).unwrap();fs::create_dir_all(&other).unwrap();
+        fs::write(root.join("Course/week1.md"),"lecture keyword").unwrap();fs::write(root.join("large.md"),"x".repeat(NOTES_AGENT_MAX_READ_CHARS+1)).unwrap();fs::write(other.join("secret.md"),"private").unwrap();
+        let root=root.canonicalize().unwrap();let other=other.canonicalize().unwrap();let roots=FolderRoots(Mutex::new(HashMap::from([("notes-widget".into(),root.clone())])));let grant=notes_agent_grant_token(&roots,"notes-widget").unwrap();
+        let listing=notes_agent_list(&roots,"notes-widget",&grant).unwrap();assert_eq!(listing.entries.len(),2);assert!(listing.entries.iter().all(|entry|supported_note(Path::new(&entry.path))));
+        assert_eq!(notes_agent_search(&roots,"notes-widget",&grant,"keyword").unwrap().results.len(),1);
+        assert!(notes_agent_read(&roots,"notes-widget",&grant,"../other/secret.md").is_err());
+        let large=notes_agent_read(&roots,"notes-widget",&grant,"large.md").unwrap();assert_eq!(large.text.chars().count(),NOTES_AGENT_MAX_READ_CHARS);assert!(large.truncated);
+        let path="Course/week1.md";let original=notes_agent_read(&roots,"notes-widget",&grant,path).unwrap().text;
+        notes_agent_write(&roots,"notes-widget",&grant,path,"updated",&original).unwrap();assert_eq!(fs::read_to_string(root.join(path)).unwrap(),"updated");
+        assert!(notes_agent_write(&roots,"notes-widget",&grant,path,"stale","lecture keyword").unwrap_err().contains("changed outside Still"));
+        roots.0.lock().unwrap().insert("notes-widget".into(),other.clone());
+        assert!(notes_agent_list(&roots,"notes-widget",&grant).unwrap_err().contains("grant changed"));assert!(notes_agent_read(&roots,"notes-widget",&grant,"secret.md").is_err());
+        let new_grant=notes_agent_grant_token(&roots,"notes-widget").unwrap();assert_ne!(grant,new_grant);assert_eq!(notes_agent_read(&roots,"notes-widget",&new_grant,"secret.md").unwrap().text,"private");
         fs::remove_dir_all(fixture).unwrap();
     }
     #[test]fn files_can_be_filed_only_inside_the_granted_root_without_overwriting(){

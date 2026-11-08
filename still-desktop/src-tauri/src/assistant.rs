@@ -251,9 +251,9 @@ pub async fn assistant_agent_turn(webview:Webview,state:State<'_,AssistantState>
     }
     let value=serde_json::from_slice(&bytes).map_err(|_|"The AI returned an unreadable response.")?;
     let turn=match provider {
-        Provider::Gemini=>assistant_agent_protocol::parse_gemini_agent_response(value,&format!("gemini-local-{}",request.messages.len()),request.enable_add_widget_tool,request.enable_safe_workspace_action_tool,request.enable_assistant_memory_tool),
-        Provider::Openai=>assistant_agent_protocol::parse_openai_agent_response_with_all_tools(value,request.enable_add_widget_tool,request.enable_safe_workspace_action_tool,request.enable_assistant_memory_tool),
-        Provider::Opencode=>assistant_agent_protocol::parse_opencode_agent_response_with_all_tools(value,request.enable_add_widget_tool,request.enable_safe_workspace_action_tool,request.enable_assistant_memory_tool),
+        Provider::Gemini=>assistant_agent_protocol::parse_gemini_agent_response_with_library_edit_tool(value,&format!("gemini-local-{}",request.messages.len()),request.enable_add_widget_tool,request.enable_safe_workspace_action_tool,request.enable_assistant_memory_tool,request.enable_library_tool,request.enable_library_edit_tool),
+        Provider::Openai=>assistant_agent_protocol::parse_openai_agent_response_with_library_edit_tool(value,request.enable_add_widget_tool,request.enable_safe_workspace_action_tool,request.enable_assistant_memory_tool,request.enable_library_tool,request.enable_library_edit_tool),
+        Provider::Opencode=>assistant_agent_protocol::parse_opencode_agent_response_with_library_edit_tool(value,request.enable_add_widget_tool,request.enable_safe_workspace_action_tool,request.enable_assistant_memory_tool,request.enable_library_tool,request.enable_library_edit_tool),
     }?;
     assistant_agent_protocol::validate_inbox_tool_availability(turn, &request)
 }
