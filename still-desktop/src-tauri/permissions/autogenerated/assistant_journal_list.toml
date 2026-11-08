@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-assistant-journal-list"
+description = "Enables the assistant_journal_list command without any pre-configured scope."
+commands.allow = ["assistant_journal_list"]
+
+[[permission]]
+identifier = "deny-assistant-journal-list"
+description = "Denies the assistant_journal_list command without any pre-configured scope."
+commands.deny = ["assistant_journal_list"]

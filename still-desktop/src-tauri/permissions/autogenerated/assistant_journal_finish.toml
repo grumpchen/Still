@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-assistant-journal-finish"
+description = "Enables the assistant_journal_finish command without any pre-configured scope."
+commands.allow = ["assistant_journal_finish"]
+
+[[permission]]
+identifier = "deny-assistant-journal-finish"
+description = "Denies the assistant_journal_finish command without any pre-configured scope."
+commands.deny = ["assistant_journal_finish"]
