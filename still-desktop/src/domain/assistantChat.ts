@@ -1,12 +1,27 @@
-import type {ChatMessage} from './assistant.ts';
+import {cleanAssistantReply,type ChatMessage} from './assistant.ts';
 
 const STORAGE_PREFIX='still-assistant-chat-v1:';
 export const SAVED_CHAT_MESSAGE_LIMIT=200;
 const SAVED_CHAT_CHARACTER_LIMIT=200_000;
+const STUDY_ACTION_PROMPT_PREFIXES=[
+ /^Explain the selected note “/i,
+ /^Summarize the selected note “/i,
+ /^Create \d+ concise question-and-answer flashcards from the selected note “/i,
+ /^Turn the selected note “/i,
+ /^Create a \d+-question practice quiz from the selected note “/i,
+ /^请为大学一年级学生清晰讲解当前笔记《/,
+ /^请把当前笔记《/,
+ /^请根据当前笔记《/,
+ /^请将当前笔记《/,
+];
+
+export function isAssistantChatMessageVisible(message:ChatMessage):boolean{
+ return !message.hidden&&!(message.role==='user'&&STUDY_ACTION_PROMPT_PREFIXES.some(prefix=>prefix.test(message.text)));
+}
 
 function checkedMessages(value:unknown):ChatMessage[]{
  if(!Array.isArray(value))return [];
- const valid=value.flatMap(item=>item&&typeof item==='object'&&(item.role==='user'||item.role==='model')&&typeof item.text==='string'?[{role:item.role,text:item.text.slice(0,12_000)} as ChatMessage]:[]).slice(-SAVED_CHAT_MESSAGE_LIMIT);
+ const valid=value.flatMap(item=>item&&typeof item==='object'&&(item.role==='user'||item.role==='model')&&typeof item.text==='string'?[{role:item.role,text:(item.role==='model'?cleanAssistantReply(item.text):item.text).slice(0,12_000),...(item.hidden===true||item.role==='user'&&STUDY_ACTION_PROMPT_PREFIXES.some(prefix=>prefix.test(item.text as string))?{hidden:true}:{})} as ChatMessage]:[]).slice(-SAVED_CHAT_MESSAGE_LIMIT);
  let total=0;
  const kept:ChatMessage[]=[];
  for(const message of [...valid].reverse()){

@@ -9,7 +9,7 @@ import {checkedStudyCalendarDrafts,type StudyCalendarEventDraft} from './studyCa
 import {shortcutError,shortcutsError,type Shortcut,type WorkspaceShortcuts} from './shortcuts.ts';
 
 export type AssistantProvider = 'gemini' | 'openai' | 'opencode' | 'chatgpt';
-export type ChatMessage = {role:'user'|'model'; text:string};
+export type ChatMessage = {role:'user'|'model'; text:string; hidden?:boolean};
 export function resolveAcceptedNotesOffer(prompt:string,messages:ChatMessage[]):{action:AssistantAction;intent:string}|null{
   if(!/^(?:yes|yeah|yep|sure|ok|okay|please|do it|go ahead|yes please)[.!?]*$/i.test(prompt.trim()))return null;
   const previousAssistant=messages.at(-1);
@@ -195,9 +195,14 @@ function parseAssistantCount(value:string):number|null{
   const result=total+current;
   return Number.isSafeInteger(result)?result:null;
 }
+export function cleanAssistantReply(reply:string):string{
+  const start=reply.lastIndexOf('\n{');if(start<0)return reply;
+  try{const echo=JSON.parse(reply.slice(start+1).trim()) as {reply?:unknown};if(echo&&typeof echo==='object'&&typeof echo.reply==='string'&&echo.reply.trim()===reply.slice(0,start).trim())return echo.reply.trim()}catch{/* retain ordinary prose and JSON examples */}
+  return reply;
+}
 export function parseAssistantReply(value:unknown):AssistantReply {
   if(!value||typeof value!=='object')throw new Error('The AI returned an invalid response. Try again.');
-  const {reply,intent}=value as Partial<AssistantReply>;
+  const {reply:rawReply,intent}=value as Partial<AssistantReply>,reply=typeof rawReply==='string'?cleanAssistantReply(rawReply):rawReply;
   if(typeof reply!=='string'||reply.length>24000)throw new Error('The AI returned an incomplete response. Try again.');
   if(intent!==undefined&&!['chat','clarification','workspace_action','layout'].includes(intent))throw new Error('The AI returned an invalid response intent. Try again.');
   const {layout}=value as Partial<AssistantReply>,rawActions=(value as Partial<AssistantReply>).actions??[];

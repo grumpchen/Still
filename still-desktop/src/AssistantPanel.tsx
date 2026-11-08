@@ -1,7 +1,7 @@
 import {useEffect,useRef,useState,type ChangeEvent,type KeyboardEvent} from 'react';
 import type {Workspace,WidgetInstance,SidebarPlugin} from './domain/workspaces.ts';
 import {assistantEditTargetsUnchanged,assistantWidgetPluginClarification,assistantCourseAutoOpenClarification,assistantCourseEnvironmentClarification,assistantResizeClarification,assistantResizeRequested,assistantRemovedControlReply,validateAssistantLayoutIntent,type AssistantReply} from './domain/assistant.ts';
-import {addFocusForAssistantTimer,applyLayoutPlan,assistantActionRequest,assistantActionsDescription,assistantCreationClarification,assistantEditClarification,assistantMoveClarification,assistantNoteDocumentClarification,assistantNoteStyleClarification,assistantNoteTagClarification,assistantShortcutClarification,assistantTimerControlClarification,assistantTimerStartRequested,assistantWorkspaceClarification,assistantLayoutRequested,assistantKeyError,assistantReplyNeedsClarification,assistantRequestLimitError,assistantWorkspaceContext,DEFAULT_MODELS,extractAssistantTimerSeconds,layoutFingerprint,prepareAssistantHistory,preferredModel,resolveAcceptedNotesOffer,resolveAssistantSetting,resolveAssistantTimerDurationReply,resolveDirectAssistantActions,resolveNamedNotesCreation,safeAssistantReceipt,settleAssistantConfirmation,unsupportedAssistantRequest,validateAssistantActionIntent,validateAssistantActions,validateLayout,widgetLabel,type AssistantAction,type AssistantProvider,type AssistantTrayItem,type AssistantWorkspaceChoice,type ChatMessage,type LayoutPlan} from './domain/assistant.ts';
+import {addFocusForAssistantTimer,applyLayoutPlan,assistantActionRequest,assistantActionsDescription,assistantCreationClarification,assistantEditClarification,assistantMoveClarification,assistantNoteDocumentClarification,assistantNoteStyleClarification,assistantNoteTagClarification,assistantShortcutClarification,assistantTimerControlClarification,assistantTimerStartRequested,assistantWorkspaceClarification,assistantLayoutRequested,assistantKeyError,assistantReplyNeedsClarification,assistantRequestLimitError,assistantWorkspaceContext,cleanAssistantReply,DEFAULT_MODELS,extractAssistantTimerSeconds,layoutFingerprint,prepareAssistantHistory,preferredModel,resolveAcceptedNotesOffer,resolveAssistantSetting,resolveAssistantTimerDurationReply,resolveDirectAssistantActions,resolveNamedNotesCreation,safeAssistantReceipt,settleAssistantConfirmation,unsupportedAssistantRequest,validateAssistantActionIntent,validateAssistantActions,validateLayout,widgetLabel,type AssistantAction,type AssistantProvider,type AssistantTrayItem,type AssistantWorkspaceChoice,type ChatMessage,type LayoutPlan} from './domain/assistant.ts';
 import {checkedStudyCalendarDrafts,type StudyCalendarEventDraft} from './domain/studyCalendar.ts';
 import {localFiles,type FileEntry,type ReviewedMoveExpectation,type ReviewedOperation} from './platform/files.ts';
 import {executeFileMoves,reviewInboxMove,reviewInboxMoves,type InboxInspection,type ReviewedFileMove} from './domain/assistantInbox.ts';
@@ -9,7 +9,7 @@ import {chatgptPlan,geminiAssistant,runProviderAgent,selectedLibraryAgentContext
 import {notesLibrary} from './platform/notesLibrary.ts';
 import {createStillWorkspaceToolRegistry,validateReviewedGeometryIntent,type SafeWorkspaceAction,type StillToolSnapshot} from './domain/assistantTools.ts';
 import type {AgentToolExecution} from './domain/agentLoop.ts';
-import {readAssistantChat,saveAssistantChat} from './domain/assistantChat.ts';
+import {isAssistantChatMessageVisible,readAssistantChat,saveAssistantChat} from './domain/assistantChat.ts';
 import {addAssistantMemory,assistantMemoryContext,clearAssistantMemory,deleteAssistantMemory,readAssistantMemory,memoryRequestedInPrompt,validateRequestedMemory,AssistantMemoryError,type AssistantMemoryEntry} from './domain/assistantMemory.ts';
 import {Icon} from './widgets.tsx';
 import './assistant.css';
@@ -198,7 +198,8 @@ useEffect(()=>{const attachMany=(event:Event)=>{const detail=(event as CustomEve
   async function send(autoTriggered=false){
     if(sending.current||libraryWorking||libraryProposal||!input.trim())return;
     if(requestLimit)return;
-    const owner=latest.current,displayPrompt=input.trim(),mentionIds=resolveAssistantWidgetMentions(displayPrompt,owner,mentions.map(item=>item.id));
+    const owner=latest.current,displayPrompt=input.trim(),userTurn:ChatMessage={role:'user',text:displayPrompt,...(autoTriggered?{hidden:true}:{})},mentionIds=resolveAssistantWidgetMentions(displayPrompt,owner,mentions.map(item=>item.id));
+    if(autoTriggered)setInput('');
     const waitingForSelection=pendingSelection.current?.workspaceId===owner.id&&!libraryResource&&!libraryOrganisationContext?pendingSelection.current:null;
     const label=displayPrompt.replace(/^(?:the\s+)/i,'').replace(/[.!?]+$/,'').trim().toLocaleLowerCase();
     const nameMatches=waitingForSelection&&!mentionIds.length?owner.widgets.filter(widget=>widgetLabel(widget).trim().toLocaleLowerCase()===label):[];
@@ -210,18 +211,18 @@ useEffect(()=>{const attachMany=(event:Event)=>{const detail=(event as CustomEve
     const prompt=timerFollowUp??(selectionOnly&&waitingForSelection?waitingForSelection.prompt:displayPrompt);
     pendingSelection.current=null;
     const removedControlReply=assistantRemovedControlReply(prompt);
-    if(removedControlReply){setMessages(current=>[...current,{role:'user',text:displayPrompt},{role:'model',text:removedControlReply}]);setInput('');setMentions([]);setScreenshot(false);setError('');setPlan(null);return}
+    if(removedControlReply){setMessages(current=>[...current,userTurn,{role:'model',text:removedControlReply}]);setInput('');setMentions([]);setScreenshot(false);setError('');setPlan(null);return}
     const requestedActions=assistantActionRequest(prompt,trayItems,workspaces);
     if(!libraryResource&&!libraryOrganisationContext&&!requestedActions.length&&assistantTimerStartRequested(prompt)){
       pendingSelection.current={workspaceId:owner.id,prompt,timerWidgetIds:selectedIds};
-      setMessages(current=>[...current,{role:'user',text:displayPrompt},{role:'model',text:'How long should the timer run? For example, “1 minute”.'}]);setInput('');setMentions([]);setScreenshot(false);setError('');setPlan(null);return;
+      setMessages(current=>[...current,userTurn,{role:'model',text:'How long should the timer run? For example, “1 minute”.'}]);setInput('');setMentions([]);setScreenshot(false);setError('');setPlan(null);return;
     }
     const selectionClarification=assistantMoveClarification(prompt,owner,selectedIds,workspaces)??assistantNoteDocumentClarification(prompt,owner,selectedIds)??assistantNoteTagClarification(prompt,owner,selectedIds)??assistantTimerControlClarification(prompt,owner,selectedIds)??assistantNoteStyleClarification(prompt,owner,selectedIds)??assistantWidgetPluginClarification(prompt,owner,selectedIds)??assistantCourseAutoOpenClarification(prompt,owner,selectedIds)??assistantCourseEnvironmentClarification(prompt,owner,selectedIds,workspaces)??assistantResizeClarification(prompt,owner,selectedIds);
     const clarification=assistantWorkspaceClarification(prompt,workspaces)??selectionClarification??assistantShortcutClarification(prompt)??assistantEditClarification(prompt)??assistantCreationClarification(prompt);
-    if(clarification){if(clarification===selectionClarification)pendingSelection.current={workspaceId:owner.id,prompt};setMessages(current=>[...current,{role:'user',text:displayPrompt},{role:'model',text:clarification}]);setInput('');setMentions([]);setScreenshot(false);setError('');setPlan(null);return}
+    if(clarification){if(clarification===selectionClarification)pendingSelection.current={workspaceId:owner.id,prompt};setMessages(current=>[...current,userTurn,{role:'model',text:clarification}]);setInput('');setMentions([]);setScreenshot(false);setError('');setPlan(null);return}
     const directPlanTimer=provider==='chatgpt'&&!libraryResource&&requestedActions.length===1&&(requestedActions[0]==='set_timer'||requestedActions[0]==='control_timer')&&(assistantTimerStartRequested(prompt)||/^(?:(?:please|can you|could you|would you)\s+)*(?:set|start|begin|pause|stop|resume|continue|reset|restart)\b/i.test(prompt));
     const acceptedOffer=resolveAcceptedNotesOffer(prompt,messages),notesRequest=resolveNamedNotesCreation(prompt),agentSafeActionMode=provider==='chatgpt'?planSafeActions:provider==='gemini'?geminiAgentSafeActions:agentSafeActions,localActions=libraryOrganisationContext||agentMode&&!directPlanTimer?null:acceptedOffer?[acceptedOffer.action]:resolveDirectAssistantActions(prompt,owner,selectedIds,trayItems,workspaces),actionIntent=acceptedOffer?.intent??prompt,needsConfirmation=libraryOrganisationContext?null:unsupportedAssistantRequest(prompt);
-    if(requestedActions.includes('open_saved')&&!trayItems.length){setMessages(current=>[...current,{role:'user',text:displayPrompt},{role:'model',text:t('assistantNoSavedItems')}]);setInput('');setMentions([]);return}
+    if(requestedActions.includes('open_saved')&&!trayItems.length){setMessages(current=>[...current,userTurn,{role:'model',text:t('assistantNoSavedItems')}]);setInput('');setMentions([]);return}
     const timerWidgets=owner.widgets.filter(widget=>widget.type==='focus'||widget.clockPluginEnabled),needsNewFocus=(!agentMode||directPlanTimer)&&!libraryOrganisationContext&&requestedActions.length===1&&requestedActions[0]==='set_timer'&&!localActions&&timerWidgets.length===0;
     if(!agentMode&&!libraryOrganisationContext&&requestedActions.includes('set_timer')&&!localActions&&!needsNewFocus){setError(t('assistantSelectFocusWidget'));return}
     if(!localActions&&!needsConfirmation&&!needsNewFocus&&(!configured||!currentModels.includes(model)||!geminiAssistant.available)){if(autoTriggered)setError(configured&&!currentModels.length&&provider==='chatgpt'?t('noPlanModelsAvailable'):!configured?t('aiConnectPrompt'):t('aiSettingsLoadFailed'));return}
@@ -230,26 +231,26 @@ useEffect(()=>{const attachMany=(event:Event)=>{const detail=(event as CustomEve
     let image:string|undefined;
     try{
       if(needsConfirmation){
-        if(needsConfirmation==='delete_workspace'&&!canDeleteWorkspace){setMessages(current=>[...current,{role:'user',text:displayPrompt},{role:'model',text:t('assistantKeepWorkspace')}]);setInput('');setMentions([]);return}
+        if(needsConfirmation==='delete_workspace'&&!canDeleteWorkspace){setMessages(current=>[...current,userTurn,{role:'model',text:t('assistantKeepWorkspace')}]);setInput('');setMentions([]);return}
         const explanation=needsConfirmation==='clear_tray'?t('assistantClearTrayConfirm').replace('{workspace}',owner.name):needsConfirmation==='delete_workspace'?t('assistantDeleteWorkspaceConfirm').replace('{workspace}',owner.name):t('assistantDeleteWidgetsConfirm').replace('{workspace}',owner.name);
-        setMessages(current=>[...current,{role:'user',text:displayPrompt},{role:'model',text:explanation}]);
+        setMessages(current=>[...current,userTurn,{role:'model',text:explanation}]);
         setConfirmation(needsConfirmation);setInput('');setMentions([]);setScreenshot(false);return;
       }
       if(needsNewFocus){
         const seconds=extractAssistantTimerSeconds(prompt);if(seconds===null)throw new Error(t('assistantTimerDurationExample'));
         const receipt=await startTimer(owner.id,seconds);if(!alive.current)return;
-        setMessages(current=>[...current,{role:'user',text:displayPrompt},{role:'model',text:receipt}]);setInput('');setMentions([]);setScreenshot(false);return;
+        setMessages(current=>[...current,userTurn,{role:'model',text:receipt}]);setInput('');setMentions([]);setScreenshot(false);return;
       }
       if(localActions){
         validateAssistantActions(owner,localActions,trayItems,workspaces);validateAssistantActionIntent(actionIntent,owner,localActions,trayItems,workspaces,selectedIds);
         if(localActions.some(action=>action.type==='remove_widget')){
           pendingActions.current=localActions;pendingSelectedIds.current=[...selectedIds];pendingPrompt.current=prompt;
           const names=localActions.filter(action=>action.type==='remove_widget').flatMap(action=>action.ids).map(id=>{const widget=owner.widgets.find(item=>item.id===id);return widget?widgetLabel(widget):''}).filter(Boolean);
-          setMessages(current=>[...current,{role:'user',text:displayPrompt},{role:'model',text:t('assistantRemoveWidgetsConfirm').replace('{names}',names.join(', ')).replace('{workspace}',owner.name)}]);setConfirmation('remove_widgets');setInput('');setMentions([]);return;
+          setMessages(current=>[...current,userTurn,{role:'model',text:t('assistantRemoveWidgetsConfirm').replace('{names}',names.join(', ')).replace('{workspace}',owner.name)}]);setConfirmation('remove_widgets');setInput('');setMentions([]);return;
         }
         if(localActions.some(action=>action.type==='open_saved'&&action.ids.some(id=>trayItems.some(item=>item.id===id&&item.type==='apps')))){
           pendingActions.current=localActions;pendingSelectedIds.current=[...selectedIds];pendingPrompt.current=prompt;
-          setMessages(current=>[...current,{role:'user',text:displayPrompt},{role:'model',text:t('assistantOpenSavedAppsConfirm')}]);setConfirmation('open_saved_apps');setInput('');setMentions([]);return;
+          setMessages(current=>[...current,userTurn,{role:'model',text:t('assistantOpenSavedAppsConfirm')}]);setConfirmation('open_saved_apps');setInput('');setMentions([]);return;
         }
         let actionsToApply=localActions,draftNotice='';
         if(notesRequest?.topic&&localActions.some(action=>action.type==='add_widget'&&action.ids.length===1&&action.ids[0]==='notes')){
@@ -262,7 +263,7 @@ useEffect(()=>{const attachMany=(event:Event)=>{const detail=(event as CustomEve
           }else draftNotice=' I added the requested topic to the note; connect an AI provider if you want Still to draft the full notes.';
         }
         const receipt=safeAssistantReceipt(await act(owner.id,actionsToApply,actionIntent,selectedIds))+draftNotice;if(!alive.current)return;
-        setMessages(current=>[...current,{role:'user',text:displayPrompt},{role:'model',text:receipt}]);setInput('');setMentions([]);setScreenshot(false);return;
+        setMessages(current=>[...current,userTurn,{role:'model',text:receipt}]);setInput('');setMentions([]);setScreenshot(false);return;
       }
       const multipleResources=!!libraryResource&&libraryResource.sources.length>1,compareOnly=multipleResources&&!libraryResource?.fileActionAllowed,context=multipleResources?{}:assistantWorkspaceContext(owner,size.width,size.height,selectedIds,trayItems,sidebarPlugins,workspaces),resourceSourcesForModel=libraryResource?.sources.map(source=>({name:source.name,path:source.path,size:source.size,text:source.text,notes:source.notes,sourceWidgetId:source.fileWidgetId,fileActionAllowed:source.fileActionAllowed,contentOmitted:!source.text,...(source.truncated?{truncated:true}:{})}))??[],selectedResourceForModel=resourceSourcesForModel.length===1?resourceSourcesForModel[0]:null,userMemory=assistantMemoryContext(memories),requestContext=libraryOrganisationContext?{libraryOrganisation:{...libraryOrganisationContext.snapshot,contentShared:false}}:multipleResources?{selectedStudyResources:resourceSourcesForModel,...(userMemory?{userMemory}: {})}:selectedResourceForModel?{...context,selectedStudyResource:selectedResourceForModel,...(userMemory?{userMemory}: {})}:{...context,...(userMemory?{userMemory}: {})},serialized=JSON.stringify(requestContext);
       if(serialized.length>64000)throw new Error('This workspace has unusually large widget data. Type @ to prioritize the widget you want Still to use.');
@@ -317,7 +318,7 @@ useEffect(()=>{const attachMany=(event:Event)=>{const detail=(event as CustomEve
           },
         }:undefined,library:libraryAgent,enableSafeWorkspaceActionTool:!libraryResource&&!libraryAgent&&agentSafeActionMode,enableAssistantMemoryTool:!libraryResource&&!libraryAgent&&memoryRequest,validateWorkspace:()=>{const live=latestContext.current;if(live.workspace.id!==owner.id)throw new Error('The active workspace changed while the agent was responding. Try again.');const partial={workspace:live.workspace,savedTrayItems:live.trayItems,workspaces:live.workspaces,preferences:{theme:live.theme},canvasSize:live.dimensions()};if(inspectedContext!==null&&agentSnapshotRevision(partial)!==inspectedContext)throw new Error('The workspace changed while the agent was responding. Nothing was applied; try again.')}});
         if(outcome.status==='awaiting_confirmation'){
-          setAgentNotesPending(outcome);setAgentProposalProvider(requestProvider);setMessages(current=>[...current,{role:'user',text:displayPrompt},{role:'model',text:agentProposalMessage(outcome.proposal,requestProvider,owner,trayItems)}]);setInput('');setMentions([]);setScreenshot(false);return;
+          setAgentNotesPending(outcome);setAgentProposalProvider(requestProvider);setMessages(current=>[...current,userTurn,{role:'model',text:agentProposalMessage(outcome.proposal,requestProvider,owner,trayItems)}]);setInput('');setMentions([]);setScreenshot(false);return;
         }
         result=outcome.response;
       }else result=await geminiAssistant.send({provider:requestProvider,model:requestModel,messages:[...history,{role:'user',text:prompt}],context:serialized,image,session_id:owner.id});
@@ -326,7 +327,7 @@ useEffect(()=>{const attachMany=(event:Event)=>{const detail=(event as CustomEve
         if(!libraryOrganisationContext||!organiseLibrary)throw new Error('Choose an assigned Library folder and share its names before requesting organisation.');
         reviewLibraryProposal(libraryOrganisationContext.snapshot,result.libraryProposal);
         setLibraryProposal(result.libraryProposal);setFileProposal(null);setFileProposalQueue([]);setCalendarProposal(null);setNoteDraftProposal(null);setPlan(null);
-        setMessages(current=>[...current,{role:'user',text:displayPrompt},{role:'model',text:result.reply}]);setInput('');setMentions([]);setScreenshot(false);return;
+        setMessages(current=>[...current,userTurn,{role:'model',text:result.reply}]);setInput('');setMentions([]);setScreenshot(false);return;
       }
       if(libraryOrganisationContext&&(result.actions.length||result.layout.length||result.fileProposals?.length||result.calendarProposals?.length))throw new Error('Names-only Library mode accepts reviewed Library proposals or text replies only.');
       if(multipleResources&&(result.actions.length>0||result.layout.length>0||!!result.calendarProposals?.length||compareOnly&&!!result.fileProposals?.length||(!!result.intent&&result.intent!=='chat'&&result.intent!=='clarification')))throw new Error(t(compareOnly?'compareOnlyReply':'classifySelectedResourcesOnlyReply'));
@@ -334,7 +335,7 @@ useEffect(()=>{const attachMany=(event:Event)=>{const detail=(event as CustomEve
         const inspection=inboxInspection as InboxInspection|null;
         const proposals=result.fileProposals.map(proposal=>{const selected=libraryResource?.sources.find(item=>item.fileActionAllowed&&item.fileWidgetId===proposal.sourceWidgetId&&item.path===proposal.sourcePath);if(selected?.fileWidgetId)return {...proposal,fileName:selected.name,widgetId:selected.fileWidgetId,sourcePath:selected.path};return reviewInboxMove(proposal,inspection)});
         setFileProposal(proposals[0]);setFileProposalQueue(proposals.slice(1));
-        setMessages(current=>[...current,{role:'user',text:displayPrompt},{role:'model',text:result.reply}]);setLibraryResource(null);setPlan(null);setInput('');setMentions([]);setScreenshot(false);return;
+        setMessages(current=>[...current,userTurn,{role:'model',text:result.reply}]);setLibraryResource(null);setPlan(null);setInput('');setMentions([]);setScreenshot(false);return;
       }
       if(agentMode&&libraryResource&&(result.layout.length||result.calendarProposals?.length))throw new Error(t('compareOnlyReply'));
       if(result.calendarProposals?.length){
@@ -342,18 +343,18 @@ useEffect(()=>{const attachMany=(event:Event)=>{const detail=(event as CustomEve
         if(!calendar)throw new Error(t('calendarProposalUnavailable'));
         const events=checkedStudyCalendarDrafts(result.calendarProposals);
         setCalendarProposal({widgetId:calendar.id,events});setFileProposal(null);setFileProposalQueue([]);setPlan(null);setConfirmation(null);
-        setMessages(current=>[...current,{role:'user',text:displayPrompt},{role:'model',text:result.reply}]);setLibraryResource(null);setInput('');setMentions([]);setScreenshot(false);return;
+        setMessages(current=>[...current,userTurn,{role:'model',text:result.reply}]);setLibraryResource(null);setInput('');setMentions([]);setScreenshot(false);return;
       }
       const targetedNoteEdit=result.actions.length===1&&result.actions[0].type==='edit_widget'&&result.actions[0].ids.length===1&&result.actions[0].ids[0]===libraryResource?.noteTarget?.widgetId&&typeof result.actions[0].text==='string'&&!result.actions[0].title&&!result.actions[0].tagColor&&!result.actions[0].pluginControls;
       const noteDraftText=targetedNoteEdit?result.actions[0].text:result.reply;
       if(libraryResource?.noteTarget&&result.intent!=='clarification'&&noteDraftText?.trim()&&(!result.actions.length||targetedNoteEdit)&&!result.layout.length){
         setNoteDraftProposal({...libraryResource.noteTarget,draft:noteDraftText.trim()});setFileProposal(null);setFileProposalQueue([]);setCalendarProposal(null);setPlan(null);
-        setMessages(current=>[...current,{role:'user',text:displayPrompt},{role:'model',text:result.reply}]);setLibraryResource(null);setInput('');setMentions([]);setScreenshot(false);return;
+        setMessages(current=>[...current,userTurn,{role:'model',text:result.reply}]);setLibraryResource(null);setInput('');setMentions([]);setScreenshot(false);return;
       }
       if(agentMode&&libraryResource&&result.actions.length)throw new Error(t('compareOnlyReply'));
       if(libraryResource)setLibraryResource(null);
       if(result.actions.length&&assistantReplyNeedsClarification(result.reply)){
-        setMessages(current=>[...current,{role:'user',text:displayPrompt},{role:'model',text:result.reply}]);setPlan(null);setInput('');setMentions([]);setScreenshot(false);return;
+        setMessages(current=>[...current,userTurn,{role:'model',text:result.reply}]);setPlan(null);setInput('');setMentions([]);setScreenshot(false);return;
       }
       if(result.actions.length){
         if(!assistantEditTargetsUnchanged(owner,latest.current,result.actions))throw new Error('The widget changed while Still AI was responding. Nothing was changed; please try again.');
@@ -364,32 +365,32 @@ useEffect(()=>{const attachMany=(event:Event)=>{const detail=(event as CustomEve
             const followUp=requestedActions.includes('add_widget')
               ?'I may have misunderstood which widget or how many you want. Which widget type should I add, and how many? I have not changed anything.'
               :'I could not confidently match that change to your request. What exact change should I make? I have not changed anything.';
-            setMessages(current=>[...current,{role:'user',text:displayPrompt},{role:'model',text:followUp}]);setPlan(null);setInput('');setMentions([]);setScreenshot(false);return;
+            setMessages(current=>[...current,userTurn,{role:'model',text:followUp}]);setPlan(null);setInput('');setMentions([]);setScreenshot(false);return;
           }
           reviewActions=true;
         }
         if(reviewActions){
           pendingActions.current=result.actions;pendingOwner.current=owner;pendingSelectedIds.current=[...selectedIds];pendingPrompt.current='Apply the reviewed widget changes.';
-          setMessages(current=>[...current,{role:'user',text:displayPrompt},{role:'model',text:formatAssistantText(t('assistantSuggestedChangesMessage'),{reply:result.reply,changes:describeActions(result.actions,owner,trayItems)})}]);setConfirmation('workspace_actions');setPlan(null);setInput('');setMentions([]);return;
+          setMessages(current=>[...current,userTurn,{role:'model',text:formatAssistantText(t('assistantSuggestedChangesMessage'),{reply:result.reply,changes:describeActions(result.actions,owner,trayItems)})}]);setConfirmation('workspace_actions');setPlan(null);setInput('');setMentions([]);return;
         }
         if(result.actions.some(action=>action.type==='remove_widget')){
           pendingActions.current=result.actions;pendingSelectedIds.current=[...selectedIds];pendingPrompt.current=prompt;
           const names=result.actions.filter(action=>action.type==='remove_widget').flatMap(action=>action.ids).map(id=>{const widget=owner.widgets.find(item=>item.id===id);return widget?widgetLabel(widget):''}).filter(Boolean);
-          setMessages(current=>[...current,{role:'user',text:displayPrompt},{role:'model',text:t('assistantRemoveWidgetsConfirm').replace('{names}',names.join(', ')).replace('{workspace}',owner.name)}]);setConfirmation('remove_widgets');setPlan(null);setInput('');setMentions([]);return;
+          setMessages(current=>[...current,userTurn,{role:'model',text:t('assistantRemoveWidgetsConfirm').replace('{names}',names.join(', ')).replace('{workspace}',owner.name)}]);setConfirmation('remove_widgets');setPlan(null);setInput('');setMentions([]);return;
         }
         if(result.actions.some(action=>action.type==='open_saved'&&action.ids.some(id=>trayItems.some(item=>item.id===id&&item.type==='apps')))){
           pendingActions.current=result.actions;pendingSelectedIds.current=[...selectedIds];pendingPrompt.current=prompt;
-          setMessages(current=>[...current,{role:'user',text:displayPrompt},{role:'model',text:t('assistantOpenSavedAppsConfirm')}]);setConfirmation('open_saved_apps');setPlan(null);setInput('');setMentions([]);return;
+          setMessages(current=>[...current,userTurn,{role:'model',text:t('assistantOpenSavedAppsConfirm')}]);setConfirmation('open_saved_apps');setPlan(null);setInput('');setMentions([]);return;
         }
         const receipt=safeAssistantReceipt(await act(owner.id,result.actions,prompt,selectedIds));if(!alive.current)return;
-        setMessages(current=>[...current,{role:'user',text:displayPrompt},{role:'model',text:receipt}]);setPlan(null);setInput('');setMentions([]);setScreenshot(false);return;
+        setMessages(current=>[...current,userTurn,{role:'model',text:receipt}]);setPlan(null);setInput('');setMentions([]);setScreenshot(false);return;
       }
       let layoutPlan:LayoutPlan|null=null;
       if(requestedActions.length&&result.intent!=='clarification'&&!result.actions.length&&!result.layout.length&&!result.fileProposals?.length&&!result.calendarProposals?.length){
         const followUp=assistantReplyNeedsClarification(result.reply)?result.reply:requestedActions.includes('add_widget')
           ?'I may have misunderstood which widget you want. Which widget type should I add? I have not changed anything.'
           :'I may have misunderstood: would you like me to change the workspace, or were you asking about it? I have not changed anything.';
-        setMessages(current=>[...current,{role:'user',text:displayPrompt},{role:'model',text:followUp}]);setPlan(null);setInput('');setMentions([]);setScreenshot(false);return;
+        setMessages(current=>[...current,userTurn,{role:'model',text:followUp}]);setPlan(null);setInput('');setMentions([]);setScreenshot(false);return;
       }
       if(result.layout.length&&assistantLayoutRequested(prompt)){
         try{validateLayout(owner,result.layout,size.width,size.height);validateAssistantLayoutIntent(prompt,owner,result.layout,selectedIds);layoutPlan={workspaceId:owner.id,fingerprint:layoutFingerprint(owner),width:size.width,height:size.height,items:result.layout}}
@@ -402,12 +403,12 @@ useEffect(()=>{const attachMany=(event:Event)=>{const detail=(event as CustomEve
             try{validateLayout(owner,result.layout,size.width,size.height);validateAssistantLayoutIntent(prompt,owner,result.layout,selectedIds);layoutPlan={workspaceId:owner.id,fingerprint:layoutFingerprint(owner),width:size.width,height:size.height,items:result.layout}}
             catch{throw new Error('Still could not create a valid layout after retrying once. Nothing was changed. Try a simpler arrangement.')}
           }else if(result.intent==='clarification'||assistantReplyNeedsClarification(result.reply)){
-            setMessages(current=>[...current,{role:'user',text:displayPrompt},{role:'model',text:result.reply}]);setPlan(null);setInput('');setMentions([]);setScreenshot(false);return;
+            setMessages(current=>[...current,userTurn,{role:'model',text:result.reply}]);setPlan(null);setInput('');setMentions([]);setScreenshot(false);return;
           }else throw new Error('Still could not create a valid layout after retrying once. Nothing was changed. Try a simpler arrangement.');
         }
       }
       const reply=layoutPlan?t('assistantPreparedLayoutReply'):assistantResizeRequested(prompt)&&result.intent!=='clarification'&&!assistantReplyNeedsClarification(result.reply)?'I could not prepare that resize. Nothing was changed. Please specify the widget and the size you want.':requestedActions.length&&result.intent!=='chat'&&result.intent!=='clarification'?`${result.reply}\n\n${t('noWorkspaceChanges')}`:result.reply;
-      setMessages(current=>[...current,{role:'user',text:displayPrompt},{role:'model',text:reply}]);setInput('');setMentions([]);setScreenshot(false);setPlan(layoutPlan);
+      setMessages(current=>[...current,userTurn,{role:'model',text:reply}]);setInput('');setMentions([]);setScreenshot(false);setPlan(layoutPlan);
     }catch(reason){if(alive.current)setError(localizeOperationalMessage(locale,reason instanceof Error?reason.message:String(reason)))}
     finally{image=undefined;sending.current=false;if(alive.current){setBusy(false);setPending('');setScreenshot(false)}}
   }
@@ -558,7 +559,7 @@ useEffect(()=>{const attachMany=(event:Event)=>{const detail=(event as CustomEve
     </form>}
     <div ref={log} className="assistant-log" role="log" aria-label={t('aiConversation')} aria-live="polite" aria-busy={busy}>
       {!messages.length&&!busy&&<div className="assistant-empty"><Icon name="ai"/><h2>{t('aiWelcomeTitle')}</h2><p>{t('aiWelcomeBody')}</p></div>}
-      {messages.map((message,index)=><div className={'assistant-message '+message.role} key={index}><small>{message.role==='user'?t('you'):'Still AI'}</small><p>{message.text}</p></div>)}
+      {messages.filter(isAssistantChatMessageVisible).map((message,index)=><div className={'assistant-message '+message.role} key={index}><small>{message.role==='user'?t('you'):'Still AI'}</small><p>{message.role==='model'?cleanAssistantReply(message.text):message.text}</p></div>)}
       {busy&&pending&&<><div className="assistant-message user"><small>{t('you')}</small><p>{pending}</p></div><p className="assistant-thinking" role="status">{t('thinking')}</p></>}
     </div>
     {agentNotesPending?.proposal.kind==='inbox_moves'&&<section className="assistant-proposal assistant-confirmation" aria-label={t('fileMoveReview')}>
