@@ -13,9 +13,10 @@ import { createInitialState, createWidget, createWorkspace } from '../../src/dom
 const mode = process.argv[2];
 const expect=playwrightExpect.configure({timeout:15_000});
 assert(process.platform === 'win32' && process.env.APPDATA, 'This fixture requires Windows with WebView2.');
-assert(['success','stale','timeout','restart','revoke','theme','move-widget','resize-widget','library-edit','library-conflict','library-create','pdf-highlights'].includes(mode), 'Specify an acceptance case from tests/native/README.md.');
+assert(['success','stale','timeout','restart','revoke','theme','move-widget','resize-widget','library-edit','library-conflict','library-create','pdf-highlights','files-viewers'].includes(mode), 'Specify an acceptance case from tests/native/README.md.');
 const libraryCase = mode.startsWith('library-');
 const pdfCase = mode==='pdf-highlights';
+const filesViewerCase = mode==='files-viewers';
 const geometry = mode==='move-widget'?{operation:'move',x:100,y:80}:mode==='resize-widget'?{operation:'resize',width:480,height:360}:null;
 const project = fileURLToPath(new URL('../../', import.meta.url));
 const cargoTarget = resolve(project, process.env.STILL_FIXTURE_CARGO_TARGET || 'src-tauri/target');
@@ -52,6 +53,13 @@ if(libraryCase||geometry||pdfCase){
   notes.title='Fixture Notes';
   if(libraryCase||pdfCase){notes.notesLibraryKey=notes.id;notes.notesLibraryName=pdfCase?'Fixture PDF Library':'Fixture Notes Library';}
   canvas.widgets.push(notes);
+}
+if(filesViewerCase){
+  const files=createWidget('files');
+  files.title='Fixture Course Files';
+  files.folderKey=downloads.id;
+  files.folderName='Fixture Inbox';
+  canvas.widgets.push(files);
 }
 state.workspaces.push(canvas);
 state.activeId = canvas.id;
@@ -398,6 +406,27 @@ async function runPdfHighlights(page) {
   assert.equal(createHash('sha256').update(await readFile(sourcePath)).digest('hex'),beforeHash,'Number selection and calculation must not write the source PDF.');
 }
 
+async function runFilesViewers(page) {
+  const card=page.locator('.widget-files').filter({hasText:'Fixture Course Files'});
+  await expect(card.getByRole('button',{name:'Preview file ~$33333.docx'})).toBeVisible();
+  await card.getByRole('button',{name:'Preview file ~$33333.docx'}).click();
+  await expect(card.getByText('This is a temporary Office lock file. Open 33333.docx instead.',{exact:true})).toBeVisible();
+  await expect(card.getByRole('button',{name:'Open matching document in default app'})).toBeVisible();
+  await expect(card.getByRole('button',{name:'Open with another app…'})).toHaveCount(0);
+  await card.getByRole('button',{name:'Open matching document in default app'}).click();
+  await expect(page.getByText('Opened in your default app: 33333.docx',{exact:true})).toBeVisible();
+  await card.getByRole('button',{name:'Back to files'}).click();
+  await card.getByRole('button',{name:'Preview file 33333.docx'}).click();
+  await expect(card.getByRole('button',{name:'Open default app'})).toBeVisible();
+  await expect(card.getByRole('button',{name:'Open with another app…'})).toBeVisible();
+  await expect(card.getByText('Still cannot preview this file type here. Use one of the viewer options above.',{exact:true})).toBeVisible();
+  await card.getByRole('button',{name:'Back to files'}).click();
+  await card.getByRole('button',{name:'Preview file ~$missing.docx'}).click();
+  await expect(card.getByText('This is a temporary Office lock file, and its matching document is not in this folder.',{exact:true})).toBeVisible();
+  await expect(card.getByRole('button',{name:'Open default app'})).toHaveCount(0);
+  await expect(card.getByRole('button',{name:'Open with another app…'})).toHaveCount(0);
+}
+
 async function runInbox(page,port) {
   const review=await submit(page);
   await expect(review).toBeVisible();
@@ -491,6 +520,11 @@ try {
     await writeFile(join(notesRoot,'lesson.md'),'Original study note.\n');
   }
   for(const name of files)await writeFile(join(inbox,name),'Synthetic '+name+'\n');
+  if(filesViewerCase){
+    await writeFile(join(inbox,'33333.docx'),'Synthetic document for native default-app integration.');
+    await writeFile(join(inbox,'~$33333.docx'),'Office temporary lock stub.');
+    await writeFile(join(inbox,'~$missing.docx'),'Orphan Office temporary lock stub.');
+  }
   await writeFile(config,JSON.stringify({identifier,build:{beforeDevCommand:'',devUrl:url},app:{windows:[{label:'main',title,url:bootstrapPath.slice(1),width:1360,height:960,transparent:true,devtools:true}]}}));
   const viteConfig=join(fixture,'vite.config.mjs');
   await writeFile(viteConfig,`import base from ${JSON.stringify(new URL('../../vite.config.ts',import.meta.url).href)};
@@ -505,6 +539,7 @@ export default {...base,plugins:[...base.plugins,bootstrap],server:{...base.serv
   if(mode==='theme'||geometry)await runControl(page);
   else if(libraryCase)await runLibrary(page);
   else if(pdfCase)await runPdfHighlights(page);
+  else if(filesViewerCase)await runFilesViewers(page);
   else await runInbox(page,port);
   console.log('Native Still fixture passed: '+mode);
 } catch(error) {
