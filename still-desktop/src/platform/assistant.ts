@@ -10,7 +10,7 @@ export type ProviderAgentCall = {id:string;name:string;input:unknown};
 export type ProviderAgentTurn = {kind:'final';response:unknown}|{kind:'tool_calls';assistantMessage:ProviderAgentMessage;calls:ProviderAgentCall[]};
 export type ProviderAgentProposal=AddNotesWidgetProposal|SafeWorkspaceActionProposal|AssistantMemoryProposal;
 export type ProviderAgentOutcome = {status:'final';response:AssistantReply}|{status:'awaiting_confirmation';proposal:ProviderAgentProposal;approve:()=>Promise<{execution:AgentToolExecution;resume:()=>Promise<ProviderAgentOutcome>}>;decline:()=>Promise<ProviderAgentOutcome>};
-const MAX_AGENT_TOOL_RESULT_CHARS=30_000;
+const MAX_AGENT_TOOL_RESULT_CHARS=64_000;
 const ASSISTANT_IMAGE_MAX_DIMENSION=2560;
 const ASSISTANT_IMAGE_JPEG_QUALITY=0.92;
 const ASSISTANT_IMAGE_MAX_BASE64_LENGTH=2_800_000;

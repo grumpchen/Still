@@ -36,6 +36,7 @@ export type AssistantLibraryProposal={version:1;rootId:string;operations:Assista
 export type AssistantLibraryOrganisationContext={version:1;rootId:string;rootName:string;entries:{id:string;path:string;name:string;directory:boolean;size:number;revision:string}[];truncated:boolean;contentShared:false};
 export type AssistantFileProposal={sourceWidgetId:string;sourcePath:string;destinationFolder:string;reason:string};
 export const MAX_ASSISTANT_BATCH=10;
+export const MAX_ASSISTANT_FILE_PROPOSALS=100;
 export const MAX_ASSISTANT_WIDGETS=100;
 export const MAX_ASSISTANT_WORKSPACES=30;
 /** Reject an AI edit if the data it would replace changed while the request was in flight. */
@@ -215,7 +216,7 @@ export function parseAssistantReply(value:unknown):AssistantReply {
   const rawLibrary=(value as Partial<AssistantReply>).libraryProposal;
   const libraryProposal=rawLibrary===undefined?undefined:checkedAssistantLibraryProposal(rawLibrary);
   const rawFileProposals=(value as Partial<AssistantReply>).fileProposals??[];
-   if(!Array.isArray(rawFileProposals)||rawFileProposals.length>5)throw new Error('The AI returned an invalid file filing proposal. Nothing was moved. Try again.');
+   if(!Array.isArray(rawFileProposals)||rawFileProposals.length>MAX_ASSISTANT_FILE_PROPOSALS)throw new Error('The AI returned too many file moves for one review. Nothing was moved. Review up to 100 files at a time.');
    const proposedSources=new Set<string>();
   const fileProposals:AssistantFileProposal[]=rawFileProposals.map(proposal=>{
      if(!proposal||typeof proposal.sourceWidgetId!=='string'||!/^[a-zA-Z0-9-]{1,80}$/.test(proposal.sourceWidgetId)||typeof proposal.sourcePath!=='string'||!isSafeResourcePath(proposal.sourcePath)||typeof proposal.destinationFolder!=='string'||(proposal.destinationFolder!==''&&!isSafeFilingFolder(proposal.destinationFolder))||typeof proposal.reason!=='string'||!proposal.reason.trim()||Array.from(proposal.reason).length>600)throw new Error('The AI returned an unsafe file filing proposal. Nothing was moved. Try again.');

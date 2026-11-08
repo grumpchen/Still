@@ -518,6 +518,8 @@ test('AI file filing proposals identify selected sources and never mix with work
   assert.deepEqual(parseAssistantReply({reply:'This is a chemistry handout.',layout:[],actions:[],fileProposals:[proposal]}).fileProposals,[proposal]);
   const another={...proposal,sourceWidgetId:'files-2',sourcePath:'MATH120/notes.md',destinationFolder:'Courses/MATH120'};
   assert.equal(parseAssistantReply({reply:'Two files are useful.',layout:[],actions:[],fileProposals:[proposal,another]}).fileProposals.length,2);
+ const bulk=Array.from({length:6},(_,index)=>({...proposal,sourcePath:'Course-'+(index+1)+'/notes.md'}));
+ assert.equal(parseAssistantReply({reply:'Review these moves.',layout:[],actions:[],fileProposals:bulk}).fileProposals.length,6);
   assert.throws(()=>parseAssistantReply({reply:'Move it',layout:[],actions:[],fileProposals:[{...proposal,destinationFolder:'../outside'}]}),/unsafe file filing proposal/);
   assert.throws(()=>parseAssistantReply({reply:'Move it',layout:[],actions:[],fileProposals:[{...proposal,sourcePath:'../outside.pdf'}]}),/unsafe file filing proposal/);
   assert.throws(()=>parseAssistantReply({reply:'Move it',layout:[],actions:[],fileProposals:[proposal,{...proposal}]}),/duplicate filing proposals/);
