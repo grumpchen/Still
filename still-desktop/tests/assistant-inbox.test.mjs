@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {executeFileMoves,reviewInboxMoves} from '../src/domain/assistantInbox.ts';
+import {validateAssistantActions} from '../src/domain/assistant.ts';
 
 const entry=(path,directory=false)=>({path,name:path,directory,blocked:false,size:10,revision:directory?null:'10:1'});
 const inspection={id:'inbox-1',rootPath:'D:/private',entries:[entry('a.md'),entry('b.md'),entry('c.md'),entry('Filed',true)],truncated:false};
@@ -38,4 +39,11 @@ test('a move that fails after dispatch is reported as unverified',async()=>{
  assert.equal(execution.status,'failed');
  assert.equal(execution.mutation,'unknown');
  assert.match(execution.error,/Check the failed file before retrying/);
+});
+
+test('adding a catalog widget is rejected before review on fixed Dashboard and Library pages',()=>{
+ const workspace={id:'fixture',name:'Fixture',widgets:[],groups:[]};
+ const change=[{type:'add_widget',ids:['calendar']}];
+ for(const role of ['dashboard','library'])assert.throws(()=>validateAssistantActions({...workspace,role},change),/fixed widgets/);
+ assert.doesNotThrow(()=>validateAssistantActions(workspace,change));
 });

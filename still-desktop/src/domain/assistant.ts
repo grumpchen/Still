@@ -860,11 +860,16 @@ export function resolveDirectAssistantActions(text:string,workspace:Workspace,se
   }).filter(action=>action.ids.length);
   return actions.length===types.length?actions:null;
 }
+export function assistantFixedModuleAction(workspace:Workspace,actions:AssistantAction[]):boolean{
+  return (workspace.role==='dashboard'||workspace.role==='library')
+    && actions.some(action=>['add_widget','open_saved','remove_widget','minimize','restore'].includes(action.type));
+}
 export function validateAssistantActions(workspace:Workspace,actions:AssistantAction[],savedTrayItems:AssistantTrayItem[]=[],workspaces:AssistantWorkspaceChoice[]=[]):void{
   if(actions.some(action=>action.type==='set_shortcut'||action.type==='run_tutorial'||action.type==='move_widget'||action.type==='control_timer'||action.type==='set_ui_visibility')&&actions.length!==1)throw new Error('Shortcut changes, tutorial controls, timer controls, interface visibility, and workspace moves must be requested one at a time. Nothing was changed.');
   const widgets=new Map(workspace.widgets.map(widget=>[widget.id,widget]));
   const savedItems=new Set(savedTrayItems.map(item=>item.id));
   if(!actions.length)throw new Error('The AI returned no workspace actions. Nothing was changed. Try again.');
+  if(assistantFixedModuleAction(workspace,actions))throw new Error('Dashboard and Library have fixed widgets. Switch to a regular workspace to change its widgets.');
   const batchSize=actions.filter(action=>action.type==='add_widget'||action.type==='open_saved').reduce((total,action)=>total+action.ids.length,0);
   if(batchSize>MAX_ASSISTANT_BATCH)throw new Error(`Still AI can add or open at most ${MAX_ASSISTANT_BATCH} items in one request. Nothing was changed.`);
   const changeBatch=actions.filter(action=>action.type==='create_note_document'||action.type==='open_note_document'||action.type==='close_note_document'||action.type==='edit_widget'||action.type==='set_widget_plugin'||action.type==='set_sidebar_plugin').reduce((total,action)=>total+action.ids.length,0);

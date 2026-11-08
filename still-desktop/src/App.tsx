@@ -13,7 +13,7 @@ import WorkspaceCanvas from './WorkspaceCanvas.tsx';
 import DashboardHome from './DashboardHome.tsx';
 import LibraryHome from './LibraryHome.tsx';
 import AssistantPanel from './AssistantPanel.tsx';
-import {addFocusForAssistantTimer,applyAssistantWidgetActions,applyLayoutPlan,assistantTrayItems,MAX_ASSISTANT_WIDGETS,MAX_ASSISTANT_WORKSPACES,validateAssistantActions,validateAssistantActionIntent,type AssistantAction,type LayoutPlan} from './domain/assistant.ts';
+import {addFocusForAssistantTimer,assistantFixedModuleAction,applyAssistantWidgetActions,applyLayoutPlan,assistantTrayItems,MAX_ASSISTANT_WIDGETS,MAX_ASSISTANT_WORKSPACES,validateAssistantActions,validateAssistantActionIntent,type AssistantAction,type LayoutPlan} from './domain/assistant.ts';
 import {checkedCalendarEvents,checkedStudyCalendarDrafts,type StudyCalendarEventDraft} from './domain/studyCalendar.ts';
 import {canvasExtent,canvasHeight,nextPlacement,placement,constrainPlacement} from './domain/layout.ts';
 import type {SnapLayoutId} from './domain/snapLayouts.ts';
@@ -359,7 +359,7 @@ export default function App(){
     const expectedDestination=(destinationFolder?destinationFolder+'/':'')+sourcePath.split('/').at(-1);
     if(Object.hasOwn(fileWidget.fileNotes,expectedDestination))throw new Error('A note already exists for that destination. Nothing was moved.');
     const result=await localFiles.moveResource(widgetId,sourcePath,destinationFolder,expected);
-    if(result.sourcePath!==sourcePath)throw new Error('Still could not verify the filed item path. Check the library before retrying.');
+    if(result.sourcePath!==sourcePath||result.destinationPath!==expectedDestination)throw new Error('Still could not verify the filed item path. Check the library before retrying.');
     const latest=captureState.current,latestWidget=latest.workspaces.flatMap(item=>item.widgets).find(widget=>widget.id===widgetId&&widget.type==='files');
     if(latestWidget&&Object.hasOwn(latestWidget.fileNotes,sourcePath)&&!Object.hasOwn(latestWidget.fileNotes,result.destinationPath)){
       const fileNotes={...latestWidget.fileNotes,[result.destinationPath]:latestWidget.fileNotes[sourcePath]};delete fileNotes[sourcePath];updateWidget(widgetId,{fileNotes});
@@ -382,7 +382,7 @@ export default function App(){
   async function applyAssistantActions(workspaceId:string,actions:AssistantAction[],prompt:string,selectedIds:string[]):Promise<string>{
     const initial=captureState.current,initialWorkspace=initial.workspaces.find(item=>item.id===workspaceId);
     if(!initialWorkspace||initial.activeId!==workspaceId)throw new Error(translate(captureState.current.locale,'activeWorkspaceChanged'));
-    if((initialWorkspace.role==='dashboard'||initialWorkspace.role==='library')&&actions.some(action=>['add_widget','open_saved','remove_widget','minimize','restore'].includes(action.type)))throw new Error(translate(initial.locale,initialWorkspace.role==='dashboard'?'dashboardModulesImmutable':'libraryModulesFixed'));
+    if(assistantFixedModuleAction(initialWorkspace,actions))throw new Error(translate(initial.locale,initialWorkspace.role==='dashboard'?'dashboardModulesImmutable':'libraryModulesFixed'));
     const initialTray=assistantTrayItems(initial.presets,initialWorkspace.groups);
     const workspaceChoices=initial.workspaces.map(item=>({id:item.id,name:item.name}));validateAssistantActions(initialWorkspace,actions,initialTray,workspaceChoices);validateAssistantActionIntent(prompt,initialWorkspace,actions,initialTray,workspaceChoices,selectedIds);
     const createAction=actions.find(action=>action.type==='create_workspace');

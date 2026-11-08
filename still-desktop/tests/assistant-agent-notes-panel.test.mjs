@@ -102,11 +102,11 @@ test('Notes proposal works with the default screenshot preference and requires S
   await act(async()=>window.document.querySelectorAll('.assistant-settings input[type="checkbox"]')[1].click());
   const composer=window.document.querySelector('#ai-message');await act(async()=>setReactValue(composer,'Please add a Notes widget.','HTMLTextAreaElement'));
   await act(async()=>window.document.querySelector('.assistant-compose').requestSubmit());
-  await waitFor(()=>window.document.querySelector('[aria-label="Add one Notes widget?"]'));
+  await waitFor(()=>window.document.querySelector('[aria-label="Add one widget?"]'));
   assert.equal(executions,0,'model tool call only creates a review proposal');
   assert.equal(captures,0,'agent mode skips automatic workspace capture');
   assert.equal(calls.some(call=>call.command==='assistant_chat'),false,'the agent path does not fall back to ordinary chat');
-  await act(async()=>window.document.querySelector('[aria-label="Add one Notes widget?"] button.primary').click());
+  await act(async()=>window.document.querySelector('[aria-label="Add one widget?"] button.primary').click());
   await waitFor(()=>executions===1&&calls.filter(call=>call.command==='assistant_agent_turn').length===3);
   await waitFor(()=>[...window.document.querySelectorAll('.assistant-message.model p')].some(node=>node.textContent==='Added a Notes widget (Notes 1).'));
   assert.equal(window.document.querySelector('.assistant-error'),null);
@@ -130,8 +130,8 @@ test('declined Notes proposal does not execute or apply actions from the resumed
   await waitFor(()=>window.document.querySelector('#ai-model option[value="openai::gpt-test"]'));
   await act(async()=>window.document.querySelector('[aria-label="AI settings"]').click());await act(async()=>window.document.querySelectorAll('.assistant-settings input[type="checkbox"]')[1].click());
   const composer=window.document.querySelector('#ai-message');await act(async()=>setReactValue(composer,'Please add a Notes widget.','HTMLTextAreaElement'));await act(async()=>window.document.querySelector('.assistant-compose').requestSubmit());
-  await waitFor(()=>window.document.querySelector('[aria-label="Add one Notes widget?"]'));
-  await act(async()=>window.document.querySelector('[aria-label="Add one Notes widget?"] button').click());
+  await waitFor(()=>window.document.querySelector('[aria-label="Add one widget?"]'));
+  await act(async()=>window.document.querySelector('[aria-label="Add one widget?"] button').click());
   await waitFor(()=>calls.filter(call=>call.command==='assistant_agent_turn').length===3);
   await waitFor(()=>/No other suggested changes were applied/.test(window.document.querySelector('.assistant-error')?.textContent??''));
   assert.equal(executions,0,'declining the Notes proposal executes no mutation');
@@ -154,7 +154,7 @@ test('approved Notes receipt remains visible when resumed provider turn fails',a
   await act(async()=>root.render(createElement(AssistantPanel,{workspace,workspaces:[{id:workspace.id,name:workspace.name}],trayItems:[],sidebarPlugins:[],open:true,close(){},dimensions:()=>({width:900,height:700}),apply(){},undo(){},act:async()=>{executions++;return 'Added a Notes widget (Notes 1).'}})));
   await waitFor(()=>window.document.querySelector('#ai-model option[value="openai::gpt-test"]'));await act(async()=>window.document.querySelector('[aria-label="AI settings"]').click());await act(async()=>window.document.querySelectorAll('.assistant-settings input[type="checkbox"]')[1].click());
   const composer=window.document.querySelector('#ai-message');await act(async()=>setReactValue(composer,'Please add a Notes widget.','HTMLTextAreaElement'));await act(async()=>window.document.querySelector('.assistant-compose').requestSubmit());
-  await waitFor(()=>window.document.querySelector('[aria-label="Add one Notes widget?"]'));await act(async()=>window.document.querySelector('[aria-label="Add one Notes widget?"] button.primary').click());
+  await waitFor(()=>window.document.querySelector('[aria-label="Add one widget?"]'));await act(async()=>window.document.querySelector('[aria-label="Add one widget?"] button.primary').click());
   await waitFor(()=>executions===1&&window.document.querySelector('.assistant-error'));
   assert.ok([...window.document.querySelectorAll('.assistant-message.model p')].some(node=>node.textContent==='Added a Notes widget (Notes 1).'),'actual execution receipt is in chat despite provider resume failure');
  }finally{
@@ -209,8 +209,8 @@ test('Gemini preview is provider-specific and preserves its native tool round th
   await waitFor(()=>window.document.querySelector('#ai-model option[value="gemini::gemini-test"]'));await act(async()=>window.document.querySelector('[aria-label="AI settings"]').click());
   const checkboxes=window.document.querySelectorAll('.assistant-settings input[type="checkbox"]');assert.equal(checkboxes[1].checked,false,'OpenAI opt-in does not enable Gemini');await act(async()=>checkboxes[1].click());
   const composer=window.document.querySelector('#ai-message');await act(async()=>setReactValue(composer,'Please add a Notes widget.','HTMLTextAreaElement'));await act(async()=>window.document.querySelector('.assistant-compose').requestSubmit());
-  await waitFor(()=>window.document.querySelector('[aria-label="Add one Notes widget?"]'));assert.equal(executions,0);assert.equal(calls.some(call=>call.command==='assistant_chat'),false);
-  await act(async()=>window.document.querySelector('[aria-label="Add one Notes widget?"] button.primary').click());await waitFor(()=>executions===1&&calls.filter(call=>call.command==='assistant_agent_turn').length===3);await waitFor(()=>[...window.document.querySelectorAll('.assistant-message.model p')].some(node=>node.textContent==='Added Notes 1.'));
+  await waitFor(()=>window.document.querySelector('[aria-label="Add one widget?"]'));assert.equal(executions,0);assert.equal(calls.some(call=>call.command==='assistant_chat'),false);
+  await act(async()=>window.document.querySelector('[aria-label="Add one widget?"] button.primary').click());await waitFor(()=>executions===1&&calls.filter(call=>call.command==='assistant_agent_turn').length===3);await waitFor(()=>[...window.document.querySelectorAll('.assistant-message.model p')].some(node=>node.textContent==='Added Notes 1.'));
  }finally{
   if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();for(const key of old.keys()){const descriptor=old.get(key);if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}
  }
@@ -300,5 +300,42 @@ for(const provider of ['chatgpt','openai'])test(provider+' reviews a move, resum
   await waitFor(()=>window.document.body.textContent.includes('Finished the fixture workflow.'));
   assert.deepEqual(actions,[{type:'add_widget',ids:['notes']}]);
   assert.match(window.document.body.textContent,/1 of 1 file moves verified/);
+ }finally{if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();for(const [key,descriptor] of old)if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}
+});
+
+test('selected Library context cannot widen the agent to the inbox or workspace mutations',async()=>{
+ const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true}),{window}=dom,old=new Map();
+ const globals={window,document:window.document,navigator:window.navigator,localStorage:window.localStorage,HTMLElement:window.HTMLElement,Element:window.Element,Node:window.Node,MutationObserver:window.MutationObserver,IS_REACT_ACT_ENVIRONMENT:true,isTauri:true};
+ for(const key of Object.keys(globals))old.set(key,Object.getOwnPropertyDescriptor(globalThis,key));let root;const requests=[];
+ try{
+  for(const [key,value] of Object.entries(globals))setGlobal(key,value);
+  window.HTMLElement.prototype.scrollTo=function(){};window.HTMLTextAreaElement.prototype.focus=function(){};window.__TAURI_INTERNALS__={};
+  window.localStorage.setItem('still-assistant-model','chatgpt::gpt-test');
+  mockIPC((command,args)=>{
+   if(command==='chatgpt_plan_status')return {connected:true,email:null};
+   if(command==='chatgpt_plan_models')return [{slug:'gpt-test',display_name:'Test model'}];
+   if(command!=='chatgpt_plan_agent_turn')return null;
+   requests.push(args.request);
+   if(requests.length===1){
+    assert.equal(args.request.enable_add_widget_tool,false);
+    assert.equal(args.request.enable_safe_workspace_action_tool,false);
+    assert.equal(args.request.enable_inbox_tool,false);
+    assert.equal(args.request.enable_inbox_move_tool,false);
+    assert.match(args.request.messages.at(-1).content,/fixture excerpt/);
+    return {kind:'tool_calls',assistantMessage:{role:'assistant',tool_calls:[{id:'scoped',type:'function',function:{name:'inspect_workspace',arguments:'{}'}}]},calls:[{id:'scoped',name:'inspect_workspace',input:{}}]};
+   }
+   assert.deepEqual(JSON.parse(args.request.messages.at(-1).content).result,{scope:'selected_library_resources',workspaceInspectionAvailable:false});
+   return {kind:'final',response:{intent:'workspace_action',reply:'Add a calendar.',layout:[],actions:[{type:'add_widget',ids:['calendar']}]}};
+  },{shouldMockEvents:true});
+  const {default:AssistantPanel}=await vite.ssrLoadModule('/src/AssistantPanel.tsx');const workspace=createWorkspace('Fixture',[]);
+  root=createRoot(window.document.querySelector('#root'));
+  let mutations=0;
+  await act(async()=>root.render(createElement(AssistantPanel,{workspace,workspaces:[workspace],inboxWidgetId:'inbox-1',trayItems:[],sidebarPlugins:[],open:true,close(){},dimensions:()=>({width:900,height:700}),apply(){mutations++},undo(){},act:async()=>{mutations++;return 'Unexpected change.'},moveFile:async()=>{mutations++;return ''}})));
+  await waitFor(()=>window.document.querySelector('#ai-model option[value="chatgpt::gpt-test"]'));
+  await act(async()=>window.dispatchEvent(new window.CustomEvent('still-assistant-resource',{detail:{name:'fixture.md',path:'fixture.md',text:'fixture excerpt',prompt:'Summarize this selected file.'}})));
+  await act(async()=>window.document.querySelector('.assistant-compose').requestSubmit());
+  await waitFor(()=>window.document.body.textContent.includes('no changes were applied'));
+  assert.equal(mutations,0);
+  assert.equal(requests.length,2);
  }finally{if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();for(const [key,descriptor] of old)if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}
 });

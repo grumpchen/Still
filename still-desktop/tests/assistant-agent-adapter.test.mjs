@@ -126,6 +126,30 @@ test('safe minimize action remains separate opt-in, reviewed, and resumed with t
  }
 });
 
+test('a pending inbox approval cannot run after its workspace closes',async()=>{
+ const dom=new JSDOM('',{url:'http://localhost'}),{window}=dom,old=new Map();
+ for(const key of ['window','document','navigator','__TAURI_INTERNALS__'])old.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
+ let live=true,executions=0,requests=0;
+ try{
+  for(const [key,value] of Object.entries({window,document:window.document,navigator:window.navigator,__TAURI_INTERNALS__:{}}))Object.defineProperty(globalThis,key,{configurable:true,value});
+  mockIPC(()=>{
+   requests++;
+   const name='propose_inbox_moves',id='move-1',input={fileProposals:[{sourceWidgetId:'inbox-1',sourcePath:'lecture.md',destinationFolder:'Filed',reason:'Requested.'}]};
+   return {kind:'tool_calls',assistantMessage:{role:'assistant',tool_calls:[{id,type:'function',function:{name,arguments:JSON.stringify(input)}}]},calls:[{id,name,input}]};
+  },{shouldMockEvents:true});
+  const pending=await runProviderAgent({provider:'openai',model:'test-model',sessionId:'study',messages:[{role:'user',content:'File lecture.md.'}],
+   validateOwner(){if(!live)throw new Error('The original workspace closed.')},inspectInbox:()=>({}),
+   inboxMoves:{prepare:()=>({kind:'inbox_moves',moves:[]}),async execute(){executions++;return {status:'succeeded',mutation:'applied'}}}});
+  assert.equal(pending.status,'awaiting_confirmation');
+  live=false;
+  const approval=await pending.approve();
+  assert.deepEqual(approval.execution,{status:'failed',mutation:'none',error:'The original workspace closed.'});
+  await assert.rejects(()=>approval.resume(),/original workspace closed/);
+  assert.equal(executions,0);
+  assert.equal(requests,1);
+ }finally{clearMocks();dom.window.close();for(const [key,descriptor] of old)if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}
+});
+
 test('safe action approval refuses a stale workspace and rejects the model success claim',async()=>{
  const dom=new JSDOM('',{url:'http://localhost'}),{window}=dom,old=new Map();
  for(const key of ['window','document','navigator','__TAURI_INTERNALS__'])old.set(key,Object.getOwnPropertyDescriptor(globalThis,key));

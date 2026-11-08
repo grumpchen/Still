@@ -273,13 +273,16 @@ useEffect(()=>{const attachMany=(event:Event)=>{const detail=(event as CustomEve
         const getSnapshot=():StillToolSnapshot=>{const live=latestContext.current;if(live.workspace.id!==owner.id)throw new Error('The active workspace changed while the agent was responding. Try again.');const partial={workspace:live.workspace,savedTrayItems:live.trayItems,workspaces:live.workspaces},revision=agentSnapshotRevision(partial);inspectedContext=revision;return {...partial,revision}};
         const memoryRequest=memoryRequestedInPrompt(prompt);
         const registry=createStillWorkspaceToolRegistry({getSnapshot,enableAssistantMemoryTool:memoryRequest,validate:(snapshot,actions)=>{validateAssistantActions(snapshot.workspace,actions,snapshot.savedTrayItems,snapshot.workspaces);validateAssistantActionIntent(prompt,snapshot.workspace,actions,snapshot.savedTrayItems,snapshot.workspaces,selectedIds.filter(id=>snapshot.workspace.widgets.some(widget=>widget.id===id)))},validateIntent:(snapshot,actions)=>validateAssistantActionIntent(prompt,snapshot.workspace,actions,snapshot.savedTrayItems,snapshot.workspaces,selectedIds.filter(id=>snapshot.workspace.widgets.some(widget=>widget.id===id))),validateMemoryIntent:text=>validateRequestedMemory(prompt,text),execute:(snapshot,actions)=>act(snapshot.workspace.id,actions,prompt,selectedIds.filter(id=>snapshot.workspace.widgets.some(widget=>widget.id===id)))});
-        const outcome=await runProviderAgent({provider:requestProvider,model:requestModel,messages:agentMessages,sessionId:owner.id,toolRegistry:registry,inspectInbox:inboxWidgetId?inspectInbox:undefined,inboxMoves:inboxWidgetId&&moveFile?{
+        const outcome=await runProviderAgent({provider:requestProvider,model:requestModel,messages:agentMessages,sessionId:owner.id,validateOwner:()=>{if(!alive.current||latest.current.id!==owner.id)throw new Error('The active workspace changed. Return to the original workspace and try again.')},toolRegistry:libraryResource?undefined:registry,
+          inspectWorkspace:libraryResource?()=>({scope:'selected_library_resources',workspaceInspectionAvailable:false}):undefined,
+          inspectInbox:!libraryResource&&inboxWidgetId?inspectInbox:undefined,
+          inboxMoves:!libraryResource&&inboxWidgetId&&moveFile?{
           prepare:input=>reviewInboxMoves(input,inboxInspection),
           execute:async proposal=>{
             inboxInspection=null;
             return (await executeFileMoves(proposal.moves,checkReviewedFileMove,item=>applyReviewedFileMove(owner.id,item,moveFile))).execution;
           },
-        }:undefined,enableSafeWorkspaceActionTool:agentSafeActionMode,enableAssistantMemoryTool:memoryRequest,validateWorkspace:()=>{const live=latestContext.current;if(live.workspace.id!==owner.id)throw new Error('The active workspace changed while the agent was responding. Try again.');const partial={workspace:live.workspace,savedTrayItems:live.trayItems,workspaces:live.workspaces};if(inspectedContext!==null&&agentSnapshotRevision(partial)!==inspectedContext)throw new Error('The workspace changed while the agent was responding. Nothing was applied; try again.')}});
+        }:undefined,enableSafeWorkspaceActionTool:!libraryResource&&agentSafeActionMode,enableAssistantMemoryTool:!libraryResource&&memoryRequest,validateWorkspace:()=>{const live=latestContext.current;if(live.workspace.id!==owner.id)throw new Error('The active workspace changed while the agent was responding. Try again.');const partial={workspace:live.workspace,savedTrayItems:live.trayItems,workspaces:live.workspaces};if(inspectedContext!==null&&agentSnapshotRevision(partial)!==inspectedContext)throw new Error('The workspace changed while the agent was responding. Nothing was applied; try again.')}});
         if(outcome.status==='awaiting_confirmation'){
           setAgentNotesPending(outcome);setAgentProposalProvider(requestProvider);setMessages(current=>[...current,{role:'user',text:displayPrompt},{role:'model',text:agentProposalMessage(outcome.proposal,requestProvider,owner,trayItems)}]);setInput('');setMentions([]);setScreenshot(false);return;
         }
@@ -300,6 +303,7 @@ useEffect(()=>{const attachMany=(event:Event)=>{const detail=(event as CustomEve
         setFileProposal(proposals[0]);setFileProposalQueue(proposals.slice(1));
         setMessages(current=>[...current,{role:'user',text:displayPrompt},{role:'model',text:result.reply}]);setLibraryResource(null);setPlan(null);setInput('');setMentions([]);setScreenshot(false);return;
       }
+      if(agentMode&&libraryResource&&(result.layout.length||result.calendarProposals?.length))throw new Error(t('compareOnlyReply'));
       if(result.calendarProposals?.length){
         const calendar=owner.widgets.find(widget=>widget.type==='calendar');
         if(!calendar)throw new Error(t('calendarProposalUnavailable'));
@@ -313,6 +317,7 @@ useEffect(()=>{const attachMany=(event:Event)=>{const detail=(event as CustomEve
         setNoteDraftProposal({...libraryResource.noteTarget,draft:noteDraftText.trim()});setFileProposal(null);setFileProposalQueue([]);setCalendarProposal(null);setPlan(null);
         setMessages(current=>[...current,{role:'user',text:displayPrompt},{role:'model',text:result.reply}]);setLibraryResource(null);setInput('');setMentions([]);setScreenshot(false);return;
       }
+      if(agentMode&&libraryResource&&result.actions.length)throw new Error(t('compareOnlyReply'));
       if(libraryResource)setLibraryResource(null);
       if(result.actions.length&&assistantReplyNeedsClarification(result.reply)){
         setMessages(current=>[...current,{role:'user',text:displayPrompt},{role:'model',text:result.reply}]);setPlan(null);setInput('');setMentions([]);setScreenshot(false);return;
@@ -381,7 +386,14 @@ useEffect(()=>{const attachMany=(event:Event)=>{const detail=(event as CustomEve
     finally{sending.current=false;if(alive.current)setBusy(false)}
   }
   function agentExecutionReceipt(execution:AgentToolExecution,proposal?:ProviderAgentProposal):string{
-    if(proposal?.kind==='inbox_moves'&&execution.status==='failed')return execution.error;
+    if(proposal?.kind==='inbox_moves'){
+      if(execution.status==='failed')return execution.error;
+      const result=execution.result as {receipt:string;moved:{sourcePath:string;destinationPath:string}[]};
+      if(Array.isArray(result?.moved)){
+        const details=result.moved.map(item=>item.sourcePath+' → '+item.destinationPath).join('\n');
+        return result.receipt+'\n'+details;
+      }
+    }
     if(proposal?.kind==='assistant_memory'){
       if(execution.status==='succeeded'&&execution.result&&typeof execution.result==='object'){
         const result=execution.result as {receipt?:unknown;entry?:{text?:unknown}};
@@ -503,6 +515,7 @@ useEffect(()=>{const attachMany=(event:Event)=>{const detail=(event as CustomEve
     </div>
     {agentNotesPending?.proposal.kind==='inbox_moves'&&<section className="assistant-proposal assistant-confirmation" aria-label={t('fileMoveReview')}>
       <strong>{t('fileMoveReview')} ({agentNotesPending.proposal.moves.length})</strong>
+      {agentNotesPending.proposal.truncated&&<small>{t('searchWasLimited')}</small>}
       <ol>{agentNotesPending.proposal.moves.map(item=><li key={item.sourcePath}><code>{item.sourcePath}</code> → <code>{item.destinationFolder||'/'}</code><p>{item.reason}</p></li>)}</ol>
       <div className="assistant-row"><button type="button" disabled={busy} onClick={()=>void declineAgentNotes()}>{t('cancel')}</button><button type="button" className="primary" disabled={busy} onClick={()=>void approveAgentNotes()}>{busy?t('working'):t('moveFile')+' ('+agentNotesPending.proposal.moves.length+')'}</button></div>
     </section>}

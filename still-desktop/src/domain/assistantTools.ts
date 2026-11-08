@@ -14,7 +14,7 @@ export type StillToolSnapshot = {
 
 export type StillWorkspaceInspection = {
   revision: string;
-  activeWorkspace: { id: string; name: string };
+  activeWorkspace: { id: string; name: string; fixedWidgets: boolean };
   workspaces: AssistantWorkspaceChoice[];
   savedItems: AssistantTrayItem[];
   widgets: Array<{
@@ -28,7 +28,7 @@ export type StillWorkspaceInspection = {
   }>;
 };
 
-/** The first mutating tool is intentionally limited to adding one Notes widget. */
+/** An approval to add one widget from Still’s built-in catalog. */
 export type AddWidgetProposal = {
   kind: 'add_widget';
   snapshotRevision: string;
@@ -78,7 +78,7 @@ export type StillWorkspaceToolRegistry = {
 };
 
 /**
- * Create a read-only inspection tool and a confirmation-gated add Notes tool.
+ * Create workspace inspection and reviewed tools that use the app’s validated actions.
  * The model can prepare a proposal but cannot authorize or execute it. Inspection
  * excludes note bodies and local paths; execution rechecks exact state and uses
  * the app's injected validator and executor.
@@ -248,7 +248,7 @@ function inspect(snapshot: StillToolSnapshot): StillWorkspaceInspection {
   }));
   return {
     revision: snapshot.revision,
-    activeWorkspace: { id: snapshot.workspace.id, name: snapshot.workspace.name },
+    activeWorkspace: { id: snapshot.workspace.id, name: snapshot.workspace.name, fixedWidgets: snapshot.workspace.role==='dashboard'||snapshot.workspace.role==='library' },
     workspaces: snapshot.workspaces.map(({ id, name }) => ({ id, name })),
     savedItems: snapshot.savedTrayItems.map(({ id, name, type, kind }) => ({ id, name, type, kind })),
     widgets,
