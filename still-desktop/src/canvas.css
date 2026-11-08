@@ -381,6 +381,8 @@ dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
 .note-library-location button:hover{background:var(--tint);color:var(--text)}
 .note-library-location span{display:flex;align-items:center;gap:5px}.note-library-location i{color:var(--muted);font-style:normal;opacity:.65}
 .note-library-explorer{display:grid;grid-template-columns:minmax(118px,.86fr) minmax(0,1.14fr);flex:1;min-height:0;overflow:hidden;border:1px solid var(--border);border-radius:10px;background:color-mix(in srgb,var(--surface) 70%,transparent)}
+.note-library-explorer.is-sidebar-collapsed{grid-template-columns:minmax(0,1fr)}
+.note-library-explorer.is-sidebar-collapsed .note-library-files{display:none}
 .note-library-files{min-height:0;overflow:auto;border:0;border-right:1px solid var(--border);border-radius:0}
 .note-library-file{display:flex;width:100%;min-height:34px;align-items:center;justify-content:flex-start;gap:7px;padding:6px 7px;border:0;border-bottom:1px solid color-mix(in srgb,var(--border) 72%,transparent);background:transparent;color:var(--text);text-align:left;font-size:11px}
 .note-library-file:hover,.note-library-file.is-selected{background:var(--tint)}
