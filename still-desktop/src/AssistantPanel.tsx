@@ -44,7 +44,7 @@ function saveAgentPreviewPreference(enabled:boolean){try{localStorage.setItem(AG
 function readGeminiAgentPreviewPreference(){try{return localStorage.getItem(GEMINI_AGENT_PREVIEW_PREFERENCE_KEY)==='true'}catch{return false}}
 function saveGeminiAgentPreviewPreference(enabled:boolean){try{localStorage.setItem(GEMINI_AGENT_PREVIEW_PREFERENCE_KEY,String(enabled))}catch{/* preference is optional */}}
 function agentSnapshotRevision(snapshot:Pick<StillToolSnapshot,'workspace'|'savedTrayItems'|'workspaces'>){const value=JSON.stringify(snapshot);let first=2166136261,second=2246822519;for(let index=0;index<value.length;index++){const code=value.charCodeAt(index);first=Math.imul(first^code,16777619);second=Math.imul(second^code,3266489917)}return `v1-${(first>>>0).toString(36)}-${(second>>>0).toString(36)}-${value.length.toString(36)}`}
-function pendingProposalActions(proposal:ProviderAgentProposal):AssistantAction[]{return proposal.kind==='add_widget'?[{type:'add_widget',ids:['notes']}]:proposal.kind==='workspace_action'?[{...proposal.action,ids:[...proposal.action.ids]} as AssistantAction]:[]}
+function pendingProposalActions(proposal:ProviderAgentProposal):AssistantAction[]{return proposal.kind==='add_widget'?[{type:'add_widget',ids:[proposal.widgetType]}]:proposal.kind==='workspace_action'?[{...proposal.action,ids:[...proposal.action.ids]} as AssistantAction]:[]}
 function canScreenshot(widget:WidgetInstance){return widget.type==='apps'||widget.type==='desmos'||widget.type==='files'}
 import {removeAssistantWidgetMention,resolveAssistantWidgetMentions} from './domain/assistantMentions.ts';
 import {localizeOperationalMessage,translate,useLocale,useT} from './localization.tsx';

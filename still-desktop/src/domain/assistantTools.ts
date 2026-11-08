@@ -2,6 +2,7 @@ import type { AgentToolExecution, AgentToolHandler } from './agentLoop.ts';
 import type { AssistantAction, AssistantTrayItem, AssistantWorkspaceChoice } from './assistant.ts';
 import type { Workspace } from './workspaces.ts';
 import { addAssistantMemory, ASSISTANT_MEMORY_TEXT_LIMIT, AssistantMemoryError, type AssistantMemoryEntry } from './assistantMemory.ts';
+import { widgetCatalog, type WidgetType } from './widgetCatalog.ts';
 
 /** A fresh, app-owned view of the state that existing UI operations validate against. */
 export type StillToolSnapshot = {
@@ -28,11 +29,13 @@ export type StillWorkspaceInspection = {
 };
 
 /** The first mutating tool is intentionally limited to adding one Notes widget. */
-export type AddNotesWidgetProposal = {
+export type AddWidgetProposal = {
   kind: 'add_widget';
   snapshotRevision: string;
-  actions: readonly [{ readonly type: 'add_widget'; readonly ids: readonly ['notes'] }];
+  actions: readonly [{ readonly type: 'add_widget'; readonly ids: readonly [WidgetType] }];
+  widgetType: WidgetType;
 };
+export type AddNotesWidgetProposal = AddWidgetProposal;
 
 export type SafeWorkspaceAction =
   | { type: 'minimize' | 'restore'; ids: string[] }
@@ -69,7 +72,7 @@ export type StillWorkspaceToolDependencies = {
 export type StillWorkspaceToolRegistry = {
   tools: Readonly<Record<string, AgentToolHandler>>;
   /** Only call from the explicit UI approval action using the exact proposal object. */
-  executeConfirmed: (proposal: AddNotesWidgetProposal) => Promise<AgentToolExecution>;
+  executeConfirmed: (proposal: AddWidgetProposal) => Promise<AgentToolExecution>;
   executeConfirmedAction: (proposal: SafeWorkspaceActionProposal) => Promise<AgentToolExecution>;
   executeConfirmedMemory: (proposal: AssistantMemoryProposal) => Promise<AgentToolExecution>;
 };
@@ -101,13 +104,14 @@ export function createStillWorkspaceToolRegistry(deps: StillWorkspaceToolDepende
       }
     },
     add_widget: async input => {
-      let revision: string;
-      try { revision = parseAddWidgetInput(input); }
+      let parsed: { revision: string; widgetType: WidgetType };
+      try { parsed = parseAddWidgetInput(input); }
       catch (error) { return failed(message(error)); }
       try {
         const before = await deps.getSnapshot();
-        if (before.revision !== revision) return failed('Workspace state changed. Refresh the workspace inspection and try again.');
-        const actions: AssistantAction[] = [{ type: 'add_widget', ids: ['notes'] }];
+        if (before.revision !== parsed.revision) return failed('Workspace state changed. Refresh the workspace inspection and try again.');
+        const widgetType = parsed.widgetType;
+        const actions: AssistantAction[] = [{ type: 'add_widget', ids: [widgetType] }];
         try { await deps.validate(before, actions); }
         catch (error) { return failed(message(error)); }
         const current = await deps.getSnapshot();
@@ -115,7 +119,8 @@ export function createStillWorkspaceToolRegistry(deps: StillWorkspaceToolDepende
         const proposal = Object.freeze({
           kind: 'add_widget' as const,
           snapshotRevision: before.revision,
-          actions: Object.freeze([Object.freeze({ type: 'add_widget' as const, ids: Object.freeze(['notes'] as const) })]) as AddNotesWidgetProposal['actions'],
+          widgetType,
+          actions: Object.freeze([Object.freeze({ type: 'add_widget' as const, ids: Object.freeze([widgetType] as const) })]) as AddWidgetProposal['actions'],
         });
         pending.add(proposal);
         return { status: 'requires_confirmation', proposal };
@@ -152,7 +157,7 @@ export function createStillWorkspaceToolRegistry(deps: StillWorkspaceToolDepende
         return failed('This proposal is no longer available for approval. Nothing was changed.');
       }
       pending.delete(proposal);
-      const actions: AssistantAction[] = [{ type: 'add_widget', ids: ['notes'] }];
+      const actions: AssistantAction[] = [{ type: 'add_widget', ids: [proposal.widgetType] }];
       try {
         const before = await deps.getSnapshot();
         if (before.revision !== proposal.snapshotRevision) return failed('Workspace state changed while you reviewed the proposal. Nothing was changed. Refresh and try again.');
@@ -307,17 +312,17 @@ function cloneSafeAction(action: Readonly<SafeWorkspaceAction>): SafeWorkspaceAc
   return {...action,ids:[...action.ids]} as SafeWorkspaceAction;
 }
 
-function parseAddWidgetInput(input: unknown): string {
+function parseAddWidgetInput(input: unknown): { revision: string; widgetType: WidgetType } {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Expected an add Notes widget request.');
   const value = input as Record<string, unknown>;
   if (Object.keys(value).some(key => key !== 'widgetType' && key !== 'snapshotRevision')
-    || value.widgetType !== 'notes'
+    || typeof value.widgetType !== 'string' || !Object.hasOwn(widgetCatalog, value.widgetType)
     || typeof value.snapshotRevision !== 'string'
     || !value.snapshotRevision
     || value.snapshotRevision.length > 256) {
-    throw new Error('Only one Notes widget can be proposed using a revision from the latest workspace inspection.');
+    throw new Error('Choose one supported widget type using a revision from the latest workspace inspection.');
   }
-  return value.snapshotRevision;
+  return { revision: value.snapshotRevision, widgetType: value.widgetType as WidgetType };
 }
 
 function failed(error: string, mutation: 'none' | 'unknown' = 'none'): AgentToolExecution {
