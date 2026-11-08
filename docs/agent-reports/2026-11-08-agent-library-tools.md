@@ -17,9 +17,9 @@
 ## Checks
 - `pnpm exec tsc --noEmit` — passed.
 - Focused adapter tests for Library browse/search/read, reviewed edits, truncated reads, and decline — 2 passed.
-- `cargo test --offline --bin still-desktop` — running in a separate D: target directory to avoid the preview target. Native grant/traversal/conflict and provider-schema tests are included; final result pending.
+- `cargo test --offline --bin still-desktop` — 138 passed, 0 failed using a separate D: target directory (`D:\Still\builds\still-luna-agent-library-tools-target`) to avoid the preview target. Coverage includes native grant/traversal/conflict checks and provider schemas, including ChatGPT plan namespace routing.
 - Rust formatting check was not useful because repository Rust files are broadly unformatted; no formatting rewrite was applied.
 
 ## Handoff
 - Library tools activate only when the current prompt names a Library action and exactly one connected Notes widget is selected. Edit proposal availability requires explicit edit/write language separately.
-- Native test result will be added after the isolated Cargo run finishes. No merge or push.
+- Cargo reports one unrelated existing dead-code warning for `set_chrome_profile` in `dropped_files.rs`. No merge or push.

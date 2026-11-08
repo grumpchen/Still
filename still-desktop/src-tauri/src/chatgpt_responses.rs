@@ -389,6 +389,16 @@ mod tests {
     }
 
     #[test]
+    fn plan_library_tools_keep_the_namespace_and_edit_gate_aligned(){
+        let(request,payload)=body(json!({"provider":"openai","model":"gpt-6.1-sol","enable_library_tool":true,"enable_library_edit_tool":true,"messages":[{"role":"user","content":"Search and edit my selected Notes Library."}]})).unwrap();
+        let tools=payload["tools"][0]["tools"].as_array().unwrap();let names=tools.iter().map(|tool|tool["name"].as_str().unwrap()).collect::<Vec<_>>();
+        assert!(names.contains(&"inspect_library"));assert!(names.contains(&"search_library"));assert!(names.contains(&"read_library_file"));assert!(names.contains(&"propose_library_edit"));
+        let response=json!({"output":[{"type":"function_call","namespace":"still","call_id":"library-1","name":"inspect_library","arguments":"{}"}]});
+        let turn=parse_turn(response,&request).unwrap();assert_eq!(turn["calls"][0]["name"],"inspect_library");
+        let wrong_namespace=json!({"output":[{"type":"function_call","namespace":"foreign","call_id":"library-2","name":"inspect_library","arguments":"{}"}]});assert!(parse_turn(wrong_namespace,&request).is_err());
+    }
+
+    #[test]
     fn requires_completed_stream_and_routes_verified_tool_calls() {
         let (request, _) = body(json!({"provider":"openai","model":"gpt-6.1-sol",
             "messages":[{"role":"user","content":"List my widgets"}]}))

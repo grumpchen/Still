@@ -242,9 +242,9 @@ fn propose_assistant_memory_tool() -> Value {
 
 fn library_tools(gemini:bool,include_edit:bool)->Vec<Value>{
     let (object,string)=if gemini {("OBJECT","STRING")}else{("object","string")};
-    let mut inspect=json!({"name":INSPECT_LIBRARY,"description":"Browse the selected, granted Library folder. Returns a bounded list of Markdown and text files with relative paths only.","parameters":{"type":object,"properties":{}}});
-    let mut search=json!({"name":SEARCH_LIBRARY,"description":"Search the selected, granted Library folder. Returns bounded text snippets and relative paths.","parameters":{"type":object,"properties":{"query":{"type":string,"minLength":1,"maxLength":120}},"required":["query"]}});
-    let mut read=json!({"name":READ_LIBRARY_FILE,"description":"Read one Markdown or text file from the selected Library grant using its relative path.","parameters":{"type":object,"properties":{"path":{"type":string,"minLength":1,"maxLength":1000}},"required":["path"]}});
+    let inspect=json!({"name":INSPECT_LIBRARY,"description":"Browse the selected, granted Library folder. Returns a bounded list of Markdown and text files with relative paths only.","parameters":{"type":object,"properties":{}}});
+    let search=json!({"name":SEARCH_LIBRARY,"description":"Search the selected, granted Library folder. Returns bounded text snippets and relative paths.","parameters":{"type":object,"properties":{"query":{"type":string,"minLength":1,"maxLength":120}},"required":["query"]}});
+    let read=json!({"name":READ_LIBRARY_FILE,"description":"Read one Markdown or text file from the selected Library grant using its relative path.","parameters":{"type":object,"properties":{"path":{"type":string,"minLength":1,"maxLength":1000}},"required":["path"]}});
     let mut values=vec![inspect,search,read];
     if include_edit {values.push(json!({"name":PROPOSE_LIBRARY_EDIT,"description":"Propose a complete replacement for a Library file read in this agent run. Still shows before and after and requires approval; it does not write by itself.","parameters":{"type":object,"properties":{"path":{"type":string,"minLength":1,"maxLength":1000},"text":{"type":string,"maxLength":24000}},"required":["path","text"]}}));}
     if !gemini {for value in &mut values{value["strict"]=json!(true);value["parameters"]["additionalProperties"]=json!(false);}}
@@ -739,6 +739,8 @@ fn valid_action_id(value: &str) -> bool {
 }
 
 fn validate_tool_execution(content: &str, tool_name: &str, enable_add_widget_tool: bool, enable_safe_workspace_action_tool: bool, enable_assistant_memory_tool: bool, enable_library_tool:bool, enable_library_edit_tool:bool) -> Result<(), String> {
+    if is_library_tool(tool_name)&&!enable_library_tool{return Err("A Library tool result is not enabled for this request.".into())}
+    if tool_name==PROPOSE_LIBRARY_EDIT&&!enable_library_edit_tool{return Err("Library edits are not enabled for this request.".into())}
     validate_content(content, "tool result")?;
     let value: Value = serde_json::from_str(content)
         .map_err(|_| "An agent tool result was not valid JSON.".to_string())?;
@@ -977,8 +979,8 @@ mod tests {
 
     #[test]
     fn library_tool_schemas_are_bounded_and_edit_requires_its_separate_explicit_gate(){
-        let mut request=request(vec![AgentMessage::User{content:"Search my selected Library".into()}]);request.enable_library_tool=true;
-        let openai=openai_agent_body(&request).unwrap();let names=openai["tools"].as_array().unwrap().iter().map(|tool|tool["function"]["name"].as_str().unwrap()).collect::<Vec<_>>();
+        let mut agent_request=request(vec![AgentMessage::User{content:"Search my selected Library".into()}]);agent_request.enable_library_tool=true;
+        let openai=openai_agent_body(&agent_request).unwrap();let names=openai["tools"].as_array().unwrap().iter().map(|tool|tool["function"]["name"].as_str().unwrap()).collect::<Vec<_>>();
         assert!(names.contains(&INSPECT_LIBRARY));assert!(names.contains(&SEARCH_LIBRARY));assert!(names.contains(&READ_LIBRARY_FILE));assert!(!names.contains(&PROPOSE_LIBRARY_EDIT));
         let edit_call=json!({"choices":[{"finish_reason":"tool_calls","message":{"tool_calls":[{"id":"edit-enabled","type":"function","function":{"name":PROPOSE_LIBRARY_EDIT,"arguments":r#"{"path":"week1.md","text":"changed"}"#}}]}}]});
         assert!(parse_openai_agent_response_with_library_edit_tool(edit_call.clone(),false,false,false,true,false).is_err());

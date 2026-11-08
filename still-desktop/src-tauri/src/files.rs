@@ -309,13 +309,6 @@ fn collect_note_files(root:&Path,dir:&Path,files:&mut Vec<NoteLibraryEntry>,dire
     }
     Ok(())
 }
-fn note_target(roots:&FolderRoots,id:&str,relative:&str)->Result<PathBuf,String>{
-    valid_id(id)?;
-    let root=roots.root(id)?.canonicalize().map_err(|_|"The selected notes folder is unavailable. Choose it again.")?;
-    let target=resolve(&root,relative)?;
-    if !target.is_file()||!supported_note(&target){return Err("Choose a Markdown or text file inside the selected notes folder".into())}
-    Ok(target)
-}
 fn read_note_file(roots:&FolderRoots,id:&str,relative:&str)->Result<String,String>{
     let root=roots.root(id)?.canonicalize().map_err(|_|"The selected notes folder is unavailable. Choose it again.")?;
     read_note_from_root_limited(&root,relative,NOTE_LIBRARY_MAX_BYTES)
@@ -772,7 +765,7 @@ mod tests {
         notes_agent_write(&roots,"notes-widget",&grant,path,"updated",&original).unwrap();assert_eq!(fs::read_to_string(root.join(path)).unwrap(),"updated");
         assert!(notes_agent_write(&roots,"notes-widget",&grant,path,"stale","lecture keyword").unwrap_err().contains("changed outside Still"));
         roots.0.lock().unwrap().insert("notes-widget".into(),other.clone());
-        assert!(notes_agent_list(&roots,"notes-widget",&grant).unwrap_err().contains("grant changed"));assert!(notes_agent_read(&roots,"notes-widget",&grant,"secret.md").is_err());
+        assert!(notes_agent_list(&roots,"notes-widget",&grant).err().unwrap().contains("grant changed"));assert!(notes_agent_read(&roots,"notes-widget",&grant,"secret.md").is_err());
         let new_grant=notes_agent_grant_token(&roots,"notes-widget").unwrap();assert_ne!(grant,new_grant);assert_eq!(notes_agent_read(&roots,"notes-widget",&new_grant,"secret.md").unwrap().text,"private");
         fs::remove_dir_all(fixture).unwrap();
     }

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-notes-library-agent-search"
+description = "Enables the notes_library_agent_search command without any pre-configured scope."
+commands.allow = ["notes_library_agent_search"]
+
+[[permission]]
+identifier = "deny-notes-library-agent-search"
+description = "Denies the notes_library_agent_search command without any pre-configured scope."
+commands.deny = ["notes_library_agent_search"]
