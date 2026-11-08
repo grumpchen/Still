@@ -55,6 +55,28 @@ impl PlanRecord {
     }
 }
 
+fn expected_subject_for_reauthorization(registration: Option<&Registration>) -> Option<&str> {
+    // OpenID subject identifiers may be pairwise per OAuth client. Only
+    // compare the prior subject when this is a reauthorization of that client.
+    registration
+        .filter(|registration| registration.client_id == chatgpt_auth::CLIENT_ID)
+        .map(|registration| registration.identity.subject.as_str())
+}
+
+fn validate_reauthorization_identity(
+    registration: Option<&Registration>,
+    identity: &VerifiedIdentity,
+) -> Result<(), &'static str> {
+    if let Some(previous_account_id) = registration
+        .and_then(|registration| registration.identity.account_id.as_deref())
+    {
+        if identity.account_id.as_deref() != Some(previous_account_id) {
+            return Err("ChatGPT account identity changed during reauthorization.");
+        }
+    }
+    Ok(())
+}
+
 // Lock separately from the atomically replaced record. Keep the file open
 // across OAuth/refresh so two instances cannot rotate the same refresh token.
 fn open_record(app: &AppHandle) -> Result<(PathBuf, File, PlanRecord), String> {
@@ -305,12 +327,10 @@ pub async fn chatgpt_plan_connect(app: AppHandle, webview: Webview) -> Result<Pl
     drop(listener);
     let result = async {
         let jwks = chatgpt_auth::fetch_openai_jwks(&client).await?;
-        let subject = record
-            .registration
-            .as_ref()
-            .map(|registration| registration.identity.subject.as_str());
+        let subject = expected_subject_for_reauthorization(record.registration.as_ref());
         let session =
             chatgpt_auth::exchange_and_validate(&client, attempt, code, &jwks, subject).await?;
+        validate_reauthorization_identity(record.registration.as_ref(), &session.identity)?;
         record.registration = Some(Registration {
             client_id: session.client_id.clone(),
             identity: VerifiedIdentity {
@@ -424,6 +444,68 @@ pub async fn chatgpt_plan_agent_turn(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reauthorization_does_not_compare_subjects_from_a_different_oauth_client() {
+        let legacy_registration = Registration {
+            client_id: "oaiapp_issued".into(),
+            identity: VerifiedIdentity {
+                subject: "legacy-pairwise-subject".into(),
+                email: Some("test@example.invalid".into()),
+                account_id: None,
+            },
+        };
+        assert_eq!(
+            expected_subject_for_reauthorization(Some(&legacy_registration)),
+            None
+        );
+    }
+
+    #[test]
+    fn reauthorization_still_checks_subject_for_the_same_oauth_client() {
+        let registration = Registration {
+            client_id: chatgpt_auth::CLIENT_ID.into(),
+            identity: VerifiedIdentity {
+                subject: "stable-subject".into(),
+                email: Some("test@example.invalid".into()),
+                account_id: None,
+            },
+        };
+        assert_eq!(
+            expected_subject_for_reauthorization(Some(&registration)),
+            Some("stable-subject")
+        );
+    }
+
+    #[test]
+    fn reauthorization_uses_account_id_when_legacy_client_subject_changes() {
+        let legacy_registration = Registration {
+            client_id: "oaiapp_issued".into(),
+            identity: VerifiedIdentity {
+                subject: "legacy-pairwise-subject".into(),
+                email: Some("test@example.invalid".into()),
+                account_id: Some("acct-previous".into()),
+            },
+        };
+        let same_account = VerifiedIdentity {
+            subject: "codex-client-subject".into(),
+            email: Some("test@example.invalid".into()),
+            account_id: Some("acct-previous".into()),
+        };
+        assert_eq!(
+            validate_reauthorization_identity(Some(&legacy_registration), &same_account),
+            Ok(())
+        );
+
+        let different_account = VerifiedIdentity {
+            account_id: Some("acct-different".into()),
+            ..same_account
+        };
+        assert_eq!(
+            validate_reauthorization_identity(Some(&legacy_registration), &different_account),
+            Err("ChatGPT account identity changed during reauthorization.")
+        );
+    }
 
     #[cfg(windows)]
     #[test]
