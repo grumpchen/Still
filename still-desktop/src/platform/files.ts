@@ -1,5 +1,6 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
-export interface FileEntry { name:string; path:string; directory:boolean; size:number; blocked:boolean }
+export interface FileEntry { name:string; path:string; directory:boolean; size:number; blocked:boolean; revision?:string|null }
+export type ReviewedMoveExpectation={rootPath:string;sourceRevision:string};
 export interface FolderListing { rootName:string; location:string; entries:FileEntry[]; truncated:boolean }
 export interface NativeFilePreview {mimeType:string;base64:string}
 export interface StillInbox {listing:FolderListing;path:string}
@@ -74,9 +75,9 @@ export const localFiles={
     if(!this.native)throw new Error('PDF text extraction is available in the Still desktop app.');
     return invoke<ExtractedPdfText>('files_extract_pdf_text',{id,path});
   },
-  async moveResource(id:string,sourcePath:string,destinationFolder:string):Promise<FileMoveResult>{
+  async moveResource(id:string,sourcePath:string,destinationFolder:string,expected?:ReviewedMoveExpectation):Promise<FileMoveResult>{
     if(!this.native)throw new Error('Filing resources is available in the Still desktop app.');
-    return invoke<FileMoveResult>('files_move_resource',{id,sourcePath,destinationFolder});
+    return invoke<FileMoveResult>('files_move_resource',{id,sourcePath,destinationFolder,...(expected?{expected}:{})});
   },
 };
 

@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, io::Read, path::{Component, Path, PathBuf}, sync::Mutex};
 use tauri::{AppHandle, Manager, State, Webview};
 use tauri_plugin_dialog::DialogExt;
@@ -54,7 +54,16 @@ fn set_root_and_persist(
 }
 #[derive(Serialize)]
 #[serde(rename_all="camelCase")]
-pub struct FileEntry { name: String, path: String, directory: bool, size: u64, blocked: bool }
+pub struct FileEntry { name: String, path: String, directory: bool, size: u64, blocked: bool, revision: Option<String> }
+#[derive(Deserialize)]
+#[serde(rename_all="camelCase", deny_unknown_fields)]
+pub(crate) struct ReviewedMove { root_path: String, source_revision: String }
+
+fn file_revision(metadata: &fs::Metadata) -> Option<String> {
+    if !metadata.is_file() { return None; }
+    let modified = metadata.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?;
+    Some(format!("{}:{}", metadata.len(), modified.as_nanos()))
+}
 #[derive(Serialize)]
 #[serde(rename_all="camelCase")]
 pub(crate) struct FilePreview { mime_type: String, base64: String }
@@ -138,7 +147,7 @@ fn existing_file_without_links(root:&Path,relative:&str)->Result<PathBuf,String>
     if !target.starts_with(&root)||!target.is_file()||blocked(&target){return Err("Choose a non-program file inside the selected Files library.".into())}
     Ok(target)
 }
-fn ensure_filing_folder(root:&Path,relative:&str)->Result<PathBuf,String>{
+fn ensure_filing_folder(root:&Path,relative:&str,create:bool)->Result<PathBuf,String>{
     let segments=filing_segments(relative)?;
     let root=root.canonicalize().map_err(|_|"The selected folder is unavailable. Choose it again.")?;
     let mut current=root.clone();
@@ -148,7 +157,7 @@ fn ensure_filing_folder(root:&Path,relative:&str)->Result<PathBuf,String>{
             Ok(metadata) if metadata.file_type().is_symlink()=>return Err("Still cannot file into a linked folder.".into()),
             Ok(metadata) if metadata.is_dir()=>(),
             Ok(_)=>return Err("A file already uses the suggested folder name.".into()),
-            Err(error) if error.kind()==std::io::ErrorKind::NotFound=>fs::create_dir(&current).map_err(|_|"Still could not create the filing folder.")?,
+            Err(error) if create && error.kind()==std::io::ErrorKind::NotFound=>fs::create_dir(&current).map_err(|_|"Still could not create the filing folder.")?,
             Err(_)=>return Err("Still could not open the filing folder.".into()),
         }
         current=current.canonicalize().map_err(|_|"Still could not open the filing folder.")?;
@@ -156,16 +165,25 @@ fn ensure_filing_folder(root:&Path,relative:&str)->Result<PathBuf,String>{
     }
     Ok(current)
 }
-fn move_file_within_root(root:&Path,source_relative:&str,destination_folder:&str)->Result<FileMoveResult,String>{
-    let source=existing_file_without_links(root,source_relative)?;
-    let destination_folder=if destination_folder.is_empty(){root.canonicalize().map_err(|_|"The selected folder is unavailable. Choose it again.")?}else{let segments=filing_segments(destination_folder)?;ensure_filing_folder(root,&segments.join("/"))?};
+fn move_file_within_root(root:&Path,source_relative:&str,destination_folder:&str,expected:Option<&ReviewedMove>)->Result<FileMoveResult,String>{
+    let root=root.canonicalize().map_err(|_|"The selected folder is unavailable. Choose it again.")?;
+    if expected.is_some_and(|expected| root.to_str()!=Some(expected.root_path.as_str())) {
+        return Err("The inbox folder changed. Inspect it again.".into());
+    }
+    let source=existing_file_without_links(&root,source_relative)?;
+    if let Some(expected)=expected {
+        let metadata=fs::metadata(&source).map_err(|_|"This file is no longer available")?;
+        if file_revision(&metadata).as_deref()!=Some(expected.source_revision.as_str()) {
+            return Err("This file changed after review. Inspect the inbox again.".into());
+        }
+    }
+    let destination_folder=if destination_folder.is_empty(){root.clone()}else{ensure_filing_folder(&root,destination_folder,expected.is_none())?};
     let name=source.file_name().ok_or("This file has no usable name")?;
     if !valid_filing_segment(&name.to_string_lossy()){return Err("This file name cannot be safely filed.".into())}
     let destination=destination_folder.join(name);
     if destination.exists(){return Err("A file with this name already exists in that folder. Nothing was replaced.".into())}
     fs::hard_link(&source,&destination).map_err(|_|"This drive cannot safely file the document without replacing an existing item.")?;
     if fs::remove_file(&source).is_err(){let _=fs::remove_file(&destination);return Err("The original file could not be removed after filing. It was left in place.".into())}
-    let root=root.canonicalize().map_err(|_|"The selected folder is unavailable. Choose it again.")?;
     let destination_path=destination.strip_prefix(root).map_err(|_|"The filed item escaped the selected library.")?.components().map(|part|part.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/");
     Ok(FileMoveResult{source_path:source_relative.into(),destination_path})
 }
@@ -205,7 +223,7 @@ fn listing(root: &Path, location: &str) -> Result<FolderListing,String> {
         let Ok(target)=resolve(root,&path) else { continue };
         let Ok(meta)=fs::metadata(&target) else { continue };
         if !meta.is_file() && !meta.is_dir(){continue}
-        entries.push(FileEntry{name,path,directory:meta.is_dir(),size:meta.len(),blocked:meta.is_file()&&blocked(&target)});
+        entries.push(FileEntry{name,path,directory:meta.is_dir(),size:meta.len(),blocked:meta.is_file()&&blocked(&target),revision:file_revision(&meta)});
     }
     entries.sort_by(|a,b| b.directory.cmp(&a.directory).then(a.name.to_lowercase().cmp(&b.name.to_lowercase())));
     Ok(FolderListing{root_name:root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "Selected folder".into()),location:location.into(),entries,truncated})
@@ -221,7 +239,7 @@ fn search_tree_with_limits(root:&Path,directory:&Path,query:&str,results:&mut Ve
         let Ok(metadata)=fs::metadata(&target)else{continue};if !metadata.is_file()&&!metadata.is_dir(){continue}
         let name=item.file_name().to_string_lossy().into_owned();
         let relative=target.strip_prefix(root).map_err(|_|"Search result escaped its selected folder")?.components().map(|part|part.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/");
-        if name.to_lowercase().contains(query){results.push(FileEntry{name,path:relative,directory:metadata.is_dir(),size:metadata.len(),blocked:metadata.is_file()&&blocked(&target)})}
+        if name.to_lowercase().contains(query){results.push(FileEntry{name,path:relative,directory:metadata.is_dir(),size:metadata.len(),blocked:metadata.is_file()&&blocked(&target),revision:file_revision(&metadata)})}
         if metadata.is_dir(){search_tree_with_limits(root,&target,query,results,scanned,depth+1,result_limit,scan_limit,truncated)?}
     }
     Ok(())
@@ -563,10 +581,10 @@ pub async fn files_extract_pdf_text(webview:Webview,roots:State<'_,FolderRoots>,
     tauri::async_runtime::spawn_blocking(move||extract_pdf_text(&target)).await.map_err(|_|"Could not extract text from this PDF")?
 }
 #[tauri::command]
-pub async fn files_move_resource(webview:Webview,roots:State<'_,FolderRoots>,id:String,source_path:String,destination_folder:String)->Result<FileMoveResult,String>{
+pub async fn files_move_resource(webview:Webview,roots:State<'_,FolderRoots>,id:String,source_path:String,destination_folder:String,expected:Option<ReviewedMove>)->Result<FileMoveResult,String>{
     crate::security::authorize(&webview)?;valid_id(&id)?;
     let root=roots.root(&id)?;
-    tauri::async_runtime::spawn_blocking(move||move_file_within_root(&root,&source_path,&destination_folder)).await.map_err(|_|"Could not file this item")?
+    tauri::async_runtime::spawn_blocking(move||move_file_within_root(&root,&source_path,&destination_folder,expected.as_ref())).await.map_err(|_|"Could not file this item")?
 }
 #[cfg(test)]
 mod tests {
@@ -654,14 +672,39 @@ mod tests {
     #[test]fn files_can_be_filed_only_inside_the_granted_root_without_overwriting(){
         let fixture=std::env::temp_dir().join(format!("still-file-move-{}-{}",std::process::id(),std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
         let root=fixture.join("inbox");fs::create_dir_all(&root).unwrap();fs::write(root.join("lecture.pdf"),b"course material").unwrap();
-        let moved=move_file_within_root(&root,"lecture.pdf","Courses/CHEM111").unwrap();
+        let moved=move_file_within_root(&root,"lecture.pdf","Courses/CHEM111",None).unwrap();
         assert_eq!(moved.source_path,"lecture.pdf");assert_eq!(moved.destination_path,"Courses/CHEM111/lecture.pdf");assert_eq!(fs::read(root.join(&moved.destination_path)).unwrap(),b"course material");assert!(!root.join("lecture.pdf").exists());
-        let returned=move_file_within_root(&root,&moved.destination_path,"").unwrap();assert_eq!(returned.destination_path,"lecture.pdf");assert_eq!(fs::read(root.join("lecture.pdf")).unwrap(),b"course material");
-        assert!(move_file_within_root(&root,&returned.destination_path,"../../outside").is_err());
-        assert!(move_file_within_root(&root,&returned.destination_path,"CON").is_err());
+        let returned=move_file_within_root(&root,&moved.destination_path,"",None).unwrap();assert_eq!(returned.destination_path,"lecture.pdf");assert_eq!(fs::read(root.join("lecture.pdf")).unwrap(),b"course material");
+        assert!(move_file_within_root(&root,&returned.destination_path,"../../outside",None).is_err());
+        assert!(move_file_within_root(&root,&returned.destination_path,"CON",None).is_err());
         fs::write(root.join("collision.pdf"),b"new source").unwrap();fs::write(root.join("Courses/CHEM111/collision.pdf"),b"keep target").unwrap();
-        assert!(move_file_within_root(&root,"collision.pdf","Courses/CHEM111").is_err());assert_eq!(fs::read(root.join("collision.pdf")).unwrap(),b"new source");assert_eq!(fs::read(root.join("Courses/CHEM111/collision.pdf")).unwrap(),b"keep target");
-        fs::write(root.join("setup.exe"),b"program").unwrap();assert!(move_file_within_root(&root,"setup.exe","Courses").is_err());
+        assert!(move_file_within_root(&root,"collision.pdf","Courses/CHEM111",None).is_err());assert_eq!(fs::read(root.join("collision.pdf")).unwrap(),b"new source");assert_eq!(fs::read(root.join("Courses/CHEM111/collision.pdf")).unwrap(),b"keep target");
+        fs::write(root.join("setup.exe"),b"program").unwrap();assert!(move_file_within_root(&root,"setup.exe","Courses",None).is_err());
+        fs::remove_dir_all(fixture).unwrap();
+    }
+
+    #[test]
+    fn reviewed_moves_check_the_granted_root_source_revision_and_existing_destination() {
+        let fixture=std::env::temp_dir().join(format!("still-reviewed-move-{}-{}",std::process::id(),std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        fs::create_dir_all(fixture.join("Filed")).unwrap();
+        let root=fixture.canonicalize().unwrap();
+        let source=root.join("source.md");
+        fs::write(&source,b"old").unwrap();
+        let mut expected=ReviewedMove{root_path:root.to_string_lossy().into_owned(),source_revision:file_revision(&fs::metadata(&source).unwrap()).unwrap()};
+        fs::write(&source,b"new").unwrap();
+        let file=fs::File::options().write(true).open(&source).unwrap();
+        file.set_modified(std::time::UNIX_EPOCH+std::time::Duration::from_secs(1_700_000_000)).unwrap();
+        drop(file);
+        assert!(move_file_within_root(&root,"source.md","Filed",Some(&expected)).err().unwrap().contains("changed after review"));
+        expected.source_revision=file_revision(&fs::metadata(&source).unwrap()).unwrap();
+        assert!(move_file_within_root(&root,"source.md","Missing",Some(&expected)).is_err());
+        assert!(!root.join("Missing").exists());
+        let wrong_root=ReviewedMove{root_path:root.join("Filed").to_string_lossy().into_owned(),source_revision:expected.source_revision.clone()};
+        assert!(move_file_within_root(&root,"source.md","Filed",Some(&wrong_root)).is_err());
+        let receipt=move_file_within_root(&root,"source.md","Filed",Some(&expected)).unwrap();
+        assert_eq!(receipt.destination_path,"Filed/source.md");
+        assert_eq!(fs::read(root.join(&receipt.destination_path)).unwrap(),b"new");
+        assert!(!source.exists());
         fs::remove_dir_all(fixture).unwrap();
     }
 }

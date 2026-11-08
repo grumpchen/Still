@@ -343,6 +343,7 @@ fn parse_turn(response: Value, request: &AgentRequest) -> Result<Value, String> 
         request.enable_safe_workspace_action_tool,
         request.enable_assistant_memory_tool,
     )?;
+    let turn = assistant_agent_protocol::validate_inbox_tool_availability(turn, request)?;
     let mut value =
         serde_json::to_value(turn).map_err(|_| "Could not read the ChatGPT agent result.")?;
     if tool_turn && !reasoning.is_empty() {

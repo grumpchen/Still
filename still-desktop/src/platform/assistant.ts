@@ -3,12 +3,14 @@ import {captureWidget} from './capture.ts';
 import {parseAssistantReply,type AssistantProvider,type AssistantReply,type ChatMessage} from '../domain/assistant.ts';
 import {runAgentLoop,resumeAgentLoop,createAgentToolDispatcher,type AgentLoopOptions,type AgentLoopResult,type AgentToolCall,type AgentToolCallResult,type AgentToolExecution,type AgentToolHandler,type AgentToolDispatchResult} from '../domain/agentLoop.ts';
 import type {AddNotesWidgetProposal,AssistantMemoryProposal,SafeWorkspaceActionProposal,StillWorkspaceToolRegistry} from '../domain/assistantTools.ts';
+import type {InboxMoveProposal} from '../domain/assistantInbox.ts';
 
 export type AssistantRequest = {provider:AssistantProvider;model:string;messages:ChatMessage[];context:string;image?:string;session_id?:string};
 export type ProviderAgentMessage = {role:'user';content:string}|{role:'assistant';content?:string|null;tool_calls?:{id:string;type:'function';function:{name:string;arguments:string}}[];gemini_content?:unknown;plan_reasoning?:unknown}|{role:'tool';tool_call_id:string;content:string};
 export type ProviderAgentCall = {id:string;name:string;input:unknown};
 export type ProviderAgentTurn = {kind:'final';response:unknown}|{kind:'tool_calls';assistantMessage:ProviderAgentMessage;calls:ProviderAgentCall[]};
-export type ProviderAgentProposal=AddNotesWidgetProposal|SafeWorkspaceActionProposal|AssistantMemoryProposal;
+export type ProviderAgentProposal=AddNotesWidgetProposal|SafeWorkspaceActionProposal|AssistantMemoryProposal|InboxMoveProposal;
+type InboxMoveTools={prepare:(input:unknown)=>InboxMoveProposal;execute:(proposal:InboxMoveProposal)=>Promise<AgentToolExecution>};
 export type ProviderAgentOutcome = {status:'final';response:AssistantReply}|{status:'awaiting_confirmation';proposal:ProviderAgentProposal;approve:()=>Promise<{execution:AgentToolExecution;resume:()=>Promise<ProviderAgentOutcome>}>;decline:()=>Promise<ProviderAgentOutcome>};
 const MAX_AGENT_TOOL_RESULT_CHARS=64_000;
 const ASSISTANT_IMAGE_MAX_DIMENSION=2560;
@@ -29,7 +31,7 @@ export const geminiAssistant = {
   keySetup:(provider:AssistantProvider)=>invoke<void>('assistant_key_setup',{provider}),
   setKey:(provider:AssistantProvider,key:string)=>invoke<string[]>('assistant_set_key',{provider,key}),
   async send(request:AssistantRequest){return parseAssistantReply(await invoke<unknown>('assistant_chat',{request}));},
-  async agentTurn(request:{provider:AssistantProvider;model:string;messages:ProviderAgentMessage[];session_id:string;enable_add_widget_tool?:boolean;enable_safe_workspace_action_tool?:boolean;enable_assistant_memory_tool?:boolean;enable_inbox_tool?:boolean}){
+  async agentTurn(request:{provider:AssistantProvider;model:string;messages:ProviderAgentMessage[];session_id:string;enable_add_widget_tool?:boolean;enable_safe_workspace_action_tool?:boolean;enable_assistant_memory_tool?:boolean;enable_inbox_tool?:boolean;enable_inbox_move_tool?:boolean}){
     const turn=request.provider==='chatgpt'
       ? await invoke<ProviderAgentTurn>('chatgpt_plan_agent_turn',{request:{...request,provider:'openai'}})
       : await invoke<ProviderAgentTurn>('assistant_agent_turn',{request});
@@ -37,7 +39,7 @@ export const geminiAssistant = {
   },
 };
 
-export async function runProviderAgent(options:{provider:AssistantProvider;model:string;messages:ProviderAgentMessage[];sessionId:string;inspectWorkspace?:()=>unknown|Promise<unknown>;inspectInbox?:()=>unknown|Promise<unknown>;validateWorkspace?:()=>void;toolRegistry?:StillWorkspaceToolRegistry;enableSafeWorkspaceActionTool?:boolean;enableAssistantMemoryTool?:boolean}):Promise<ProviderAgentOutcome>{
+export async function runProviderAgent(options:{provider:AssistantProvider;model:string;messages:ProviderAgentMessage[];sessionId:string;inspectWorkspace?:()=>unknown|Promise<unknown>;inspectInbox?:()=>unknown|Promise<unknown>;inboxMoves?:InboxMoveTools;validateWorkspace?:()=>void;toolRegistry?:StillWorkspaceToolRegistry;enableSafeWorkspaceActionTool?:boolean;enableAssistantMemoryTool?:boolean}):Promise<ProviderAgentOutcome>{
   let oversizedWorkspaceResult=false,notesToolUsed=false,safeActionToolUsed=false,memoryToolUsed=false;
   const inspectWorkspace:AgentToolHandler=async(input:unknown):Promise<AgentToolDispatchResult>=>{
     const registered=options.toolRegistry?.tools.inspect_workspace;
@@ -61,29 +63,43 @@ export async function runProviderAgent(options:{provider:AssistantProvider;model
   const proposeMemory:AgentToolHandler=async input=>{if(memoryToolUsed)return {status:'failed',mutation:'none',error:'Only one assistant memory item may be proposed in a user turn.'};return registeredMemory?registeredMemory(input):{status:'failed',mutation:'none',error:'Saving assistant memory is unavailable.'}};
   // The wider action tool remains separately opted-in and confirmation-gated.
   const tools:Readonly<Record<string,AgentToolHandler>>=options.toolRegistry?{inspect_workspace:inspectWorkspace,inspect_inbox:inspectInbox,add_widget:addWidget,...(options.enableSafeWorkspaceActionTool?{propose_workspace_action:safeAction}:{}),...(options.enableAssistantMemoryTool?{propose_assistant_memory:proposeMemory}:{})}: {inspect_workspace:inspectWorkspace,inspect_inbox:inspectInbox};
-  const dispatcher=createAgentToolDispatcher(tools);
+  const inboxMoves=options.inspectInbox&&options.inboxMoves;
+  const proposeInboxMoves:AgentToolHandler=input=>{
+    if(!inboxMoves)return {status:'failed',mutation:'none',error:'Inbox moves are unavailable.'};
+    try{return {status:'requires_confirmation',proposal:inboxMoves.prepare(input)}}
+    catch(error){return {status:'failed',mutation:'none',error:error instanceof Error?error.message:String(error)}}
+  };
+  const dispatcher=createAgentToolDispatcher({...tools,...(inboxMoves?{propose_inbox_moves:proposeInboxMoves}:{})});
   const appendToolRound=(history:readonly ProviderAgentMessage[],assistantMessage:ProviderAgentMessage,results:readonly AgentToolCallResult[]):ProviderAgentMessage[]=>[
     ...history,assistantMessage,...results.map(item=>({role:'tool' as const,tool_call_id:item.toolCallId,content:JSON.stringify(item.execution)})),
   ];
   const loopOptions:AgentLoopOptions<ProviderAgentMessage,AssistantReply>={
     history:options.messages,
-    requestModel:async history=>{if(oversizedWorkspaceResult)throw new Error('The current workspace context is too large for the agent preview. Select fewer widgets or use the standard assistant mode.');return geminiAssistant.agentTurn({provider:options.provider,model:options.model,messages:[...history],session_id:options.sessionId,enable_add_widget_tool:!!options.toolRegistry,enable_safe_workspace_action_tool:!!options.enableSafeWorkspaceActionTool,enable_assistant_memory_tool:!!options.enableAssistantMemoryTool,enable_inbox_tool:!!options.inspectInbox})},
+    requestModel:async history=>{if(oversizedWorkspaceResult)throw new Error('The current workspace context is too large for the agent preview. Select fewer widgets or use the standard assistant mode.');return geminiAssistant.agentTurn({provider:options.provider,model:options.model,messages:[...history],session_id:options.sessionId,enable_add_widget_tool:!!options.toolRegistry,enable_safe_workspace_action_tool:!!options.enableSafeWorkspaceActionTool,enable_assistant_memory_tool:!!options.enableAssistantMemoryTool,enable_inbox_tool:!!options.inspectInbox,enable_inbox_move_tool:!!inboxMoves})},
     executeTool:(call:AgentToolCall)=>dispatcher(call),appendToolRound,
-    ...(options.toolRegistry?{confirmationRequiredToolNames:['add_widget',...(options.enableSafeWorkspaceActionTool?['propose_workspace_action']:[]),...(options.enableAssistantMemoryTool?['propose_assistant_memory']:[])]}:{}),
+    confirmationRequiredToolNames:[...(options.toolRegistry?['add_widget',...(options.enableSafeWorkspaceActionTool?['propose_workspace_action']:[]),...(options.enableAssistantMemoryTool?['propose_assistant_memory']:[])]:[]),...(inboxMoves?['propose_inbox_moves']:[])],
   };
   const wrapResult=async(result:AgentLoopResult<ProviderAgentMessage,AssistantReply>,allowSnapshotCheck=true):Promise<ProviderAgentOutcome>=>{
     if(result.status==='awaiting_confirmation'){
-      if(!options.toolRegistry||result.proposal===null||typeof result.proposal!=='object'||!['add_widget','workspace_action','assistant_memory'].includes(String((result.proposal as {kind?:unknown}).kind)))throw new Error('Still received an unsupported agent proposal. Nothing was changed.');
+      if(result.proposal===null||typeof result.proposal!=='object'||!['add_widget','workspace_action','assistant_memory','inbox_moves'].includes(String((result.proposal as {kind?:unknown}).kind)))throw new Error('Still received an unsupported agent proposal. Nothing was changed.');
       const proposal=result.proposal as ProviderAgentProposal;
-      const continueWith=(execution:AgentToolExecution)=>async()=>wrapResult(await resumeAgentLoop(loopOptions,result.continuation,execution),false);
-      const markUsed=()=>{if(proposal.kind==='add_widget')notesToolUsed=true;else if(proposal.kind==='workspace_action')safeActionToolUsed=true;else memoryToolUsed=true};
-      return {status:'awaiting_confirmation',proposal,approve:async()=>{markUsed();const execution=proposal.kind==='add_widget'?await options.toolRegistry!.executeConfirmed(proposal):proposal.kind==='workspace_action'?await options.toolRegistry!.executeConfirmedAction(proposal):await options.toolRegistry!.executeConfirmedMemory(proposal);return {execution,resume:continueWith(execution)}},decline:async()=>{markUsed();return wrapResult(await resumeAgentLoop(loopOptions,result.continuation,{status:'failed',mutation:'none',error:'The user declined this proposal. Nothing was changed.'}),false)}};
+      if(proposal.kind==='inbox_moves'?!inboxMoves:!options.toolRegistry)throw new Error('This agent tool is unavailable.');
+      let decided=false;
+      const decide=()=>{if(decided)throw new Error('This proposal was already reviewed.');decided=true;};
+      const continueWith=(execution:AgentToolExecution)=>{
+        let resumed=false;
+        return async()=>{if(resumed)throw new Error('This agent step already resumed.');resumed=true;return wrapResult(await resumeAgentLoop(loopOptions,result.continuation,execution),false)};
+      };
+      const markUsed=()=>{if(proposal.kind==='add_widget')notesToolUsed=true;else if(proposal.kind==='workspace_action')safeActionToolUsed=true;else if(proposal.kind==='assistant_memory')memoryToolUsed=true};
+      return {status:'awaiting_confirmation',proposal,approve:async()=>{decide();markUsed();const execution=proposal.kind==='inbox_moves'?await inboxMoves!.execute(proposal):proposal.kind==='add_widget'?await options.toolRegistry!.executeConfirmed(proposal):proposal.kind==='workspace_action'?await options.toolRegistry!.executeConfirmedAction(proposal):await options.toolRegistry!.executeConfirmedMemory(proposal);return {execution,resume:continueWith(execution)}},decline:async()=>{decide();markUsed();return continueWith({status:'failed',mutation:'none',error:'The user declined this proposal. Nothing was changed.'})();}};
     }
     if(result.status!=='final')throw new Error(`The agent stopped before a final answer (${result.status.replace('_',' ')}).`);
     const inspectionFailure=result.toolResults.find(item=>item.toolName==='inspect_workspace'&&item.execution.status==='failed');
     if(inspectionFailure?.execution.status==='failed')throw new Error(`Still could not inspect the workspace. ${inspectionFailure.execution.error}`);
     const gatedActionFailure=result.toolResults.find(item=>(item.toolName==='add_widget'||item.toolName==='propose_workspace_action'||item.toolName==='propose_assistant_memory')&&item.execution.status==='failed'&&item.execution.error!=='The user declined this proposal. Nothing was changed.');
     if(gatedActionFailure?.execution.status==='failed')throw new Error(`Still could not complete the reviewed workspace action. ${gatedActionFailure.execution.error}`);
+    const inboxFailure=result.toolResults.find(item=>item.toolName==='propose_inbox_moves'&&item.execution.status==='failed'&&item.execution.error!=='The user declined this proposal. Nothing was changed.');
+    if(inboxFailure?.execution.status==='failed'&&!allowSnapshotCheck)return {status:'final',response:{intent:'chat',reply:'See the file move receipt for the verified outcome.',actions:[],layout:[]}};
     if(allowSnapshotCheck)options.validateWorkspace?.();
     return {status:'final',response:result.response};
   };

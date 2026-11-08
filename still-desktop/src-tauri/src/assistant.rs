@@ -250,11 +250,12 @@ pub async fn assistant_agent_turn(webview:Webview,state:State<'_,AssistantState>
         bytes.extend_from_slice(&chunk);
     }
     let value=serde_json::from_slice(&bytes).map_err(|_|"The AI returned an unreadable response.")?;
-    match provider {
+    let turn=match provider {
         Provider::Gemini=>assistant_agent_protocol::parse_gemini_agent_response(value,&format!("gemini-local-{}",request.messages.len()),request.enable_add_widget_tool,request.enable_safe_workspace_action_tool,request.enable_assistant_memory_tool),
         Provider::Openai=>assistant_agent_protocol::parse_openai_agent_response_with_all_tools(value,request.enable_add_widget_tool,request.enable_safe_workspace_action_tool,request.enable_assistant_memory_tool),
         Provider::Opencode=>assistant_agent_protocol::parse_opencode_agent_response_with_all_tools(value,request.enable_add_widget_tool,request.enable_safe_workspace_action_tool,request.enable_assistant_memory_tool),
-    }
+    }?;
+    assistant_agent_protocol::validate_inbox_tool_availability(turn, &request)
 }
 
 #[cfg(test)]

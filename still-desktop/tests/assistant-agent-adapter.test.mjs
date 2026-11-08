@@ -75,7 +75,10 @@ test('Notes tool stays gated until approval and resumes with the actual app rece
   const pending=await runProviderAgent({provider:'openai',model:'gpt-test',sessionId:'study',messages:[{role:'user',content:'Please add a Notes widget.'}],toolRegistry:registry});
   assert.equal(pending.status,'awaiting_confirmation');assert.equal(executions,0,'provider proposal does not mutate workspace');assert.equal(validations,1);
   const approval=await pending.approve();assert.deepEqual(approval.execution,{status:'succeeded',mutation:'applied',result:{receipt:'Added a Notes widget (Notes 2).'}});assert.equal(executions,1);
-  const resumed=await approval.resume();assert.equal(resumed.status,'final');assert.equal(resumed.response.reply,'Added a Notes widget (Notes 2).');assert.equal(requests.length,3);
+  await assert.rejects(()=>pending.approve(),/already reviewed/);
+  await assert.rejects(()=>pending.decline(),/already reviewed/);
+  const resumed=await approval.resume();
+  await assert.rejects(()=>approval.resume(),/already resumed/);assert.equal(resumed.status,'final');assert.equal(resumed.response.reply,'Added a Notes widget (Notes 2).');assert.equal(requests.length,3);
  }finally{
   clearMocks();dom.window.close();
   for(const key of old.keys()){const descriptor=old.get(key);if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}
@@ -127,7 +130,7 @@ test('agent adapter stops before sending oversized workspace data to the provide
  try{
   for(const [key,value] of Object.entries({window,document:window.document,navigator:window.navigator,__TAURI_INTERNALS__:{}}))Object.defineProperty(globalThis,key,{configurable:true,value});
   mockIPC(()=>{providerRequests++;return {kind:'tool_calls',assistantMessage:{role:'assistant',tool_calls:[{id:'inspect-1',type:'function',function:{name:'inspect_workspace',arguments:'{}'}}]},calls:[{id:'inspect-1',name:'inspect_workspace',input:{}}]}},{shouldMockEvents:true});
-  await assert.rejects(()=>runProviderAgent({provider:'openai',model:'gpt-test',sessionId:'study',messages:[{role:'user',content:'Inspect workspace.'}],inspectWorkspace:()=>({notes:'x'.repeat(31_000)})}),/workspace context is too large/);
+  await assert.rejects(()=>runProviderAgent({provider:'openai',model:'gpt-test',sessionId:'study',messages:[{role:'user',content:'Inspect workspace.'}],inspectWorkspace:()=>({notes:'x'.repeat(65_000)})}),/workspace context is too large/);
   assert.equal(providerRequests,1,'no oversized tool result is sent in a follow-up provider request');
  }finally{
   clearMocks();dom.window.close();

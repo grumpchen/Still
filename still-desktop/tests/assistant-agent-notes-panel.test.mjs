@@ -251,30 +251,54 @@ test('memory storage failure is disclosed as uncertain and never resumes a succe
  }finally{if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();for(const key of old.keys()){const descriptor=old.get(key);if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}}
 });
 
-test('ChatGPT inspects inbox and reviews a move before applying it',async()=>{
+for(const provider of ['chatgpt','openai'])test(provider+' reviews a move, resumes with its receipt, then proposes a widget',async()=>{
  const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true}),{window}=dom,old=new Map();
  const globals={window,document:window.document,navigator:window.navigator,localStorage:window.localStorage,HTMLElement:window.HTMLElement,Element:window.Element,Node:window.Node,MutationObserver:window.MutationObserver,IS_REACT_ACT_ENVIRONMENT:true,isTauri:true};
- for(const key of Object.keys(globals))old.set(key,Object.getOwnPropertyDescriptor(globalThis,key));let root;const requests=[],moves=[];
+ for(const key of Object.keys(globals))old.set(key,Object.getOwnPropertyDescriptor(globalThis,key));let root;const requests=[],moves=[],actions=[];
  try{
   for(const [key,value] of Object.entries(globals))setGlobal(key,value);
-  window.HTMLElement.prototype.scrollTo=function(){};window.HTMLTextAreaElement.prototype.focus=function(){};window.__TAURI_INTERNALS__={};window.localStorage.setItem('still-assistant-model','chatgpt::gpt-test');
-  const entries=[{name:'lecture.pdf',path:'lecture.pdf',directory:false,size:100,blocked:false},{name:'Courses',path:'Courses',directory:true,size:0,blocked:false}];
+  window.HTMLElement.prototype.scrollTo=function(){};window.HTMLTextAreaElement.prototype.focus=function(){};window.__TAURI_INTERNALS__={};window.localStorage.setItem('still-assistant-model',provider+'::gpt-test');window.localStorage.setItem('still-assistant-agent-preview','true');
+  const entries=[{name:'lecture.pdf',path:'lecture.pdf',directory:false,size:100,blocked:false,revision:'100:1'},{name:'Courses',path:'Courses',directory:true,size:0,blocked:false}];
   mockIPC((command,args)=>{
+   if(command==='assistant_configured')return true;if(command==='assistant_models')return ['gpt-test'];
    if(command==='chatgpt_plan_status')return {connected:true,email:null};if(command==='chatgpt_plan_models')return [{slug:'gpt-test',display_name:'Test model'}];
    if(command==='files_still_inbox')return {path:'C:/test/inbox',listing:{rootName:'Inbox',location:'',entries,truncated:false}};
    if(command==='files_list')return {rootName:'Inbox',location:args.location,entries:args.location===''?entries:[],truncated:false};
-   if(command==='chatgpt_plan_agent_turn'){requests.push(args.request);if(requests.length===1)return {kind:'tool_calls',assistantMessage:{role:'assistant',tool_calls:[{id:'inbox-call',type:'function',function:{name:'inspect_inbox',arguments:'{}'}}]},calls:[{id:'inbox-call',name:'inspect_inbox',input:{}}]};return {kind:'final',response:{intent:'chat',reply:'Please review this move.',layout:[],actions:[],fileProposals:[{sourceWidgetId:'inbox-1',sourcePath:'lecture.pdf',destinationFolder:'Courses',reason:'Requested folder.'}]}}}
+   if(command===(provider==='chatgpt'?'chatgpt_plan_agent_turn':'assistant_agent_turn')){
+    requests.push(args.request);
+    const call=(name,input,id)=>({kind:'tool_calls',assistantMessage:{role:'assistant',tool_calls:[{id,type:'function',function:{name,arguments:JSON.stringify(input)}}]},calls:[{id,name,input}]});
+    if(requests.length===1)return call('inspect_inbox',{},'inspect-file');
+    if(requests.length===2){
+     assert.equal(args.request.enable_inbox_move_tool,true);
+     return call('propose_inbox_moves',{fileProposals:[{sourceWidgetId:'inbox-1',sourcePath:'lecture.pdf',destinationFolder:'Courses',reason:'Requested folder.'}]},'move-file');
+    }
+    const result=JSON.parse(args.request.messages.at(-1).content);
+    if(requests.length===3){
+     assert.deepEqual(result.result.moved,[{sourcePath:'lecture.pdf',destinationPath:'Courses/lecture.pdf'}]);
+     assert(!JSON.stringify(args.request).includes('C:/test/inbox'),'local root path is never sent to provider');
+     return call('inspect_workspace',{},'inspect-workspace');
+    }
+    if(requests.length===4)return call('add_widget',{widgetType:'notes',snapshotRevision:result.result.revision},'add-widget');
+    assert.equal(result.result.receipt,'Notes widget added.');
+    return {kind:'final',response:{intent:'chat',reply:'Finished the fixture workflow.',layout:[],actions:[]}};
+   }
    return null;
   },{shouldMockEvents:true});
   const {default:AssistantPanel}=await vite.ssrLoadModule('/src/AssistantPanel.tsx');const workspace=createWorkspace('Daily',[]);
   root=createRoot(window.document.querySelector('#root'));
-  await act(async()=>root.render(createElement(AssistantPanel,{workspace,workspaces:[workspace],inboxWidgetId:'inbox-1',trayItems:[],sidebarPlugins:[],open:true,close(){},dimensions:()=>({width:900,height:700}),apply(){},undo(){},act:async()=>'',moveFile:async(...args)=>{moves.push(args);return 'Courses/lecture.pdf'}})));
-  await waitFor(()=>window.document.querySelector('#ai-model option[value="chatgpt::gpt-test"]'));
-  await act(async()=>setReactValue(window.document.querySelector('#ai-message'),'Move lecture.pdf to Courses in Downloads Inbox','HTMLTextAreaElement'));
+  await act(async()=>root.render(createElement(AssistantPanel,{workspace,workspaces:[workspace],inboxWidgetId:'inbox-1',trayItems:[],sidebarPlugins:[],open:true,close(){},dimensions:()=>({width:900,height:700}),apply(){},undo(){},act:async(_owner,applied)=>{actions.push(...applied);return 'Notes widget added.'},moveFile:async(...args)=>{moves.push(args);return 'Courses/lecture.pdf'}})));
+  await waitFor(()=>window.document.querySelector('#ai-model option[value="'+provider+'::gpt-test"]'));
+  await act(async()=>setReactValue(window.document.querySelector('#ai-message'),'Move lecture.pdf to Courses in Downloads Inbox, then add a Notes widget.','HTMLTextAreaElement'));
   await act(async()=>window.document.querySelector('.assistant-compose').requestSubmit());
   await waitFor(()=>window.document.querySelector('.assistant-confirmation button.primary'));
   assert.equal(moves.length,0);assert.equal(requests[0].enable_inbox_tool,true);
   await act(async()=>window.document.querySelector('.assistant-confirmation button.primary').click());
-  await waitFor(()=>moves.length===1);assert.deepEqual(moves[0],[workspace.id,'inbox-1','lecture.pdf','Courses']);
+  await waitFor(()=>moves.length===1);assert.deepEqual(moves[0],[workspace.id,'inbox-1','lecture.pdf','Courses',{rootPath:'C:/test/inbox',sourceRevision:'100:1'}]);
+  await waitFor(()=>window.document.querySelector('.assistant-confirmation button.primary'));
+  assert.equal(actions.length,0,'the second mutation still needs review');
+  await act(async()=>window.document.querySelector('.assistant-confirmation button.primary').click());
+  await waitFor(()=>window.document.body.textContent.includes('Finished the fixture workflow.'));
+  assert.deepEqual(actions,[{type:'add_widget',ids:['notes']}]);
+  assert.match(window.document.body.textContent,/1 of 1 file moves verified/);
  }finally{if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();for(const [key,descriptor] of old)if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}
 });

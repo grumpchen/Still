@@ -460,7 +460,7 @@ fn validate_reply(mut reply:Reply,provider:&str)->Result<Reply,String>{
     }
     Ok(reply)
 }
-fn valid_resource_path(path:&str)->bool{!path.is_empty()&&path.len()<=1000&&!path.starts_with('/')&&!path.contains(':')&&!path.contains('\\')&&path.split('/').all(|segment|!segment.is_empty()&&segment!="."&&segment!="..")}
+pub(crate) fn valid_resource_path(path:&str)->bool{!path.is_empty()&&path.len()<=1000&&!path.starts_with('/')&&!path.contains(':')&&!path.contains('\\')&&path.split('/').all(|segment|!segment.is_empty()&&segment!="."&&segment!="..")}
 fn valid_calendar_time(value:&str)->bool{value.len()==5&&value.as_bytes()[2]==b':'&&value.as_bytes().iter().enumerate().all(|(index,byte)|index==2||byte.is_ascii_digit())&&value[..2].parse::<u8>().is_ok_and(|hour|hour<24)&&value[3..].parse::<u8>().is_ok_and(|minute|minute<60)}
 fn valid_calendar_date(value:&str)->bool{
     let bytes=value.as_bytes();if bytes.len()!=10||bytes[4]!=b'-'||bytes[7]!=b'-'||bytes.iter().enumerate().any(|(index,byte)|index!=4&&index!=7&&!byte.is_ascii_digit()){return false}
