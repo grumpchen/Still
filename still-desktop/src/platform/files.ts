@@ -5,6 +5,7 @@ export interface FolderListing { rootName:string; location:string; entries:FileE
 export interface NativeFilePreview {mimeType:string;base64:string}
 export interface StillInbox {listing:FolderListing;path:string}
 export interface FileMoveResult {sourcePath:string;destinationPath:string}
+export interface ReviewedOperation {id:string;workspaceId:string;runId:string;sequence:number;sourcePath:string;destinationPath:string;state:string;outcome?:string|null}
 export interface ExtractedPdfText {text:string;pagesRead:number;totalPages:number;truncated:boolean}
 export interface LibrarySearchHit {widgetId:string;entry:FileEntry}
 export interface LibrarySearchResponse {results:LibrarySearchHit[];unavailableWidgetIds:string[];truncated:boolean}
@@ -31,6 +32,11 @@ export const localFiles={
   chooseInbox:(id:string)=>invoke<StillInbox|null>('files_choose_inbox',{id}),
   createFolder:(id:string,location:string,name:string)=>invoke<FolderListing>('files_create_folder',{id,location,name}),
   moveToInbox:(sourceId:string,sourcePath:string,inboxId:string)=>invoke<FileMoveResult>('files_move_to_inbox',{sourceId,sourcePath,inboxId}),
+  journalStart:(input:{workspaceId:string;runId:string;sequence:number;rootPath:string;sourcePath:string;destinationFolder:string;fileName:string;sourceRevision:string;sourceSize:number})=>invoke<string>('assistant_journal_start',{input}),
+  journalPlan:(input:{workspaceId:string;runId:string;rootPath:string;moves:{sourcePath:string;destinationFolder:string;fileName:string;sourceRevision:string;sourceSize:number}[]})=>invoke<void>('assistant_journal_plan',{input}),
+  journalFinish:(id:string,success:boolean)=>invoke<void>('assistant_journal_finish',{id,success}),
+  journalList:(workspaceId:string)=>invoke<ReviewedOperation[]>('assistant_journal_list',{workspaceId}),
+  journalDismiss:(id:string,workspaceId:string)=>invoke<void>('assistant_journal_dismiss',{id,workspaceId}),
   select(id:string,files:File[]):FolderListing{
     if(!files.length)throw new Error('This folder contains no selectable files.');
     const first=files[0].webkitRelativePath||files[0].name;const rootName=first.includes('/')?first.split('/')[0]:'Selected files';

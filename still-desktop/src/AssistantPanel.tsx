@@ -3,7 +3,7 @@ import type {Workspace,WidgetInstance,SidebarPlugin} from './domain/workspaces.t
 import {assistantEditTargetsUnchanged,assistantWidgetPluginClarification,assistantCourseAutoOpenClarification,assistantCourseEnvironmentClarification,assistantResizeClarification,assistantResizeRequested,assistantRemovedControlReply,validateAssistantLayoutIntent,type AssistantReply} from './domain/assistant.ts';
 import {addFocusForAssistantTimer,applyLayoutPlan,assistantActionRequest,assistantActionsDescription,assistantCreationClarification,assistantEditClarification,assistantMoveClarification,assistantNoteDocumentClarification,assistantNoteStyleClarification,assistantNoteTagClarification,assistantShortcutClarification,assistantTimerControlClarification,assistantTimerStartRequested,assistantWorkspaceClarification,assistantLayoutRequested,assistantKeyError,assistantReplyNeedsClarification,assistantRequestLimitError,assistantWorkspaceContext,DEFAULT_MODELS,extractAssistantTimerSeconds,layoutFingerprint,prepareAssistantHistory,preferredModel,resolveAcceptedNotesOffer,resolveAssistantSetting,resolveAssistantTimerDurationReply,resolveDirectAssistantActions,resolveNamedNotesCreation,safeAssistantReceipt,settleAssistantConfirmation,unsupportedAssistantRequest,validateAssistantActionIntent,validateAssistantActions,validateLayout,widgetLabel,type AssistantAction,type AssistantProvider,type AssistantTrayItem,type AssistantWorkspaceChoice,type ChatMessage,type LayoutPlan} from './domain/assistant.ts';
 import {checkedStudyCalendarDrafts,type StudyCalendarEventDraft} from './domain/studyCalendar.ts';
-import {localFiles,type FileEntry,type ReviewedMoveExpectation} from './platform/files.ts';
+import {localFiles,type FileEntry,type ReviewedMoveExpectation,type ReviewedOperation} from './platform/files.ts';
 import {executeFileMoves,reviewInboxMove,reviewInboxMoves,type InboxInspection,type ReviewedFileMove} from './domain/assistantInbox.ts';
 import {chatgptPlan,geminiAssistant,runProviderAgent,selectedLibraryAgentContext,widgetImage,workspaceImage,type ProviderAgentMessage,type ProviderAgentOutcome,type ProviderAgentProposal} from './platform/assistant.ts';
 import {createStillWorkspaceToolRegistry,type StillToolSnapshot} from './domain/assistantTools.ts';
@@ -52,6 +52,7 @@ import {localizeOperationalMessage,translate,useLocale,useT} from './localizatio
 function formatAssistantText(template:string,values:Record<string,string>){return template.replace(/\{(\w+)\}/g,(_,key:string)=>values[key]??'')}
 
 export default function AssistantPanel({inboxWidgetId,libraryRoots=[],organiseLibrary,undoLibrary,workspace,theme,workspaces,canDeleteWorkspace,sidebarPlugins,trayItems,open,close,dimensions,apply,act,moveFile,addCalendarEvents,startTimer,clearTray,deleteWidgets,deleteWorkspace,undo}:Props){
+  const [recoveredOperations,setRecoveredOperations]=useState<ReviewedOperation[]>([]);
   const [libraryOrganisationContext,setLibraryOrganisationContext]=useState<LibraryOrganisationContext|null>(null),[libraryProposal,setLibraryProposal]=useState<LibraryProposal|null>(null),[libraryWorking,setLibraryWorking]=useState(false);
   const t=useT();
   const locale=useLocale();
@@ -95,6 +96,7 @@ export default function AssistantPanel({inboxWidgetId,libraryRoots=[],organiseLi
 useEffect(()=>{const attachMany=(event:Event)=>{const detail=(event as CustomEvent<{mode?:'compare'|'classify';sources?:unknown;prompt?:unknown}>).detail;if(!detail||!Array.isArray(detail.sources))return;const mode=detail.mode==='classify'?'classify':'compare',minimum=mode==='classify'?1:2;if(detail.sources.length<minimum||detail.sources.length>5)return;let remaining=45000;const sources:LibraryResourceSource[]=[];for(const raw of detail.sources){if(!raw||typeof raw!=='object')return;const value=raw as Record<string,unknown>;if(typeof value.name!=='string'||typeof value.path!=='string'||typeof value.fileWidgetId!=='string')return;const path=value.path.slice(0,1000);if(!path||path.startsWith('/')||path.includes(':')||path.includes('\\')||path.split('/').some(segment=>!segment||segment==='.'||segment==='..')||!/^[a-zA-Z0-9-]{1,80}$/.test(value.fileWidgetId))return;const sourceText=typeof value.text==='string'?value.text:'',text=sourceText.slice(0,Math.min(8000,remaining));remaining-=text.length;const notes=typeof value.notes==='string'?value.notes.slice(0,1000):'',fileActionAllowed=mode==='classify'&&value.fileActionAllowed===true;sources.push({name:value.name.slice(0,260),path,size:typeof value.size==='number'?Math.max(0,value.size):0,text,notes,fileWidgetId:value.fileWidgetId,fileActionAllowed,truncated:value.truncated===true||text.length<sourceText.length})}if(sources.length<minimum||sources.some(source=>!source.text.trim())||mode==='classify'&&sources.some(source=>!source.fileActionAllowed))return;const name=mode==='classify'?t('compareSourcesSelected').replace('{count}',String(sources.length)):t('compareSourcesSelected').replace('{count}',String(sources.length)),fallback=mode==='classify'?formatAssistantText(translate(locale,'classifySelectedResourcesPrompt'),{count:String(sources.length)}):formatAssistantText(translate(locale,'compareSourcesPrompt'),{count:String(sources.length)}),resource:LibraryResourceContext={name,path:'',size:sources.reduce((total,source)=>total+source.size,0),text:'',notes:'',prompt:typeof detail.prompt==='string'?detail.prompt.slice(0,8000):fallback,fileWidgetId:sources.length===1?sources[0].fileWidgetId:null,fileActionAllowed:mode==='classify',sources};setLibraryResource(resource);setFileProposal(null);setFileProposalQueue([]);setCalendarProposal(null);setNoteDraftProposal(null);setInput(resource.prompt);setMentions([]);setError('')};window.addEventListener('still-assistant-resources',attachMany);return()=>window.removeEventListener('still-assistant-resources',attachMany)},[locale]);
   useEffect(()=>{const receive=(event:Event)=>{const prompt=(event as CustomEvent<unknown>).detail;if(typeof prompt!=='string'||!prompt.trim())return;setLibraryResource(null);setFileProposal(null);setFileProposalQueue([]);setCalendarProposal(null);setNoteDraftProposal(null);setInput(prompt.slice(0,8000));setMentions([]);setScreenshot(false);setPlan(null);setConfirmation(null);setError('')};window.addEventListener('still-assistant-prompt',receive);return()=>window.removeEventListener('still-assistant-prompt',receive)},[]);
   useEffect(()=>{if(chatState.workspaceId===workspace.id)saveAssistantChat(workspace.id,chatState.messages)},[chatState,workspace.id]);
+  useEffect(()=>{let live=true;if(!localFiles.native){setRecoveredOperations([]);return}void localFiles.journalList(workspace.id).then(items=>{if(live)setRecoveredOperations(items)}).catch(reason=>{if(live)setError(localizeOperationalMessage(locale,reason instanceof Error?reason.message:String(reason)))});return()=>{live=false}},[workspace.id,locale]);
   useEffect(()=>{if(chatState.workspaceId!==workspace.id){setChatState({workspaceId:workspace.id,messages:readAssistantChat(workspace.id)});setConfirmation(null);setAgentNotesPending(null);pendingActions.current=null;pendingPrompt.current=''}},[workspace.id,chatState.workspaceId]);
   useEffect(()=>{let cancelled=false;setConfigured(false);setModelsByProvider(value=>({...value,[provider]:[]}));setError('');
     if(!geminiAssistant.available){setSettings(false);return()=>{cancelled=true}}
@@ -281,7 +283,8 @@ useEffect(()=>{const attachMany=(event:Event)=>{const detail=(event as CustomEve
           prepare:input=>reviewInboxMoves(input,inboxInspection),
           execute:async proposal=>{
             inboxInspection=null;
-            return (await executeFileMoves(proposal.moves,checkReviewedFileMove,item=>applyReviewedFileMove(owner.id,item,moveFile))).execution;
+            const journal=journalForRun(owner.id);if(journal)await journal.plan(proposal.moves);
+            return (await executeFileMoves(proposal.moves,checkReviewedFileMove,item=>applyReviewedFileMove(owner.id,item,moveFile),journal)).execution;
           },
         }:undefined,enableSafeWorkspaceActionTool:!libraryResource&&agentSafeActionMode,enableAssistantMemoryTool:!libraryResource&&memoryRequest,validateWorkspace:()=>{const live=latestContext.current;if(live.workspace.id!==owner.id)throw new Error('The active workspace changed while the agent was responding. Try again.');const partial={workspace:live.workspace,savedTrayItems:live.trayItems,workspaces:live.workspaces,preferences:{theme:live.theme}};if(inspectedContext!==null&&agentSnapshotRevision(partial)!==inspectedContext)throw new Error('The workspace changed while the agent was responding. Nothing was applied; try again.')}});
         if(outcome.status==='awaiting_confirmation'){
@@ -456,13 +459,26 @@ useEffect(()=>{const attachMany=(event:Event)=>{const detail=(event as CustomEve
     if(!source||source.size!==proposal.sourceSize||proposal.sourceRevision&&source.revision!==proposal.sourceRevision)throw new Error('File changed or unavailable: '+proposal.fileName);
     if(proposal.destinationFolder)await localFiles.list(proposal.widgetId,proposal.destinationFolder);
   }
+  function journalForRun(workspaceId:string){
+    if(!localFiles.native)return undefined;
+    const runId=crypto.randomUUID();let enabled=true;
+    return {plan:async(moves:readonly Readonly<ReviewedFileMove>[])=>{if(moves.some(proposal=>!proposal.inboxRootPath)){enabled=false;return}const rootPath=moves[0]?.inboxRootPath;if(!rootPath||moves.some(proposal=>proposal.inboxRootPath!==rootPath)){enabled=false;return}await localFiles.journalPlan({workspaceId,runId,rootPath,moves:moves.map(proposal=>{
+      if(!proposal.sourceRevision||typeof proposal.sourceSize!=='number')throw new Error('This reviewed move lacks recoverable source identity. Inspect it again.');
+      return {sourcePath:proposal.sourcePath,destinationFolder:proposal.destinationFolder,fileName:proposal.fileName,sourceRevision:proposal.sourceRevision,sourceSize:proposal.sourceSize};
+    })})},begin:async(proposal:Readonly<ReviewedFileMove>,sequence:number)=>{
+      if(!enabled)return '';
+      if(!proposal.sourceRevision||typeof proposal.sourceSize!=='number'||!proposal.inboxRootPath)throw new Error('This reviewed move lacks recoverable source identity. Inspect it again.');
+      return localFiles.journalStart({workspaceId,runId,sequence,rootPath:proposal.inboxRootPath,sourcePath:proposal.sourcePath,destinationFolder:proposal.destinationFolder,fileName:proposal.fileName,sourceRevision:proposal.sourceRevision,sourceSize:proposal.sourceSize});
+    },finish:async(id:string,success:boolean)=>{try{await localFiles.journalFinish(id,success)}finally{try{setRecoveredOperations(await localFiles.journalList(workspaceId))}catch{}}}};
+  }
   async function moveProposedFile(){
     if(!fileProposal||sending.current)return;
     if(!moveFile){setError(t('fileMoveUnavailable'));return}
     const proposals=[fileProposal,...fileProposalQueue];
     sending.current=true;setBusy(true);setError('');
     try{
-      const {completed,execution}=await executeFileMoves(proposals,checkReviewedFileMove,item=>applyReviewedFileMove(workspace.id,item,moveFile));
+      const journal=journalForRun(workspace.id);if(journal)await journal.plan(proposals);
+      const {completed,execution}=await executeFileMoves(proposals,checkReviewedFileMove,item=>applyReviewedFileMove(workspace.id,item,moveFile),journal);
       if(!alive.current)return;
       setFileProposal(proposals[completed]??null);setFileProposalQueue(proposals.slice(completed+1));
       if(execution.status==='succeeded')setMessages(current=>settleAssistantConfirmation(current,completed+' file'+(completed===1?'':'s')+' moved.'));
@@ -480,6 +496,7 @@ useEffect(()=>{const attachMany=(event:Event)=>{const detail=(event as CustomEve
 
   return <aside id="ai-sidebar" className="assistant-panel" aria-hidden={!open} inert={!open} aria-label={t('aiAssistant')}>
     <header className="assistant-heading"><Icon name="ai"/><div><strong>Still AI</strong><small>{configured?formatAssistantText(t('aiConnected'),{provider:PROVIDER_NAMES[provider]}):t('aiConnectPrompt')}</small></div><button onClick={()=>setSettings(value=>!value)} aria-label={t('aiSettings')} aria-expanded={settings}><Icon name="settings"/></button><button onClick={close} aria-label={t('closeAiSidebar')}>×</button></header>
+    {recoveredOperations.length>0&&<section className="assistant-proposal" aria-label="Recovered reviewed file operations" data-testid="assistant-recovered-operations"><strong>Recovered file operation history</strong><p>Still checked these reviewed moves against the currently authorized inbox. Unfinished moves need fresh inspection and approval.</p><ol>{recoveredOperations.map(operation=><li key={operation.id}><code>{operation.sourcePath}</code> → <code>{operation.destinationPath}</code><small>{operation.state==='recovered_completed'?'Verified complete':operation.state==='interrupted_before_move'?'Not moved before interruption':operation.state==='pending_review'?'Not attempted; fresh review required':operation.state==='ambiguous'?'Outcome unclear; inspect both folders':operation.state==='authorized_root_unavailable'?'Inbox authorization unavailable; outcome unknown':operation.state==='uncertain'?'Outcome uncertain; inspect both folders':'Complete'}</small><button type="button" aria-label={`Dismiss recovered operation ${operation.sourcePath}`} onClick={()=>void localFiles.journalDismiss(operation.id,workspace.id).then(()=>localFiles.journalList(workspace.id)).then(setRecoveredOperations).catch(reason=>setError(String(reason)))}>Dismiss</button></li>)}</ol></section>}
     {!geminiAssistant.available&&<p className="assistant-notice">{t('aiUnavailable')}</p>}
     {settings&&<form className="assistant-settings" onSubmit={event=>{event.preventDefault();if(provider==='chatgpt')void connectPlan();else void connect()}}>
       <label>{t('aiProvider')}<select value={provider} disabled={busy} onChange={event=>changeProvider(event.target.value as AssistantProvider)}>{PROVIDERS.map(value=><option key={value} value={value}>{PROVIDER_NAMES[value]}</option>)}</select></label>

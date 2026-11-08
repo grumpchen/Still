@@ -41,6 +41,16 @@ test('a move that fails after dispatch is reported as unverified',async()=>{
  assert.match(execution.error,/Check the failed file before retrying/);
 });
 
+test('a durable per-file attempt is written before move dispatch and a journal write failure blocks the move',async()=>{
+ const reviewed=reviewInboxMoves({fileProposals:[move('a.md')]},inspection),events=[];
+ const journal={begin:async()=>{events.push('journal-attempt');return 'attempt-1'},finish:async(_id,success)=>events.push(success?'journal-receipt':'journal-uncertain')};
+ const result=await executeFileMoves(reviewed.moves,async()=>{},async()=>{events.push('move');return 'Filed/a.md'},journal);
+ assert.deepEqual(events,['journal-attempt','move','journal-receipt']);assert.equal(result.execution.status,'succeeded');
+ events.length=0;
+ const blocked=await executeFileMoves(reviewed.moves,async()=>{},async()=>{events.push('move');return 'Filed/a.md'},{...journal,begin:async()=>{throw new Error('Journal unavailable')}});
+ assert.deepEqual(events,[]);assert.equal(blocked.completed,0);assert.equal(blocked.execution.mutation,'none');
+});
+
 test('adding a catalog widget is rejected before review on fixed Dashboard and Library pages',()=>{
  const workspace={id:'fixture',name:'Fixture',widgets:[],groups:[]};
  const change=[{type:'add_widget',ids:['calendar']}];

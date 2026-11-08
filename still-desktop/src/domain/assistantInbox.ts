@@ -28,6 +28,7 @@ export async function executeFileMoves(
   moves:readonly Readonly<ReviewedFileMove>[],
   check:(move:Readonly<ReviewedFileMove>)=>Promise<void>,
   move:(move:Readonly<ReviewedFileMove>)=>Promise<string>,
+  journal?:{begin:(move:Readonly<ReviewedFileMove>,sequence:number)=>Promise<string>;finish:(id:string,success:boolean)=>Promise<void>},
 ):Promise<{execution:AgentToolExecution;completed:number}>{
   const moved:{sourcePath:string;destinationPath:string}[]=[];
   const summary=()=>`${moved.length} of ${moves.length} file moves verified.`;
@@ -35,9 +36,12 @@ export async function executeFileMoves(
     let started=false;
     try{
       await check(proposal);
+      const journalId=journal?await journal.begin(proposal,moved.length+1):null;
       started=true;
-      const destinationPath=await move(proposal);
+      let destinationPath:string;
+      try{destinationPath=await move(proposal)}catch(error){if(journalId)await journal!.finish(journalId,false);throw error}
       if(!destinationPath)throw new Error('Still did not receive a destination path.');
+      if(journalId)await journal!.finish(journalId,true);
       moved.push({sourcePath:proposal.sourcePath,destinationPath});
     }catch(error){
       const reason=error instanceof Error?error.message:String(error);

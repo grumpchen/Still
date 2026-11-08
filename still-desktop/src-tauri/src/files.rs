@@ -12,7 +12,7 @@ impl FolderRoots {
             .filter(|bytes| bytes.len() <= 1_000_000).and_then(|bytes| serde_json::from_slice(&bytes).ok()).unwrap_or_default();
         Self(Mutex::new(roots))
     }
-    fn root(&self, id: &str) -> Result<PathBuf, String> {
+    pub(crate) fn root(&self, id: &str) -> Result<PathBuf, String> {
         self.0.lock().map_err(|_| "Folder state is unavailable")?.get(id).cloned().ok_or_else(|| "Choose a folder to get started.".into())
     }
     pub(crate) fn register_drop(&self, id: &str, path: &Path) -> Result<(), String> {
@@ -63,6 +63,22 @@ fn file_revision(metadata: &fs::Metadata) -> Option<String> {
     if !metadata.is_file() { return None; }
     let modified = metadata.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?;
     Some(format!("{}:{}", metadata.len(), modified.as_nanos()))
+}
+pub(crate) fn journal_file_revision(root:&Path,relative:&str)->Result<(String,u64),String>{
+    let target=existing_file_without_links(root,relative)?;let metadata=fs::metadata(target).map_err(|_|"The reviewed file is unavailable")?;
+    Ok((file_revision(&metadata).ok_or("Could not verify the reviewed file revision")?,metadata.len()))
+}
+pub(crate) fn journal_destination(root:&Path,source_relative:&str,destination_folder:&str,supplied_name:&str)->Result<String,String>{
+    let source=existing_file_without_links(root,source_relative)?;let name=source.file_name().ok_or("Source name unavailable")?.to_string_lossy().into_owned();
+    if name!=supplied_name||!valid_filing_segment(&name){return Err("Reviewed destination name does not match the source file".into())}
+    let parent=if destination_folder.is_empty(){root.canonicalize().map_err(|_|"Inbox unavailable")?}else{ensure_filing_folder(root,destination_folder,false)?};
+    if !parent.is_dir(){return Err("Reviewed destination folder is unavailable".into())}
+    Ok(if destination_folder.is_empty(){name}else{format!("{destination_folder}/{name}")})
+}
+pub(crate) fn journal_file_identity(root:&Path,relative:&str)->Option<String>{
+    let path=existing_file_without_links(root,relative).ok()?;
+    #[cfg(windows)] { use std::os::windows::io::AsRawHandle;let file=fs::File::open(path).ok()?;let mut info=std::mem::MaybeUninit::<windows::Win32::Storage::FileSystem::BY_HANDLE_FILE_INFORMATION>::zeroed();unsafe{windows::Win32::Storage::FileSystem::GetFileInformationByHandle(windows::Win32::Foundation::HANDLE(file.as_raw_handle() as _),info.as_mut_ptr()).ok()?};let info=unsafe{info.assume_init()};return Some(format!("{:08x}:{:08x}{:08x}",info.dwVolumeSerialNumber,info.nFileIndexHigh,info.nFileIndexLow)); }
+    #[cfg(not(windows))] { let _=path;None }
 }
 #[derive(Serialize)]
 #[serde(rename_all="camelCase")]
