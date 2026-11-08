@@ -6,6 +6,7 @@
 ## Done
 - Study with AI actions automatically submit after the selected note context and provider models load. The note is read-only context; the response goes to chat and does not modify the note.
 - Automatic study instructions are hidden from the composer and conversation display, but retained in saved provider history for follow-up context. Existing generated study prompts in chat history are hidden as well.
+- Automatic study instructions are also hidden during the in-flight `Thinking…` state; only the status and eventual assistant reply are shown.
 - Duplicate trailing JSON echoes are removed only when they exactly repeat the preceding assistant response.
 - Missing provider/model configuration reports an error instead of silently leaving a prompt in the composer.
 - Removed the dangling JSX left where the explicit Library Save button was removed; Reload from file appears only for conflicted Library-backed notes.
@@ -22,9 +23,13 @@
 ## Checks
 - `pnpm check` — passed.
 - `git diff --check` — passed.
+- After the in-flight prompt suppression change, `pnpm check` — passed.
+- After the in-flight prompt suppression change, `git diff --check` — passed.
 - Restarted the native Still dev app from this checkout. Study with AI submitted without a Send click; the provider returned an answer; the instruction is hidden and the composer is clear. The selected note was empty, and the visible response correctly asked for note text.
 - The previous Library-backed note now reports Saved locally; the removed Save control is absent.
 - Automated tests not run. Native visual inspection of the updated glass colors remains pending.
+- The latest in-flight prompt suppression was not visually rechecked in the native window; it was validated by TypeScript and diff checks only.
 
 ## Handoff
 - Verify the light neutral glass styling visually in the native window and try a non-empty Library note for a content-bearing explanation.
+- Verify that an automatic Study action shows only `Thinking…` while the provider is running, with no transient user prompt bubble.
