@@ -11,7 +11,9 @@ use crate::{
 
 const CODEX_BACKEND: &str = "https://chatgpt.com/backend-api/codex";
 const ORIGINATOR: &str = "still_desktop";
-const CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
+// This is a Codex catalog compatibility version, not Still's package version.
+// Codex's own catalog refresh workflow uses 99.99.99 to fetch the current catalog.
+const MODEL_CATALOG_CLIENT_VERSION: &str = "99.99.99";
 const NAMESPACE: &str = "still";
 const MAX_REASONING_BYTES: usize = 256_000;
 const MAX_STREAM_BYTES: usize = 1_048_576;
@@ -62,6 +64,43 @@ fn subscription_headers(
 pub struct PlanModel {
     slug: String,
     display_name: String,
+}
+
+fn model_catalog_url() -> String {
+    format!("{CODEX_BACKEND}/models?client_version={MODEL_CATALOG_CLIENT_VERSION}")
+}
+
+fn parse_model_catalog(value: Value) -> Result<Vec<PlanModel>, String> {
+    let entries = value["models"]
+        .as_array()
+        .ok_or("Codex returned an invalid model list.")?;
+    let mut seen = std::collections::HashSet::new();
+    let mut models = Vec::new();
+    for model in entries {
+        let Some(slug) = model["slug"].as_str().filter(|id| {
+            id.starts_with("gpt-")
+                && id.len() <= 80
+                && id
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.'))
+        }) else {
+            continue;
+        };
+        if model["visibility"] == "list" && seen.insert(slug) {
+            let name = model["display_name"]
+                .as_str()
+                .filter(|name| !name.is_empty() && name.len() <= 120)
+                .unwrap_or(slug);
+            models.push(PlanModel {
+                slug: slug.into(),
+                display_name: name.into(),
+            });
+        }
+    }
+    if models.is_empty() {
+        return Err("No ChatGPT plan models are available for this account.".into());
+    }
+    Ok(models)
 }
 
 #[derive(Deserialize)]
@@ -197,8 +236,7 @@ pub async fn models(
     account_id: &str,
 ) -> Result<Vec<PlanModel>, String> {
     let response = client
-        .get(format!("{CODEX_BACKEND}/models"))
-        .query(&[("client_version", CLIENT_VERSION)])
+        .get(model_catalog_url())
         .bearer_auth(token)
         .headers(subscription_headers(account_id, None, "application/json")?)
         .send()
@@ -206,36 +244,7 @@ pub async fn models(
         .map_err(|_| "Could not reach the Codex subscription model list.")?;
     let value: Value = serde_json::from_slice(&checked_body(response, 16 * 1024 * 1024).await?)
         .map_err(|_| "Codex returned an invalid model list.")?;
-    let entries = value["models"]
-        .as_array()
-        .ok_or("Codex returned an invalid model list.")?;
-    let mut seen = std::collections::HashSet::new();
-    let mut models = Vec::new();
-    for model in entries {
-        let Some(slug) = model["slug"].as_str().filter(|id| {
-            id.starts_with("gpt-")
-                && id.len() <= 80
-                && id
-                    .bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.'))
-        }) else {
-            continue;
-        };
-        if model["visibility"] == "list" && seen.insert(slug) {
-            let name = model["display_name"]
-                .as_str()
-                .filter(|name| !name.is_empty() && name.len() <= 120)
-                .unwrap_or(slug);
-            models.push(PlanModel {
-                slug: slug.into(),
-                display_name: name.into(),
-            });
-        }
-    }
-    if models.is_empty() {
-        return Err("No ChatGPT plan models are available for this account.".into());
-    }
-    Ok(models)
+    parse_model_catalog(value)
 }
 
 pub async fn turn(
@@ -425,6 +434,25 @@ fn parse_turn(response: Value, request: &AgentRequest) -> Result<Value, String> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn requests_current_codex_catalog_and_parses_listed_models() {
+        assert_eq!(
+            model_catalog_url(),
+            "https://chatgpt.com/backend-api/codex/models?client_version=99.99.99"
+        );
+        let models = parse_model_catalog(json!({"models":[
+            {"slug":"gpt-6.1-sol","display_name":"GPT-6.1 Sol","visibility":"list"},
+            {"slug":"gpt-6.1-sol","display_name":"Duplicate","visibility":"list"},
+            {"slug":"gpt-hidden","display_name":"Hidden","visibility":"hide"},
+            {"slug":"unsafe/model","display_name":"Unsafe","visibility":"list"}
+        ]})).unwrap();
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].slug, "gpt-6.1-sol");
+        assert_eq!(models[0].display_name, "GPT-6.1 Sol");
+        assert!(parse_model_catalog(json!({"models":[]})).is_err());
+        assert!(parse_model_catalog(json!({"unexpected":[]})).is_err());
+    }
 
     #[test]
     fn uses_codex_subscription_identity_headers_and_rejects_header_injection() {
