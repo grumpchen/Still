@@ -46,8 +46,8 @@ test('the single chat can use workspace widgets; @ is optional quick selection a
   await act(async()=>setReactValue(input,'@','HTMLTextAreaElement',1));
   await waitFor(()=>window.document.querySelector('[role="listbox"]'));
   assert.ok([...window.document.querySelectorAll('[role="option"]')].some(item=>item.textContent==='All widgets'));
-  assert.ok([...window.document.querySelectorAll('[role="option"]')].some(item=>item.textContent==='Notes 1'));
-  const noteOption=[...window.document.querySelectorAll('[role="option"]')].find(item=>item.textContent==='Notes 1');
+  assert.ok([...window.document.querySelectorAll('[role="option"]')].some(item=>item.textContent==='Files 1'));
+  const noteOption=[...window.document.querySelectorAll('[role="option"]')].find(item=>item.textContent==='Files 1');
   await act(async()=>noteOption.click());
   const composer=window.document.querySelector('#ai-message');
   await act(async()=>setReactValue(composer,composer.value+'Summarise this','HTMLTextAreaElement',composer.value.length+'Summarise this'.length));
@@ -136,7 +136,7 @@ test('opted-in provider agent proposals still pass through Still removal confirm
   await waitFor(()=>window.document.querySelector('.assistant-confirmation'));
   assert.equal(calls.some(call=>call.command==='assistant_chat'),false,'the opted-in request uses the agent adapter without fallback');
   assert.equal(mutations,0,'the model proposal is not applied before Still confirmation');
-  assert.match(window.document.querySelector('.assistant-confirmation').textContent,/Notes 1/);
+  assert.match(window.document.querySelector('.assistant-confirmation').textContent,/Files 1/);
  }finally{
   if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();
   for(const key of old.keys()){const descriptor=old.get(key);if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}
@@ -190,7 +190,7 @@ test('widget add commands show replies and provider chat carries complete action
   assert.ok([...window.document.querySelectorAll('.assistant-message.model p')].every(message=>message.textContent.trim()),'the add operation never creates a blank model turn');
   await act(async()=>setReactValue(composer,'make notes widget','HTMLTextAreaElement'));
   await act(async()=>window.document.querySelector('.assistant-compose').requestSubmit());
-  await waitFor(()=>actions.length===2&&[...window.document.querySelectorAll('.assistant-message.model p')].some(message=>message.textContent==='Added a Notes widget.'));
+  await waitFor(()=>actions.length===2&&[...window.document.querySelectorAll('.assistant-message.model p')].some(message=>message.textContent==='Added a Files widget.'));
   assert.deepEqual(actions[1],{type:'add_widget',ids:['notes']});
   assert.equal(calls.filter(call=>call.command==='assistant_chat').length,1,'make notes widget creates locally; only the preceding specified edit called the model');
   await act(async()=>setReactValue(composer,'hi','HTMLTextAreaElement'));
@@ -295,7 +295,7 @@ test('assistant previews a requested resize before applying it',async()=>{
   const {default:AssistantPanel}=await vite.ssrLoadModule('/src/AssistantPanel.tsx');root=createRoot(window.document.querySelector('#root'));
   await act(async()=>root.render(createElement(AssistantPanel,{workspace,workspaces:[{id:workspace.id,name:workspace.name}],trayItems:[],sidebarPlugins:[],open:true,close(){},dimensions:()=>({width:900,height:700}),apply:plan=>{applied=plan},undo(){}})));
   await waitFor(()=>window.document.querySelector('#ai-model option[value="gemini::gemini-2.5-flash"]'));
-  await act(async()=>setReactValue(window.document.querySelector('#ai-message'),'@Notes 1 make it taller','HTMLTextAreaElement'));
+  await act(async()=>setReactValue(window.document.querySelector('#ai-message'),'@Files 1 make it taller','HTMLTextAreaElement'));
   await act(async()=>window.document.querySelector('.assistant-compose').requestSubmit());
   await waitFor(()=>window.document.querySelector('[aria-label="Proposed layout"]'));
   assert.equal(applied,null,'no resize happens before review');
