@@ -330,6 +330,36 @@ async function runPdfHighlights(page) {
   await toolbar.getByRole('button',{name:'Clear highlights',exact:true}).click();
   await expect(page.locator('.pdf-keyword-highlight')).toHaveCount(0);
   assert.equal(await page.evaluate(()=>Object.keys(localStorage).some(key=>key.startsWith('still.pdf-highlights.v1.'))),false);
+  await toolbar.getByRole('button',{name:'Detect numbers',exact:true}).click();
+  const tokens=page.locator('.pdf-number-token');
+  await expect(tokens).toHaveCount(2);
+  await tokens.nth(0).click();
+  await tokens.nth(1).click({modifiers:['Control']});
+  await expect(page.locator('.pdf-number-token.is-selected')).toHaveCount(2);
+  const firstBox=await tokens.nth(0).boundingBox();
+  assert(firstBox);
+  const start={x:firstBox.x+firstBox.width/2,y:firstBox.y+firstBox.height/2};
+  await page.mouse.move(start.x,start.y);
+  await page.mouse.down({button:'right'});
+  await page.mouse.move(start.x+44,start.y);
+  await expect(page.locator('.pdf-operation-wheel .is-active')).toHaveAttribute('aria-label','Addition');
+  await page.mouse.up({button:'right'});
+  const calculation=page.locator('.widget-calculation .pdf-calculation-widget');
+  await expect(calculation).toBeVisible();
+  await expect(calculation.locator('output')).toHaveText('15.5');
+  await page.waitForFunction(()=>{
+    try{
+      const saved=JSON.parse(localStorage.getItem('still-workspace-v2')||'{}');
+      return saved.workspaces?.find(workspace=>workspace.id===saved.activeId)?.widgets.some(widget=>widget.type==='calculation')??false;
+    }catch{return false}
+  });
+  const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('still-workspace-v2')||'{}'));
+  const created=saved.workspaces.find(workspace=>workspace.id===saved.activeId)?.widgets.find(widget=>widget.type==='calculation');
+  assert(created,'The wheel should persist a dedicated Calculation widget.');
+  assert.deepEqual(JSON.parse(created.text),{values:[12,3.5],operation:'+'});
+  await page.reload({waitUntil:'commit'});
+  await expect(page.locator('.widget-calculation .pdf-calculation-widget output')).toHaveText('15.5');
+  assert.equal(createHash('sha256').update(await readFile(sourcePath)).digest('hex'),beforeHash,'Number selection and calculation must not write the source PDF.');
 }
 
 async function runInbox(page,port) {
@@ -418,7 +448,7 @@ try {
   const port=await reservePort(0);
   await mkdir(join(inbox,'Filed'),{recursive:true});
   await mkdir(grants,{recursive:false});
-  if(pdfCase){await mkdir(pdfRoot);await writeFile(join(pdfRoot,'Lecture.pdf'),textPdf('Mitochondria produce ATP.'));}
+  if(pdfCase){await mkdir(pdfRoot);await writeFile(join(pdfRoot,'Lecture.pdf'),textPdf('Mitochondria produce ATP. Values 12 and 3.5.'));}
   await setGrant(inbox);
   if(libraryCase){
     await mkdir(notesRoot);

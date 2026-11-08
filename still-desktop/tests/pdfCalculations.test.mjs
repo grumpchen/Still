@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {calculatePdfValues,decodePdfCalculation,encodePdfCalculation,pdfOperationAt,scanPdfNumbers,togglePdfNumberSelection} from '../src/domain/pdfCalculations.ts';
+import {calculatePdfValues,decodePdfCalculation,encodePdfCalculation,includePdfNumberSelection,pdfOperationAt,scanPdfNumbers,togglePdfNumberSelection} from '../src/domain/pdfCalculations.ts';
 
 test('scans signed, decimal, grouped, scientific, and fractional PDF values',()=>{
- const found=scanPdfNumbers('x=-12.5, total 1,200; ratio .25; rate 3e-2; fraction 3/4');
- assert.deepEqual(found.map(item=>item.value),[-12.5,1200,.25,.03,.75]);
+ const found=scanPdfNumbers('x=-12.5, total 1,200; ratio .25; rate 3e-2; fraction 3/4. Also 3.5. Version 3.5.2 stays whole.');
+ assert.deepEqual(found.map(item=>item.value),[-12.5,1200,.25,.03,.75,3.5]);
 });
 
 test('evaluates arithmetic in selected order',()=>{
@@ -26,6 +26,12 @@ test('number selection toggles with Ctrl and refuses values beyond its limit',()
  assert.deepEqual(togglePdfNumberSelection(['a','b'],'a',true),['b']);
  assert.deepEqual(togglePdfNumberSelection(['a','b'],'c',false),['c']);
  assert.equal(togglePdfNumberSelection(['a','b'],'c',true,2),null);
+});
+
+test('opening the radial wheel on a selected number preserves the complete Ctrl selection',()=>{
+ assert.deepEqual(includePdfNumberSelection(['first','second'],'first'),['first','second']);
+ assert.deepEqual(includePdfNumberSelection(['first'],'second'),['first','second']);
+ assert.equal(includePdfNumberSelection(['first','second'],'third',2),null);
 });
 
 test('rejects undefined, oversized, and malformed calculations',()=>{

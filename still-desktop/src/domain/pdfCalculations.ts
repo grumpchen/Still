@@ -11,6 +11,11 @@ export function togglePdfNumberSelection(ids:readonly string[],id:string,additiv
  return[id];
 }
 
+export function includePdfNumberSelection(ids:readonly string[],id:string,limit=LIMIT):string[]|null{
+ if(ids.includes(id))return [...ids];
+ return togglePdfNumberSelection(ids,id,true,limit);
+}
+
 export function pdfOperationAt(dx:number,dy:number):PdfArithmeticOperation{
  const angle=Math.atan2(dy,dx);
  const index=Math.floor((angle+Math.PI/4+Math.PI*2)%(Math.PI*2)/(Math.PI/2));
@@ -18,7 +23,7 @@ export function pdfOperationAt(dx:number,dy:number):PdfArithmeticOperation{
 }
 
 export function scanPdfNumbers(text:string):Array<{raw:string;value:number;start:number;end:number}>{
- const pattern=/(?<![\w.])[+-]?(?:(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?(?:\s*\/\s*\d+)?(?![\w.])/g;
+ const pattern=/(?<![\w.])[+-]?(?:(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?(?:\s*\/\s*\d+)?(?!\w|\.\d)/g;
  const found:Array<{raw:string;value:number;start:number;end:number}>=[];
  for(const match of text.matchAll(pattern)){
   const raw=match[0],normalized=raw.replace(/,/g,'').replace(/\s/g,'');

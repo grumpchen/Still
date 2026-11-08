@@ -23,7 +23,7 @@ Run the cases one at a time. The script builds and launches Still with a unique 
 
 The restart case lets the first move complete, holds the second before dispatch, kills only the named fixture, then relaunches it with the same profile and journal. It verifies that the first move appears as completed, that no remaining change runs automatically, and that the second move can complete after a fresh review. The revoke case replaces the fixture grant between launches. Rust tests cover interruption between the native mutation and its receipt.
 
-The PDF case opens a synthetic text PDF from the fixture Notes Library through the real native Files grant, invokes the selected ChatGPT provider stub, checks that only extracted PDF text is shared, applies and clears local overlays, and verifies the source PDF hash is unchanged.
+The PDF case opens a synthetic text PDF from the fixture Notes Library through the real native Files grant, invokes the selected ChatGPT provider stub, checks that only extracted PDF text is shared, applies and clears local overlays, and verifies the source PDF hash is unchanged. It also detects signed/decimal text values, Ctrl-selects two numbers, performs a right-hold radial addition, creates a Calculation widget, reloads Still, and verifies the persisted result without modifying the source PDF.
 
 The control cases check exact persisted values and undo. The Library cases exercise browse, search, read, and reviewed save through the Notes widget’s grant; the conflict case edits the file outside Still after the review opens and checks that approval does not overwrite it.
 

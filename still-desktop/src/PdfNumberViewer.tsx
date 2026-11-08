@@ -3,7 +3,7 @@ import type {PDFDocumentProxy,PDFPageProxy,RenderTask} from 'pdfjs-dist';
 import type {TextLayer as PdfTextLayer} from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import {localFiles} from './platform/files.ts';
-import {pdfOperationAt,scanPdfNumbers,togglePdfNumberSelection,type PdfArithmeticOperation} from './domain/pdfCalculations.ts';
+import {includePdfNumberSelection,pdfOperationAt,scanPdfNumbers,togglePdfNumberSelection,type PdfArithmeticOperation} from './domain/pdfCalculations.ts';
 import {checkedPdfHighlightKeywords,findPdfHighlightRanges,pdfHighlightStorageKey,readPdfHighlights,writePdfHighlights,type PdfHighlightRange} from './domain/pdfHighlights.ts';
 import {useT} from './localization.tsx';
 
@@ -150,7 +150,7 @@ export default function PdfNumberViewer({widgetId,path,name='PDF',createCalculat
  },[wheel,applyWheel,closeWheel]);
 
  function chooseNumber(event:ReactPointerEvent<HTMLButtonElement>,token:NumberToken){
-  if(event.button===2){event.preventDefault();event.stopPropagation();const current=selectedRef.current,ids=togglePdfNumberSelection(current.map(item=>item.id),token.id,true);if(!ids){setSelectionError(t('pdfCalculationTooMany'));return}const byId=new Map([...current,token].map(item=>[item.id,item]));const next=ids.map(id=>byId.get(id)!).filter(Boolean);selectedRef.current=next;setSelected(next);setSelectionError('');if(stage.current){const rect=stage.current.getBoundingClientRect();setWheel({x:event.clientX-rect.left-58,y:event.clientY-rect.top-58,operation:null,pointerId:event.pointerId})}return}
+  if(event.button===2){event.preventDefault();event.stopPropagation();const current=selectedRef.current,ids=includePdfNumberSelection(current.map(item=>item.id),token.id);if(!ids){setSelectionError(t('pdfCalculationTooMany'));return}const byId=new Map([...current,token].map(item=>[item.id,item]));const next=ids.map(id=>byId.get(id)!).filter(Boolean);selectedRef.current=next;setSelected(next);setSelectionError('');if(stage.current){const rect=stage.current.getBoundingClientRect();setWheel({x:event.clientX-rect.left-58,y:event.clientY-rect.top-58,operation:null,pointerId:event.pointerId})}return}
   if(event.button!==0)return;
   const current=selectedRef.current,additive=event.ctrlKey||event.metaKey,ids=togglePdfNumberSelection(current.map(item=>item.id),token.id,additive);if(!ids){setSelectionError(t('pdfCalculationTooMany'));return}const byId=new Map([...current,token].map(item=>[item.id,item]));const next=ids.map(id=>byId.get(id)!).filter(Boolean);selectedRef.current=next;setSelectionError('');setSelected(next);
  }
