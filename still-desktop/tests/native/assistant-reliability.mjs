@@ -13,7 +13,7 @@ import { createInitialState, createWidget, createWorkspace } from '../../src/dom
 const mode = process.argv[2];
 const expect=playwrightExpect.configure({timeout:15_000});
 assert(process.platform === 'win32' && process.env.APPDATA, 'This fixture requires Windows with WebView2.');
-assert(['success','stale','timeout','restart','revoke','theme','move-widget','resize-widget','library-edit','library-conflict','pdf-highlights'].includes(mode), 'Specify an acceptance case from tests/native/README.md.');
+assert(['success','stale','timeout','restart','revoke','theme','move-widget','resize-widget','library-edit','library-conflict','library-create','pdf-highlights'].includes(mode), 'Specify an acceptance case from tests/native/README.md.');
 const libraryCase = mode.startsWith('library-');
 const pdfCase = mode==='pdf-highlights';
 const geometry = mode==='move-widget'?{operation:'move',x:100,y:80}:mode==='resize-widget'?{operation:'resize',width:480,height:360}:null;
@@ -165,6 +165,13 @@ geminiAssistant.agentTurn=async function(request){
   window.__fixturePdfRequest=request;
   return {kind:'final',response:{intent:'chat',reply:'{"keywords":["Mitochondria","ATP"]}',layout:[],actions:[]}};
  }
+ if(${JSON.stringify(mode==='library-create')}){
+  if(!request.enable_library_tool||!request.enable_library_edit_tool)throw new Error('The selected Notes Library and note creation tool are not enabled.');
+  if(records.length===1)return call('inspect_library',{},'fixture-library-inspect');
+  if(records.length===2)return call('propose_library_create_note',{location:'Course',title:'AI Summary',text:'## Key ideas\\nA locally created lecture summary.'},'fixture-library-create');
+  if(receipt?.result?.receipt!=='Created Course/AI Summary.md in the selected Notes Library after review.')throw new Error('Did not receive the verified native creation receipt.');
+  return {kind:'final',response:{intent:'chat',reply:'Fixture Library note creation complete.',layout:[],actions:[]}};
+ }
  if(${JSON.stringify(libraryCase)}){
   if(!request.enable_library_tool||!request.enable_library_edit_tool)throw new Error('The selected Notes Library and edit tools are not enabled.');
   if(records.length===1)return call('inspect_library',{},'fixture-library-inspect');
@@ -234,6 +241,15 @@ async function openAssistant(page) {
   await expect(page.locator('#ai-message')).toBeVisible();
 }
 
+async function mentionNotes(page,prompt) {
+  const editor=page.locator('#ai-message');
+  await editor.fill('@');
+  const option=page.getByRole('option').first();
+  await expect(option).toBeVisible();
+  await option.click();
+  await editor.fill(editor.inputValue()+prompt);
+}
+
 async function submit(page) {
   await openAssistant(page);
   await page.locator('#ai-message').fill('Move first.md and second.md to Filed in Downloads Inbox, then add a Calendar widget.');
@@ -283,9 +299,27 @@ async function runControl(page) {
 }
 
 async function runLibrary(page) {
+  if(mode==='library-create'){
+    const note=join(notesRoot,'Course','AI Summary.md');
+    await mkdir(join(notesRoot,'Course'),{recursive:true});
+    await openAssistant(page);
+    await mentionNotes(page,'Create a new note in my Notes Library in Course named AI Summary with the key ideas.');
+    await page.locator('.assistant-compose').evaluate(form=>form.requestSubmit());
+    const review=page.getByRole('region',{name:'Review new Notes Library note',exact:true});
+    await expect(review).toContainText('Course/AI Summary.md');
+    await expect(review).toContainText('A locally created lecture summary.');
+    await assert.rejects(readFile(note));
+    await review.getByRole('button',{name:'Approve and create note',exact:true}).click();
+    await expect(page.getByText('Fixture Library note creation complete.',{exact:true})).toBeVisible();
+    assert.equal(await readFile(note,'utf8'),'## Key ideas\nA locally created lecture summary.');
+    const receipt=await page.evaluate(()=>JSON.parse(window.__fixtureTurns[2].messages.at(-1).content));
+    assert.equal(receipt.mutation,'applied');
+    assert.equal(receipt.result.entry.path,'Course/AI Summary.md');
+    return;
+  }
   const lesson=join(notesRoot,'lesson.md');
   await openAssistant(page);
-  await page.locator('#ai-message').fill('@Notes Search my Notes Library for lesson, read lesson.md, then edit lesson.md to say Revised study note.');
+  await mentionNotes(page,'Search my Notes Library for lesson, read lesson.md, then edit lesson.md to say Revised study note.');
   await page.locator('.assistant-compose').evaluate(form=>form.requestSubmit());
   const review=page.getByRole('region',{name:'Review Notes Library edit',exact:true});
   await expect(review).toContainText('Original study note.');
