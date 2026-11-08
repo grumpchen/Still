@@ -18,5 +18,5 @@ export const notesLibrary={
  agentSearch:(id:string,grant:string,query:string)=>native?invoke<NotesLibrarySearchResult>('notes_library_agent_search',{id,grant,query}):Promise.reject(new Error('Library agent tools are available in the Still desktop app.')),
  agentRead:(id:string,grant:string,path:string)=>native?invoke<NotesAgentRead>('notes_library_agent_read',{id,grant,path}):Promise.reject(new Error('Library agent tools are available in the Still desktop app.')),
  agentWrite:(id:string,grant:string,path:string,text:string,expected:string)=>native?invoke<void>('notes_library_agent_write',{id,grant,path,text,expected}):Promise.reject(new Error('Library agent tools are available in the Still desktop app.')),
- create:(id:string,title:string,location='')=>native?invoke<NotesLibraryEntry>('notes_library_create',{id,location,title}):Promise.reject(new Error('Notes libraries are available in the Still desktop app.')),
+ create:(id:string,title:string,location='',text='')=>native?invoke<NotesLibraryEntry>('notes_library_create',{id,location,title,text}):Promise.reject(new Error('Notes libraries are available in the Still desktop app.')),
 };

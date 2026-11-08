@@ -434,12 +434,13 @@ fn write_note_at_root(root:&Path,relative:&str,text:&str,expected:&str)->Result<
     if result.is_err(){let _=fs::remove_file(temp);}
     result
 }
-fn create_note_file(roots:&FolderRoots,id:&str,location:&str,title:&str)->Result<NoteLibraryEntry,String>{
+fn create_note_file(roots:&FolderRoots,id:&str,location:&str,title:&str,text:&str)->Result<NoteLibraryEntry,String>{
     valid_id(id)?;
     let clean=title.trim();
-    if clean.is_empty()||clean.len()>80||clean.chars().any(|c|c.is_control()||matches!(c,'/'|'\\'|':'|'*'|'?'|'"'|'<'|'>'|'|')){
+    if clean.is_empty()||clean.chars().count()>80||clean.chars().any(|c|c.is_control()||matches!(c,'/'|'\\'|':'|'*'|'?'|'"'|'<'|'>'|'|')){
         return Err("Use a note name up to 80 characters without file-path symbols.".into())
     }
+    if text.len() as u64>NOTE_LIBRARY_MAX_BYTES||text.chars().count()>NOTE_LIBRARY_MAX_CHARS{return Err("This note exceeds Still's 1 MB or 256,000-character editing limit.".into())}
     let root=roots.root(id)?.canonicalize().map_err(|_|"The selected notes folder is unavailable. Choose it again.")?;
     let directory=resolve(&root,location)?;
     if !directory.is_dir(){return Err("Choose a folder in the notes library.".into())}
@@ -448,9 +449,9 @@ fn create_note_file(roots:&FolderRoots,id:&str,location:&str,title:&str)->Result
     let relative=target.strip_prefix(&root).map_err(|_|"Choose a folder inside the notes library.")?.components().map(|part|part.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/");
     let mut file=std::fs::OpenOptions::new().write(true).create_new(true).open(&target).map_err(|_|"Could not create this note. Check that the folder is writable and try again")?;
     use std::io::Write;
-    file.write_all(b"").map_err(|_|"Could not finish creating this note")?;
-    file.sync_all().map_err(|_|"Could not finish creating this note")?;
-    Ok(NoteLibraryEntry{path:relative,name:format!("{clean}.md"),size:0})
+    let result=file.write_all(text.as_bytes()).and_then(|()|file.sync_all());
+    if result.is_err(){drop(file);let _=fs::remove_file(&target);return Err("Could not finish creating this note".into())}
+    Ok(NoteLibraryEntry{path:relative,name:format!("{clean}.md"),size:text.len() as u64})
 }
 
 #[tauri::command]
@@ -508,8 +509,8 @@ pub async fn notes_library_write(webview:Webview,roots:State<'_,FolderRoots>,id:
     crate::security::authorize(&webview)?;write_note_file(&roots,&id,&path,&text,&expected)
 }
 #[tauri::command]
-pub async fn notes_library_create(webview:Webview,roots:State<'_,FolderRoots>,id:String,location:String,title:String)->Result<NoteLibraryEntry,String>{
-    crate::security::authorize(&webview)?;create_note_file(&roots,&id,&location,&title)
+pub async fn notes_library_create(webview:Webview,roots:State<'_,FolderRoots>,id:String,location:String,title:String,text:String)->Result<NoteLibraryEntry,String>{
+    crate::security::authorize(&webview)?;create_note_file(&roots,&id,&location,&title,&text)
 }
 fn reuse_folder(roots:&FolderRoots,id:&str,source_id:&str)->Result<FolderListing,String>{
     valid_id(id)?;valid_id(source_id)?;
@@ -757,8 +758,10 @@ mod tests {
         write_note_file(&roots,"notes-widget","course/week1.MARKDOWN","saved update","first draft").unwrap();assert_eq!(fs::read_to_string(root.join("course/week1.MARKDOWN")).unwrap(),"saved update");
         fs::write(root.join("course/week1.MARKDOWN"),"edited outside Still").unwrap();
         assert!(write_note_file(&roots,"notes-widget","course/week1.MARKDOWN","stale overwrite","saved update").unwrap_err().contains("changed outside Still"));
-        let created=create_note_file(&roots,"notes-widget","course","Week two").unwrap();assert_eq!(created.path,"course/Week two.md");assert_eq!(fs::read_to_string(root.join("course/Week two.md")).unwrap(),"");
-        assert!(create_note_file(&roots,"notes-widget","course","Week two").is_err());assert!(create_note_file(&roots,"notes-widget","../outside","Nope").is_err());
+        let created=create_note_file(&roots,"notes-widget","course","Week two","").unwrap();assert_eq!(created.path,"course/Week two.md");assert_eq!(fs::read_to_string(root.join("course/Week two.md")).unwrap(),"");
+        let summary=create_note_file(&roots,"notes-widget","course","Week two summary","## Key ideas\nfaithful summary").unwrap();assert_eq!(summary.size,"## Key ideas\nfaithful summary".len() as u64);assert_eq!(fs::read_to_string(root.join("course/Week two summary.md")).unwrap(),"## Key ideas\nfaithful summary");
+        let unicode=create_note_file(&roots,"notes-widget","course","化学摘要","概念总结").unwrap();assert_eq!(fs::read_to_string(root.join("course/化学摘要.md")).unwrap(),"概念总结");assert_eq!(unicode.size,"概念总结".len() as u64);
+        assert!(create_note_file(&roots,"notes-widget","course","Week two","again").is_err());assert!(create_note_file(&roots,"notes-widget","../outside","Nope","").is_err());assert!(create_note_file(&roots,"notes-widget","course","Too large",&"x".repeat((NOTE_LIBRARY_MAX_BYTES+1) as usize)).is_err());
         assert!(read_note_file(&roots,"notes-widget","../ignored.html").is_err());assert!(write_note_file(&roots,"notes-widget","ignored.html","no","").is_err());
         assert!(write_note_file(&roots,"notes-widget","course/week1.MARKDOWN",&"x".repeat((NOTE_LIBRARY_MAX_BYTES+1) as usize),"").is_err());
         fs::remove_dir_all(fixture).unwrap();

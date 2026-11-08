@@ -18,6 +18,8 @@ interface Props {
  onChoose:()=>void;
  onCreate:(location:string)=>Promise<NotesLibraryEntry|null>;
  onOpenNote:(file:NotesLibraryEntry)=>Promise<void>;
+ openFilePath?:string|null;
+ onOpenedFile?:()=>void;
  renderNoteEditor:(file:NotesLibraryEntry,openPath:(path:string)=>void,createNote:()=>void)=>ReactNode;
  createCalculation?:(values:number[],operation:PdfArithmeticOperation,at?:{x:number;y:number})=>void;
 }
@@ -27,13 +29,15 @@ function editableNote(name:string){return /\.(md|markdown|txt)$/i.test(name)}
 function fileSize(bytes:number){return bytes<1024?`${bytes} B`:bytes<1024*1024?`${Math.ceil(bytes/1024)} KB`:`${(bytes/1024/1024).toFixed(1)} MB`}
 function icon(file:FileEntry){if(file.directory)return'▰';const extension=file.name.split('.').pop()?.toLowerCase();return extension==='pdf'?'PDF':extension==='md'||extension==='markdown'?'MD':extension==='txt'||extension==='csv'||extension==='log'?'TXT':extension==='png'||extension==='jpg'||extension==='jpeg'||extension==='gif'||extension==='webp'||extension==='bmp'?'IMG':extension==='mp3'||extension==='wav'||extension==='ogg'?'AUD':extension==='mp4'||extension==='m4v'||extension==='webm'?'VID':'FILE'}
 
-export default function NotesLibraryExplorer({widgetId,connected,libraryName,entries,busy,error,newName,onNewName,onRefresh,onChoose,onCreate,onOpenNote,renderNoteEditor,createCalculation}:Props){
+export default function NotesLibraryExplorer({widgetId,connected,libraryName,entries,busy,error,newName,onNewName,onRefresh,onChoose,onCreate,onOpenNote,openFilePath,onOpenedFile,renderNoteEditor,createCalculation}:Props){
  const t=useT();
  const [location,setLocation]=useState(''),[filter,setFilter]=useState(''),[sidebarCollapsed,setSidebarCollapsed]=useState(false),[selectedFilePaths,setSelectedFilePaths]=useState<string[]>([]),[selectionBox,setSelectionBox]=useState<SelectionBox|null>(null),[selected,setSelected]=useState<FileEntry|null>(null),[preview,setPreview]=useState<Preview|null>(null),[previewError,setPreviewError]=useState(''),[previewBusy,setPreviewBusy]=useState(false),[folderName,setFolderName]=useState(''),[folderError,setFolderError]=useState(''),[folderBusy,setFolderBusy]=useState(false),[showFolderForm,setShowFolderForm]=useState(false);
  const mounted=useRef(true),noteBaseline=useRef(new Map<string,string>()),noteDrafts=useRef(new Map<string,string>());
  const fileSelectionStart=useRef<{x:number;y:number;list:HTMLDivElement;moved:boolean}|null>(null),ignoreFileClick=useRef(false);
  const [noteDraft,setNoteDraft]=useState(''),[noteSaving,setNoteSaving]=useState(false);
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false}},[]);
+ const openRequest=useRef<string|null>(null);
+ useEffect(()=>{if(!openFilePath){openRequest.current=null;return}if(openRequest.current===openFilePath)return;const file=entries.find(entry=>entry.path===openFilePath);if(!file)return;openRequest.current=openFilePath;void selectFile({...file,directory:false,blocked:false}).finally(()=>onOpenedFile?.())},[openFilePath,entries,onOpenedFile]);
  useEffect(()=>()=>{if(preview?.url)URL.revokeObjectURL(preview.url)},[preview?.url]);
  const rows=useMemo<FileEntry[]>(()=>{const needle=filter.trim().toLocaleLowerCase();return folderEntries(entries,location).filter(file=>!needle||`${file.name} ${file.path}`.toLocaleLowerCase().includes(needle))},[entries,location,filter]);
  const parts=location?location.split('/'):[];

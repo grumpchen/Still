@@ -18,9 +18,9 @@ after(()=>vite.close());
 async function setup(widgets,{identity={hwnd:451,pid:902},startupDeferredIds=new Set(),screenshotPluginMode='global',screenshotPluginColors=[],screenshotPluginColorOverrides={},clockPluginMode='global',clockPluginColors=[],clockPluginColorOverrides={},showAppAttachAction=false,showAppDetachAction=false,showAppSaveAction=false,showWidgetRelaunchAction=true,showWidgetExportPngAction=true,responses={}}={}){
  const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true});
  const oldGlobals=new Map();
- for(const key of ['window','document','navigator','HTMLElement','Element','Node','MutationObserver','ResizeObserver','requestAnimationFrame','cancelAnimationFrame','getComputedStyle','isTauri','IS_REACT_ACT_ENVIRONMENT'])oldGlobals.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
+ for(const key of ['window','document','navigator','HTMLElement','Element','Node','Event','CustomEvent','MutationObserver','ResizeObserver','requestAnimationFrame','cancelAnimationFrame','getComputedStyle','isTauri','IS_REACT_ACT_ENVIRONMENT'])oldGlobals.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
  const {window}=dom;
- setGlobal('window',window);setGlobal('document',window.document);setGlobal('navigator',window.navigator);setGlobal('HTMLElement',window.HTMLElement);setGlobal('Element',window.Element);setGlobal('Node',window.Node);setGlobal('MutationObserver',window.MutationObserver);setGlobal('ResizeObserver',class{observe(){}disconnect(){}});setGlobal('requestAnimationFrame',callback=>setTimeout(()=>callback(Date.now()),0));setGlobal('cancelAnimationFrame',clearTimeout);setGlobal('getComputedStyle',window.getComputedStyle.bind(window));setGlobal('isTauri',true);setGlobal('IS_REACT_ACT_ENVIRONMENT',true);
+ setGlobal('window',window);setGlobal('document',window.document);setGlobal('navigator',window.navigator);setGlobal('HTMLElement',window.HTMLElement);setGlobal('Element',window.Element);setGlobal('Node',window.Node);setGlobal('Event',window.Event);setGlobal('CustomEvent',window.CustomEvent);setGlobal('MutationObserver',window.MutationObserver);setGlobal('ResizeObserver',class{observe(){}disconnect(){}});setGlobal('requestAnimationFrame',callback=>setTimeout(()=>callback(Date.now()),0));setGlobal('cancelAnimationFrame',clearTimeout);setGlobal('getComputedStyle',window.getComputedStyle.bind(window));setGlobal('isTauri',true);setGlobal('IS_REACT_ACT_ENVIRONMENT',true);
  window.HTMLElement.prototype.getBoundingClientRect=function(){
   if(this.classList.contains('canvas-viewport'))return rect(0,0,1400,900);
   if(this.classList.contains('workspace-canvas'))return rect(0,0,4000,3000);
@@ -112,6 +112,34 @@ test('Notes library opens Markdown tabs beside local notes and writes edits to t
   assert.equal(app.window.document.querySelector('[aria-label="Note text"]').value,'Initial note');
   assert.equal(app.window.document.querySelectorAll('[role="tab"]').length,2);
   assert.equal(app.currentState.workspaces[0].widgets[0].noteDocuments.find(note=>note.id===localId).text,widget.noteDocuments[0].text);
+ }finally{await app.cleanup()}
+});
+
+test('AI summary notes use the selected folder and preserve the source note',async()=>{
+ const widget=createWidget('notes');widget.notesLibraryKey=widget.id;widget.notesLibraryName='Study';const source={...widget.noteDocuments[0],id:'lecture-source',title:'Lecture',text:'Original lecture facts',sourcePath:'Chemistry/lecture.md'};widget.noteDocuments=[source];widget.activeNoteDocumentId=source.id;widget.title=source.title;widget.text=source.text;
+ let summaryText='';const sourceEntry={name:'lecture.md',path:'Chemistry/lecture.md',size:22};
+ const app=await setup([widget],{responses:{
+  notes_library_list:()=>summaryText?[sourceEntry,{name:'Lecture - Summary.md',path:'Chemistry/Lecture - Summary.md',size:summaryText.length}]:[sourceEntry],
+  notes_library_read:args=>args.path===sourceEntry.path?'Original lecture facts':summaryText,
+  notes_library_create:args=>{summaryText=args.text;return{name:`${args.title}.md`,path:`${args.location}/${args.title}.md`,size:args.text.length}},
+ }});
+ try{
+  const folder=[...app.window.document.querySelectorAll('.note-library-file')].find(button=>button.textContent.includes('Chemistry'));assert.ok(folder);await act(async()=>folder.click());
+  const sourceButton=[...app.window.document.querySelectorAll('.note-library-file')].find(button=>button.textContent.includes('lecture.md'));assert.ok(sourceButton);
+  await act(async()=>sourceButton.click());
+  let request;app.window.addEventListener('still-assistant-resource',event=>{request=event.detail},{once:true});
+  await act(async()=>app.window.document.querySelector('.note-ai-toggle').click());
+  const summaryButton=[...app.window.document.querySelectorAll('.note-ai-actions-list button')].find(button=>button.textContent==='Create summary note');assert.ok(summaryButton);
+  await act(async()=>summaryButton.click());
+  assert.equal(request.workflow,'summary-note');assert.equal(request.autoSubmit,true);assert.equal(request.noteTarget.noteId,source.id);assert.equal(request.noteTarget.expectedText,'Original lecture facts');assert.equal(request.fileActionAllowed,true);
+  let receipt='';let rejected;
+  await act(async()=>{window.dispatchEvent(new app.window.CustomEvent('still-notes-create-ai-summary',{detail:{widgetId:widget.id,sourceNoteId:source.id,sourcePath:sourceEntry.path,expectedText:'Original lecture facts',title:'Lecture - Summary',draft:'## Key ideas\nVerified facts',resolve:value=>{receipt=value},reject:error=>{rejected=error}}}));await new Promise(resolve=>setTimeout(resolve,10))});
+  assert.equal(rejected,undefined);assert.match(receipt,/Lecture - Summary\.md/);assert.equal(summaryText,'## Key ideas\nVerified facts');
+  assert.deepEqual(app.calls.find(call=>call.command==='notes_library_create')?.args,{id:widget.id,location:'Chemistry',title:'Lecture - Summary',text:'## Key ideas\nVerified facts'});
+  const summaryFile=[...app.window.document.querySelectorAll('.note-library-file')].find(button=>button.textContent.includes('Lecture - Summary.md'));assert.ok(summaryFile?.classList.contains('is-selected'),'the created summary opens in the Files preview');
+  assert.equal(app.currentState.workspaces[0].widgets[0].noteDocuments.find(note=>note.id===source.id).text,'Original lecture facts');
+  let staleError;await act(async()=>{app.window.dispatchEvent(new app.window.CustomEvent('still-notes-create-ai-summary',{detail:{widgetId:widget.id,sourceNoteId:source.id,sourcePath:sourceEntry.path,expectedText:'stale source',title:'Stale summary',draft:'Must not be written',resolve:()=>{},reject:error=>{staleError=error}}}));await new Promise(resolve=>setTimeout(resolve,5))});
+  assert.ok(staleError?.message.includes('changed while the summary was being prepared'));assert.equal(app.calls.filter(call=>call.command==='notes_library_create').length,1);
  }finally{await app.cleanup()}
 });
 
