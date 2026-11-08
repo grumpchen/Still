@@ -1,7 +1,7 @@
 // Opt-in Windows integration test. Run from still-desktop with node --import tsx.
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { join, resolve } from 'node:path';
@@ -13,8 +13,9 @@ import { createInitialState, createWidget, createWorkspace } from '../../src/dom
 const mode = process.argv[2];
 const expect=playwrightExpect.configure({timeout:15_000});
 assert(process.platform === 'win32' && process.env.APPDATA, 'This fixture requires Windows with WebView2.');
-assert(['success','stale','timeout','restart','revoke','theme','move-widget','resize-widget','library-edit','library-conflict'].includes(mode), 'Specify an acceptance case from tests/native/README.md.');
+assert(['success','stale','timeout','restart','revoke','theme','move-widget','resize-widget','library-edit','library-conflict','pdf-highlights'].includes(mode), 'Specify an acceptance case from tests/native/README.md.');
 const libraryCase = mode.startsWith('library-');
+const pdfCase = mode==='pdf-highlights';
 const geometry = mode==='move-widget'?{operation:'move',x:100,y:80}:mode==='resize-widget'?{operation:'resize',width:480,height:360}:null;
 const project = fileURLToPath(new URL('../../', import.meta.url));
 const cargoTarget = resolve(project, process.env.STILL_FIXTURE_CARGO_TARGET || 'src-tauri/target');
@@ -26,10 +27,11 @@ const fixture = join(cargoTarget, 'assistant-native-fixtures', token);
 const profile = join(fixture, 'WebView');
 const inbox = join(fixture, 'Inbox');
 const notesRoot = join(fixture, 'Notes');
+const pdfRoot = join(fixture, 'PDF');
 const grants = join(process.env.APPDATA, identifier);
 const grantFile = join(grants, 'file-folders.json');
 const config = join(fixture, 'tauri.json');
-const url = 'http://127.0.0.1:4318/design-preview.html';
+let url;
 const bootstrapPath = '/__still_fixture_bootstrap';
 const files = ['first.md','second.md'];
 const runOutput = [];
@@ -46,9 +48,9 @@ downloads.folderName = 'Fixture Inbox';
 library.widgets = library.widgets.filter(widget => widget.folderKey !== 'still-downloads-inbox').concat(downloads);
 const canvas = createWorkspace('Native agent fixture', []);
 const notes = createWidget('notes');
-if(libraryCase||geometry){
+if(libraryCase||geometry||pdfCase){
   notes.title='Fixture Notes';
-  if(libraryCase){notes.notesLibraryKey=notes.id;notes.notesLibraryName='Fixture Notes Library';}
+  if(libraryCase||pdfCase){notes.notesLibraryKey=notes.id;notes.notesLibraryName=pdfCase?'Fixture PDF Library':'Fixture Notes Library';}
   canvas.widgets.push(notes);
 }
 state.workspaces.push(canvas);
@@ -108,12 +110,14 @@ function stopFixture() {
 }
 
 async function setGrant(path) {
-  await writeFile(grantFile,JSON.stringify({'still-downloads-inbox':path,[downloads.id]:path,...(libraryCase?{[notes.id]:notesRoot}:{})}),'utf8');
+  const grantWidget=libraryCase||pdfCase?notes:null,grantRoot=libraryCase?notesRoot:pdfCase?pdfRoot:null;
+  await writeFile(grantFile,JSON.stringify({'still-downloads-inbox':path,[downloads.id]:path,...(grantWidget&&grantRoot?{[grantWidget.id]:grantRoot}:{})}),'utf8');
 }
 
 async function openNative(port) {
   start('scripts/dev-desktop.mjs',['--no-watch','--config',config],{
     CARGO_TARGET_DIR:cargoTarget,WEBVIEW2_USER_DATA_FOLDER:profile,
+    STILL_FIXTURE_TRUSTED_DEV_PORT:String(new URL(url).port),
     WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:'--remote-debugging-port='+port+' --remote-debugging-address=127.0.0.1',
   });
   await waitFor(()=>get('http://127.0.0.1:'+port+'/json/version'),'native WebView CDP endpoint',180_000);
@@ -125,6 +129,23 @@ async function openNative(port) {
   bindings.set(page,native.Id);
   fixturePage=page;
   return page;
+}
+
+function textPdf(text) {
+  const escaped=text.replaceAll('\\','\\\\').replaceAll('(','\\(').replaceAll(')','\\)');
+  const stream=`BT /F1 20 Tf 72 700 Td (${escaped}) Tj ET\n`;
+  const objects=[
+    '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
+    '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
+    '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>\nendobj\n',
+    '4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n',
+    `5 0 obj\n<< /Length ${Buffer.byteLength(stream)} >>\nstream\n${stream}endstream\nendobj\n`,
+  ];
+  let pdf='%PDF-1.4\n',offsets=[0];
+  for(const object of objects){offsets.push(Buffer.byteLength(pdf));pdf+=object}
+  const xref=Buffer.byteLength(pdf);
+  pdf+=`xref\n0 ${objects.length+1}\n0000000000 65535 f \n${offsets.slice(1).map(offset=>`${String(offset).padStart(10,'0')} 00000 n \n`).join('')}trailer\n<< /Size ${objects.length+1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(pdf,'ascii');
 }
 
 async function installProviderStub(page, recovered=false) {
@@ -139,6 +160,11 @@ geminiAssistant.agentTurn=async function(request){
  const records=window.__fixtureTurns;records.push(request);
  const call=(name,input,id)=>({kind:'tool_calls',assistantMessage:{role:'assistant',tool_calls:[{id,type:'function',function:{name,arguments:JSON.stringify(input)}}]},calls:[{id,name,input}]});
  const receipt=request.messages.at(-1).role==='tool'?JSON.parse(request.messages.at(-1).content):null;
+ if(${JSON.stringify(pdfCase)}){
+  if(records.length!==1)throw new Error('Unexpected number of PDF keyword provider calls.');
+  window.__fixturePdfRequest=request;
+  return {kind:'final',response:{intent:'chat',reply:'{"keywords":["Mitochondria","ATP"]}',layout:[],actions:[]}};
+ }
  if(${JSON.stringify(libraryCase)}){
   if(!request.enable_library_tool||!request.enable_library_edit_tool)throw new Error('The selected Notes Library and edit tools are not enabled.');
   if(records.length===1)return call('inspect_library',{},'fixture-library-inspect');
@@ -278,6 +304,34 @@ async function runLibrary(page) {
   }
 }
 
+async function runPdfHighlights(page) {
+  const sourcePath=join(pdfRoot,'Lecture.pdf'),before=await readFile(sourcePath),beforeHash=createHash('sha256').update(before).digest('hex');
+  const file=page.getByRole('button',{name:'Preview file Lecture.pdf',exact:true});
+  await expect(file).toBeVisible();
+  await file.click();
+  const toolbar=page.locator('.pdf-viewer-toolbar');
+  await expect(toolbar.getByRole('button',{name:'AI highlight keywords',exact:true})).toBeEnabled();
+  await toolbar.getByRole('button',{name:'AI highlight keywords',exact:true}).click();
+  const review=page.locator('.pdf-keyword-review');
+  await expect(review).toBeVisible();
+  const request=await page.evaluate(()=>window.__fixturePdfRequest);
+  assert.equal(request.provider,'chatgpt');
+  const userContent=String(request.messages.at(-1).content);
+  assert(userContent.includes('selectedPdfText')&&userContent.includes('Mitochondria produce ATP.'));
+  assert(!userContent.includes('Lecture.pdf')&&!userContent.includes(pdfRoot),'PDF path and name must not be shared with the provider.');
+  assert(!userContent.includes('User memory context'),'Saved assistant memory must stay out of PDF keyword requests.');
+  await review.getByRole('button',{name:'Apply highlights',exact:true}).click();
+  await expect(page.locator('.pdf-keyword-highlight')).toHaveCount(2);
+  const stored=await page.evaluate(()=>Object.entries(localStorage).filter(([key])=>key.startsWith('still.pdf-highlights.v1.')));
+  assert.equal(stored.length,1);
+  assert.deepEqual(JSON.parse(stored[0][1]),['Mitochondria','ATP']);
+  assert.equal(createHash('sha256').update(await readFile(sourcePath)).digest('hex'),beforeHash,'Applying overlays must not write the source PDF.');
+  assert.equal(await page.locator('.assistant-message.user').count(),0,'The automatic PDF prompt must stay hidden in chat.');
+  await toolbar.getByRole('button',{name:'Clear highlights',exact:true}).click();
+  await expect(page.locator('.pdf-keyword-highlight')).toHaveCount(0);
+  assert.equal(await page.evaluate(()=>Object.keys(localStorage).some(key=>key.startsWith('still.pdf-highlights.v1.'))),false);
+}
+
 async function runInbox(page,port) {
   const review=await submit(page);
   await expect(review).toBeVisible();
@@ -359,22 +413,24 @@ async function runInbox(page,port) {
 
 try {
   assert.equal(processForPath().length,0,'Close Still using the fixture executable path before running this test.');
-  await reservePort(4318);
+  const vitePort=await reservePort(0);
+  url='http://127.0.0.1:'+vitePort+'/design-preview.html';
   const port=await reservePort(0);
   await mkdir(join(inbox,'Filed'),{recursive:true});
   await mkdir(grants,{recursive:false});
+  if(pdfCase){await mkdir(pdfRoot);await writeFile(join(pdfRoot,'Lecture.pdf'),textPdf('Mitochondria produce ATP.'));}
   await setGrant(inbox);
   if(libraryCase){
     await mkdir(notesRoot);
     await writeFile(join(notesRoot,'lesson.md'),'Original study note.\n');
   }
   for(const name of files)await writeFile(join(inbox,name),'Synthetic '+name+'\n');
-  await writeFile(config,JSON.stringify({identifier,build:{beforeDevCommand:''},app:{windows:[{label:'main',title,url:bootstrapPath.slice(1),width:1360,height:960,transparent:true,devtools:true}]}}));
+  await writeFile(config,JSON.stringify({identifier,build:{beforeDevCommand:'',devUrl:url},app:{windows:[{label:'main',title,url:bootstrapPath.slice(1),width:1360,height:960,transparent:true,devtools:true}]}}));
   const viteConfig=join(fixture,'vite.config.mjs');
   await writeFile(viteConfig,`import base from ${JSON.stringify(new URL('../../vite.config.ts',import.meta.url).href)};
 const bootstrap={name:'fixture-bootstrap',configureServer(server){server.middlewares.use(${JSON.stringify(bootstrapPath)},(_req,res)=>{res.setHeader('Content-Type','text/html');res.end('<!doctype html><title>Still test bootstrap</title>');});}};
 export default {...base,plugins:[...base.plugins,bootstrap],server:{...base.server,watch:{ignored:'**/src-tauri/target/**'}}};\n`);
-  start('node_modules/vite/bin/vite.js',['--config',viteConfig,'--host','127.0.0.1','--port','4318','--strictPort']);
+  start('node_modules/vite/bin/vite.js',['--config',viteConfig,'--host','127.0.0.1','--port',String(vitePort),'--strictPort']);
   await waitFor(()=>get(url),'fixture Vite frontend');
   const page=await openNative(port);
   await installProviderStub(page);
@@ -382,6 +438,7 @@ export default {...base,plugins:[...base.plugins,bootstrap],server:{...base.serv
   await assertGrant(page,inbox);
   if(mode==='theme'||geometry)await runControl(page);
   else if(libraryCase)await runLibrary(page);
+  else if(pdfCase)await runPdfHighlights(page);
   else await runInbox(page,port);
   console.log('Native Still fixture passed: '+mode);
 } catch(error) {
@@ -389,6 +446,8 @@ export default {...base,plugins:[...base.plugins,bootstrap],server:{...base.serv
   if(fixturePage&&!fixturePage.isClosed()){
     const details=await fixturePage.locator('.assistant-error').allTextContents().catch(()=>[]);
     if(details.length)console.error('Fixture assistant:',details.join('\n'));
+    const body=await fixturePage.locator('body').innerText().catch(()=> '');
+    if(body)console.error('Fixture page:',body.slice(0,5000));
   }
   console.error(runOutput.join('').slice(-7000));
   process.exitCode=1;
