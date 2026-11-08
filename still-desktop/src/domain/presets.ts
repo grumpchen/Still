@@ -42,7 +42,7 @@ export function widgetPreset(value:WidgetPreset):WidgetPreset {
    const iconData=checkedIconData(value.iconData);
    return{id:value.id,type:'apps',name,appSourceId:value.appSourceId,appName:value.appName,...(iconData?{iconData}:{}),...remaining,...(clockPluginEnabled?{clockPluginEnabled}:{})};
  }
- if(value.type==='notes'||value.type==='ai'){
+ if(value.type==='notes'||value.type==='ai'||value.type==='calculation'){
   if(value.text!==undefined&&(typeof value.text!=='string'||value.text.length>2*1024*1024))throw new Error('Use valid saved text.');
   // Tray copies preserve note content but deliberately sever the selected-folder relationship.
   const docs=value.type==='notes'&&(value.noteDocuments!==undefined||value.text!==undefined)?detachNoteLibraryDocuments(checkedNoteDocuments(value.noteDocuments,{id:'legacy-preset',title:'',text:typeof value.text==='string'?value.text:''})):undefined;
@@ -75,7 +75,7 @@ export function presetFromWidget(widget:WidgetInstance):WidgetPreset {
  if(widget.type==='group')throw new Error('Groups are already saved in the widget tray.');
  return widgetPreset({id,type:widget.type,name,
   ...(widget.clockPluginEnabled?{clockPluginEnabled:true}:{}),
-  ...(widget.type==='notes'||widget.type==='ai'?{text:widget.text}:{}),
+  ...(widget.type==='notes'||widget.type==='ai'||widget.type==='calculation'?{text:widget.text}:{}),
   ...(widget.type==='notes'?{noteFont:widget.noteFont,noteFontSize:widget.noteFontSize,noteDocuments:widget.noteDocuments,activeNoteDocumentId:widget.activeNoteDocumentId}:{}),
   ...(widget.type==='focus'||widget.clockPluginEnabled?{remaining}:{}),
   ...(widget.type==='timetable'?{schedule:widget.schedule}:{}),

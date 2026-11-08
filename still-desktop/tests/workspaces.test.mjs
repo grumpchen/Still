@@ -1,8 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createInitialState, createWorkspace, duplicateWorkspace, migratePreview, parseState } from '../src/domain/workspaces.ts';
+import { createInitialState, createWorkspace, createWidgetFromPreset, duplicateWorkspace, migratePreview, parseState } from '../src/domain/workspaces.ts';
 import { normalizeUrl, browserDestination, GOOGLE_URL, AKO_URL } from '../src/domain/browser.ts';
 import { folderEntries, programFile } from '../src/platform/files.ts';
+import {encodePdfCalculation} from '../src/domain/pdfCalculations.ts';
+import {presetFromWidget} from '../src/domain/presets.ts';
 test('custom workspace starts with chosen widgets and a unique ID',()=>{
   const a=createWorkspace(' Engineering ',['desmos','apps']);
   const b=createWorkspace('Engineering',['notes']);
@@ -12,6 +14,14 @@ test('custom workspace starts with chosen widgets and a unique ID',()=>{
   assert.notEqual(a.widgets[0].id,b.widgets[0].id);
   assert.throws(()=>createWorkspace('  ',[]));
   assert.throws(()=>createWorkspace('x'.repeat(61),[]));
+});
+test('PDF calculation widget state survives workspace parsing and tray reuse',()=>{
+ const state=createInitialState(),workspace=createWorkspace('Calculations',['calculation']),widget=workspace.widgets[0];
+ widget.text=encodePdfCalculation([1200,.5,2],'+');state.workspaces.push(workspace);
+ const parsed=parseState(state),saved=parsed.workspaces.find(item=>item.id===workspace.id).widgets[0];
+ assert.equal(saved.text,widget.text);
+ const preset=presetFromWidget(saved),reopened=createWidgetFromPreset(preset,[]);
+ assert.equal(reopened.type,'calculation');assert.equal(reopened.text,widget.text);
 });
 test('duplicates layout and content without sharing widget state',()=>{
   const initial=createInitialState();const original=initial.workspaces[0];

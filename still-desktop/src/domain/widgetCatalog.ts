@@ -2,6 +2,7 @@
 export const widgetCatalog = {
   group: {name:'Group', icon:'group', description:'Named tray collections · reusable widget types and course links', width:400, height:360, minWidth:280, minHeight:240},
   desmos: {name:'Calculator', icon:'desmos', description:'Live Desmos scientific calculator', width:440, height:490, minWidth:280, minHeight:300},
+  calculation: {name:'Calculation', icon:'desmos', description:'Review values and arithmetic from selected PDF numbers', width:360, height:280, minWidth:240, minHeight:180},
   notes: {name:'Files', icon:'notes', description:'Notes and local files in one workspace', width:400, height:340, minWidth:240, minHeight:180},
   focus: {name:'Focus', icon:'focus', description:'A timer for your next study session', width:360, height:430, minWidth:280, minHeight:330},
   files: {name:'Files', icon:'files', description:'Your local course files', width:400, height:380, minWidth:280, minHeight:240},

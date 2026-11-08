@@ -308,7 +308,7 @@ export function createWidgetFromPreset(preset:WidgetPreset,widgets:WidgetInstanc
  if(checked.type==='files'&&checked.resourceKind==='document'){widget.fileKey=checked.fileSourceId;widget.fileName=checked.fileName;widget.fileKind=checked.fileKind;widget.fileNotes=checked.fileNotes??{}}
  else if(checked.type==='files'){widget.folderName=checked.folderName;widget.folderKey=checked.folderSourceId;widget.fileNotes=checked.fileNotes??{}}
   else if(checked.type==='apps'){widget.appKey=checked.appSourceId;widget.appName=checked.appName;widget.appIconData=checked.iconData}
-  else if(checked.type==='notes'||checked.type==='ai')widget.text=checked.text??widget.text;
+  else if(checked.type==='notes'||checked.type==='ai'||checked.type==='calculation')widget.text=checked.text??widget.text;
   if(checked.type==='notes'&&checked.noteDocuments){widget.noteDocuments=structuredClone(checked.noteDocuments);const active=noteDocument(widget.noteDocuments,checked.activeNoteDocumentId);widget.activeNoteDocumentId=active.id;widget.title=active.title;widget.text=active.text}
   if(checked.type==='notes'){widget.noteFont=checked.noteFont??widget.noteFont;widget.noteFontSize=checked.noteFontSize??widget.noteFontSize}
   else if(checked.type==='tagStatus')widget.pluginControls=checked.pluginControls??widget.pluginControls;
@@ -382,7 +382,7 @@ function checkedWidget(value: unknown): WidgetInstance {
   const activeNote=noteDocument(noteDocuments,typeof item.activeNoteDocumentId==='string'?item.activeNoteDocumentId:undefined);
   return {...defaults,...item,type:item.type as WidgetType,span:item.span===2?2:item.span===3?3:1,
     title:item.type==='notes'?activeNote.title:typeof item.title==='string'?item.title.trim().slice(0,60):'',
-    text:item.type==='notes'?activeNote.text:typeof item.text==='string'?item.text:defaults.text,
+    text:item.type==='notes'?activeNote.text:item.type==='calculation'?(typeof item.text==='string'&&item.text.length<=4096?item.text:''):typeof item.text==='string'?item.text:defaults.text,
     tagColor:widgetTagColors.includes(item.tagColor as WidgetTagColor)?item.tagColor as WidgetTagColor:null,
     relaunchOverride:item.relaunchOverride==='automatic'||item.relaunchOverride==='manual'?item.relaunchOverride:'follow',
     pluginControls:Array.isArray(item.pluginControls)?[...new Set(item.pluginControls.filter((control):control is string=>typeof control==='string'&&/^[a-z0-9.-]{1,80}$/.test(control)))].slice(0,20):defaults.pluginControls,

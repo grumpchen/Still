@@ -10,7 +10,7 @@ import {localizeOperationalMessage,useLocale,useT} from './localization.tsx';
 
 type AiDraftApplyRequest={widgetId:string;noteId:string;expectedText:string;draft:string;mode:'replace'|'append';resolve:(receipt:string)=>void;reject:(reason:Error)=>void};
 
-export default function NotesWidget({widget,update,notify}:WidgetProps){
+export default function NotesWidget({widget,update,notify,createCalculation}:WidgetProps){
  const t=useT(),locale=useLocale();
  const [entries,setEntries]=useState<NotesLibraryEntry[]>([]),[newName,setNewName]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[saveState,setSaveState]=useState<'savedLocally'|'savingStatus'|'savedToLibrary'|'saveFailed'|'loadedLatestFile'>('savedLocally'),[searchQuery,setSearchQuery]=useState(''),[tagInput,setTagInput]=useState('');
  const [showAiActions,setShowAiActions]=useState(false);
@@ -71,5 +71,5 @@ export default function NotesWidget({widget,update,notify}:WidgetProps){
  }
 
  const localDocumentCount=useMemo(()=>documents.filter(document=>!document.sourcePath).length,[documents]);
- return <NotesLibraryExplorer key={widget.notesLibraryName||widget.id} widgetId={widget.id} connected={libraryConnected} libraryName={widget.notesLibraryName||t('widget_notes')} entries={entries} busy={busy} error={error} newName={newName} onNewName={setNewName} onRefresh={()=>void refreshLibrary()} onChoose={()=>void chooseLibrary()} onCreate={location=>createLibraryFile(location)} onOpenNote={file=>openLibraryFile(file)} renderNoteEditor={renderFileNoteEditor}/>;
+ return <NotesLibraryExplorer key={widget.notesLibraryName||widget.id} widgetId={widget.id} connected={libraryConnected} libraryName={widget.notesLibraryName||t('widget_notes')} entries={entries} busy={busy} error={error} newName={newName} onNewName={setNewName} onRefresh={()=>void refreshLibrary()} onChoose={()=>void chooseLibrary()} onCreate={location=>createLibraryFile(location)} onOpenNote={file=>openLibraryFile(file)} renderNoteEditor={renderFileNoteEditor} createCalculation={createCalculation}/>;
 }
