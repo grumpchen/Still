@@ -339,6 +339,12 @@ pub(crate) struct NotesAgentRead { text:String, truncated:bool }
 #[derive(Serialize)]
 #[serde(rename_all="camelCase")]
 pub(crate) struct NotesAgentListing { entries:Vec<NoteLibraryEntry>, truncated:bool }
+#[derive(Serialize)]
+#[serde(rename_all="camelCase")]
+pub(crate) struct NotesAgentFolderEntry { path:String, name:String, directory:bool, size:u64, blocked:bool }
+#[derive(Serialize)]
+#[serde(rename_all="camelCase")]
+pub(crate) struct NotesAgentFolderListing { location:String, entries:Vec<NotesAgentFolderEntry>, next_offset:Option<usize>, truncated:bool }
 fn notes_agent_list(roots:&FolderRoots,id:&str,grant:&str)->Result<NotesAgentListing,String>{
     let root=verify_notes_agent_grant(roots,id,grant)?;
     let mut files=Vec::new();let(mut directories,mut scanned)=(0,0);
@@ -348,6 +354,17 @@ fn notes_agent_list(roots:&FolderRoots,id:&str,grant:&str)->Result<NotesAgentLis
     let truncated=files.len()>NOTES_AGENT_MAX_LIST||files.len()>=NOTE_LIBRARY_MAX_FILES||directories>=NOTE_LIBRARY_MAX_DIRECTORIES||scanned>=NOTE_LIBRARY_MAX_SCANNED_ENTRIES;
     files.truncate(NOTES_AGENT_MAX_LIST);
     Ok(NotesAgentListing{entries:files,truncated})
+}
+const NOTES_AGENT_FOLDER_PAGE_SIZE:usize=20;
+fn notes_agent_list_folder(roots:&FolderRoots,id:&str,grant:&str,location:&str,offset:usize)->Result<NotesAgentFolderListing,String>{
+    if location.chars().count()>1000||offset>1000{return Err("Library folder browsing is limited to relative paths of 1,000 characters and the first 1,000 entries.".into())}
+    let root=verify_notes_agent_grant(roots,id,grant)?;
+    let result=listing(&root,location)?;
+    let total=result.entries.len();
+    let entries=result.entries.into_iter().skip(offset).take(NOTES_AGENT_FOLDER_PAGE_SIZE).collect::<Vec<_>>();
+    let next_offset=(offset+entries.len()<total).then_some(offset+entries.len());
+    let truncated=result.truncated||next_offset.is_some();
+    Ok(NotesAgentFolderListing{location:result.location,entries:entries.into_iter().map(|entry|NotesAgentFolderEntry{path:entry.path,name:entry.name,directory:entry.directory,size:entry.size,blocked:entry.blocked}).collect(),next_offset,truncated})
 }
 fn notes_agent_search(roots:&FolderRoots,id:&str,grant:&str,query:&str)->Result<NoteLibrarySearchResult,String>{
     let root=verify_notes_agent_grant(roots,id,grant)?;
@@ -514,6 +531,10 @@ pub async fn notes_library_agent_grant(webview:Webview,roots:State<'_,FolderRoot
 #[tauri::command]
 pub async fn notes_library_agent_list(webview:Webview,roots:State<'_,FolderRoots>,id:String,grant:String)->Result<NotesAgentListing,String>{
     crate::security::authorize(&webview)?;notes_agent_list(&roots,&id,&grant)
+}
+#[tauri::command]
+pub async fn notes_library_agent_list_folder(webview:Webview,roots:State<'_,FolderRoots>,id:String,grant:String,location:String,offset:usize)->Result<NotesAgentFolderListing,String>{
+    crate::security::authorize(&webview)?;notes_agent_list_folder(&roots,&id,&grant,&location,offset)
 }
 #[tauri::command]
 pub async fn notes_library_agent_search(webview:Webview,roots:State<'_,FolderRoots>,id:String,grant:String,query:String)->Result<NoteLibrarySearchResult,String>{
@@ -806,10 +827,16 @@ mod tests {
     }
     #[test]fn agent_library_tools_are_bounded_grant_scoped_and_compare_before_write(){
         let fixture=std::env::temp_dir().join(format!("still-agent-library-{}-{}",std::process::id(),std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
-        let root=fixture.join("granted");let other=fixture.join("other");fs::create_dir_all(root.join("Course")).unwrap();fs::create_dir_all(&other).unwrap();
+        let root=fixture.join("granted");let other=fixture.join("other");fs::create_dir_all(root.join("Course")).unwrap();fs::create_dir_all(root.join("empty")).unwrap();fs::create_dir_all(&other).unwrap();
         fs::write(root.join("Course/week1.md"),"lecture keyword").unwrap();fs::write(root.join("large.md"),"x".repeat(NOTES_AGENT_MAX_READ_CHARS+1)).unwrap();fs::write(other.join("secret.md"),"private").unwrap();
+        for index in 0..22 { fs::write(root.join(format!("attachment-{index:02}.bin")),b"binary").unwrap(); }
         let root=root.canonicalize().unwrap();let other=other.canonicalize().unwrap();let roots=FolderRoots(Mutex::new(HashMap::from([("notes-widget".into(),root.clone())])));let grant=notes_agent_grant_token(&roots,"notes-widget").unwrap();
         let listing=notes_agent_list(&roots,"notes-widget",&grant).unwrap();assert_eq!(listing.entries.len(),2);assert!(listing.entries.iter().all(|entry|supported_note(Path::new(&entry.path))));
+        let root_entries=notes_agent_list_folder(&roots,"notes-widget",&grant,"",0).unwrap();assert!(root_entries.entries.iter().any(|entry|entry.path=="empty"&&entry.directory));
+        assert_eq!(root_entries.entries.len(),NOTES_AGENT_FOLDER_PAGE_SIZE);assert_eq!(root_entries.next_offset,Some(NOTES_AGENT_FOLDER_PAGE_SIZE));assert!(root_entries.truncated);
+        let next_page=notes_agent_list_folder(&roots,"notes-widget",&grant,"",root_entries.next_offset.unwrap()).unwrap();assert_eq!(next_page.entries.len(),5);assert_eq!(next_page.next_offset,None);assert!(!next_page.truncated);
+        let course_entries=notes_agent_list_folder(&roots,"notes-widget",&grant,"Course",0).unwrap();assert!(course_entries.entries.iter().any(|entry|entry.path=="Course/week1.md"&&!entry.directory));
+        assert!(notes_agent_list_folder(&roots,"notes-widget",&grant,"../other",0).is_err());assert!(notes_agent_list_folder(&roots,"notes-widget",&grant,"missing",0).is_err());
         assert_eq!(notes_agent_search(&roots,"notes-widget",&grant,"keyword").unwrap().results.len(),1);
         assert!(notes_agent_read(&roots,"notes-widget",&grant,"../other/secret.md").is_err());
         let large=notes_agent_read(&roots,"notes-widget",&grant,"large.md").unwrap();assert_eq!(large.text.chars().count(),NOTES_AGENT_MAX_READ_CHARS);assert!(large.truncated);
@@ -817,7 +844,7 @@ mod tests {
         notes_agent_write(&roots,"notes-widget",&grant,path,"updated",&original).unwrap();assert_eq!(fs::read_to_string(root.join(path)).unwrap(),"updated");
         assert!(notes_agent_write(&roots,"notes-widget",&grant,path,"stale","lecture keyword").unwrap_err().contains("changed outside Still"));
         roots.0.lock().unwrap().insert("notes-widget".into(),other.clone());
-        assert!(notes_agent_list(&roots,"notes-widget",&grant).err().unwrap().contains("grant changed"));assert!(notes_agent_read(&roots,"notes-widget",&grant,"secret.md").is_err());
+        assert!(notes_agent_list(&roots,"notes-widget",&grant).err().unwrap().contains("grant changed"));assert!(notes_agent_list_folder(&roots,"notes-widget",&grant,"",0).is_err());assert!(notes_agent_read(&roots,"notes-widget",&grant,"secret.md").is_err());
         let new_grant=notes_agent_grant_token(&roots,"notes-widget").unwrap();assert_ne!(grant,new_grant);assert_eq!(notes_agent_read(&roots,"notes-widget",&new_grant,"secret.md").unwrap().text,"private");
         fs::remove_dir_all(fixture).unwrap();
     }
