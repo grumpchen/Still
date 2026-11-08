@@ -2,6 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createStillWorkspaceToolRegistry,validateReviewedGeometryIntent} from '../src/domain/assistantTools.ts';
 import {createWidget} from '../src/domain/workspaces.ts';
+import {workspaceWidgetTypes} from '../src/domain/widgetCatalog.ts';
 
 function snapshot(revision='rev-1'){
   const notes=createWidget('notes');
@@ -79,6 +80,22 @@ test('add_widget accepts only workspace-available types with a fresh revision an
   assert.equal(executions,0,'model tool dispatch never executes a mutation');
   assert.equal(Object.isFrozen(prepared.proposal),true);
   assert.equal(prepared.proposal.widgetType,'notes');
+});
+
+test('add_widget can propose every type in the workspace widget catalog',async()=>{
+  const proposed=[],executed=[];
+  const registry=createStillWorkspaceToolRegistry({getSnapshot:()=>snapshot(),validate(_state,actions){assert.equal(actions.length,1);assert.equal(actions[0].type,'add_widget');assert.equal(actions[0].ids.length,1)},validateIntent(){},execute(_state,actions){executed.push(actions[0].ids[0]);return `Added ${actions[0].ids[0]}.`}});
+  for(const widgetType of workspaceWidgetTypes){
+    const prepared=await registry.tools.add_widget({widgetType,snapshotRevision:'rev-1'});
+    assert.equal(prepared.status,'requires_confirmation',`${widgetType} can be proposed`);
+    assert.equal(prepared.proposal.widgetType,widgetType);
+    proposed.push(prepared.proposal.widgetType);
+    const result=await registry.executeConfirmed(prepared.proposal);
+    assert.equal(result.status,'succeeded',`${widgetType} applies after review`);
+    assert.equal(result.result.receipt,`Added ${widgetType}.`);
+  }
+  assert.deepEqual(proposed,workspaceWidgetTypes);
+  assert.deepEqual(executed,workspaceWidgetTypes);
 });
 
 test('approval is bound to the exact proposal object and returns the exact executor receipt',async()=>{
