@@ -1,14 +1,19 @@
 import {expect,test} from '@playwright/test';
 
-function textPdf(text:string):string{
- const escaped=text.replaceAll('\\','\\\\').replaceAll('(','\\(').replaceAll(')','\\)');
- const stream=`BT /F1 20 Tf 72 700 Td (${escaped}) Tj ET\n`;
+function textPdf(pages:readonly string[]):string{
+ const pageIds=pages.map((_,index)=>4+index*2),fontId=3;
  const objects=[
   '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
-  '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
-  '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>\nendobj\n',
-  '4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n',
-  `5 0 obj\n<< /Length ${Buffer.byteLength(stream)} >>\nstream\n${stream}endstream\nendobj\n`,
+  `2 0 obj\n<< /Type /Pages /Kids [${pageIds.map(id=>`${id} 0 R`).join(' ')}] /Count ${pages.length} >>\nendobj\n`,
+  `${fontId} 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n`,
+  ...pages.flatMap((text,index)=>{
+   const pageId=pageIds[index],contentId=pageId+1,escaped=text.replaceAll('\\','\\\\').replaceAll('(','\\(').replaceAll(')','\\)');
+   const stream=`BT /F1 20 Tf 72 700 Td (${escaped}) Tj ET\n`;
+   return [
+    `${pageId} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${contentId} 0 R >>\nendobj\n`,
+    `${contentId} 0 obj\n<< /Length ${Buffer.byteLength(stream)} >>\nstream\n${stream}endstream\nendobj\n`,
+   ];
+  }),
  ];
  let pdf='%PDF-1.4\n',offsets=[0];
  for(const object of objects){offsets.push(Buffer.byteLength(pdf));pdf+=object}
@@ -17,11 +22,11 @@ function textPdf(text:string):string{
  return Buffer.from(pdf,'ascii').toString('base64');
 }
 
-test('PDF keyword highlights render at text positions, survive reload, zoom with the page, and clear locally',async({page})=>{
+test('PDF keyword highlights render across pages, survive reload, zoom with the page, and clear locally',async({page})=>{
  test.setTimeout(90000);
  await page.goto('/tests/e2e/fixtures/pdf-viewer.html',{waitUntil:'commit'});
  await expect.poll(()=>page.evaluate(()=>typeof window.mountPdfViewer==='function'),{timeout:60000}).toBe(true);
- await page.evaluate(base64=>window.mountPdfViewer?.(base64),textPdf('Mitochondria produce ATP.'));
+ await page.evaluate(base64=>window.mountPdfViewer?.(base64),textPdf(['Mitochondria produce ATP.','ATP powers muscle contraction.']));
  expect(await page.evaluate(()=>window.pdfFixtureNative)).toBe(false);
  await expect.poll(()=>page.evaluate(()=>window.pdfFixturePreviewResolved===true),{timeout:5000}).toBe(true);
  const textSpan=page.locator('.pdf-text-layer > span').filter({hasText:'Mitochondria produce ATP.'}).first();
@@ -37,7 +42,9 @@ test('PDF keyword highlights render at text positions, survive reload, zoom with
  });
  await toolbar.getByRole('button',{name:'AI highlight keywords'}).click();
  await expect.poll(()=>page.evaluate(()=>!!(window as Window&{pdfHighlightRequest?:CustomEvent}).pdfHighlightRequest)).toBe(true);
- const requestId=await page.evaluate(()=>((window as Window&{pdfHighlightRequest:CustomEvent<{requestId:string}>}).pdfHighlightRequest).detail.requestId);
+ const request=await page.evaluate(()=>{const detail=(window as Window&{pdfHighlightRequest:CustomEvent<{requestId:string;text:string}>}).pdfHighlightRequest.detail;return{requestId:detail.requestId,text:detail.text}});
+ expect(request.text).toContain('Page 1\nMitochondria produce ATP.');expect(request.text).toContain('Page 2\nATP powers muscle contraction.');
+ const requestId=request.requestId;
  await page.evaluate(id=>window.dispatchEvent(new CustomEvent('still-pdf-keywords-ready',{detail:{requestId:id,keywords:['Mitochondria','ATP']}})),requestId);
  const review=page.locator('.pdf-keyword-review');await expect(review).toBeVisible();
  await review.getByRole('button',{name:'Apply highlights'}).click();
@@ -51,5 +58,12 @@ test('PDF keyword highlights render at text positions, survive reload, zoom with
  await page.evaluate(()=>window.remountPdfViewer?.());await expect(page.locator('.pdf-keyword-highlight')).toHaveCount(2);
  await toolbar.getByRole('button',{name:'Zoom in'}).click();await expect(toolbar).toContainText('115%');
  await expect.poll(()=>highlight.first().evaluate(element=>parseFloat((element as HTMLElement).style.width))).toBeGreaterThan(initial.width*1.05);
+ await toolbar.getByRole('button',{name:'Next page'}).click();await expect(toolbar).toContainText('Page 2 of 2');
+ const secondPageText=page.locator('.pdf-text-layer > span').filter({hasText:'ATP powers muscle contraction.'}).first();await expect(secondPageText).toBeVisible();
+ await expect(page.locator('.pdf-keyword-highlight')).toHaveCount(1);
+ const secondPageBounds=await secondPageText.evaluate(element=>{const span=element as HTMLElement,text=span.firstChild;if(!text)return null;const range=document.createRange();range.setStart(text,0);range.setEnd(text,3);const rect=range.getBoundingClientRect(),stage=span.closest('.pdf-page-stage')!.getBoundingClientRect();return{left:rect.left-stage.left,top:rect.top-stage.top,width:rect.width}});
+ const secondHighlight=await page.locator('.pdf-keyword-highlight').first().evaluate(element=>{const item=element as HTMLElement;return{left:parseFloat(item.style.left),top:parseFloat(item.style.top),width:parseFloat(item.style.width)}});
+ expect(secondPageBounds).not.toBeNull();expect(Math.abs(secondHighlight.left-secondPageBounds!.left)).toBeLessThan(1);expect(Math.abs(secondHighlight.top-secondPageBounds!.top)).toBeLessThan(1);expect(Math.abs(secondHighlight.width-secondPageBounds!.width)).toBeLessThan(1);
  await toolbar.getByRole('button',{name:'Clear highlights'}).click();await expect(page.locator('.pdf-keyword-highlight')).toHaveCount(0);
+ await toolbar.getByRole('button',{name:'Previous page'}).click();await expect(toolbar).toContainText('Page 1 of 2');await expect(page.locator('.pdf-keyword-highlight')).toHaveCount(0);
 });
