@@ -3,13 +3,14 @@ import assert from 'node:assert/strict';
 import {createElement,act} from 'react';
 import {createRoot} from 'react-dom/client';
 import {JSDOM} from 'jsdom';
-import {mockIPC,clearMocks} from '@tauri-apps/api/mocks';
+import {mockIPC as installMockIPC,clearMocks} from '@tauri-apps/api/mocks';
 import {createServer} from 'vite';
 import {createWidget,createWorkspace} from '../src/domain/workspaces.ts';
 import {assistantAddedWidgetReceipt,validateAssistantActionIntent} from '../src/domain/assistant.ts';
 
 const vite=await createServer({server:{middlewareMode:true,hmr:false},appType:'custom',optimizeDeps:{noDiscovery:true,entries:[]}});
 after(()=>vite.close());
+function mockIPC(handle,options){installMockIPC((command,args)=>command==='assistant_journal_list'?[]:handle(command,args),options)}
 function setGlobal(key,value){Object.defineProperty(globalThis,key,{configurable:true,writable:true,value})}
 function setReactValue(node,value,elementType,caret){Object.getOwnPropertyDescriptor(node.ownerDocument.defaultView[elementType].prototype,'value').set.call(node,value);if(caret!==undefined)node.setSelectionRange(caret,caret);const props=node[Object.keys(node).find(key=>key.startsWith('__reactProps$'))];props?.onChange?.({target:node,currentTarget:node})}
 function setReactChecked(node,value){Object.getOwnPropertyDescriptor(node.ownerDocument.defaultView.HTMLInputElement.prototype,'checked').set.call(node,value);const props=node[Object.keys(node).find(key=>key.startsWith('__reactProps$'))];props?.onChange?.({target:node,currentTarget:node})}

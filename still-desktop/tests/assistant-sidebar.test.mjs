@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {ASSISTANT_ACTION_TYPES} from '../src/domain/assistant.ts';
+import {ASSISTANT_ACTION_TYPES,parseAssistantReply} from '../src/domain/assistant.ts';
 
 const app=readFileSync(new URL('../src/App.tsx',import.meta.url),'utf8');
 const panel=readFileSync(new URL('../src/AssistantPanel.tsx',import.meta.url),'utf8');
@@ -84,4 +84,5 @@ test('frontend and provider action catalogues agree',()=>{
  const enums=protocol.match(/"type":\{"type":"STRING","enum":(\[[^\]]+\])/);
  assert.ok(enums,'the provider schema advertises explicit supported actions');
  assert.deepEqual(JSON.parse(enums[1]).sort(),[...ASSISTANT_ACTION_TYPES].sort());
+ assert.throws(()=>parseAssistantReply({intent:'workspace_action',reply:'Move the note',layout:[],actions:[{type:'set_widget_geometry',ids:['notes-1'],operation:'move',x:100,y:80}]}),/invalid workspace action/);
 });
