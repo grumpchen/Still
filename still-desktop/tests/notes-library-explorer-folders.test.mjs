@@ -40,3 +40,25 @@ test('Files creates a folder inside the current granted folder and opens it afte
   for(const [key,descriptor] of old){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}
  }
 });
+
+test('Files selects rows with a pointer marquee and does not add checkbox controls',async()=>{
+ const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true}),{window}=dom;
+ const globals={window,document:window.document,navigator:window.navigator,localStorage:window.localStorage,HTMLElement:window.HTMLElement,Element:window.Element,Node:window.Node,Event:window.Event,CustomEvent:window.CustomEvent,MutationObserver:window.MutationObserver,IS_REACT_ACT_ENVIRONMENT:true,isTauri:true};
+ const old=Object.keys(globals).map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]);let root;
+ try{
+  for(const [key,value] of Object.entries(globals))setGlobal(key,value);
+  window.__TAURI_INTERNALS__={};
+  const {default:NotesLibraryExplorer}=await vite.ssrLoadModule('/src/NotesLibraryExplorer.tsx');
+  root=createRoot(window.document.querySelector('#root'));
+  await act(async()=>root.render(createElement(NotesLibraryExplorer,{widgetId:'course-library',connected:true,libraryName:'Course',entries:[{name:'one.md',path:'one.md',size:3},{name:'two.md',path:'two.md',size:3},{name:'three.pdf',path:'three.pdf',size:3}],busy:false,error:'',newName:'',onNewName(){},onRefresh(){},onChoose(){},onCreate:async()=>null,onOpenNote:async()=>{},renderNoteEditor:()=>null})));
+  const list=window.document.querySelector('.note-library-files'),rows=[...list.querySelectorAll('[data-file-path]')];
+  const rect=(left,top,width,height)=>({left,top,right:left+width,bottom:top+height,width,height,x:left,y:top,toJSON(){return this}});
+  list.getBoundingClientRect=()=>rect(0,0,120,120);
+  rows.forEach((row,index)=>row.getBoundingClientRect=()=>rect(0,index*40,120,40));
+  await act(async()=>list.dispatchEvent(new window.MouseEvent('pointerdown',{bubbles:true,clientX:5,clientY:5,button:0})));
+  await act(async()=>window.dispatchEvent(new window.MouseEvent('pointermove',{bubbles:true,cancelable:true,clientX:110,clientY:75,button:0})));
+  await act(async()=>window.dispatchEvent(new window.MouseEvent('pointerup',{bubbles:true,clientX:110,clientY:75,button:0})));
+  assert.deepEqual(rows.filter(row=>row.classList.contains('is-multiselected')).map(row=>row.dataset.filePath),['one.md','three.pdf']);
+  assert.equal(window.document.querySelectorAll('.note-library-files input[type="checkbox"]').length,0,'selection is performed by dragging a box, not by persistent checkboxes');
+ }finally{if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();for(const [key,descriptor] of old)if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}
+});
