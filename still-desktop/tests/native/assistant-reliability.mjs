@@ -183,8 +183,9 @@ geminiAssistant.agentTurn=async function(request){
  if(${JSON.stringify(mode==='library-folder-create')}){
   if(!request.enable_library_tool||!request.enable_library_edit_tool)throw new Error('The selected Notes Library and folder creation tool are not enabled.');
   if(records.length===1)return call('propose_library_create_folder',{location:'Course',name:'Week 2'},'fixture-library-folder-create');
-  if(receipt?.result?.receipt!=='Created folder Course/Week 2 in the selected Notes Library after review.')throw new Error('Did not receive the verified native folder creation receipt.');
-  return {kind:'final',response:{intent:'chat',reply:'Fixture Library folder creation complete.',layout:[],actions:[]}};
+  if(records.length===2){if(receipt?.result?.receipt!=='Created folder Course/Week 2 in the selected Notes Library after review.')throw new Error('Did not receive the verified native folder creation receipt.');return call('propose_library_create_note',{location:'Course/Week 2',title:'Welcome',text:'## Week 2\\nCreated through the reviewed folder workflow.'},'fixture-library-folder-note');}
+  if(receipt?.result?.receipt!=='Created Course/Week 2/Welcome.md in the selected Notes Library after review.')throw new Error('Did not receive the verified native note creation receipt after the folder receipt.');
+  return {kind:'final',response:{intent:'chat',reply:'Fixture Library folder and note workflow complete.',layout:[],actions:[]}};
  }
  if(${JSON.stringify(libraryCase)}){
   if(!request.enable_library_tool||!request.enable_library_edit_tool)throw new Error('The selected Notes Library and edit tools are not enabled.');
@@ -210,6 +211,7 @@ geminiAssistant.agentTurn=async function(request){
  if(records.length===4)return call('add_widget',{widgetType:'calendar',snapshotRevision:receipt.result.revision},'fixture-widget');
  return {kind:'final',response:{intent:'chat',reply:'Fixture workflow complete.',layout:[],actions:[]}};
 };`;
+  new Function(fixtureCode);
     await route.fulfill({response,body:source+'\n'+fixtureCode});
   });
   if (!recovered&&(mode==='restart'||mode==='revoke'||mode==='stale')) {
@@ -315,19 +317,27 @@ async function runControl(page) {
 async function runLibrary(page) {
   if(mode==='library-folder-create'){
     const folder=join(notesRoot,'Course','Week 2');
+    const note=join(folder,'Welcome.md');
     await mkdir(join(notesRoot,'Course'),{recursive:true});
     await openAssistant(page);
-    await mentionNotes(page,'Create a Week 2 folder inside Course in my Notes Library.');
+    await mentionNotes(page,'Create a Week 2 folder inside Course in my Notes Library, then create a Welcome note in it with a short heading.');
     await page.locator('.assistant-compose').evaluate(form=>form.requestSubmit());
     const review=page.getByRole('region',{name:'Review new Library folder',exact:true});
     await expect(review).toContainText('Course/Week 2/');
     await assert.rejects(stat(folder));
     await review.getByRole('button',{name:'Approve and create folder',exact:true}).click();
-    await expect(page.getByText('Fixture Library folder creation complete.',{exact:true})).toBeVisible();
+    await expect(page.getByRole('region',{name:'Review new Notes Library note',exact:true})).toContainText('Course/Week 2/Welcome.md');
     assert((await stat(folder)).isDirectory());
-    const receipt=await page.evaluate(()=>JSON.parse(window.__fixtureTurns[1].messages.at(-1).content));
-    assert.equal(receipt.mutation,'applied');
-    assert.equal(receipt.result.receipt,'Created folder Course/Week 2 in the selected Notes Library after review.');
+    await assert.rejects(readFile(note));
+    const folderReceipt=await page.evaluate(()=>JSON.parse(window.__fixtureTurns[1].messages.at(-1).content));
+    assert.equal(folderReceipt.mutation,'applied');
+    assert.equal(folderReceipt.result.receipt,'Created folder Course/Week 2 in the selected Notes Library after review.');
+    await page.getByRole('region',{name:'Review new Notes Library note',exact:true}).getByRole('button',{name:'Approve and create note',exact:true}).click();
+    await expect(page.getByText('Fixture Library folder and note workflow complete.',{exact:true})).toBeVisible();
+    assert.equal(await readFile(note,'utf8'),'## Week 2\nCreated through the reviewed folder workflow.');
+    const noteReceipt=await page.evaluate(()=>JSON.parse(window.__fixtureTurns[2].messages.at(-1).content));
+    assert.equal(noteReceipt.mutation,'applied');
+    assert.equal(noteReceipt.result.entry.path,'Course/Week 2/Welcome.md');
     return;
   }
   if(mode==='library-create'){
