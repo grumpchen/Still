@@ -980,7 +980,27 @@ export function assistantWidgetPluginClarification(prompt:string,workspace:Works
   if(resolveDirectAssistantActions(prompt,workspace,selectedWidgetIds)?.some(action=>action.type==='set_widget_plugin'))return null;
   return 'Which widget should receive that plugin change? Name or select one widget, or say all widgets.';
 }
-export function validateAssistantActionIntent(prompt:string,workspace:Workspace,actions:AssistantAction[],savedTrayItems:AssistantTrayItem[]=[],workspaces:AssistantWorkspaceChoice[]=[],selectedWidgetIds:string[]=[]):void{
+/** Verify that an agent run's approved widget additions fulfilled the original request. */
+export function validateAssistantWidgetCompletion(prompt:string,addedTypes:WidgetType[]):void{
+  const expected=assistantActionRequest(prompt);
+  if(!expected.includes('add_widget'))return;
+  const requestedTypes=workspaceWidgetTypes.filter(type=>widgetNameMentioned(prompt,type)&&!(expected.includes('create_note_document')&&(type==='notes'||type==='files'&&!/\bfiles?\s+(?:widget|card)\b/i.test(prompt))));
+  if(!addedTypes.length)throw new Error('No widget was added. The AI did not include the requested widget type.');
+  if(requestedTypes.length&&addedTypes.some(type=>!requestedTypes.includes(type)))throw new Error('The suggested widget type does not match your request.');
+  if(requestedTypes.length>1&&requestedTypes.some(type=>!addedTypes.includes(type)))throw new Error('The AI did not include every widget type you named.');
+  const amount=expected.includes('create_note_document')?null:assistantRequestedItemCount(prompt),expectedCount=Math.max(amount??0,requestedTypes.length||1);
+  if(addedTypes.length!==expectedCount)throw new Error('The AI did not include the requested number of widgets.');
+}
+/** Bound each separately reviewed addition against the same original request. */
+export function validateAssistantWidgetProposal(prompt:string,alreadyAdded:WidgetType[],proposed:WidgetType[]):void{
+  if(proposed.length!==1)throw new Error('Still proposes one widget at a time. Nothing was changed.');
+  const expected=assistantActionRequest(prompt),requestedTypes=workspaceWidgetTypes.filter(type=>widgetNameMentioned(prompt,type)&&!(expected.includes('create_note_document')&&(type==='notes'||type==='files'&&!/\bfiles?\s+(?:widget|card)\b/i.test(prompt))));
+  if(requestedTypes.length&&proposed.some(type=>!requestedTypes.includes(type)))throw new Error('The suggested widget type does not match your request.');
+  if(requestedTypes.length>1&&alreadyAdded.includes(proposed[0]))throw new Error('The AI proposed a widget type that was already added for this request. Nothing was changed.');
+  const amount=expected.includes('create_note_document')?null:assistantRequestedItemCount(prompt),expectedCount=Math.max(amount??0,requestedTypes.length||1);
+  if(alreadyAdded.length+proposed.length>expectedCount)throw new Error('The AI proposed more widgets than you requested. Nothing was changed.');
+}
+export function validateAssistantActionIntent(prompt:string,workspace:Workspace,actions:AssistantAction[],savedTrayItems:AssistantTrayItem[]=[],workspaces:AssistantWorkspaceChoice[]=[],selectedWidgetIds:string[]=[],options:{allowPartialWidgetAdd?:boolean}={}):void{
   const expected=assistantActionRequest(prompt,savedTrayItems,workspaces);
   if(!expected.length)return;
   const supplied=new Set(actions.map(action=>action.type));
@@ -993,9 +1013,8 @@ export function validateAssistantActionIntent(prompt:string,workspace:Workspace,
     const action=actions.find(item=>item.type==='add_widget'),requestedTypes=workspaceWidgetTypes.filter(type=>widgetNameMentioned(prompt,type)&&!(expected.includes('create_note_document')&&(type==='notes'||type==='files'&&!/\bfiles?\s+(?:widget|card)\b/i.test(prompt))));
     if(!action)throw new Error('No widget was added. The AI did not include the requested widget type.');
     if(requestedTypes.length&&action.ids.some(id=>!requestedTypes.includes(id as WidgetType)))throw new Error('The suggested widget type does not match your request.');
-    if(requestedTypes.length>1&&requestedTypes.some(type=>!action.ids.includes(type)))throw new Error('The AI did not include every widget type you named.');
-    const amount=expected.includes('create_note_document')?null:assistantRequestedItemCount(prompt),expectedCount=amount??(requestedTypes.length||1);
-    if(action.ids.length!==expectedCount)throw new Error('The AI did not include the requested number of widgets.');
+    const partial=options.allowPartialWidgetAdd===true&&actions.length===1&&action.ids.length===1;
+    if(!partial)validateAssistantWidgetCompletion(prompt,action.ids as WidgetType[]);
   }
   if(expected.includes('create_note_document')){
     const created=actions.filter(action=>action.type==='create_note_document'),expectedCount=assistantRequestedItemCount(prompt)??1;

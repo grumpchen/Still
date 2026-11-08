@@ -4,7 +4,7 @@ import {assistantEditTargetsUnchanged,assistantWidgetPluginClarification,assista
 import {assistantResizeClarification,validateAssistantLayoutIntent} from '../src/domain/assistant.ts';
 import {createWidget,createWorkspace} from '../src/domain/workspaces.ts';
 import {workspaceWidgetTypes} from '../src/domain/widgetCatalog.ts';
-import {assistantActionRequest,assistantCreationClarification,assistantEditClarification,assistantMoveClarification,assistantNoteDocumentClarification,assistantNoteStyleClarification,assistantNoteTagClarification,assistantShortcutClarification,assistantTimerControlClarification,assistantReplyNeedsClarification,assistantLayoutRequested,assistantRequestLimitError,assistantTrayItems,unsupportedAssistantRequest,extractAssistantTimerSeconds,resolveAssistantSetting,assistantWorkspaceClarification,resolveDirectAssistantActions,resolveAcceptedNotesOffer,addFocusForAssistantTimer,settleAssistantConfirmation,assistantKeyError,assistantWorkspaceContext,preferredModel,widgetContext,layoutContext,layoutFingerprint,parseAssistantReply,validateAssistantActionIntent,validateAssistantActions,applyAssistantWidgetActions,updateAssistantShortcut,validateLayout,applyLayoutPlan,prepareAssistantHistory,assistantAddedWidgetReceipt,safeAssistantReceipt,MAX_ASSISTANT_BATCH,MAX_ASSISTANT_WIDGETS} from '../src/domain/assistant.ts';
+import {assistantActionRequest,assistantCreationClarification,assistantEditClarification,assistantMoveClarification,assistantNoteDocumentClarification,assistantNoteStyleClarification,assistantNoteTagClarification,assistantShortcutClarification,assistantTimerControlClarification,assistantReplyNeedsClarification,assistantLayoutRequested,assistantRequestLimitError,assistantTrayItems,unsupportedAssistantRequest,extractAssistantTimerSeconds,resolveAssistantSetting,assistantWorkspaceClarification,resolveDirectAssistantActions,resolveAcceptedNotesOffer,addFocusForAssistantTimer,settleAssistantConfirmation,assistantKeyError,assistantWorkspaceContext,preferredModel,widgetContext,layoutContext,layoutFingerprint,parseAssistantReply,validateAssistantActionIntent,validateAssistantWidgetCompletion,validateAssistantWidgetProposal,validateAssistantActions,applyAssistantWidgetActions,updateAssistantShortcut,validateLayout,applyLayoutPlan,prepareAssistantHistory,assistantAddedWidgetReceipt,safeAssistantReceipt,MAX_ASSISTANT_BATCH,MAX_ASSISTANT_WIDGETS} from '../src/domain/assistant.ts';
 
 function fixture(){
   const workspace=createWorkspace('Study',[]),note=createWidget('notes'),timer=createWidget('focus');
@@ -591,6 +591,17 @@ test('assistant action requests require matching actions and every target for al
   const incomplete=[{type:'minimize',ids:workspace.widgets.map(widget=>widget.id)},{type:'save_to_tray',ids:[workspace.widgets[0].id]}];
   assert.throws(()=>validateAssistantActionIntent(prompt,workspace,incomplete),/every widget/);
   assert.throws(()=>validateAssistantActions(workspace,[{type:'restore',ids:['unknown-widget']}]),/changed/);
+});
+test('agent widget steps may be partial but the completed run must satisfy every requested type',()=>{
+ const {workspace}=fixture(),prompt='Please add a Notes widget and a Focus widget.';
+ assert.doesNotThrow(()=>validateAssistantActionIntent(prompt,workspace,[{type:'add_widget',ids:['notes']}],[],[],[],{allowPartialWidgetAdd:true}));
+ assert.throws(()=>validateAssistantActionIntent(prompt,workspace,[{type:'add_widget',ids:['browser']}],[],[],[],{allowPartialWidgetAdd:true}),/does not match your request/);
+ assert.doesNotThrow(()=>validateAssistantWidgetProposal(prompt,[],['notes']));
+ assert.doesNotThrow(()=>validateAssistantWidgetProposal(prompt,['notes'],['focus']));
+ assert.throws(()=>validateAssistantWidgetProposal(prompt,['notes'],['notes']),/already added/);
+ assert.throws(()=>validateAssistantWidgetProposal(prompt,['notes','focus'],['focus']),/already added|more widgets than you requested/);
+ assert.throws(()=>validateAssistantWidgetCompletion(prompt,['notes']),/every widget type/);
+ assert.doesNotThrow(()=>validateAssistantWidgetCompletion(prompt,['notes','focus']));
 });
 test('assistant keeps ordinary questions as chat and only marks direct workspace requests as actions',()=>{
   assert.deepEqual(assistantActionRequest('How do I minimize a widget?'),[]);

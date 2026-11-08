@@ -79,10 +79,10 @@ test('ChatGPT plan asks for missing timer details and starts the requested Focus
  }
 });
 
-test('Notes proposal works with the default screenshot preference and requires Still review',async()=>{
+test('multiple widget proposals each require Still review and preserve receipts',async()=>{
  const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true}),{window}=dom,old=new Map();
  for(const key of ['window','document','navigator','localStorage','HTMLElement','Element','Node','MutationObserver','requestAnimationFrame','cancelAnimationFrame','IS_REACT_ACT_ENVIRONMENT','isTauri'])old.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
- const calls=[];let root,executions=0;
+ const calls=[];let root,executions=0,workspace;
  try{
   for(const [key,value] of Object.entries({window,document:window.document,navigator:window.navigator,localStorage:window.localStorage,HTMLElement:window.HTMLElement,Element:window.Element,Node:window.Node,MutationObserver:window.MutationObserver,requestAnimationFrame:callback=>setTimeout(()=>callback(Date.now()),0),cancelAnimationFrame:clearTimeout,IS_REACT_ACT_ENVIRONMENT:true,isTauri:true}))setGlobal(key,value);
   window.HTMLElement.prototype.scrollTo=function(){};window.HTMLTextAreaElement.prototype.focus=function(){};window.__TAURI_INTERNALS__={};
@@ -92,29 +92,36 @@ test('Notes proposal works with the default screenshot preference and requires S
    if(command==='assistant_configured')return true;
    if(command==='assistant_models')return ['gpt-test'];
    if(command!=='assistant_agent_turn')return null;
-   const request=args.request;assert.equal(request.enable_add_widget_tool,true);
-   if(calls.filter(call=>call.command==='assistant_agent_turn').length===1)return {kind:'tool_calls',assistantMessage:{role:'assistant',tool_calls:[{id:'inspect-1',type:'function',function:{name:'inspect_workspace',arguments:'{}'}}]},calls:[{id:'inspect-1',name:'inspect_workspace',input:{}}]};
-   if(calls.filter(call=>call.command==='assistant_agent_turn').length===2){assert.equal(request.messages.at(-1).role,'tool',JSON.stringify(request.messages));const execution=JSON.parse(request.messages.at(-1).content);assert.equal(execution.status,'succeeded',JSON.stringify(execution));const inspected=execution.result;assert.ok(inspected?.revision,JSON.stringify(execution));return {kind:'tool_calls',assistantMessage:{role:'assistant',tool_calls:[{id:'add-1',type:'function',function:{name:'add_widget',arguments:JSON.stringify({widgetType:'notes',snapshotRevision:inspected.revision})}}]},calls:[{id:'add-1',name:'add_widget',input:{widgetType:'notes',snapshotRevision:inspected.revision}}]}}
-   assert.deepEqual(JSON.parse(request.messages.at(-1).content),{status:'succeeded',mutation:'applied',result:{receipt:'Added a Notes widget (Notes 1).'}});
-   return {kind:'final',response:{intent:'chat',reply:'Added a Notes widget (Notes 1).',layout:[],actions:[]}};
+   const request=args.request;assert.equal(request.enable_add_widget_tool,true);const count=calls.filter(call=>call.command==='assistant_agent_turn').length;
+   if(count===1)return {kind:'tool_calls',assistantMessage:{role:'assistant',tool_calls:[{id:'inspect-1',type:'function',function:{name:'inspect_workspace',arguments:'{}'}}]},calls:[{id:'inspect-1',name:'inspect_workspace',input:{}}]};
+   if(count===2){const inspected=JSON.parse(request.messages.at(-1).content).result;assert.ok(inspected?.revision);return {kind:'tool_calls',assistantMessage:{role:'assistant',tool_calls:[{id:'add-notes',type:'function',function:{name:'add_widget',arguments:JSON.stringify({widgetType:'notes',snapshotRevision:inspected.revision})}}]},calls:[{id:'add-notes',name:'add_widget',input:{widgetType:'notes',snapshotRevision:inspected.revision}}]}}
+   if(count===3){assert.deepEqual(JSON.parse(request.messages.at(-1).content),{status:'succeeded',mutation:'applied',result:{receipt:'Added a Notes widget (Notes 1).'}});return {kind:'tool_calls',assistantMessage:{role:'assistant',tool_calls:[{id:'inspect-2',type:'function',function:{name:'inspect_workspace',arguments:'{}'}}]},calls:[{id:'inspect-2',name:'inspect_workspace',input:{}}]}}
+   if(count===4){const inspected=JSON.parse(request.messages.at(-1).content).result;assert.deepEqual(inspected.widgets.map(widget=>widget.type),['notes']);return {kind:'tool_calls',assistantMessage:{role:'assistant',tool_calls:[{id:'add-focus',type:'function',function:{name:'add_widget',arguments:JSON.stringify({widgetType:'focus',snapshotRevision:inspected.revision})}}]},calls:[{id:'add-focus',name:'add_widget',input:{widgetType:'focus',snapshotRevision:inspected.revision}}]}}
+   assert.deepEqual(JSON.parse(request.messages.at(-1).content),{status:'succeeded',mutation:'applied',result:{receipt:'Added a Focus widget (focus 1).'}});
+   return {kind:'final',response:{intent:'chat',reply:'Added Notes and Focus.',layout:[],actions:[]}};
   },{shouldMockEvents:true});
   const {default:AssistantPanel}=await vite.ssrLoadModule('/src/AssistantPanel.tsx');
   root=createRoot(window.document.querySelector('#root'));
-  const workspace=createWorkspace('Study',[]);
+  workspace=createWorkspace('Study',[]);
   let captures=0;
-  await act(async()=>root.render(createElement(AssistantPanel,{workspace,workspaces:[{id:workspace.id,name:workspace.name}],trayItems:[],sidebarPlugins:[],open:true,close(){},dimensions:()=>({width:900,height:700}),apply(){},undo(){},workspaceImage:async()=>{captures++;return undefined},act:async()=>{executions++;return 'Added a Notes widget (Notes 1).'}})));
+  await act(async()=>root.render(createElement(AssistantPanel,{workspace,workspaces:[{id:workspace.id,name:workspace.name}],trayItems:[],sidebarPlugins:[],open:true,close(){},dimensions:()=>({width:900,height:700}),apply(){},undo(){},workspaceImage:async()=>{captures++;return undefined},act:async(_workspaceId,actions)=>{executions++;const type=actions[0].ids[0];workspace.widgets.push(createWidget(type));return type==='notes'?'Added a Notes widget (Notes 1).':'Added a Focus widget (focus 1).'}})));
   await waitFor(()=>window.document.querySelector('#ai-model option[value="openai::gpt-test"]'));
   await act(async()=>window.document.querySelector('[aria-label="AI settings"]').click());
   await act(async()=>window.document.querySelectorAll('.assistant-settings input[type="checkbox"]')[1].click());
-  const composer=window.document.querySelector('#ai-message');await act(async()=>setReactValue(composer,'Please add a Notes widget.','HTMLTextAreaElement'));
+  const composer=window.document.querySelector('#ai-message');await act(async()=>setReactValue(composer,'Please add a Notes widget and a Focus widget.','HTMLTextAreaElement'));
   await act(async()=>window.document.querySelector('.assistant-compose').requestSubmit());
   await waitFor(()=>window.document.querySelector('[aria-label="Add one widget?"]'));
   assert.equal(executions,0,'model tool call only creates a review proposal');
   assert.equal(captures,0,'agent mode skips automatic workspace capture');
   assert.equal(calls.some(call=>call.command==='assistant_chat'),false,'the agent path does not fall back to ordinary chat');
   await act(async()=>window.document.querySelector('[aria-label="Add one widget?"] button.primary').click());
-  await waitFor(()=>executions===1&&calls.filter(call=>call.command==='assistant_agent_turn').length===3);
-  await waitFor(()=>[...window.document.querySelectorAll('.assistant-message.model p')].some(node=>node.textContent==='Added a Notes widget (Notes 1).'));
+  await waitFor(()=>executions===1&&calls.filter(call=>call.command==='assistant_agent_turn').length===4&&window.document.querySelector('[aria-label="Add one widget?"]'));
+  assert.match(window.document.querySelector('[aria-label="Add one widget?"]').textContent,/Focus/);
+  await act(async()=>window.document.querySelector('[aria-label="Add one widget?"] button.primary').click());
+  await waitFor(()=>executions===2&&calls.filter(call=>call.command==='assistant_agent_turn').length===5&&[...window.document.querySelectorAll('.assistant-message.model p')].some(node=>node.textContent==='Added Notes and Focus.'));
+  assert.deepEqual(workspace.widgets.map(widget=>widget.type),['notes','focus']);
+  assert.ok([...window.document.querySelectorAll('.assistant-message.model p')].some(node=>node.textContent==='Added a Notes widget (Notes 1).'));
+  assert.ok([...window.document.querySelectorAll('.assistant-message.model p')].some(node=>node.textContent==='Added a Focus widget (focus 1).'));
   assert.equal(window.document.querySelector('.assistant-error'),null);
  }finally{
   if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();
