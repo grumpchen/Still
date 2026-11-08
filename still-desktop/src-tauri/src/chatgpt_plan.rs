@@ -23,7 +23,7 @@ use crate::{
 };
 
 const MAX_RECORD: usize = 128 * 1024;
-const REVOKE_ENDPOINT: &str = "https://auth.openai.com/api/accounts/oauth/revoke";
+const REVOKE_ENDPOINT: &str = "https://auth.openai.com/oauth/revoke";
 
 #[derive(Serialize, Deserialize)]
 struct Registration {
@@ -33,7 +33,6 @@ struct Registration {
 
 #[derive(Serialize, Deserialize)]
 struct PlanRecord {
-    host_id: String,
     registration: Option<Registration>,
     session: Option<VerifiedSession>,
 }
@@ -90,7 +89,6 @@ fn open_record(app: &AppHandle) -> Result<(PathBuf, File, PlanRecord), String> {
             decoded.map_err(|_| "The local ChatGPT plan connection is invalid.")?
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => PlanRecord {
-            host_id: format!("urn:uuid:{}", uuid::Uuid::new_v4()),
             registration: None,
             session: None,
         },
@@ -238,10 +236,14 @@ async fn callback_request(socket: &mut TcpStream, origin: &str) -> Option<String
         let (name, value) = line.split_once(':')?;
         name.eq_ignore_ascii_case("host").then_some(value.trim())
     });
-    if hosts.next()? != origin.strip_prefix("http://")? || hosts.next().is_some() {
+    let authority = origin.strip_prefix("http://")?;
+    let host = hosts.next()?;
+    let ipv4_authority = authority.strip_prefix("localhost")
+        .map(|port| format!("127.0.0.1{port}"));
+    if (host != authority && ipv4_authority.as_deref() != Some(host)) || hosts.next().is_some() {
         return None;
     }
-    Some(format!("{origin}{target}"))
+    Some(format!("http://{host}{target}"))
 }
 
 async fn send_browser_page(socket: &mut TcpStream, success: bool) {
@@ -273,25 +275,24 @@ pub fn chatgpt_plan_status(app: AppHandle, webview: Webview) -> Result<PlanStatu
 pub async fn chatgpt_plan_connect(app: AppHandle, webview: Webview) -> Result<PlanStatus, String> {
     crate::security::authorize(&webview)?;
     let (path, _lock, mut record) = open_record(&app)?;
-    // Persist the host ID before the first registration.
+    // Persist the credential record before opening a browser session.
     if !path.exists() {
         save_record(&path, &record)?;
     }
-    let listener = TcpListener::bind(("127.0.0.1", 0))
-        .await
-        .map_err(|_| "Could not start the local ChatGPT sign-in listener.")?;
-    let origin = format!(
-        "http://{}",
-        listener
-            .local_addr()
-            .map_err(|_| "Could not read the sign-in callback address.")?
-    );
-    let mut attempt = AuthorizationAttempt::new(&format!("{origin}/auth/callback"))?;
-    if let Some(previous) = &record.registration {
-        attempt.use_registration(&previous.client_id)?;
-    }
+    let (listener, port) = match TcpListener::bind(("127.0.0.1", 1455)).await {
+        Ok(listener) => (listener, 1455),
+        Err(_) => (
+            TcpListener::bind(("127.0.0.1", 1457))
+                .await
+                .map_err(|_| "Could not start the local Codex sign-in listener.")?,
+            1457,
+        ),
+    };
+    let origin = format!("http://localhost:{port}");
+    let redirect_uri = format!("{origin}/auth/callback");
+    let mut attempt = AuthorizationAttempt::new(&redirect_uri)?;
     let client = chatgpt_auth::bounded_openai_http_client()?;
-    let url = attempt.authorization_url(&record.host_id)?;
+    let url = attempt.authorization_url()?;
     app.opener()
         .open_url(url.as_str(), None::<String>)
         .map_err(|_| "Could not open ChatGPT sign-in in your browser.")?;
@@ -338,11 +339,11 @@ pub async fn chatgpt_plan_disconnect(app: AppHandle, webview: Webview) -> Result
     let result = client
         .post(REVOKE_ENDPOINT)
         .timeout(Duration::from_secs(10))
-        .form(&[
-            ("token", session.refresh_token.as_str()),
-            ("token_type_hint", "refresh_token"),
-            ("client_id", session.client_id.as_str()),
-        ])
+        .json(&serde_json::json!({
+            "token": session.refresh_token,
+            "token_type_hint": "refresh_token",
+            "client_id": session.client_id,
+        }))
         .send()
         .await;
     save_record(&path, &record)?;
@@ -357,6 +358,9 @@ async fn access_credentials(
     let Some(mut session) = record.session.clone() else {
         return Err("Continue with ChatGPT in AI settings first.".into());
     };
+    if session.client_id != chatgpt_auth::CLIENT_ID {
+        return Err("This saved sign-in uses an older connection. Select Continue with ChatGPT in AI settings to reconnect.".into());
+    }
     let needs_refresh = session.needs_refresh();
     if needs_refresh || session.identity.account_id.is_none() {
         let jwks = chatgpt_auth::fetch_openai_jwks(client).await?;
@@ -438,11 +442,10 @@ mod tests {
         tauri::async_runtime::block_on(async {
             let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
             let address = listener.local_addr().unwrap();
-            let origin = format!("http://{address}");
-            let mut attempt =
-                AuthorizationAttempt::new(&format!("{origin}/auth/callback")).unwrap();
+            let origin = format!("http://localhost:{}", address.port());
+            let mut attempt = AuthorizationAttempt::new(&format!("{origin}/auth/callback")).unwrap();
             let state = attempt
-                .authorization_url("urn:uuid:test")
+                .authorization_url()
                 .unwrap()
                 .query_pairs()
                 .find(|(key, _)| key == "state")
@@ -451,12 +454,12 @@ mod tests {
                 .into_owned();
             let client = tauri::async_runtime::spawn(async move {
                 for (host, state) in [
-                    ("localhost".to_owned(), state.clone()),
+                    (format!("localhost:{}", address.port()), state.clone()),
                     (address.to_string(), "invalid".into()),
                     (address.to_string(), state),
                 ] {
                     let mut socket = TcpStream::connect(address).await.unwrap();
-                    let request = format!("GET /auth/callback?code=test&state={state}&client_id=oaiapp_test HTTP/1.1\r\nHost: {host}\r\n\r\n");
+                    let request = format!("GET /auth/callback?code=test&state={state}&client_id={} HTTP/1.1\r\nHost: {host}\r\n\r\n", chatgpt_auth::CLIENT_ID);
                     socket.write_all(request.as_bytes()).await.unwrap();
                 }
             });

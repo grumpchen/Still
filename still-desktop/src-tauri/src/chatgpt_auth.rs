@@ -13,12 +13,12 @@ use ring::{
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-const AUTHORIZE_ENDPOINT: &str = "https://auth.openai.com/api/accounts/authorize";
-const RESOURCE: &str = "https://api.openai.com/v1";
-const TOKEN_ENDPOINT: &str = "https://auth.openai.com/api/accounts/oauth/token";
+const AUTHORIZE_ENDPOINT: &str = "https://auth.openai.com/oauth/authorize";
+pub(crate) const CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
+const TOKEN_ENDPOINT: &str = "https://auth.openai.com/oauth/token";
 const JWKS_ENDPOINT: &str = "https://auth.openai.com/.well-known/jwks.json";
 const EXPECTED_ISSUER: &str = "https://auth.openai.com";
-const SCOPE: &str = "openid profile email offline_access resource.invoke chatgpt.tokens.use.direct";
+const SCOPE: &str = "openid profile email offline_access api.connectors.read api.connectors.invoke";
 const ORIGINATOR: &str = "still_desktop";
 const CALLBACK_PATH: &str = "/auth/callback";
 
@@ -28,7 +28,6 @@ pub struct AuthorizationAttempt {
     nonce: String,
     code_verifier: String,
     callback_consumed: bool,
-    registered_client: Option<String>,
 }
 
 impl std::fmt::Debug for AuthorizationAttempt {
@@ -75,45 +74,20 @@ impl AuthorizationAttempt {
             nonce,
             code_verifier,
             callback_consumed: false,
-            registered_client: None,
         })
     }
 
-    pub(crate) fn use_registration(&mut self, client_id: &str) -> Result<(), &'static str> {
-        if !valid_client_id(client_id) {
-            return Err("Invalid ChatGPT client registration.");
-        }
-        self.registered_client = Some(client_id.to_owned());
-        Ok(())
-    }
-
-    pub fn authorization_url(&self, host_id: &str) -> Result<Url, &'static str> {
-        if host_id.is_empty() || host_id.len() > 128 || host_id.chars().any(char::is_control) {
-            return Err("Invalid host identifier.");
-        }
+    pub fn authorization_url(&self) -> Result<Url, &'static str> {
         let challenge = URL_SAFE_NO_PAD
             .encode(digest::digest(&digest::SHA256, self.code_verifier.as_bytes()).as_ref());
         let mut url =
             Url::parse(AUTHORIZE_ENDPOINT).map_err(|_| "Invalid authorization endpoint.")?;
         let mut query = url.query_pairs_mut();
-        query.append_pair(
-            "client_id",
-            self.registered_client
-                .as_deref()
-                .unwrap_or("dynamic_agent_client"),
-        );
-        if self.registered_client.is_none() {
-            query.append_pair("agent_name_hint", "Still");
-        }
         query
-            .append_pair("ext_agent_host_id", host_id)
+            .append_pair("client_id", CLIENT_ID)
             .append_pair("response_type", "code")
             .append_pair("redirect_uri", &self.redirect_uri)
             .append_pair("scope", SCOPE)
-            .append_pair("resource", RESOURCE)
-            // Codex asks the identity provider to include the ChatGPT
-            // workspace identity in the signed ID token. Older Still
-            // connections may predate this claim and need to sign in again.
             .append_pair("id_token_add_organizations", "true")
             .append_pair("codex_cli_simplified_flow", "true")
             .append_pair("originator", ORIGINATOR)
@@ -133,7 +107,7 @@ impl AuthorizationAttempt {
         }
         let url = Url::parse(callback).map_err(|_| "Invalid authorization callback.")?;
         if url.scheme() != "http"
-            || url.host_str() != Some("127.0.0.1")
+            || !matches!(url.host_str(), Some("127.0.0.1" | "localhost"))
             || url.port().is_none()
             || url.path() != CALLBACK_PATH
             || url.fragment().is_some()
@@ -177,18 +151,13 @@ impl AuthorizationAttempt {
         let code = code
             .filter(|value| !value.is_empty())
             .ok_or("Authorization callback did not include a code.")?;
-        let client_id = match (self.registered_client.as_deref(), client_id) {
-            (Some(saved), Some(returned)) if saved != returned => {
-                return Err("ChatGPT returned a different client registration.");
-            }
-            (Some(saved), _) => saved.to_owned(),
-            (None, Some(issued)) if valid_client_id(&issued) => issued,
-            _ => return Err("Registration callback did not include an issued client ID."),
-        };
+        if client_id.as_deref().is_some_and(|returned| returned != CLIENT_ID) {
+            return Err("ChatGPT returned a different OAuth client.");
+        }
         self.callback_consumed = true;
         Ok(AuthorizationCode {
             code,
-            client_id,
+            client_id: CLIENT_ID.to_owned(),
             scope,
         })
     }
@@ -219,15 +188,6 @@ impl std::fmt::Debug for TokenResponse {
             .field("scope", &self.scope)
             .finish()
     }
-}
-
-fn valid_client_id(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= 256
-        && value != "dynamic_agent_client"
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -357,12 +317,7 @@ fn validate_token_response(
         .split_ascii_whitespace()
         .map(str::to_owned)
         .collect();
-    for required in [
-        "openid",
-        "offline_access",
-        "resource.invoke",
-        "chatgpt.tokens.use.direct",
-    ] {
+    for required in ["openid", "offline_access", "api.connectors.read", "api.connectors.invoke"] {
         if !scopes.iter().any(|scope| scope == required) {
             return Err("ChatGPT did not grant all scopes required for plan usage.");
         }
@@ -447,7 +402,6 @@ fn code_exchange_form(
         ("code", code.code.clone()),
         ("code_verifier", verifier.to_owned()),
         ("redirect_uri", redirect_uri.to_owned()),
-        ("resource", RESOURCE.into()),
     ]
 }
 
@@ -456,7 +410,6 @@ fn refresh_form(client_id: &str, refresh_token: &str) -> Vec<(&'static str, Stri
         ("grant_type", "refresh_token".into()),
         ("client_id", client_id.to_owned()),
         ("refresh_token", refresh_token.to_owned()),
-        ("resource", RESOURCE.into()),
     ]
 }
 
@@ -595,7 +548,7 @@ fn random_url_token(rng: &SystemRandom) -> Result<String, &'static str> {
 fn validate_loopback_redirect(value: &str) -> Result<(), &'static str> {
     let url = Url::parse(value).map_err(|_| "Invalid loopback redirect URI.")?;
     if url.scheme() != "http"
-        || url.host_str() != Some("127.0.0.1")
+        || !matches!(url.host_str(), Some("127.0.0.1" | "localhost"))
         || url.port().is_none()
         || url.path() != CALLBACK_PATH
         || url.query().is_some()
@@ -603,7 +556,7 @@ fn validate_loopback_redirect(value: &str) -> Result<(), &'static str> {
         || url.username() != ""
         || url.password().is_some()
     {
-        return Err("Redirect URI must be http://127.0.0.1:<port>/auth/callback.");
+        return Err("Redirect URI must be an HTTP localhost loopback callback.");
     }
     Ok(())
 }
@@ -617,6 +570,19 @@ mod tests {
     }
 
     #[test]
+    fn uses_the_codex_subscription_oauth_client_and_scopes() {
+        assert_eq!(AUTHORIZE_ENDPOINT, "https://auth.openai.com/oauth/authorize");
+        assert_eq!(TOKEN_ENDPOINT, "https://auth.openai.com/oauth/token");
+        assert_eq!(
+            SCOPE,
+            "openid profile email offline_access api.connectors.read api.connectors.invoke"
+        );
+        let url = attempt().authorization_url().unwrap();
+        let query: std::collections::HashMap<_, _> = url.query_pairs().into_owned().collect();
+        assert_eq!(query["client_id"], "app_EMoamEEZ73f0CkXaXp7hrann");
+    }
+
+    #[test]
     fn creates_distinct_pkce_state_nonce_and_correct_s256_challenge() {
         let first = attempt();
         let second = attempt();
@@ -625,14 +591,16 @@ mod tests {
         assert_ne!(first.code_verifier, second.code_verifier);
         assert_eq!(first.code_verifier.len(), 43);
 
-        let url = first.authorization_url("urn:uuid:still-test-host").unwrap();
+        let url = first.authorization_url().unwrap();
         let query: std::collections::HashMap<_, _> = url.query_pairs().into_owned().collect();
         assert_eq!(
             url.origin().ascii_serialization(),
             "https://auth.openai.com"
         );
-        assert_eq!(query["client_id"], "dynamic_agent_client");
+        assert_eq!(query["client_id"], CLIENT_ID);
         assert_eq!(query["redirect_uri"], "http://127.0.0.1:1455/auth/callback");
+        assert!(!query.contains_key("resource"));
+        assert!(!query.contains_key("ext_agent_host_id"));
         assert_eq!(query["id_token_add_organizations"], "true");
         assert_eq!(query["codex_cli_simplified_flow"], "true");
         assert_eq!(query["originator"], ORIGINATOR);
@@ -647,30 +615,39 @@ mod tests {
     #[test]
     fn callback_requires_matching_loopback_and_state_and_issued_client_id() {
         let mut auth = attempt();
-        let ok = format!("http://127.0.0.1:1455/auth/callback?code=one&state={}&client_id=oaiapp_issued&scope=openid", auth.state);
+        let ok = format!("http://127.0.0.1:1455/auth/callback?code=one&state={}&client_id={CLIENT_ID}&scope=openid", auth.state);
         assert_eq!(
             auth.validate_callback(&ok).unwrap(),
             AuthorizationCode {
                 code: "one".into(),
-                client_id: "oaiapp_issued".into(),
+                client_id: CLIENT_ID.into(),
                 scope: Some("openid".into())
             }
         );
-        let wrong_state = ok.replace(&auth.state, "wrong");
-        assert!(auth.validate_callback(&wrong_state).is_err());
-        assert!(auth.validate_callback(&ok.replace("1455", "1456")).is_err());
-        assert!(auth
-            .validate_callback(&ok.replace("127.0.0.1", "localhost"))
+        let mut wrong_state_auth = attempt();
+        assert!(wrong_state_auth
+            .validate_callback(&format!(
+                "http://127.0.0.1:1455/auth/callback?code=one&state=wrong&client_id={CLIENT_ID}"
+            ))
             .is_err());
-        assert!(auth
-            .validate_callback(
-                &ok.replace("client_id=oaiapp_issued", "client_id=dynamic_agent_client")
-            )
+        let mut wrong_port_auth = attempt();
+        assert!(wrong_port_auth
+            .validate_callback(&ok.replace("1455", "1456"))
+            .is_err());
+        let mut localhost_auth = AuthorizationAttempt::new("http://localhost:1455/auth/callback").unwrap();
+        let localhost_callback = format!("http://localhost:1455/auth/callback?code=one&state={}&client_id={CLIENT_ID}", localhost_auth.state);
+        assert!(localhost_auth.validate_callback(&localhost_callback).is_ok());
+        let mut wrong_client_auth = attempt();
+        assert!(wrong_client_auth
+            .validate_callback(&format!(
+                "http://127.0.0.1:1455/auth/callback?code=one&state={}&client_id=another-client",
+                wrong_client_auth.state
+            ))
             .is_err());
     }
 
     #[test]
-    fn rejects_duplicate_parameters_denial_and_missing_registration_id() {
+    fn rejects_duplicate_parameters_and_denial_and_accepts_missing_client_id() {
         let mut auth = attempt();
         assert!(auth
             .validate_callback("http://127.0.0.1:1455/auth/callback?code=x&code=y&state=z")
@@ -681,13 +658,14 @@ mod tests {
                 auth.state
             ))
             .is_err());
-        assert!(auth
+        let mut no_client = attempt();
+        assert!(no_client
             .validate_callback(&format!(
                 "http://127.0.0.1:1455/auth/callback?code=x&state={}",
-                auth.state
+                no_client.state
             ))
-            .is_err());
-        assert!(AuthorizationAttempt::new("http://localhost:1455/auth/callback").is_err());
+            .is_ok());
+        assert!(AuthorizationAttempt::new("http://localhost:1455/auth/callback").is_ok());
         assert!(AuthorizationAttempt::new("http://127.0.0.1:1455/callback").is_err());
         assert!(AuthorizationAttempt::new("https://127.0.0.1:1455/auth/callback").is_err());
     }
@@ -702,21 +680,13 @@ mod tests {
     }
 
     #[test]
-    fn reauthorization_reuses_the_issued_client_and_rejects_a_different_one() {
-        let mut auth = attempt();
-        auth.use_registration("oaiapp_saved").unwrap();
-        let url = auth.authorization_url("urn:uuid:still-test-host").unwrap();
+    fn callback_accepts_codex_loopback_host_and_optional_client_id() {
+        let mut auth = AuthorizationAttempt::new("http://localhost:1455/auth/callback").unwrap();
+        let url = auth.authorization_url().unwrap();
         let query: std::collections::HashMap<_, _> = url.query_pairs().into_owned().collect();
-        assert_eq!(query["client_id"], "oaiapp_saved");
-        assert!(!query.contains_key("agent_name_hint"));
+        assert_eq!(query["client_id"], CLIENT_ID);
         let callback = format!("{}?code=one&state={}", auth.redirect_uri, auth.state);
-        assert!(auth
-            .validate_callback(&format!("{callback}&client_id=oaiapp_wrong"))
-            .is_err());
-        assert_eq!(
-            auth.validate_callback(&callback).unwrap().client_id,
-            "oaiapp_saved"
-        );
+        assert_eq!(auth.validate_callback(&callback).unwrap().client_id, CLIENT_ID);
     }
 
     fn test_jwks() -> JwkSet {
@@ -732,7 +702,7 @@ mod tests {
         let mut claims = serde_json::json!({
             "iss": EXPECTED_ISSUER,
             "sub": "stable-user-subject",
-            "aud": "oaiapp_test_registration",
+            "aud": "app_EMoamEEZ73f0CkXaXp7hrann",
             "nonce": "test-nonce",
             "iat": now,
             "exp": now + 600,
@@ -758,7 +728,7 @@ mod tests {
         let identity = verify_id_token(
             &token,
             &test_jwks(),
-            "oaiapp_test_registration",
+            "app_EMoamEEZ73f0CkXaXp7hrann",
             Some("test-nonce"),
             None,
         )
@@ -777,7 +747,7 @@ mod tests {
         assert!(verify_id_token(
             &token,
             &test_jwks(),
-            "oaiapp_test_registration",
+            "app_EMoamEEZ73f0CkXaXp7hrann",
             Some("wrong-nonce"),
             None
         )
@@ -785,7 +755,7 @@ mod tests {
         assert!(verify_id_token(
             &token,
             &test_jwks(),
-            "oaiapp_test_registration",
+            "app_EMoamEEZ73f0CkXaXp7hrann",
             None,
             Some("different-subject")
         )
@@ -800,7 +770,7 @@ mod tests {
         let identity = verify_id_token(
             &token,
             &test_jwks(),
-            "oaiapp_test_registration",
+            "app_EMoamEEZ73f0CkXaXp7hrann",
             Some("test-nonce"),
             None,
         )
@@ -824,7 +794,7 @@ mod tests {
             assert!(verify_id_token(
                 &invalid,
                 &jwks,
-                "oaiapp_test_registration",
+                "app_EMoamEEZ73f0CkXaXp7hrann",
                 Some("test-nonce"),
                 None
             )
@@ -833,7 +803,7 @@ mod tests {
         let mut wrong_kid_header = jsonwebtoken::Header::new(Algorithm::RS256);
         wrong_kid_header.kid = Some("unknown-key".into());
         let now = jsonwebtoken::get_current_timestamp();
-        let claims = serde_json::json!({"iss": EXPECTED_ISSUER, "sub":"s", "aud":"oaiapp_test_registration", "iat":now, "exp":now+600, "nonce":"test-nonce"});
+        let claims = serde_json::json!({"iss": EXPECTED_ISSUER, "sub":"s", "aud":"app_EMoamEEZ73f0CkXaXp7hrann", "iat":now, "exp":now+600, "nonce":"test-nonce"});
         let token = jsonwebtoken::encode(
             &wrong_kid_header,
             &claims,
@@ -846,7 +816,7 @@ mod tests {
         assert!(verify_id_token(
             &token,
             &jwks,
-            "oaiapp_test_registration",
+            "app_EMoamEEZ73f0CkXaXp7hrann",
             Some("test-nonce"),
             None
         )
@@ -854,7 +824,7 @@ mod tests {
     }
 
     #[test]
-    fn token_response_requires_plan_scopes_and_same_account_on_refresh() {
+    fn token_response_requires_codex_scopes_and_same_account_on_refresh() {
         let jwks = test_jwks();
         let response = || TokenResponse {
             access_token: "access-secret".into(),
@@ -862,12 +832,12 @@ mod tests {
             id_token: signed_id_token(serde_json::json!({})),
             token_type: "Bearer".into(),
             expires_in: 3600,
-            scope: "openid profile email offline_access resource.invoke chatgpt.tokens.use.direct"
+            scope: "openid profile email offline_access api.connectors.read api.connectors.invoke"
                 .into(),
         };
         let session = validate_token_response(
             response(),
-            "oaiapp_test_registration",
+            "app_EMoamEEZ73f0CkXaXp7hrann",
             &jwks,
             Some("test-nonce"),
             None,
@@ -875,7 +845,7 @@ mod tests {
         .unwrap();
         assert!(validate_token_response(
             response(),
-            "oaiapp_test_registration",
+            "app_EMoamEEZ73f0CkXaXp7hrann",
             &jwks,
             None,
             Some("different-account")
@@ -885,7 +855,7 @@ mod tests {
         missing_scope.scope = "openid profile".into();
         assert!(validate_token_response(
             missing_scope,
-            "oaiapp_test_registration",
+            "app_EMoamEEZ73f0CkXaXp7hrann",
             &jwks,
             Some("test-nonce"),
             None
@@ -898,33 +868,32 @@ mod tests {
     }
 
     #[test]
-    fn token_grant_forms_use_issued_client_id_and_omit_refresh_scope() {
+    fn token_grant_forms_use_codex_client_id_and_omit_resource_and_refresh_scope() {
         let code = AuthorizationCode {
             code: "code-secret".into(),
-            client_id: "oaiapp_issued".into(),
+            client_id: CLIENT_ID.into(),
             scope: None,
         };
         let exchange = code_exchange_form(
             &code,
             "verifier-secret",
-            "http://127.0.0.1:1455/auth/callback",
+            "http://localhost:1455/auth/callback",
         );
         assert!(exchange
             .iter()
             .any(|(key, value)| *key == "grant_type" && value == "authorization_code"));
         assert!(exchange
             .iter()
-            .any(|(key, value)| *key == "client_id" && value == "oaiapp_issued"));
+            .any(|(key, value)| *key == "client_id" && value == CLIENT_ID));
         assert!(exchange
             .iter()
             .any(|(key, value)| *key == "code_verifier" && value == "verifier-secret"));
-        let refresh = refresh_form("oaiapp_issued", "refresh-secret");
+        let refresh = refresh_form(CLIENT_ID, "refresh-secret");
         assert!(refresh
             .iter()
             .any(|(key, value)| *key == "grant_type" && value == "refresh_token"));
-        assert!(refresh
-            .iter()
-            .any(|(key, value)| *key == "resource" && value == RESOURCE));
+        assert!(!exchange.iter().any(|(key, _)| *key == "resource"));
+        assert!(!refresh.iter().any(|(key, _)| *key == "resource"));
         assert!(!refresh.iter().any(|(key, _)| *key == "scope"));
     }
 }
