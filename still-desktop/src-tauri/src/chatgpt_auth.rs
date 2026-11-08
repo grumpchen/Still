@@ -304,13 +304,20 @@ fn validate_token_response(
     expected_nonce: Option<&str>,
     expected_subject: Option<&str>,
 ) -> Result<VerifiedSession, &'static str> {
-    if response.access_token.is_empty()
-        || response.refresh_token.is_empty()
-        || response.id_token.is_empty()
-        || !response.token_type.eq_ignore_ascii_case("bearer")
-        || !(1..=86_400).contains(&response.expires_in)
-    {
-        return Err("ChatGPT token response was incomplete or invalid.");
+    if response.access_token.is_empty() {
+        return Err("Codex returned an empty access token.");
+    }
+    if response.refresh_token.is_empty() {
+        return Err("Codex returned an empty refresh token.");
+    }
+    if response.id_token.is_empty() {
+        return Err("Codex returned an empty identity token.");
+    }
+    if !response.token_type.eq_ignore_ascii_case("bearer") {
+        return Err("Codex returned an unsupported token type.");
+    }
+    if !(1..=86_400).contains(&response.expires_in) {
+        return Err("Codex returned an invalid token lifetime.");
     }
     let scopes: Vec<String> = response
         .scope
@@ -865,6 +872,76 @@ mod tests {
         assert!(!display.contains("access-secret"));
         assert!(!display.contains("refresh-secret"));
         assert!(!format!("{:?}", response()).contains("access-secret"));
+    }
+
+    #[test]
+    fn token_response_validation_reports_safe_field_categories() {
+        let jwks = test_jwks();
+        let response = || TokenResponse {
+            access_token: "access-secret".into(),
+            refresh_token: "refresh-secret".into(),
+            id_token: signed_id_token(serde_json::json!({})),
+            token_type: "Bearer".into(),
+            expires_in: 3600,
+            scope: "openid profile email offline_access api.connectors.read api.connectors.invoke"
+                .into(),
+        };
+        let cases = [
+            (
+                "empty access token",
+                {
+                    let mut value = response();
+                    value.access_token.clear();
+                    value
+                },
+            ),
+            (
+                "empty refresh token",
+                {
+                    let mut value = response();
+                    value.refresh_token.clear();
+                    value
+                },
+            ),
+            (
+                "empty identity token",
+                {
+                    let mut value = response();
+                    value.id_token.clear();
+                    value
+                },
+            ),
+            (
+                "unsupported token type",
+                {
+                    let mut value = response();
+                    value.token_type = "MAC".into();
+                    value
+                },
+            ),
+            (
+                "invalid token lifetime",
+                {
+                    let mut value = response();
+                    value.expires_in = 0;
+                    value
+                },
+            ),
+        ];
+
+        for (expected, invalid_response) in cases {
+            let error = validate_token_response(
+                invalid_response,
+                "app_EMoamEEZ73f0CkXaXp7hrann",
+                &jwks,
+                Some("test-nonce"),
+                None,
+            )
+            .unwrap_err();
+            assert!(error.contains(expected), "unexpected safe error category: {error}");
+            assert!(!error.contains("access-secret"));
+            assert!(!error.contains("refresh-secret"));
+        }
     }
 
     #[test]
