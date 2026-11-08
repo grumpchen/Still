@@ -80,16 +80,14 @@ test('Apps header actions are hidden by default and can be enabled individually'
  try{for(const label of ['Attach open app to Attached app','Detach app from Attached app','Save Attached app to tray'])assert.ok(visible.window.document.querySelector(`[aria-label="${label}"]`),label+' can be shown')}finally{await visible.cleanup()}
 });
 
-test('Notes opens a second tab and switching tabs keeps each page text separate',async()=>{
+test('Notes widgets open to folder-first Files and keep existing local notes without exposing the legacy editor page',async()=>{
  const widget=createWidget('notes'),original=widget.noteDocuments[0],app=await setup([widget]);
  try{
-  const add=app.window.document.querySelector('[aria-label="New note"]');assert.ok(add);
-  await act(async()=>add.click());
-  assert.equal(app.currentState.workspaces[0].widgets[0].noteDocuments.length,2);
-  const tabs=[...app.window.document.querySelectorAll('[role="tab"]')];assert.equal(tabs.length,2);assert.equal(tabs[1].getAttribute('aria-selected'),'true');
-  assert.equal(app.window.document.querySelector('[aria-label="Note text"]').value,'');
-  await act(async()=>tabs[0].click());assert.equal(app.window.document.querySelector('[aria-label="Note text"]').value,original.text);
-  await act(async()=>tabs[1].click());assert.equal(app.window.document.querySelector('[aria-label="Note text"]').value,'');
+  assert.ok(app.window.document.querySelector('[aria-label="Choose a notes folder"]'),'Files is the default page until a folder is connected');
+  assert.equal(app.window.document.querySelector('[aria-label="New note"]'),null,'notes are created as files inside the selected folder');
+  assert.equal(app.window.document.querySelector('[role="tablist"]'),null,'the standalone legacy Notes page is not shown');
+  const saved=app.currentState.workspaces[0].widgets[0].noteDocuments;
+  assert.equal(saved.length,1);assert.equal(saved[0].id,original.id);assert.equal(saved[0].text,original.text,'existing local note data remains preserved');
  }finally{await app.cleanup()}
 });
 
