@@ -1,9 +1,9 @@
 export type AssistantRunRecoveryStage='awaiting_review'|'applying'|'receipt_saved';
-export type AssistantRunRecoveryKind='add_widget'|'workspace_action'|'inbox_moves'|'library_edit'|'assistant_memory';
+export type AssistantRunRecoveryKind='add_widget'|'workspace_action'|'inbox_moves'|'library_edit'|'assistant_memory'|'assistant_review';
 export type AssistantRunRecovery={version:1;workspaceId:string;runId:string;stage:AssistantRunRecoveryStage;kind:AssistantRunRecoveryKind;updatedAt:number};
 
 const PREFIX='still-assistant-run-recovery-v1:';
-const KINDS=new Set<AssistantRunRecoveryKind>(['add_widget','workspace_action','inbox_moves','library_edit','assistant_memory']);
+const KINDS=new Set<AssistantRunRecoveryKind>(['add_widget','workspace_action','inbox_moves','library_edit','assistant_memory','assistant_review']);
 function defaultStorage():Pick<Storage,'getItem'|'setItem'|'removeItem'>|undefined{try{return globalThis.localStorage}catch{return undefined}}
 function key(workspaceId:string){return PREFIX+encodeURIComponent(workspaceId)}
 
@@ -29,7 +29,8 @@ export function clearAssistantRunRecovery(workspaceId:string,runId?:string,stora
 }
 
 export function assistantRunRecoveryMessage(record:AssistantRunRecovery):string{
- if(record.stage==='awaiting_review')return 'A previous agent change was still awaiting review when Still closed. That approval expired and no change was applied by recovery. Inspect the workspace, then ask Still to prepare a fresh proposal.';
- if(record.stage==='receipt_saved')return 'A previous agent change has a saved execution receipt in this chat. Recovery did not repeat it.';
- return 'Still closed while an approved agent change was being applied. Its result may be incomplete or uncertain. Recovery did not repeat the change. Inspect the workspace before asking Still to retry.';
+ const owner=record.kind==='assistant_review'?'Still change':'agent change';
+ if(record.stage==='awaiting_review')return `A previous ${owner} was still awaiting review when Still closed. That approval expired and no change was applied by recovery. Inspect the workspace, then ask Still to prepare a fresh proposal.`;
+ if(record.stage==='receipt_saved')return `A previous ${owner} has a saved execution receipt in this chat. Recovery did not repeat it.`;
+ return `Still closed while an approved ${owner} was being applied. Its result may be incomplete or uncertain. Recovery did not repeat the change. Inspect the workspace before asking Still to retry.`;
 }

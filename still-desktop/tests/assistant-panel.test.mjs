@@ -299,8 +299,20 @@ test('assistant previews a requested resize before applying it',async()=>{
   await act(async()=>window.document.querySelector('.assistant-compose').requestSubmit());
   await waitFor(()=>window.document.querySelector('[aria-label="Proposed layout"]'));
   assert.equal(applied,null,'no resize happens before review');
+  const recoveryKey='still-assistant-run-recovery-v1:'+encodeURIComponent(workspace.id),pendingRecovery=JSON.parse(window.localStorage.getItem(recoveryKey));
+  assert.equal(pendingRecovery.kind,'assistant_review');assert.equal(pendingRecovery.stage,'awaiting_review','Still records an ordinary layout review before showing it');
   await act(async()=>window.document.querySelector('[aria-label="Proposed layout"] button.primary').click());
   assert.equal(applied.items[0].height,300);
+  assert.equal(window.localStorage.getItem(recoveryKey),null,'a successful layout receipt clears recovery only after saving the chat receipt');
+  assert.match(window.localStorage.getItem('still-assistant-chat-v1:'+encodeURIComponent(workspace.id)),/Applied the suggested workspace layout/);
+  window.localStorage.setItem(recoveryKey,JSON.stringify({version:1,workspaceId:workspace.id,runId:'interrupted-layout',stage:'applying',kind:'assistant_review',updatedAt:Date.now()}));
+  await act(async()=>root.unmount());root=createRoot(window.document.querySelector('#root'));
+  await act(async()=>root.render(createElement(AssistantPanel,{workspace,workspaces:[{id:workspace.id,name:workspace.name}],trayItems:[],sidebarPlugins:[],open:true,close(){},dimensions:()=>({width:900,height:700}),apply:plan=>{applied=plan},undo(){}})));
+  await waitFor(()=>window.document.querySelector('button')&&[...window.document.querySelectorAll('button')].some(button=>button.textContent==='I inspected the workspace'));
+  assert.equal(JSON.parse(window.localStorage.getItem(recoveryKey)).stage,'applying','a restart warning keeps an uncertain result durable after its chat message is saved');
+  assert.equal(applied.items[0].height,300,'restart recovery never replays the approved layout');
+  await act(async()=>[...window.document.querySelectorAll('button')].find(button=>button.textContent==='I inspected the workspace').click());
+  assert.equal(window.localStorage.getItem(recoveryKey),null,'the user can clear uncertainty only after inspecting the workspace');
  }finally{
   if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();
   for(const key of old.keys()){const descriptor=old.get(key);if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}

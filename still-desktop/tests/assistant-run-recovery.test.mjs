@@ -25,6 +25,13 @@ test('saved execution receipts are described as complete without replay',()=>{
  assert.match(message,/saved execution receipt/i);assert.match(message,/did not repeat/i);
 });
 
+test('ordinary Still review cards use the same metadata-only interrupted-review recovery',()=>{
+ const storage=store();assert.equal(writeAssistantRunRecovery({workspaceId:'study',runId:'review-1',stage:'awaiting_review',kind:'assistant_review'},storage),true);
+ const record=readAssistantRunRecovery('study',storage),message=assistantRunRecoveryMessage(record);
+ assert.equal(record.kind,'assistant_review');assert.match(message,/Still change/i);assert.match(message,/approval expired/i);
+ assert.doesNotMatch([...storage.values.values()][0],/layout|widget|prompt|proposal|coordinates/i);
+});
+
 test('stale run completion cannot clear a newer review',()=>{
  const storage=store();writeAssistantRunRecovery({workspaceId:'study',runId:'old',stage:'applying',kind:'workspace_action'},storage);
  writeAssistantRunRecovery({workspaceId:'study',runId:'new',stage:'awaiting_review',kind:'add_widget'},storage);
