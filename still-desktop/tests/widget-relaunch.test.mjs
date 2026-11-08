@@ -117,6 +117,21 @@ test('Notes library opens Markdown tabs beside local notes and writes edits to t
  }finally{await app.cleanup()}
 });
 
+test('reviewed agent Library changes refresh only the matching Files widget',async()=>{
+ const widget=createWidget('notes');widget.notesLibraryKey=widget.id;widget.notesLibraryName='Study';
+ let entries=[{name:'existing.md',path:'existing.md',size:8}];
+ const app=await setup([widget],{responses:{notes_library_list:()=>entries}});
+ try{
+  assert.ok(app.window.document.querySelector('[data-file-path="existing.md"]'));
+  entries=[...entries,{name:'Summary.md',path:'Summary.md',size:24}];
+  await act(async()=>{app.window.dispatchEvent(new app.window.CustomEvent('still-notes-library-changed',{detail:{widgetId:'another-widget',path:'Summary.md',kind:'note'}}));await new Promise(resolve=>setTimeout(resolve,10))});
+  assert.equal(app.calls.filter(call=>call.command==='notes_library_list').length,1,'changes for another Notes widget are ignored');
+  await act(async()=>{app.window.dispatchEvent(new app.window.CustomEvent('still-notes-library-changed',{detail:{widgetId:widget.id,path:'Summary.md',kind:'note'}}));await new Promise(resolve=>setTimeout(resolve,10))});
+  assert.ok(app.window.document.querySelector('[data-file-path="Summary.md"]'),'a reviewed agent-created note appears in Files without manual refresh');
+  assert.equal(app.calls.filter(call=>call.command==='notes_library_list').length,2);
+ }finally{await app.cleanup()}
+});
+
 test('Notes library keeps the latest tab when file reads resolve out of order',async()=>{
  const widget=createWidget('notes'),app=await setup([widget],{responses:{notes_library_choose:'Study',notes_library_list:[{name:'slow.md',path:'slow.md',size:5},{name:'fast.md',path:'fast.md',size:5}],notes_library_read:async args=>{await new Promise(resolve=>setTimeout(resolve,args.path==='slow.md'?70:5));return args.path==='slow.md'?'OLD':'NEW'}}});
  try{
