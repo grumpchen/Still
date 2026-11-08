@@ -388,3 +388,46 @@ test('Study with AI hides its prompt, generates a summary, and saves only after 
   assert.deepEqual({widgetId:creates[0].widgetId,sourceNoteId:creates[0].sourceNoteId,sourcePath:creates[0].sourcePath,expectedText:creates[0].expectedText,title:creates[0].title,draft:creates[0].draft},{widgetId:note.id,sourceNoteId:'lecture-note',sourcePath:'CHEM/lecture-1.md',expectedText:'Source backed lecture text',title, draft:'## Core ideas\n\n- A source backed idea.\n- A second key point.'});
  }finally{if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();for(const [key,descriptor] of old)if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}
 });
+
+test('Explain and Summarize answer directly without exposing their generated prompts',async()=>{
+ const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true}),{window}=dom,old=new Map();
+ const globals={window,document:window.document,navigator:window.navigator,localStorage:window.localStorage,HTMLElement:window.HTMLElement,Element:window.Element,Node:window.Node,MutationObserver:window.MutationObserver,CustomEvent:window.CustomEvent,Event:window.Event,IS_REACT_ACT_ENVIRONMENT:true,isTauri:true};
+ for(const key of Object.keys(globals))old.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
+ let root;const requests=[];let noteWrites=0;
+ try{
+  for(const [key,value] of Object.entries(globals))setGlobal(key,value);
+  window.HTMLElement.prototype.scrollTo=function(){};window.HTMLTextAreaElement.prototype.focus=function(){};window.__TAURI_INTERNALS__={};
+  window.localStorage.setItem('still-assistant-model','gemini::gemini-test');
+  window.localStorage.setItem('still-assistant-share-workspace-image','false');
+  mockIPC((command,args)=>{
+   if(command==='assistant_configured')return true;
+   if(command==='assistant_models')return ['gemini-test'];
+   if(command==='assistant_chat'){
+    const request=args.request;requests.push(request);
+    const prompt=request.messages.at(-1).text;
+    return {intent:'chat',reply:prompt.startsWith('Explain')?'ATP is the cell’s usable energy carrier.':'ATP stores energy that cells use for work.',layout:[],actions:[]};
+   }
+   return null;
+  },{shouldMockEvents:true});
+  window.addEventListener('still-notes-apply-ai-draft',()=>noteWrites++);
+  window.addEventListener('still-notes-create-ai-summary',()=>noteWrites++);
+  const {default:AssistantPanel}=await vite.ssrLoadModule('/src/AssistantPanel.tsx'),workspace=createWorkspace('Study',[]);
+  root=createRoot(window.document.querySelector('#root'));
+  await act(async()=>root.render(createElement(AssistantPanel,{workspace,workspaces:[workspace],trayItems:[],sidebarPlugins:[],open:true,close(){},dimensions:()=>({width:900,height:700}),apply(){},undo(){},act:async()=>''})));
+  await waitFor(()=>window.document.querySelector('#ai-model option[value="gemini::gemini-test"]'));
+  const actions=[
+   {prompt:'Explain the selected note “ATP” clearly for a first-year student.',reply:'ATP is the cell’s usable energy carrier.'},
+   {prompt:'Summarize the selected note “ATP” into its key ideas and a short recap.',reply:'ATP stores energy that cells use for work.'},
+  ];
+  for(const [index,action] of actions.entries()){
+   await act(async()=>window.dispatchEvent(new window.CustomEvent('still-assistant-resource',{detail:{name:'ATP.md',path:'Biology/ATP.md',size:41,text:'ATP stores chemical energy used by cells.',notes:'',prompt:action.prompt,autoSubmit:true,fileWidgetId:'notes-widget',fileActionAllowed:true}})));
+   await waitFor(()=>requests.length===index+1&&[...window.document.querySelectorAll('.assistant-message.model')].some(node=>node.textContent.includes(action.reply)));
+   assert.equal(requests[index].messages.at(-1).text,action.prompt);
+   assert.equal(requests[index].context.includes('ATP stores chemical energy used by cells.'),true,'the selected note text is sent as context');
+   assert.equal(window.document.querySelectorAll('.assistant-message.user').length,0,'the generated instruction stays hidden');
+  }
+  assert.equal(noteWrites,0,'Explain and Summarize are read-only responses and do not write notes');
+  assert.match(window.document.body.textContent,/ATP is the cell’s usable energy carrier/);
+  assert.match(window.document.body.textContent,/ATP stores energy that cells use for work/);
+ }finally{if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();for(const [key,descriptor] of old)if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}
+});
