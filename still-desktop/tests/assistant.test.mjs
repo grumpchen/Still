@@ -25,6 +25,20 @@ test('Still AI can show or hide only the sidebar or bottom Apps bar',()=>{
  assert.throws(()=>validateAssistantActionIntent('hide the sidebar',workspace,[{type:'set_ui_visibility',ids:['apps-bar'],enabled:false}]),/did not match your request/);
  assert.throws(()=>validateAssistantActions(workspace,[{type:'set_ui_visibility',ids:['sidebar','apps-bar'],enabled:false}]),/Choose the Still sidebar or Apps bar/);
 });
+test('reviewed widget geometry changes one current regular widget and respects limits and fixed pages',()=>{
+ const {workspace}=fixture(),note=workspace.widgets[0],move={type:'set_widget_geometry',ids:[note.id],operation:'move',x:120,y:90};
+ validateAssistantActions(workspace,[move]);
+ const moved=applyAssistantWidgetActions(workspace,[move],900,700).widgets.find(widget=>widget.id===note.id);
+ assert.deepEqual(moved.placement,{x:120,y:90,width:300,height:250});
+ const resize={type:'set_widget_geometry',ids:[note.id],operation:'resize',width:500,height:400};
+ validateAssistantActions(workspace,[resize]);
+ assert.deepEqual(applyAssistantWidgetActions(workspace,[resize],900,700).widgets.find(widget=>widget.id===note.id).placement,{x:0,y:0,width:500,height:400});
+ assert.throws(()=>validateAssistantActions(workspace,[{...resize,width:100}]),/supported size limits/);
+ assert.throws(()=>validateAssistantActions(workspace,[{...move,x:note.placement.x,y:note.placement.y}]),/matches the current widget geometry/);
+ assert.throws(()=>validateAssistantActions(workspace,[{...move,ids:['missing-widget']}]),/current, regular canvas widget/);
+ const dashboard=createWorkspace('Dashboard',[]);dashboard.role='dashboard';
+ assert.throws(()=>validateAssistantActions(dashboard,[move]),/fixed widgets/);
+});
 test('minimize and restore requests resolve named, selected, and single unambiguous widgets locally',()=>{
  const {workspace}=fixture(),note=workspace.widgets[0],timer=workspace.widgets[1];
  const minimize=resolveDirectAssistantActions('minimize Notes',workspace,[]);

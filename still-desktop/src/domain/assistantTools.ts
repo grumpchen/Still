@@ -3,6 +3,7 @@ import type { AssistantAction, AssistantTrayItem, AssistantWorkspaceChoice } fro
 import type { Workspace } from './workspaces.ts';
 import { addAssistantMemory, ASSISTANT_MEMORY_TEXT_LIMIT, AssistantMemoryError, type AssistantMemoryEntry } from './assistantMemory.ts';
 import { widgetCatalog, type WidgetType } from './widgetCatalog.ts';
+import { constrainPlacement } from './layout.ts';
 
 /** A fresh, app-owned view of the state that existing UI operations validate against. */
 export type StillToolSnapshot = {
@@ -12,12 +13,14 @@ export type StillToolSnapshot = {
   workspaces: AssistantWorkspaceChoice[];
   /** A deliberately narrow, reversible preference exposed to reviewed agent actions. */
   preferences?: { theme: 'light' | 'dark' };
+  canvasSize?: { width: number; height: number };
 };
 
 export type StillWorkspaceInspection = {
   revision: string;
   activeWorkspace: { id: string; name: string; fixedWidgets: boolean };
   preferences?: { theme: 'light' | 'dark' };
+  canvasSize?: { width: number; height: number };
   workspaces: AssistantWorkspaceChoice[];
   savedItems: AssistantTrayItem[];
   widgets: Array<{
@@ -25,6 +28,7 @@ export type StillWorkspaceInspection = {
     type: string;
     title: string;
     minimized: boolean;
+    placement: { x: number; y: number; width: number; height: number };
     tagColor: string | null;
     openNoteTitles?: string[];
     schedule?: Array<{ id: string; title: string; day: number; time: string }>;
@@ -46,13 +50,28 @@ export type SafeWorkspaceAction =
   | { type: 'control_timer'; ids: [string]; operation: 'pause' | 'resume' | 'reset' }
   | { type: 'set_ui_visibility'; ids: ['sidebar' | 'apps-bar']; enabled: boolean }
   | { type: 'set_setting'; ids: ['theme']; settingValue: 'light' | 'dark' }
+  | { type: 'set_widget_geometry'; ids: [string]; operation: 'move'; x: number; y: number }
+  | { type: 'set_widget_geometry'; ids: [string]; operation: 'resize'; width: number; height: number }
   | { type: 'create_note_document'; ids: [string]; title: string; text?: string };
+
+/** Geometry requests require one explicit UI selection and literal target numbers in the original prompt. */
+export function validateReviewedGeometryIntent(prompt: string, action: SafeWorkspaceAction, selectedWidgetIds: string[]): void {
+  if (action.type !== 'set_widget_geometry') return;
+  if (selectedWidgetIds.length !== 1 || selectedWidgetIds[0] !== action.ids[0]) throw new Error('Select exactly one widget with @ before asking for a geometry change. Nothing was changed.');
+  const number = (key: string) => prompt.match(new RegExp(`\\b${key}\\s*(?:=|:|to)?\\s*(\\d+)\\b`, 'i'))?.[1];
+  if (action.operation === 'move') {
+    if (!/\bmove\b/i.test(prompt) || Number(number('x')) !== action.x || Number(number('y')) !== action.y) throw new Error('A move proposal must match an explicit request with x and y coordinates. Nothing was changed.');
+  } else if (!/\bresize\b/i.test(prompt) || Number(number('width')) !== action.width || Number(number('height')) !== action.height) {
+    throw new Error('A resize proposal must match an explicit request with width and height. Nothing was changed.');
+  }
+}
 
 export type SafeWorkspaceActionProposal = {
   kind: 'workspace_action';
   snapshotRevision: string;
   action: Readonly<SafeWorkspaceAction>;
   preferenceChange?: Readonly<{ key: 'theme'; before: 'light'|'dark'; after: 'light'|'dark' }>;
+  geometryChange?: Readonly<{ widgetId: string; operation: 'move'|'resize'; before: {x:number;y:number;width:number;height:number}; after: {x:number;y:number;width:number;height:number} }>;
 };
 
 /** User-reviewed durable memory. This is local user data, never a model authorization token. */
@@ -147,7 +166,10 @@ export function createStillWorkspaceToolRegistry(deps: StillWorkspaceToolDepende
         if (current.revision !== before.revision) return failed('Workspace state changed before the proposal could be reviewed. Refresh and try again.');
         const preferenceChange = parsed.action.type==='set_setting' && before.preferences
           ? Object.freeze({key:'theme' as const,before:before.preferences.theme,after:parsed.action.settingValue}) : undefined;
-        const proposal = Object.freeze({kind:'workspace_action' as const,snapshotRevision:before.revision,action:freezeSafeAction(parsed.action),...(preferenceChange?{preferenceChange}:{})});
+        const geometryTarget = parsed.action.type==='set_widget_geometry' ? before.workspace.widgets.find(widget=>widget.id===parsed.action.ids[0]) : undefined;
+        const geometryChange = geometryTarget && parsed.action.type==='set_widget_geometry' ? Object.freeze({widgetId:geometryTarget.id,operation:parsed.action.operation,before:Object.freeze({...geometryTarget.placement}),after:Object.freeze(constrainPlacement(geometryTarget.type,parsed.action.operation==='move'?{...geometryTarget.placement,x:parsed.action.x,y:parsed.action.y}:{...geometryTarget.placement,width:parsed.action.width,height:parsed.action.height},before.canvasSize?.width??3000,{},before.canvasSize?.height??3000))}) : undefined;
+        if(geometryChange && parsed.action.type==='set_widget_geometry' && (parsed.action.operation==='move'&&(geometryChange.after.x!==parsed.action.x||geometryChange.after.y!==parsed.action.y)||parsed.action.operation==='resize'&&(geometryChange.after.width!==parsed.action.width||geometryChange.after.height!==parsed.action.height)))return failed('Those geometry values exceed the active canvas or widget limits. Nothing was changed. Choose values that fit the current workspace.');
+        const proposal = Object.freeze({kind:'workspace_action' as const,snapshotRevision:before.revision,action:freezeSafeAction(parsed.action),...(preferenceChange?{preferenceChange}:{}),...(geometryChange?{geometryChange}:{})});
         pendingWorkspaceActions.add(proposal);
         return {status:'requires_confirmation',proposal};
       } catch (error) {
@@ -247,6 +269,7 @@ function inspect(snapshot: StillToolSnapshot): StillWorkspaceInspection {
     type: widget.type,
     title: widget.title || `${widget.type} ${widget.instanceNumber}`,
     minimized: widget.minimized,
+    placement: { ...widget.placement },
     tagColor: widget.tagColor ?? null,
     ...(widget.type === 'notes' ? { openNoteTitles: widget.noteDocuments.map(document => document.title) } : {}),
     ...(widget.type === 'timetable' ? { schedule: widget.schedule.slice(0, 80).map(entry => ({
@@ -257,6 +280,7 @@ function inspect(snapshot: StillToolSnapshot): StillWorkspaceInspection {
     revision: snapshot.revision,
     activeWorkspace: { id: snapshot.workspace.id, name: snapshot.workspace.name, fixedWidgets: snapshot.workspace.role==='dashboard'||snapshot.workspace.role==='library' },
     ...(snapshot.preferences ? { preferences: snapshot.preferences } : {}),
+    ...(snapshot.canvasSize ? { canvasSize: snapshot.canvasSize } : {}),
     workspaces: snapshot.workspaces.map(({ id, name }) => ({ id, name })),
     savedItems: snapshot.savedTrayItems.map(({ id, name, type, kind }) => ({ id, name, type, kind })),
     widgets,
@@ -304,8 +328,19 @@ function parseSafeWorkspaceAction(input: unknown): { revision: string; action: S
   }
   if (type === 'set_setting') {
     if (!onlyKeys('type','ids','settingValue') || !Array.isArray(ids) || ids.length !== 1 || ids[0] !== 'theme'
-      || !['light','dark'].includes(String(raw.settingValue))) throw new Error('Choose the reversible theme preference and set it to light or dark.');
+      || typeof raw.settingValue !== 'string' || !['light','dark'].includes(raw.settingValue)) throw new Error('Choose the reversible theme preference and set it to light or dark.');
     return {revision:value.snapshotRevision,action:{type,ids:['theme'],settingValue:raw.settingValue as 'light'|'dark'}};
+  }
+  if (type === 'set_widget_geometry') {
+    if (raw.operation === 'move' && onlyKeys('type','ids','operation','x','y') && Array.isArray(ids) && ids.length===1 && validWidgetId(ids[0])
+      && Number.isSafeInteger(raw.x) && Number.isSafeInteger(raw.y) && (raw.x as number)>=0 && (raw.x as number)<=20000 && (raw.y as number)>=0 && (raw.y as number)<=20000) {
+      return {revision:value.snapshotRevision,action:{type,ids:[ids[0]],operation:'move',x:raw.x as number,y:raw.y as number}};
+    }
+    if (raw.operation === 'resize' && onlyKeys('type','ids','operation','width','height') && Array.isArray(ids) && ids.length===1 && validWidgetId(ids[0])
+      && Number.isSafeInteger(raw.width) && Number.isSafeInteger(raw.height) && (raw.width as number)>=120 && (raw.width as number)<=3000 && (raw.height as number)>=100 && (raw.height as number)<=3000) {
+      return {revision:value.snapshotRevision,action:{type,ids:[ids[0]],operation:'resize',width:raw.width as number,height:raw.height as number}};
+    }
+    throw new Error('Choose one selected regular widget and explicit move coordinates or resize dimensions within supported limits.');
   }
   if (type === 'create_note_document') {
     if (!onlyKeys('type','ids','title','text') || !Array.isArray(ids) || ids.length !== 1 || !validWidgetId(ids[0])

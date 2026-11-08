@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {createStillWorkspaceToolRegistry} from '../src/domain/assistantTools.ts';
+import {createStillWorkspaceToolRegistry,validateReviewedGeometryIntent} from '../src/domain/assistantTools.ts';
 import {createWidget} from '../src/domain/workspaces.ts';
 
 function snapshot(revision='rev-1'){
@@ -18,6 +18,7 @@ function snapshot(revision='rev-1'){
     savedTrayItems:[{id:'preset-p1',name:'Saved Notes',type:'notes',kind:'preset'}],
     workspaces:[{id:'workspace-1',name:'Study'},{id:'workspace-2',name:'Library'}],
     preferences:{theme:'light'},
+    canvasSize:{width:1000,height:700},
   };
 }
 
@@ -29,6 +30,7 @@ test('inspection is read-only and omits note bodies and local paths',async()=>{
   const json=JSON.stringify(result.result);
   assert.match(json,/Chemistry/);
   assert.match(json,/"theme":"light"/);
+  assert.match(json,/"placement"/);
   assert.match(json,/Draft/);
   assert.doesNotMatch(json,/private note body|private document body|C:\/private/);
 });
@@ -45,6 +47,23 @@ test('theme preference action is reviewed with exact before and after values and
   assert.equal(done.result.receipt,'Theme preference is dark.');
   assert.deepEqual(executed,[{type:'set_setting',ids:['theme'],settingValue:'dark'}]);
   assert.equal(current.preferences.theme,'dark');
+});
+
+test('geometry action proposal carries exact before and after placement and rejects malformed geometry',async()=>{
+  const state=snapshot(),target=state.workspace.widgets[0];
+  const registry=createStillWorkspaceToolRegistry({getSnapshot:()=>state,validate(){},validateIntent(){},execute(){return 'Applied'}});
+  const prepared=await registry.tools.propose_workspace_action({snapshotRevision:'rev-1',action:{type:'set_widget_geometry',ids:[target.id],operation:'move',x:320,y:140}});
+  assert.equal(prepared.status,'requires_confirmation');
+  assert.deepEqual(prepared.proposal.geometryChange,{widgetId:target.id,operation:'move',before:target.placement,after:{...target.placement,x:320,y:140}});
+  for(const action of [
+    {type:'set_widget_geometry',ids:[target.id],operation:'move',x:320,y:140,width:600},
+    {type:'set_widget_geometry',ids:[target.id],operation:'resize',width:640,height:480,x:0},
+    {type:'set_widget_geometry',ids:[target.id],operation:'resize',width:99999,height:480},
+  ]) assert.equal((await registry.tools.propose_workspace_action({snapshotRevision:'rev-1',action})).status,'failed');
+  const move=prepared.proposal.action;
+  assert.throws(()=>validateReviewedGeometryIntent('move the selected widget to x=320 y=140',move,['other-widget']),/Select exactly one widget/);
+  assert.throws(()=>validateReviewedGeometryIntent('move the selected widget to x=321 y=140',move,[target.id]),/match an explicit request/);
+  assert.doesNotThrow(()=>validateReviewedGeometryIntent('move the selected widget to x=320 y=140',move,[target.id]));
 });
 
 test('add_widget accepts catalog types with a fresh revision and stops at a proposal',async()=>{
@@ -130,6 +149,7 @@ test('safe workspace action parser rejects arbitrary edits, extra fields, and ma
     {type:'set_timer',ids:['timer-1'],seconds:60,confirmationToken:'forged'},
     {type:'create_note_document',ids:['notes-1'],title:'',text:null},
     {type:'create_note_document',ids:['notes-1'],title:'Draft'},
+    {type:'set_setting',ids:['theme'],settingValue:['dark']},
   ]){
     assert.equal((await registry.tools.propose_workspace_action({snapshotRevision:'rev-1',action})).status,'failed');
   }
