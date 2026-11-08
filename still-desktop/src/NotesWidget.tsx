@@ -71,5 +71,5 @@ export default function NotesWidget({widget,update,notify,createCalculation}:Wid
  }
 
  const localDocumentCount=useMemo(()=>documents.filter(document=>!document.sourcePath).length,[documents]);
- return <NotesLibraryExplorer key={widget.notesLibraryName||widget.id} widgetId={widget.id} connected={libraryConnected} libraryName={widget.notesLibraryName||t('widget_notes')} entries={entries} busy={busy} error={error} newName={newName} onNewName={setNewName} onRefresh={()=>void refreshLibrary()} onChoose={()=>void chooseLibrary()} onCreate={location=>createLibraryFile(location)} onOpenNote={file=>openLibraryFile(file)} renderNoteEditor={renderFileNoteEditor} createCalculation={createCalculation}/>;
+ return <NotesLibraryExplorer key={widget.notesLibraryName||widget.id} widgetId={widget.id} connected={libraryConnected} libraryName={widget.notesLibraryName||t('widget_notes')} entries={entries} busy={busy} error={error} newName={newName} onNewName={setNewName} onRefresh={refreshLibrary} onChoose={()=>void chooseLibrary()} onCreate={location=>createLibraryFile(location)} onOpenNote={file=>openLibraryFile(file)} renderNoteEditor={renderFileNoteEditor} createCalculation={createCalculation}/>;
 }
