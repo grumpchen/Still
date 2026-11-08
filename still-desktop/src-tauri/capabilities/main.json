@@ -5,6 +5,7 @@
   "permissions":[
     "allow-assistant-configured", "allow-assistant-models", "allow-assistant-set-key", "allow-assistant-chat", "allow-assistant-agent-turn", "allow-assistant-key-setup",
     "allow-chatgpt-plan-status", "allow-chatgpt-plan-connect", "allow-chatgpt-plan-disconnect", "allow-chatgpt-plan-models", "allow-chatgpt-plan-agent-turn",
+    "allow-assistant-journal-plan", "allow-assistant-journal-start", "allow-assistant-journal-finish", "allow-assistant-journal-list", "allow-assistant-journal-dismiss",
     "core:event:allow-listen", "core:event:allow-unlisten",
     "core:window:allow-is-fullscreen", "core:window:allow-set-fullscreen",
     "allow-chrome-open", "allow-widget-capture", "allow-widget-export",
