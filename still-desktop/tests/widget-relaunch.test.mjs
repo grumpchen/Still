@@ -97,20 +97,24 @@ test('Notes library opens Markdown tabs beside local notes and writes edits to t
  const widget=createWidget('notes'),app=await setup([widget],{responses:{notes_library_choose:'Study',notes_library_list:[{name:'kinetics.md',path:'Chemistry/kinetics.md',size:12},{name:'lecture.pdf',path:'lecture.pdf',size:12}],notes_library_read:'Initial note',files_preview:{mimeType:'application/pdf',base64:'JVBERi0xLjQK'}}});
  try{
   const localId=widget.noteDocuments[0].id;
-  await act(async()=>app.window.document.querySelector('.note-library-toggle').click());
   const buttons=[...app.window.document.querySelectorAll('.note-library-heading button')];
   await act(async()=>buttons.find(button=>button.textContent.includes('Choose folder')).click());
   assert.equal(app.currentState.workspaces[0].widgets[0].notesLibraryKey,widget.id);
   const pdf=[...app.window.document.querySelectorAll('.note-library-file')].find(button=>button.textContent.includes('lecture.pdf'));assert.ok(pdf,'the explorer lists PDF attachments');
-  await act(async()=>pdf.click());assert.ok(app.window.document.querySelector('.file-preview-frame'),'PDF is previewed inside Notes');
+  await act(async()=>pdf.click());assert.ok(app.window.document.querySelector('.pdf-number-viewer'),'PDF is previewed inside Files');
   const folder=[...app.window.document.querySelectorAll('.note-library-file')].find(button=>button.textContent.includes('Chemistry'));assert.ok(folder,'the explorer presents nested folders');
   await act(async()=>folder.click());
   const file=[...app.window.document.querySelectorAll('.note-library-file')][0];assert.equal(file.querySelector('.note-library-file-name').textContent,'kinetics.md');
   await act(async()=>file.click());
-  assert.equal(app.window.document.querySelector('.file-preview-text').textContent,'Initial note','Markdown is previewed inside the Notes library');
-  await act(async()=>app.window.document.querySelector('.note-library-preview-head button').click());
-  assert.equal(app.window.document.querySelector('[aria-label="Note text"]').value,'Initial note');
+  assert.equal(app.window.document.querySelector('[aria-label="Note text"]').value,'Initial note','Markdown opens in the full Notes editor inside Files');
   assert.equal(app.window.document.querySelectorAll('[role="tab"]').length,2);
+  assert.ok(app.window.document.querySelector('.notes-search'),'open-note search remains available in Files');
+  assert.ok(app.window.document.querySelector('.note-tags input'),'note tags remain available in Files');
+  assert.ok(app.window.document.querySelector('.note-format-toolbar'),'formatting and font controls remain available in Files');
+  assert.ok(app.window.document.querySelector('.note-link-insert select'),'note links remain available in Files');
+  await act(async()=>app.window.document.querySelector('.note-ai-toggle').click());
+  const studyActions=[...app.window.document.querySelectorAll('.note-ai-actions-list button')].map(button=>button.textContent);
+  for(const action of ['Explain','Summarize','Flashcards','Study outline','Quiz'])assert.ok(studyActions.includes(action),`the previous ${action} study action remains available`);
   assert.equal(app.currentState.workspaces[0].widgets[0].noteDocuments.find(note=>note.id===localId).text,widget.noteDocuments[0].text);
  }finally{await app.cleanup()}
 });
