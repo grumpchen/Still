@@ -1196,7 +1196,7 @@ mod tests {
         assert_eq!(body["tools"][2]["function"]["name"], PROPOSE_WORKSPACE_ACTION);
         assert_eq!(body["tools"][2]["function"]["parameters"]["required"], json!(["snapshotRevision","action"]));
         assert!(body["messages"][0]["content"].as_str().unwrap().contains("one supported action at a time"));
-        let safe_tool=body["tools"][2]["function"]["parameters"]["action"]["anyOf"].as_array().unwrap();
+        let safe_tool=body["tools"][2]["function"]["parameters"]["properties"]["action"]["anyOf"].as_array().unwrap();
         assert!(safe_tool.iter().any(|action|action["properties"]["type"]["const"]=="set_setting"));
         assert!(safe_tool.iter().filter(|action|action["properties"]["type"]["const"]=="set_widget_geometry").count()==2);
     }

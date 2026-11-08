@@ -3,12 +3,18 @@ import assert from 'node:assert/strict';
 import {createElement,act} from 'react';
 import {createRoot} from 'react-dom/client';
 import {JSDOM} from 'jsdom';
-import {mockIPC,clearMocks} from '@tauri-apps/api/mocks';
+import {mockIPC as installMockIPC,clearMocks} from '@tauri-apps/api/mocks';
 import {createServer} from 'vite';
 import {createWidget,createWorkspace} from '../src/domain/workspaces.ts';
 
 const vite=await createServer({server:{middlewareMode:true,hmr:false,watch:{ignored:['**/src-tauri/**']}},appType:'custom',optimizeDeps:{noDiscovery:true,entries:[]}});
 after(()=>vite.close());
+function mockIPC(handle,options){installMockIPC((command,args)=>{
+ if(command==='assistant_journal_list')return [];
+ if(command==='assistant_journal_start')return `fixture-${args.input.sequence}`;
+ if(command==='assistant_journal_plan'||command==='assistant_journal_finish')return null;
+ return handle(command,args);
+},options)}
 function setGlobal(key,value){Object.defineProperty(globalThis,key,{configurable:true,writable:true,value})}
 function setReactValue(node,value,elementType){Object.getOwnPropertyDescriptor(node.ownerDocument.defaultView[elementType].prototype,'value').set.call(node,value);const props=node[Object.keys(node).find(key=>key.startsWith('__reactProps$'))];props?.onChange?.({target:node,currentTarget:node})}
 async function waitFor(predicate){const deadline=Date.now()+5000;while(Date.now()<deadline){if(predicate())return;await new Promise(resolve=>setTimeout(resolve,10))}assert.ok(predicate(),`Timed out waiting for assistant UI; error: ${globalThis.document?.querySelector('.assistant-error')?.textContent??'none'}`)}
