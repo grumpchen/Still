@@ -352,6 +352,7 @@ async function runPdfHighlights(page) {
   assert.equal(request.provider,'chatgpt');
   const userContent=String(request.messages.at(-1).content);
   assert(userContent.includes('selectedPdfText')&&userContent.includes('Mitochondria produce ATP.'));
+  assert(userContent.includes('standard Still JSON reply object')&&userContent.includes('inside the reply string')&&userContent.includes('Do not put keywords at the top level'),'PDF prompt must match the provider reply schema.');
   assert(!userContent.includes('Lecture.pdf')&&!userContent.includes(pdfRoot),'PDF path and name must not be shared with the provider.');
   assert(!userContent.includes('User memory context'),'Saved assistant memory must stay out of PDF keyword requests.');
   await review.getByRole('button',{name:'Apply highlights',exact:true}).click();
@@ -367,6 +368,7 @@ async function runPdfHighlights(page) {
   await toolbar.getByRole('button',{name:'Detect numbers',exact:true}).click();
   const tokens=page.locator('.pdf-number-token');
   await expect(tokens).toHaveCount(2);
+  assert.match(await tokens.first().evaluate(element=>getComputedStyle(element).boxShadow),/inset/,'Detected numbers must have a visible underline.');
   await tokens.nth(0).click();
   await tokens.nth(1).click({modifiers:['Control']});
   await expect(page.locator('.pdf-number-token.is-selected')).toHaveCount(2);

@@ -42,8 +42,9 @@ test('PDF keyword highlights render across pages, survive reload, zoom with the 
  });
  await toolbar.getByRole('button',{name:'AI highlight keywords'}).click();
  await expect.poll(()=>page.evaluate(()=>!!(window as Window&{pdfHighlightRequest?:CustomEvent}).pdfHighlightRequest)).toBe(true);
- const request=await page.evaluate(()=>{const detail=(window as Window&{pdfHighlightRequest:CustomEvent<{requestId:string;text:string}>}).pdfHighlightRequest.detail;return{requestId:detail.requestId,text:detail.text}});
+ const request=await page.evaluate(()=>{const detail=(window as Window&{pdfHighlightRequest:CustomEvent<{requestId:string;text:string;prompt:string}>}).pdfHighlightRequest.detail;return{requestId:detail.requestId,text:detail.text,prompt:detail.prompt}});
  expect(request.text).toContain('Page 1\nMitochondria produce ATP.');expect(request.text).toContain('Page 2\nATP powers muscle contraction.');
+ expect(request.prompt).toContain('standard Still JSON reply object');expect(request.prompt).toContain('inside the reply string');expect(request.prompt).toContain('Do not put keywords at the top level');expect(request.prompt).toContain('selectedPdfText');
  const requestId=request.requestId;
  await page.evaluate(id=>window.dispatchEvent(new CustomEvent('still-pdf-keywords-ready',{detail:{requestId:id,keywords:['Mitochondria','ATP']}})),requestId);
  const review=page.locator('.pdf-keyword-review');await expect(review).toBeVisible();

@@ -471,10 +471,11 @@ test('PDF keyword workflow sends only selected text and returns validated highli
   const {default:AssistantPanel}=await vite.ssrLoadModule('/src/AssistantPanel.tsx'),workspace=createWorkspace('Study',[]);root=createRoot(window.document.querySelector('#root'));
   await act(async()=>root.render(createElement(AssistantPanel,{workspace,workspaces:[workspace],trayItems:[],sidebarPlugins:[],open:true,close(){},dimensions:()=>({width:900,height:700}),apply(){},undo(){},act:async()=>''})));
   await waitFor(()=>window.document.querySelector('#ai-model option[value="gemini::gemini-test"]'));
-  const selectedText='Mitochondria produce ATP.';
-  const ask=async requestId=>act(async()=>window.dispatchEvent(new window.CustomEvent('still-assistant-resource',{detail:{name:'Lecture.pdf',path:'Biology/Lecture.pdf',size:1234,text:selectedText,notes:'must not be shared',prompt:'Return exact study keywords as JSON.',autoSubmit:true,workflow:'pdf-keywords',requestId,fileWidgetId:'fixture-widget'}})));
+  const selectedText='Mitochondria produce ATP.',keywordPrompt='Return Still standard JSON with the keyword object only inside reply; do not put keywords at top level.';
+  const ask=async requestId=>act(async()=>window.dispatchEvent(new window.CustomEvent('still-assistant-resource',{detail:{name:'Lecture.pdf',path:'Biology/Lecture.pdf',size:1234,text:selectedText,notes:'must not be shared',prompt:keywordPrompt,autoSubmit:true,workflow:'pdf-keywords',requestId,fileWidgetId:'fixture-widget'}})));
   await ask('pdf-pass');await waitFor(()=>ready.length===1);
   assert.deepEqual(ready[0],{requestId:'pdf-pass',keywords:['Mitochondria','ATP']});
+  assert.equal(requests[0].messages.at(-1).text,keywordPrompt,'the provider receives the output-shape contract');
   const context=JSON.parse(requests[0].context);
   assert.deepEqual(context,{selectedPdfText:selectedText});
   assert.equal(requests[0].context.includes('Biology/Lecture.pdf'),false,'file paths are not included in provider context');
