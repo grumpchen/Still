@@ -24,6 +24,12 @@ test('PDF keyword highlights render at text positions, survive reload, zoom with
  await page.evaluate(base64=>window.mountPdfViewer?.(base64),textPdf('Mitochondria produce ATP.'));
  expect(await page.evaluate(()=>window.pdfFixtureNative)).toBe(false);
  await expect.poll(()=>page.evaluate(()=>window.pdfFixturePreviewResolved===true),{timeout:5000}).toBe(true);
+ const textSpan=page.locator('.pdf-text-layer > span').filter({hasText:'Mitochondria produce ATP.'}).first();
+ const selectionBounds=await textSpan.evaluate(element=>{const span=element as HTMLElement,text=span.firstChild;if(!text)return null;const range=document.createRange();range.setStart(text,0);range.setEnd(text,12);const rect=range.getBoundingClientRect();return{left:rect.left,top:rect.top,width:rect.width,height:rect.height}});
+ expect(selectionBounds).not.toBeNull();
+ await page.mouse.move(selectionBounds!.left+1,selectionBounds!.top+selectionBounds!.height/2);await page.mouse.down();await page.mouse.move(selectionBounds!.left+selectionBounds!.width-1,selectionBounds!.top+selectionBounds!.height/2,{steps:8});await page.mouse.up();
+ await expect.poll(()=>page.evaluate(()=>window.getSelection()?.toString())).toBe('Mitochondria');
+ await page.evaluate(()=>window.getSelection()?.removeAllRanges());
  const toolbar=page.locator('.pdf-viewer-toolbar');
  await expect(toolbar.getByRole('button',{name:'AI highlight keywords'})).toBeEnabled();
  await page.evaluate(()=>{
