@@ -206,13 +206,13 @@ test('Relaunch and Export PNG controls can be hidden independently without remov
  try{
   assert.equal(hidden.window.document.querySelector('[data-widget-id="button-note"] .widget-relaunch-control'),null,'the normal card Relaunch toolbar control can be hidden');
   assert.equal(hidden.window.document.querySelector('[data-widget-id="minimized-focus"] .widget-minimized-relaunch'),null,'the minimized-card Relaunch control follows the same setting');
-  assert.equal(hidden.window.document.querySelector('[aria-label="Export Button note PNG"]'),null,'the PNG export button can be hidden');
+  assert.equal(hidden.window.document.querySelector('[aria-label="Export Button note as PNG"]'),null,'the PNG export button can be hidden');
   assert.ok([...hidden.window.document.querySelectorAll('[data-widget-id="button-note"] button')].some(button=>button.textContent==='Relaunch Button note'),'manual-startup recovery remains available when its toolbar button is hidden');
  }finally{await hidden.cleanup()}
  const onlyExport=await setup([note],{showWidgetRelaunchAction:false,showWidgetExportPngAction:true});
- try{assert.ok(onlyExport.window.document.querySelector('[aria-label="Export Button note PNG"]'),'PNG export can remain visible while Relaunch is hidden')}finally{await onlyExport.cleanup()}
+ try{assert.ok(onlyExport.window.document.querySelector('[aria-label="Export Button note as PNG"]'),'PNG export can remain visible while Relaunch is hidden')}finally{await onlyExport.cleanup()}
  const onlyRelaunch=await setup([note],{showWidgetRelaunchAction:true,showWidgetExportPngAction:false});
- try{assert.ok(onlyRelaunch.window.document.querySelector('[aria-label="Relaunch Button note"]'),'Relaunch can remain visible while PNG export is hidden');assert.equal(onlyRelaunch.window.document.querySelector('[aria-label="Export Button note PNG"]'),null)}finally{await onlyRelaunch.cleanup()}
+ try{assert.ok(onlyRelaunch.window.document.querySelector('[aria-label="Relaunch Button note"]'),'Relaunch can remain visible while PNG export is hidden');assert.equal(onlyRelaunch.window.document.querySelector('[aria-label="Export Button note as PNG"]'),null)}finally{await onlyRelaunch.cleanup()}
 });
 
 test('Relaunch remounts an ordinary widget view while preserving its saved content',async()=>{

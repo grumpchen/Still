@@ -318,3 +318,6 @@ dialog:has(.getting-started-tour){width:min(720px,calc(100vw - 48px))}
 .file-row.file-drop-target { outline: 2px solid var(--accent); background: rgb(80 130 255 / .18); }
 
 .library-rail button.file-drop-target { outline: 2px solid var(--accent); background: rgb(80 130 255 / .22); }
+
+.widget-minimized-relaunch{position:absolute;right:6px;top:6px;z-index:3;width:28px;height:28px;padding:0;display:grid;place-items:center;border-radius:50%;}
+.widget-relaunch-failed{color:#fff!important;background:#c62828!important;border-color:#b71c1c!important;}

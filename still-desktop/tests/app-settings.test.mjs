@@ -95,7 +95,8 @@ test('General settings expose the three app shutdown choices and auto-save prefe
 
 test('Appearance settings offer selectable workspace surfaces and current metal effects',()=>{
  assert.match(appearance,/option value="solid">\{t\('solid'\)\}/);assert.match(appearance,/option value="transparent">\{t\('transparent'\)\}/);
- for(const effect of ['liquid-chrome','line-waves','wave-wallpaper'])assert.ok(appearance.includes('option value="'+effect+'"'),effect+' remains selectable');
+ for(const effect of ['liquid-chrome','line-waves'])assert.ok(appearance.includes('option value="'+effect+'"'),effect+' remains selectable as a dynamic effect');
+ assert.match(appearance,/option value="dynamic"/);assert.match(appearance,/option value="still"/);assert.match(appearance,/t\('waveMetalEffect'\)/,'the static metal wallpaper remains available');
  assert.doesNotMatch(appearance,/leaf-photo|your leaf photo/);
  assert.equal(parseGlass({backgroundEffect:'line-waves'}).backgroundEffect,'line-waves');
  assert.equal(parseGlass({backgroundEffect:'wave-wallpaper'}).backgroundEffect,'wave-wallpaper');
