@@ -2,6 +2,21 @@ export type PdfArithmeticOperation='+'|'-'|'×'|'÷';
 export interface PdfCalculation {values:number[];operation:PdfArithmeticOperation}
 const LIMIT=32;
 
+export function togglePdfNumberSelection(ids:readonly string[],id:string,additive:boolean,limit=LIMIT):string[]|null{
+ if(additive){
+  if(ids.includes(id))return ids.filter(item=>item!==id);
+  if(ids.length>=limit)return null;
+  return [...ids,id];
+ }
+ return[id];
+}
+
+export function pdfOperationAt(dx:number,dy:number):PdfArithmeticOperation{
+ const angle=Math.atan2(dy,dx);
+ const index=Math.floor((angle+Math.PI/4+Math.PI*2)%(Math.PI*2)/(Math.PI/2));
+ return(['+','-','×','÷'] as const)[index];
+}
+
 export function scanPdfNumbers(text:string):Array<{raw:string;value:number;start:number;end:number}>{
  const pattern=/(?<![\w.])[+-]?(?:(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?(?:\s*\/\s*\d+)?(?![\w.])/g;
  const found:Array<{raw:string;value:number;start:number;end:number}>=[];

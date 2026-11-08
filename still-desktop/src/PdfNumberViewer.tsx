@@ -2,7 +2,7 @@ import {useCallback,useEffect,useMemo,useRef,useState,type PointerEvent as React
 import type {PDFDocumentProxy,PDFPageProxy,RenderTask} from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import {localFiles} from './platform/files.ts';
-import {scanPdfNumbers,type PdfArithmeticOperation} from './domain/pdfCalculations.ts';
+import {pdfOperationAt,scanPdfNumbers,togglePdfNumberSelection,type PdfArithmeticOperation} from './domain/pdfCalculations.ts';
 import {checkedPdfHighlightKeywords,findPdfHighlightRanges,pdfHighlightStorageKey,readPdfHighlights,writePdfHighlights,type PdfHighlightRange} from './domain/pdfHighlights.ts';
 import {useT} from './localization.tsx';
 
@@ -14,7 +14,7 @@ interface Wheel {x:number;y:number;operation:PdfArithmeticOperation|null;pointer
 const operations:[PdfArithmeticOperation,string][]=[['+','pdfOperationAdd'],['-','pdfOperationSubtract'],['×','pdfOperationMultiply'],['÷','pdfOperationDivide']];
 
 export default function PdfNumberViewer({widgetId,path,name='PDF',createCalculation}:Props){
- const t=useT(),stage=useRef<HTMLDivElement>(null),canvas=useRef<HTMLCanvasElement>(null),pageRef=useRef<PDFPageProxy|null>(null),detectionRun=useRef(0),textCache=useRef(new Map<number,PdfTextSpan[]>()),pendingKeywordRequest=useRef(''),pendingKeywordText=useRef('');
+ const t=useT(),stage=useRef<HTMLDivElement>(null),canvas=useRef<HTMLCanvasElement>(null),pageRef=useRef<PDFPageProxy|null>(null),detectionRun=useRef(0),textCache=useRef(new Map<number,PdfTextSpan[]>()),pendingKeywordRequest=useRef(''),pendingKeywordText=useRef(''),selectedRef=useRef<NumberToken[]>([]);
  const [document,setDocument]=useState<PDFDocumentProxy|null>(null),[pageNumber,setPageNumber]=useState(1),[scale,setScale]=useState(1),[renderScale,setRenderScale]=useState(1),[busy,setBusy]=useState(true),[error,setError]=useState(''),[numberMode,setNumberMode]=useState(false),[numbers,setNumbers]=useState<NumberToken[]>([]),[selected,setSelected]=useState<NumberToken[]>([]),[selectionError,setSelectionError]=useState(''),[wheel,setWheel]=useState<Wheel|null>(null),[stageSize,setStageSize]=useState({width:0,height:0}),[pdfFingerprint,setPdfFingerprint]=useState(''),[pageText,setPageText]=useState<PdfTextSpan[]>([]),[appliedKeywords,setAppliedKeywords]=useState<string[]>([]),[proposedKeywords,setProposedKeywords]=useState<string[]>([]),[keywordBusy,setKeywordBusy]=useState(false),[keywordError,setKeywordError]=useState('');
  const storageKey=pdfFingerprint?pdfHighlightStorageKey(widgetId,path,pdfFingerprint):'';
  const keywordRanges=useMemo<PositionedKeywordRange[]>(()=>{
@@ -117,16 +117,17 @@ export default function PdfNumberViewer({widgetId,path,name='PDF',createCalculat
   catch(reason){setKeywordError(reason instanceof Error?reason.message:t('pdfKeywordSaveFailed'))}
  }
 
+ useEffect(()=>{selectedRef.current=selected},[selected]);
  const closeWheel=useCallback(()=>setWheel(null),[]);
  const applyWheel=useCallback((operation:PdfArithmeticOperation|null)=>{
   if(!operation){setWheel(null);return}
-  const values=selected.map(item=>item.value);
+  const values=selectedRef.current.map(item=>item.value);
   if(values.length)createCalculation?.(values,operation);
   setWheel(null);
- },[selected,createCalculation]);
+ },[createCalculation]);
  useEffect(()=>{
   if(!wheel)return;
-  const move=(event:PointerEvent)=>{if(event.pointerId!==wheel.pointerId||!stage.current)return;const rect=stage.current.getBoundingClientRect(),centerX=wheel.x+58,centerY=wheel.y+58,angle=Math.atan2(event.clientY-rect.top-centerY,event.clientX-rect.left-centerX);let index=Math.floor((angle+Math.PI/4+Math.PI*2)%(Math.PI*2)/(Math.PI/2));const op:PdfArithmeticOperation[]=['+','-','×','÷'];setWheel(value=>value?{...value,operation:op[index]}:null)};
+  const move=(event:PointerEvent)=>{if(event.pointerId!==wheel.pointerId||!stage.current)return;const rect=stage.current.getBoundingClientRect(),centerX=wheel.x+58,centerY=wheel.y+58,operation=pdfOperationAt(event.clientX-rect.left-centerX,event.clientY-rect.top-centerY);setWheel(value=>value?{...value,operation}:null)};
   const up=(event:PointerEvent)=>{if(event.pointerId!==wheel.pointerId||event.button!==2)return;event.preventDefault();event.stopPropagation();applyWheel(wheel.operation)};
   const cancel=(event:PointerEvent)=>{if(event.pointerId===wheel.pointerId)closeWheel()};
   window.addEventListener('pointermove',move,true);window.addEventListener('pointerup',up,true);window.addEventListener('pointercancel',cancel,true);
@@ -134,10 +135,9 @@ export default function PdfNumberViewer({widgetId,path,name='PDF',createCalculat
  },[wheel,applyWheel,closeWheel]);
 
  function chooseNumber(event:ReactPointerEvent<HTMLButtonElement>,token:NumberToken){
-  if(event.button===2){event.preventDefault();event.stopPropagation();if(!selected.some(item=>item.id===token.id)){if(selected.length>=32){setSelectionError(t('pdfCalculationTooMany'));return}setSelected(current=>[...current,token])}setSelectionError('');if(stage.current){const rect=stage.current.getBoundingClientRect();setWheel({x:event.clientX-rect.left-58,y:event.clientY-rect.top-58,operation:null,pointerId:event.pointerId})}return}
+  if(event.button===2){event.preventDefault();event.stopPropagation();const current=selectedRef.current,ids=togglePdfNumberSelection(current.map(item=>item.id),token.id,true);if(!ids){setSelectionError(t('pdfCalculationTooMany'));return}const byId=new Map([...current,token].map(item=>[item.id,item]));const next=ids.map(id=>byId.get(id)!).filter(Boolean);selectedRef.current=next;setSelected(next);setSelectionError('');if(stage.current){const rect=stage.current.getBoundingClientRect();setWheel({x:event.clientX-rect.left-58,y:event.clientY-rect.top-58,operation:null,pointerId:event.pointerId})}return}
   if(event.button!==0)return;
-  if((event.ctrlKey||event.metaKey)&&!selected.some(item=>item.id===token.id)&&selected.length>=32){setSelectionError(t('pdfCalculationTooMany'));return}
-  setSelectionError('');setSelected(current=>{if(event.ctrlKey||event.metaKey){if(current.some(item=>item.id===token.id))return current.filter(item=>item.id!==token.id);return[...current,token]}return[token]});
+  const current=selectedRef.current,additive=event.ctrlKey||event.metaKey,ids=togglePdfNumberSelection(current.map(item=>item.id),token.id,additive);if(!ids){setSelectionError(t('pdfCalculationTooMany'));return}const byId=new Map([...current,token].map(item=>[item.id,item]));const next=ids.map(id=>byId.get(id)!).filter(Boolean);selectedRef.current=next;setSelectionError('');setSelected(next);
  }
 
  const pageCount=document?.numPages??0;
