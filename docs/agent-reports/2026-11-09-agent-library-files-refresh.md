@@ -17,8 +17,8 @@
 - `pnpm check` from `still-desktop` — passed.
 - `node --check tests/widget-relaunch.test.mjs` — passed.
 - `git diff --check` — passed.
-- The focused Node test process produced no output and remained idle beyond the usual startup window, so it was stopped. The added regression test is not yet verified by execution.
+- `node --import tsx --test --test-concurrency=1 --test-name-pattern="reviewed agent Library changes refresh" tests/widget-relaunch.test.mjs` — passed (1 test, 209 seconds; Vite/Node startup is unusually slow).
 - No native desktop test was run for this UI refresh change.
 
 ## Handoff
-- The Files widget now has a refresh signal after approved agent mutations. Verify the regression test and native user-visible refresh in a later desktop pass; no claim is made that either has passed yet.
+- The matching Notes widget refresh is verified in the component harness. Native user-visible refresh remains unverified.
