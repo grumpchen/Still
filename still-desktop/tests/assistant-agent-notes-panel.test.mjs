@@ -435,9 +435,12 @@ test('Study with AI hides its prompt, generates a summary, and saves only after 
   assert.equal(creates.length,0,'generation alone does not write a file');
   const nameInput=window.document.querySelector('[aria-label="New note name"]');
   assert.ok(nameInput);assert.match(nameInput.value,/Lecture 1 - Summary/);
+  const recoveryKey='still-assistant-run-recovery-v1:'+encodeURIComponent(workspace.id),pendingRecovery=JSON.parse(window.localStorage.getItem(recoveryKey));
+  assert.equal(pendingRecovery.kind,'assistant_review');assert.equal(pendingRecovery.stage,'awaiting_review','the note review is recoverable before it is applied');
   await act(async()=>setReactValue(nameInput,title,'HTMLInputElement'));
   await act(async()=>window.document.querySelector('[aria-label="Review summary note"] button.primary').click());
   await waitFor(()=>creates.length===1&&window.document.body.textContent.includes('Created Lecture 1 in the same folder'));
+  assert.equal(window.localStorage.getItem(recoveryKey),null,'the saved note receipt clears recovery after successful creation');
   assert.deepEqual({widgetId:creates[0].widgetId,sourceNoteId:creates[0].sourceNoteId,sourcePath:creates[0].sourcePath,expectedText:creates[0].expectedText,title:creates[0].title,draft:creates[0].draft},{widgetId:note.id,sourceNoteId:'lecture-note',sourcePath:'CHEM/lecture-1.md',expectedText:'Source backed lecture text',title, draft:'## Core ideas\n\n- A source backed idea.\n- A second key point.'});
  }finally{if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();for(const [key,descriptor] of old)if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}
 });
