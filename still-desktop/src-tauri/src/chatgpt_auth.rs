@@ -19,6 +19,7 @@ const TOKEN_ENDPOINT: &str = "https://auth.openai.com/api/accounts/oauth/token";
 const JWKS_ENDPOINT: &str = "https://auth.openai.com/.well-known/jwks.json";
 const EXPECTED_ISSUER: &str = "https://auth.openai.com";
 const SCOPE: &str = "openid profile email offline_access resource.invoke chatgpt.tokens.use.direct";
+const ORIGINATOR: &str = "still_desktop";
 const CALLBACK_PATH: &str = "/auth/callback";
 
 pub struct AuthorizationAttempt {
@@ -110,6 +111,12 @@ impl AuthorizationAttempt {
             .append_pair("redirect_uri", &self.redirect_uri)
             .append_pair("scope", SCOPE)
             .append_pair("resource", RESOURCE)
+            // Codex asks the identity provider to include the ChatGPT
+            // workspace identity in the signed ID token. Older Still
+            // connections may predate this claim and need to sign in again.
+            .append_pair("id_token_add_organizations", "true")
+            .append_pair("codex_cli_simplified_flow", "true")
+            .append_pair("originator", ORIGINATOR)
             .append_pair("state", &self.state)
             .append_pair("nonce", &self.nonce)
             .append_pair("code_challenge_method", "S256")
@@ -223,10 +230,12 @@ fn valid_client_id(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
 }
 
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct VerifiedIdentity {
     pub(crate) subject: String,
     pub(crate) email: Option<String>,
+    #[serde(default)]
+    pub(crate) account_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -238,6 +247,13 @@ struct IdTokenClaims {
     iat: u64,
     nonce: Option<String>,
     email: Option<String>,
+    #[serde(rename = "https://api.openai.com/auth")]
+    auth: Option<IdTokenAuthClaims>,
+}
+
+#[derive(Deserialize)]
+struct IdTokenAuthClaims {
+    chatgpt_account_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -306,7 +322,19 @@ fn verify_id_token(
     Ok(VerifiedIdentity {
         subject: claims.sub,
         email: claims.email,
+        account_id: claims
+            .auth
+            .and_then(|auth| auth.chatgpt_account_id)
+            .filter(|id| valid_account_id(id)),
     })
+}
+
+fn valid_account_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 256
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
 }
 
 fn validate_token_response(
@@ -358,7 +386,7 @@ fn validate_token_response(
     })
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct VerifiedSession {
     pub(crate) client_id: String,
     pub(crate) identity: VerifiedIdentity,
@@ -375,6 +403,23 @@ impl VerifiedSession {
         jsonwebtoken::get_current_timestamp().saturating_add(60)
             >= self.saved_at.saturating_add(self.expires_in)
     }
+}
+
+pub(crate) fn verified_account_id(
+    session: &VerifiedSession,
+    jwks: &JwkSet,
+) -> Result<String, &'static str> {
+    let identity = verify_id_token(
+        &session.id_token,
+        jwks,
+        &session.client_id,
+        None,
+        Some(&session.identity.subject),
+    )
+    .map_err(|_| "Codex account identity could not be verified. Reconnect in AI settings.")?;
+    identity
+        .account_id
+        .ok_or("The signed-in account has no Codex subscription identity. Reconnect in AI settings.")
 }
 
 impl std::fmt::Debug for VerifiedSession {
@@ -588,6 +633,9 @@ mod tests {
         );
         assert_eq!(query["client_id"], "dynamic_agent_client");
         assert_eq!(query["redirect_uri"], "http://127.0.0.1:1455/auth/callback");
+        assert_eq!(query["id_token_add_organizations"], "true");
+        assert_eq!(query["codex_cli_simplified_flow"], "true");
+        assert_eq!(query["originator"], ORIGINATOR);
         assert_eq!(query["code_challenge_method"], "S256");
         let expected = URL_SAFE_NO_PAD
             .encode(digest::digest(&digest::SHA256, first.code_verifier.as_bytes()).as_ref());
@@ -717,6 +765,7 @@ mod tests {
         .unwrap();
         assert_eq!(identity.subject, "stable-user-subject");
         assert_eq!(identity.email.as_deref(), Some("test@example.invalid"));
+        assert_eq!(identity.account_id, None);
         assert!(verify_id_token(
             &token,
             &test_jwks(),
@@ -741,6 +790,27 @@ mod tests {
             Some("different-subject")
         )
         .is_err());
+    }
+
+    #[test]
+    fn extracts_codex_account_id_only_from_the_verified_identity_token() {
+        let token = signed_id_token(serde_json::json!({
+            "https://api.openai.com/auth":{"chatgpt_account_id":"acct-0123_abcd"}
+        }));
+        let identity = verify_id_token(
+            &token,
+            &test_jwks(),
+            "oaiapp_test_registration",
+            Some("test-nonce"),
+            None,
+        )
+        .unwrap();
+        assert_eq!(identity.account_id.as_deref(), Some("acct-0123_abcd"));
+        let old_identity: VerifiedIdentity =
+            serde_json::from_str(r#"{"subject":"old","email":null}"#).unwrap();
+        assert_eq!(old_identity.account_id, None);
+        assert!(!valid_account_id("acct/invalid"));
+        assert!(!valid_account_id(""));
     }
 
     #[test]

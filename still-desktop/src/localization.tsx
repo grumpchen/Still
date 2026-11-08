@@ -21,16 +21,16 @@ export function localizeOperationalMessage(locale:Locale,message:string):string{
 const chatgptPlanLabels:Record<Locale,Record<string,string>>={
   en:{
     chatgptPlanContinue:'Continue with ChatGPT',
-    chatgptPlanDescription:'Use an eligible ChatGPT plan for Still AI. Sign in and authorize plan usage in your browser.',
-    chatgptPlanAccount:'ChatGPT account {email}',
+    chatgptPlanDescription:'Use your Codex subscription with Still AI. Sign in to your ChatGPT account in the browser.',
+    chatgptPlanAccount:'Codex subscription account {email}',
     chatgptPlanBrowser:'Finish signing in and reviewing permissions in your browser.',
     chatgptPlanSignOut:'Sign out',
     chatgptPlanRevokeUnconfirmed:'Signed out on this device. To revoke access, check connected apps in ChatGPT settings.',
   },
   'zh-CN':{
     chatgptPlanContinue:'使用 ChatGPT 继续',
-    chatgptPlanDescription:'Still AI 可以使用符合条件的 ChatGPT 订阅额度。请在浏览器里登录并授权使用额度。',
-    chatgptPlanAccount:'ChatGPT 账号 {email}',
+    chatgptPlanDescription:'Still AI 可以使用你的 Codex 订阅。请在浏览器中登录 ChatGPT 账号。',
+    chatgptPlanAccount:'Codex 订阅账号 {email}',
     chatgptPlanBrowser:'请在浏览器中完成登录并确认授权。',
     chatgptPlanSignOut:'退出登录',
     chatgptPlanRevokeUnconfirmed:'已在此设备退出登录。要撤销访问权限，请检查 ChatGPT 设置中的已连接应用。',

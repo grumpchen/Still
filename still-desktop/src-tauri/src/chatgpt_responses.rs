@@ -1,18 +1,62 @@
-//! Public Responses API transport for ChatGPT plan OAuth.
+//! Codex subscription Responses transport for ChatGPT OAuth.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use reqwest::header::{HeaderMap, HeaderValue, ACCEPT};
 
 use crate::{
     assistant_agent_protocol::{self, AgentMessage, AgentRequest},
     chatgpt_auth::read_bounded,
 };
 
-const MODELS: &str = "https://api.openai.com/v1/models";
-const RESPONSES: &str = "https://api.openai.com/v1/responses";
+const CODEX_BACKEND: &str = "https://chatgpt.com/backend-api/codex";
+const ORIGINATOR: &str = "still_desktop";
+const CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const NAMESPACE: &str = "still";
 const MAX_REASONING_BYTES: usize = 256_000;
 const MAX_STREAM_BYTES: usize = 1_048_576;
+
+fn subscription_headers(
+    account_id: &str,
+    session_id: Option<&str>,
+    accept: &'static str,
+) -> Result<HeaderMap, String> {
+    let valid_token = |value: &str, max: usize| {
+        !value.is_empty()
+            && value.len() <= max
+            && value.bytes().all(|byte| {
+                byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.')
+            })
+    };
+    if !valid_token(account_id, 256)
+        || session_id.is_some_and(|id| !valid_token(id, 128))
+    {
+        return Err("Codex request identity is invalid. Reconnect in AI settings.".into());
+    }
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "chatgpt-account-id",
+        HeaderValue::from_str(account_id).map_err(|_| "Codex account identity is invalid.")?,
+    );
+    if let Some(session_id) = session_id {
+        headers.insert(
+            "session_id",
+            HeaderValue::from_str(session_id)
+                .map_err(|_| "Codex session identity is invalid.")?,
+        );
+        headers.insert("openai-beta", HeaderValue::from_static("responses=experimental"));
+    }
+    headers.insert(
+        "originator",
+        HeaderValue::from_static(ORIGINATOR),
+    );
+    headers.insert(
+        "user-agent",
+        HeaderValue::from_static(concat!("Still/", env!("CARGO_PKG_VERSION"))),
+    );
+    headers.insert(ACCEPT, HeaderValue::from_static(accept));
+    Ok(headers)
+}
 
 #[derive(Serialize)]
 pub struct PlanModel {
@@ -147,18 +191,24 @@ pub fn body(mut wire: Value) -> Result<(AgentRequest, Value), String> {
     Ok((request, body))
 }
 
-pub async fn models(client: &reqwest::Client, token: &str) -> Result<Vec<PlanModel>, String> {
+pub async fn models(
+    client: &reqwest::Client,
+    token: &str,
+    account_id: &str,
+) -> Result<Vec<PlanModel>, String> {
     let response = client
-        .get(MODELS)
+        .get(format!("{CODEX_BACKEND}/models"))
+        .query(&[("client_version", CLIENT_VERSION)])
         .bearer_auth(token)
+        .headers(subscription_headers(account_id, None, "application/json")?)
         .send()
         .await
-        .map_err(|_| "Could not reach the ChatGPT plan model list.")?;
+        .map_err(|_| "Could not reach the Codex subscription model list.")?;
     let value: Value = serde_json::from_slice(&checked_body(response, 16 * 1024 * 1024).await?)
-        .map_err(|_| "ChatGPT returned an invalid model list.")?;
+        .map_err(|_| "Codex returned an invalid model list.")?;
     let entries = value["models"]
         .as_array()
-        .ok_or("ChatGPT returned an invalid model list.")?;
+        .ok_or("Codex returned an invalid model list.")?;
     let mut seen = std::collections::HashSet::new();
     let mut models = Vec::new();
     for model in entries {
@@ -191,13 +241,18 @@ pub async fn models(client: &reqwest::Client, token: &str) -> Result<Vec<PlanMod
 pub async fn turn(
     client: &reqwest::Client,
     token: &str,
+    account_id: &str,
     request: &AgentRequest,
     body: Value,
 ) -> Result<Value, String> {
     let response = client
-        .post(RESPONSES)
+        .post(format!("{CODEX_BACKEND}/responses"))
         .bearer_auth(token)
-        .header("accept", "text/event-stream")
+        .headers(subscription_headers(
+            account_id,
+            Some(request.session_id.as_deref().unwrap_or("still-session")),
+            "text/event-stream",
+        )?)
         .json(&body)
         .send()
         .await
@@ -370,6 +425,23 @@ fn parse_turn(response: Value, request: &AgentRequest) -> Result<Value, String> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn uses_codex_subscription_identity_headers_and_rejects_header_injection() {
+        let headers = subscription_headers(
+            "acct-test-123",
+            Some("workspace_123"),
+            "text/event-stream",
+        )
+        .unwrap();
+        assert_eq!(headers["chatgpt-account-id"], "acct-test-123");
+        assert_eq!(headers["session_id"], "workspace_123");
+        assert_eq!(headers["originator"], ORIGINATOR);
+        assert_eq!(headers["openai-beta"], "responses=experimental");
+        assert_eq!(headers[ACCEPT], "text/event-stream");
+        assert!(subscription_headers("acct\r\ninvalid", Some("workspace_123"), "application/json").is_err());
+        assert!(subscription_headers("acct-valid", Some("workspace/123"), "application/json").is_err());
+    }
 
     #[test]
     fn sends_plan_request_with_namespaced_tools_and_no_server_history() {

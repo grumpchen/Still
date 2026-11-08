@@ -315,6 +315,7 @@ pub async fn chatgpt_plan_connect(app: AppHandle, webview: Webview) -> Result<Pl
             identity: VerifiedIdentity {
                 subject: session.identity.subject.clone(),
                 email: session.identity.email.clone(),
+                account_id: session.identity.account_id.clone(),
             },
         });
         record.session = Some(session);
@@ -348,22 +349,48 @@ pub async fn chatgpt_plan_disconnect(app: AppHandle, webview: Webview) -> Result
     Ok(result.is_ok_and(|response| response.status().is_success()))
 }
 
-async fn access_token(app: &AppHandle, client: &reqwest::Client) -> Result<String, String> {
+async fn access_credentials(
+    app: &AppHandle,
+    client: &reqwest::Client,
+) -> Result<(String, String), String> {
     let (path, _lock, mut record) = open_record(app)?;
-    let Some(session) = record.session.as_ref() else {
+    let Some(mut session) = record.session.clone() else {
         return Err("Continue with ChatGPT in AI settings first.".into());
     };
-    if !session.needs_refresh() {
-        return Ok(session.access_token.clone());
+    let needs_refresh = session.needs_refresh();
+    if needs_refresh || session.identity.account_id.is_none() {
+        let jwks = chatgpt_auth::fetch_openai_jwks(client).await?;
+        if needs_refresh {
+            session = chatgpt_auth::refresh_verified_session(client, &jwks, &session)
+                .await
+                .map_err(|_| "Codex could not renew this connection. Reconnect in AI settings.")?;
+        }
+        let account_id = match session.identity.account_id.as_deref() {
+            Some(value) => Ok(value.to_owned()),
+            None => chatgpt_auth::verified_account_id(&session, &jwks).map_err(str::to_owned),
+        };
+        let account_id = match account_id {
+            Ok(account_id) => account_id,
+            Err(error) => {
+                if needs_refresh {
+                    // Token rotation may invalidate the previous refresh token.
+                    // Persist the renewed session even when this older login
+                    // still needs a fresh authorization for its account ID.
+                    record.session = Some(session);
+                    save_record(&path, &record)?;
+                }
+                return Err(error);
+            }
+        };
+        session.identity.account_id = Some(account_id.clone());
+        record.session = Some(session.clone());
+        save_record(&path, &record)?;
+        return Ok((session.access_token.clone(), account_id));
     }
-    let jwks = chatgpt_auth::fetch_openai_jwks(client).await?;
-    let renewed = chatgpt_auth::refresh_verified_session(client, &jwks, session)
-        .await
-        .map_err(|_| "ChatGPT could not renew this connection. Reconnect in AI settings.")?;
-    let token = renewed.access_token.clone();
-    record.session = Some(renewed);
-    save_record(&path, &record)?;
-    Ok(token)
+    Ok((
+        session.access_token,
+        session.identity.account_id.expect("checked above"),
+    ))
 }
 
 #[tauri::command]
@@ -373,8 +400,8 @@ pub async fn chatgpt_plan_models(
 ) -> Result<Vec<PlanModel>, String> {
     crate::security::authorize(&webview)?;
     let client = chatgpt_auth::bounded_openai_http_client()?;
-    let token = access_token(&app, &client).await?;
-    chatgpt_responses::models(&client, &token).await
+    let (token, account_id) = access_credentials(&app, &client).await?;
+    chatgpt_responses::models(&client, &token, &account_id).await
 }
 
 #[tauri::command]
@@ -386,8 +413,8 @@ pub async fn chatgpt_plan_agent_turn(
     crate::security::authorize(&webview)?;
     let (request, body) = chatgpt_responses::body(request)?;
     let client = chatgpt_auth::bounded_openai_http_client()?;
-    let token = access_token(&app, &client).await?;
-    chatgpt_responses::turn(&client, &token, &request, body).await
+    let (token, account_id) = access_credentials(&app, &client).await?;
+    chatgpt_responses::turn(&client, &token, &account_id, &request, body).await
 }
 
 #[cfg(test)]
