@@ -10,11 +10,14 @@ export type StillToolSnapshot = {
   workspace: Workspace;
   savedTrayItems: AssistantTrayItem[];
   workspaces: AssistantWorkspaceChoice[];
+  /** A deliberately narrow, reversible preference exposed to reviewed agent actions. */
+  preferences?: { theme: 'light' | 'dark' };
 };
 
 export type StillWorkspaceInspection = {
   revision: string;
   activeWorkspace: { id: string; name: string; fixedWidgets: boolean };
+  preferences?: { theme: 'light' | 'dark' };
   workspaces: AssistantWorkspaceChoice[];
   savedItems: AssistantTrayItem[];
   widgets: Array<{
@@ -42,12 +45,14 @@ export type SafeWorkspaceAction =
   | { type: 'set_timer'; ids: [string]; seconds: number }
   | { type: 'control_timer'; ids: [string]; operation: 'pause' | 'resume' | 'reset' }
   | { type: 'set_ui_visibility'; ids: ['sidebar' | 'apps-bar']; enabled: boolean }
+  | { type: 'set_setting'; ids: ['theme']; settingValue: 'light' | 'dark' }
   | { type: 'create_note_document'; ids: [string]; title: string; text?: string };
 
 export type SafeWorkspaceActionProposal = {
   kind: 'workspace_action';
   snapshotRevision: string;
   action: Readonly<SafeWorkspaceAction>;
+  preferenceChange?: Readonly<{ key: 'theme'; before: 'light'|'dark'; after: 'light'|'dark' }>;
 };
 
 /** User-reviewed durable memory. This is local user data, never a model authorization token. */
@@ -140,7 +145,9 @@ export function createStillWorkspaceToolRegistry(deps: StillWorkspaceToolDepende
         catch (error) { return failed(message(error)); }
         const current = await deps.getSnapshot();
         if (current.revision !== before.revision) return failed('Workspace state changed before the proposal could be reviewed. Refresh and try again.');
-        const proposal = Object.freeze({kind:'workspace_action' as const,snapshotRevision:before.revision,action:freezeSafeAction(parsed.action)});
+        const preferenceChange = parsed.action.type==='set_setting' && before.preferences
+          ? Object.freeze({key:'theme' as const,before:before.preferences.theme,after:parsed.action.settingValue}) : undefined;
+        const proposal = Object.freeze({kind:'workspace_action' as const,snapshotRevision:before.revision,action:freezeSafeAction(parsed.action),...(preferenceChange?{preferenceChange}:{})});
         pendingWorkspaceActions.add(proposal);
         return {status:'requires_confirmation',proposal};
       } catch (error) {
@@ -249,6 +256,7 @@ function inspect(snapshot: StillToolSnapshot): StillWorkspaceInspection {
   return {
     revision: snapshot.revision,
     activeWorkspace: { id: snapshot.workspace.id, name: snapshot.workspace.name, fixedWidgets: snapshot.workspace.role==='dashboard'||snapshot.workspace.role==='library' },
+    ...(snapshot.preferences ? { preferences: snapshot.preferences } : {}),
     workspaces: snapshot.workspaces.map(({ id, name }) => ({ id, name })),
     savedItems: snapshot.savedTrayItems.map(({ id, name, type, kind }) => ({ id, name, type, kind })),
     widgets,
@@ -293,6 +301,11 @@ function parseSafeWorkspaceAction(input: unknown): { revision: string; action: S
     if (!onlyKeys('type','ids','enabled') || !Array.isArray(ids) || ids.length !== 1
       || !['sidebar','apps-bar'].includes(String(ids[0])) || typeof raw.enabled !== 'boolean') throw new Error('Choose the Still sidebar or Apps bar and set its visibility.');
     return {revision:value.snapshotRevision,action:{type,ids:[ids[0] as 'sidebar'|'apps-bar'],enabled:raw.enabled}};
+  }
+  if (type === 'set_setting') {
+    if (!onlyKeys('type','ids','settingValue') || !Array.isArray(ids) || ids.length !== 1 || ids[0] !== 'theme'
+      || !['light','dark'].includes(String(raw.settingValue))) throw new Error('Choose the reversible theme preference and set it to light or dark.');
+    return {revision:value.snapshotRevision,action:{type,ids:['theme'],settingValue:raw.settingValue as 'light'|'dark'}};
   }
   if (type === 'create_note_document') {
     if (!onlyKeys('type','ids','title','text') || !Array.isArray(ids) || ids.length !== 1 || !validWidgetId(ids[0])

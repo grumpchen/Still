@@ -17,6 +17,7 @@ function snapshot(revision='rev-1'){
     workspace:{id:'workspace-1',name:'Study',widgets:[notes,timetable],groups:[],layout:'canvas',role:'study'},
     savedTrayItems:[{id:'preset-p1',name:'Saved Notes',type:'notes',kind:'preset'}],
     workspaces:[{id:'workspace-1',name:'Study'},{id:'workspace-2',name:'Library'}],
+    preferences:{theme:'light'},
   };
 }
 
@@ -27,8 +28,23 @@ test('inspection is read-only and omits note bodies and local paths',async()=>{
   assert.equal(result.mutation,'none');
   const json=JSON.stringify(result.result);
   assert.match(json,/Chemistry/);
+  assert.match(json,/"theme":"light"/);
   assert.match(json,/Draft/);
   assert.doesNotMatch(json,/private note body|private document body|C:\/private/);
+});
+
+test('theme preference action is reviewed with exact before and after values and executes through the app action',async()=>{
+  let current=snapshot(),executed;
+  const registry=createStillWorkspaceToolRegistry({getSnapshot:()=>current,validate(){},validateIntent(){},execute:(_snapshot,actions)=>{executed=actions;current={...current,preferences:{theme:'dark'}};return 'Theme preference is dark.'}});
+  const prepared=await registry.tools.propose_workspace_action({snapshotRevision:'rev-1',action:{type:'set_setting',ids:['theme'],settingValue:'dark'}});
+  assert.equal(prepared.status,'requires_confirmation');
+  assert.deepEqual(prepared.proposal.preferenceChange,{key:'theme',before:'light',after:'dark'});
+  assert.equal(executed,undefined,'proposal does not mutate');
+  const done=await registry.executeConfirmedAction(prepared.proposal);
+  assert.equal(done.status,'succeeded');
+  assert.equal(done.result.receipt,'Theme preference is dark.');
+  assert.deepEqual(executed,[{type:'set_setting',ids:['theme'],settingValue:'dark'}]);
+  assert.equal(current.preferences.theme,'dark');
 });
 
 test('add_widget accepts catalog types with a fresh revision and stops at a proposal',async()=>{
