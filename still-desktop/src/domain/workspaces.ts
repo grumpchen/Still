@@ -11,13 +11,14 @@ import {type ClockPluginColorOverrides,type ClockPluginMode} from './clockPlugin
 import {widgetTagColors,type WidgetTagColor} from './widgetTags.ts';
 import {type CanvasFrameRate} from './performance.ts';
 import {checkedFileNotes} from './fileNotes.ts';
+import {checkedPdfPageReference,type PdfPageReference} from './pdfBookmarks.ts';
 import {checkedNoteDocuments,createNoteDocument,noteDocument,type NoteDocument} from './noteDocuments.ts';
 import {checkedCalendarEvents,type StudyCalendarEvent} from './studyCalendar.ts';
 import {type Locale} from '../localization.tsx';
 export {widgetTypes, type WidgetType} from './widgetCatalog.ts';
 export {widgetTagColors,type WidgetTagColor} from './widgetTags.ts';
 export const DESMOS_URL = 'https://www.desmos.com/scientific';
-export interface ScheduleEntry {id:string; day:number; time:string; title:string; location:string; workspaceId?:string; autoOpen?:boolean}
+export interface ScheduleEntry {id:string; day:number; time:string; title:string; location:string; workspaceId?:string; autoOpen?:boolean;pdfSource?:PdfPageReference}
 export interface GroupWidgetEntry {id:string;type:Exclude<WidgetType,'group'>;name:string;icon:string;iconData?:string;kind?:'shortcut'|'collected';instance?:WidgetInstance}
 export interface SavedGroup {id:string;name:string;shortcuts:WebShortcut[];widgets:GroupWidgetEntry[];expanded:boolean}
 export function collectedWidgetCount(group:SavedGroup|undefined):number{return group?.widgets.filter(entry=>entry.kind==='collected').length??0}
@@ -402,7 +403,7 @@ function checkedWidget(value: unknown): WidgetInstance {
     instanceNumber:typeof item.instanceNumber==='number'&&Number.isSafeInteger(item.instanceNumber)&&item.instanceNumber>0&&item.instanceNumber<1000000?item.instanceNumber:1,
     placement:checkedPlacement,minimized,restorePlacement:minimized?restorePlacement:null,groupCollapsed,groupExpandedPlacement,
     shortcuts:parseWebShortcuts(item.shortcuts,defaults.shortcuts),
-    schedule:Array.isArray(item.schedule)?item.schedule.filter(e=>e && typeof e.id==='string' && typeof e.title==='string' && typeof e.location==='string' && Number.isInteger(e.day) && e.day>=0 && e.day<7 && /^([01]\d|2[0-3]):[0-5]\d$/.test(e.time)).slice(0,500).map(e=>({...e,...(typeof e.workspaceId==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(e.workspaceId)?{workspaceId:e.workspaceId}:{}),autoOpen:e.autoOpen!==false})):[],
+    schedule:Array.isArray(item.schedule)?item.schedule.filter(e=>e && typeof e.id==='string' && typeof e.title==='string' && typeof e.location==='string' && Number.isInteger(e.day) && e.day>=0 && e.day<7 && /^([01]\d|2[0-3]):[0-5]\d$/.test(e.time)).slice(0,500).map(e=>{const{pdfSource:_untrustedPdfSource,...entry}=e,pdfSource=checkedPdfPageReference(e.pdfSource);return{...entry,...(typeof e.workspaceId==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(e.workspaceId)?{workspaceId:e.workspaceId}:{}),...(pdfSource?{pdfSource}:{}),autoOpen:e.autoOpen!==false}}):[],
     calendarEvents:item.type==='calendar'?checkedCalendarEvents(item.calendarEvents):[],
     remaining:typeof item.remaining==='number'&&Number.isFinite(item.remaining)&&item.remaining>=0?item.remaining:1500,
     end:typeof item.end==='number'&&Number.isFinite(item.end)?item.end:null,

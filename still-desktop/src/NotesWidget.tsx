@@ -6,6 +6,7 @@ import {notesLibrary,type NotesLibraryEntry} from './platform/notesLibrary.ts';
 import NotesLibraryExplorer from './NotesLibraryExplorer.tsx';
 import NoteRichEditor from './NoteRichEditor.tsx';
 import {pendingNoteText} from './domain/noteAutosave.ts';
+import {checkedPdfPageReference} from './domain/pdfBookmarks.ts';
 import {localizeOperationalMessage,useLocale,useT} from './localization.tsx';
 
 type AiDraftApplyRequest={widgetId:string;noteId:string;expectedText:string;draft:string;mode:'replace'|'append';resolve:(receipt:string)=>void;reject:(reason:Error)=>void};
@@ -16,6 +17,7 @@ export default function NotesWidget({widget,update,notify,createCalculation}:Wid
  const [entries,setEntries]=useState<NotesLibraryEntry[]>([]),[newName,setNewName]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[saveState,setSaveState]=useState<'savedLocally'|'savingStatus'|'savedToLibrary'|'saveFailed'|'loadedLatestFile'>('savedLocally'),[searchQuery,setSearchQuery]=useState(''),[tagInput,setTagInput]=useState('');
  const [showAiActions,setShowAiActions]=useState(false);
  const [openFilePath,setOpenFilePath]=useState<string|null>(null);
+ const [openFilePage,setOpenFilePage]=useState<number|undefined>();
  const saveTimer=useRef<ReturnType<typeof setTimeout>|null>(null),saveQueue=useRef<Promise<void>>(Promise.resolve()),latestSave=useRef(0),pendingSave=useRef(new Map<string,string>()),baseline=useRef(new Map((widget.noteDocuments??[]).filter(document=>document.sourcePath).map(document=>[document.sourcePath!,document.text]))),mounted=useRef(true),editor=useRef<HTMLTextAreaElement>(null);
  const latestLibraryOpen=useRef(0);
  const [conflictPath,setConflictPath]=useState<string|null>(null);
@@ -29,6 +31,7 @@ export default function NotesWidget({widget,update,notify,createCalculation}:Wid
  async function refreshLibrary(){if(!libraryConnected)return;setBusy(true);setError('');try{setEntries(await notesLibrary.list(widget.id))}catch(reason){setError(localizeOperationalMessage(locale,String(reason)))}finally{setBusy(false)}}
  useEffect(()=>{if(widget.notesLibraryKey===widget.id){void notesLibrary.list(widget.id).then(setEntries).catch(reason=>setError(localizeOperationalMessage(locale,String(reason))))}},[widget.id,widget.notesLibraryKey]);
  useEffect(()=>{const receive=(event:Event)=>{const detail=(event as CustomEvent<{widgetId?:string}>).detail;if(detail?.widgetId!==widget.id||widget.notesLibraryKey!==widget.id)return;void notesLibrary.list(widget.id).then(entries=>{if(mounted.current)setEntries(entries)}).catch(reason=>{if(mounted.current)setError(localizeOperationalMessage(locale,String(reason)))})};window.addEventListener('still-notes-library-changed',receive);return()=>window.removeEventListener('still-notes-library-changed',receive)},[widget.id,widget.notesLibraryKey,locale]);
+ useEffect(()=>{const receive=(event:Event)=>{const source=checkedPdfPageReference((event as CustomEvent<unknown>).detail);if(!source||source.widgetId!==widget.id)return;setOpenFilePage(source.page);setOpenFilePath(source.path)};window.addEventListener('still-open-pdf-page',receive);return()=>window.removeEventListener('still-open-pdf-page',receive)},[widget.id]);
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;if(saveTimer.current)clearTimeout(saveTimer.current);for(const [path,text] of pendingSave.current)queueSave(path,text,false)}},[widget.id]);
  useEffect(()=>{const receive=(event:Event)=>{const request=(event as CustomEvent<AiDraftApplyRequest>).detail;if(!request||request.widgetId!==widget.id||typeof request.resolve!=='function'||typeof request.reject!=='function')return;void (async()=>{try{
    const target=latestDocuments.current.find(document=>document.id===request.noteId);if(!target)throw new Error(t('noteDraftUnavailable'));if(target.text!==request.expectedText)throw new Error(t('noteDraftStale'));
@@ -93,5 +96,5 @@ export default function NotesWidget({widget,update,notify,createCalculation}:Wid
  }
 
  const localDocumentCount=useMemo(()=>documents.filter(document=>!document.sourcePath).length,[documents]);
- return <NotesLibraryExplorer key={widget.notesLibraryName||widget.id} widgetId={widget.id} connected={libraryConnected} libraryName={widget.notesLibraryName||t('widget_notes')} entries={entries} busy={busy} error={error} newName={newName} onNewName={setNewName} onRefresh={refreshLibrary} onChoose={()=>void chooseLibrary()} onCreate={location=>createLibraryFile(location)} onOpenNote={file=>openLibraryFile(file)} openFilePath={openFilePath} onOpenedFile={()=>setOpenFilePath(null)} renderNoteEditor={renderFileNoteEditor} createCalculation={createCalculation}/>;
+ return <NotesLibraryExplorer key={widget.notesLibraryName||widget.id} widgetId={widget.id} connected={libraryConnected} libraryName={widget.notesLibraryName||t('widget_notes')} entries={entries} busy={busy} error={error} newName={newName} onNewName={setNewName} onRefresh={refreshLibrary} onChoose={()=>void chooseLibrary()} onCreate={location=>createLibraryFile(location)} onOpenNote={file=>openLibraryFile(file)} openFilePath={openFilePath} openFilePage={openFilePage} onOpenedFile={()=>{setOpenFilePath(null);setOpenFilePage(undefined)}} renderNoteEditor={renderFileNoteEditor} createCalculation={createCalculation}/>;
 }

@@ -1,4 +1,14 @@
 export const PDF_PAGE_BOOKMARK_LIMIT=200;
+export const PDF_PAGE_BOOKMARK_DRAG_TYPE='application/x-still-pdf-bookmark';
+
+export interface PdfPageReference {widgetId:string;path:string;name:string;page:number}
+
+export function checkedPdfPageReference(value:unknown):PdfPageReference|null{
+ if(!value||typeof value!=='object'||Array.isArray(value))return null;
+ const candidate=value as Record<string,unknown>,{widgetId,path,name,page}=candidate;
+ if(typeof widgetId!=='string'||!/^[a-zA-Z0-9-]{1,80}$/.test(widgetId)||typeof path!=='string'||!path||path.length>1000||path.startsWith('/')||path.includes('\\')||/^[a-zA-Z]:/.test(path)||path.split('/').some(segment=>!segment||segment==='.'||segment==='..')||typeof name!=='string'||!name.trim()||name.length>255||typeof page!=='number'||!Number.isSafeInteger(page)||page<1||page>1_000_000||!name.toLowerCase().endsWith('.pdf'))return null;
+ return{widgetId,path,name:name.trim(),page};
+}
 
 export function pdfBookmarkStorageKey(widgetId:string,path:string,fingerprint:string):string{
  return `still.pdf-bookmarks.v1.${encodeURIComponent(widgetId)}.${encodeURIComponent(path)}.${encodeURIComponent(fingerprint)}`;

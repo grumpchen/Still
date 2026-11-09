@@ -88,3 +88,27 @@ test('PDF page bookmarks can be saved, revisited, removed and restored after rem
  await restoredMenu.getByRole('button',{name:'Remove bookmark for page 2'}).click();
  await expect(restoredMenu.locator('.pdf-bookmark-list>div')).toHaveCount(1);
 });
+
+test('a PDF page bookmark can be dropped into Timetable as a linked study-plan item',async({page})=>{
+ test.setTimeout(90000);
+ await page.goto('/tests/e2e/fixtures/pdf-viewer.html',{waitUntil:'commit'});
+ await expect.poll(()=>page.evaluate(()=>typeof window.mountPdfViewer==='function'),{timeout:60000}).toBe(true);
+ await page.evaluate(base64=>window.mountPdfViewer?.(base64),textPdf(['First page concept.','Second page worked example.']));
+ await expect.poll(()=>page.evaluate(()=>window.pdfFixturePreviewResolved===true),{timeout:5000}).toBe(true);
+ await page.evaluate(()=>window.mountTimetableFixture?.());
+ const toolbar=page.locator('.pdf-viewer-toolbar');
+ await toolbar.getByRole('button',{name:'Next page'}).click();
+ await toolbar.getByRole('button',{name:'Bookmark page 2'}).click();
+ const bookmarks=toolbar.locator('details.pdf-bookmark-menu');await bookmarks.locator('summary').click();
+ const pageBookmark=bookmarks.getByRole('button',{name:'Page 2 of 2'});
+ await pageBookmark.dragTo(page.locator('#timetable-fixture'));
+ const time=page.getByRole('textbox',{name:'Class time'});await expect(time).toBeVisible();await time.fill('10:15');
+ await expect.poll(()=>page.getByRole('textbox',{name:'Class',exact:true}).inputValue()).toBe('Study Fixture lecture.pdf · p. 2');
+ await page.getByRole('button',{name:'Save class'}).click();
+ await expect.poll(()=>page.evaluate(()=>Array.isArray(window.pdfFixtureSchedule)?window.pdfFixtureSchedule.length:0)).toBe(1);
+ const schedule=await page.evaluate(()=>window.pdfFixtureSchedule as Array<{time:string;pdfSource:{widgetId:string;path:string;name:string;page:number}}>);
+ expect(schedule[0].time).toBe('10:15');expect(schedule[0].pdfSource).toEqual({widgetId:'pdf-viewer-e2e-fixture',path:'fixture.pdf',name:'Fixture lecture.pdf',page:2});
+ await page.getByRole('button',{name:'Open page 2'}).click();
+ await expect.poll(()=>page.evaluate(()=>!!window.pdfFixtureOpenedPage)).toBe(true);
+ expect(await page.evaluate(()=>window.pdfFixtureOpenedPage)).toEqual(schedule[0].pdfSource);
+});
