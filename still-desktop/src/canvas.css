@@ -370,6 +370,11 @@ dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
 .note-library-heading{display:flex;align-items:center;justify-content:flex-start;gap:8px;min-height:30px;color:var(--text);font-size:12px}
 .note-library-heading>strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
 .note-library-heading>div{display:flex;gap:5px;flex:0 0 auto;margin-left:auto}
+.note-library-preview-settings{position:relative}
+.note-library-preview-settings-menu{position:absolute;z-index:12;top:calc(100% + 6px);right:0;display:flex;width:210px;flex-direction:column;gap:7px;padding:9px;border:1px solid var(--border);border-radius:10px;background:color-mix(in srgb,var(--surface) 96%,transparent);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);box-shadow:0 10px 28px #0005}
+.note-library-preview-settings-menu small{color:var(--muted);font-size:10px;line-height:1.35}
+.note-library-preview-settings-menu label{display:flex;align-items:center;gap:7px;color:var(--text);font-size:11px}
+.note-library-preview-settings-menu input{width:13px;height:13px;margin:0;accent-color:var(--accent)}
 .note-library-sidebar-toggle{display:grid;flex:none;width:25px;height:24px;place-items:center;padding:0;border-radius:9px;font-size:15px;line-height:1}
 .note-library-heading button,.note-library-new button,.note-library-new-folder button{padding:5px 8px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:11px}
 .note-library-new,.note-library-new-folder{display:flex;flex-wrap:wrap;gap:6px}

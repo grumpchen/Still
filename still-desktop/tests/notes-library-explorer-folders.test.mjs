@@ -62,7 +62,7 @@ test('Files lists empty folders and unsupported documents with external viewer a
  }finally{if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();for(const [key,descriptor] of old)if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}
 });
 
-test('HTML preview is loaded only on demand and rendered in a script-isolated frame',async()=>{
+test('HTML preview is manual by default and can run in an isolated browser frame',async()=>{
  const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true}),{window}=dom;
  const globals={window,document:window.document,navigator:window.navigator,localStorage:window.localStorage,HTMLElement:window.HTMLElement,Element:window.Element,Node:window.Node,MutationObserver:window.MutationObserver,IS_REACT_ACT_ENVIRONMENT:true,isTauri:true};
  const old=Object.keys(globals).map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]),calls=[];let root;
@@ -73,10 +73,20 @@ test('HTML preview is loaded only on demand and rendered in a script-isolated fr
   await act(async()=>root.render(createElement(NotesLibraryExplorer,{widgetId:'course-library',connected:true,libraryName:'Course',entries:[{name:'advanced.html',path:'advanced.html',size:40}],busy:false,error:'',newName:'',onNewName(){},onRefresh(){},onChoose(){},onCreate:async()=>null,onOpenNote:async()=>{},renderNoteEditor:()=>null})));
   await act(async()=>{window.document.querySelector('[data-file-path="advanced.html"]').click();await new Promise(resolve=>setTimeout(resolve,10))});
   assert.equal(calls.filter(call=>call.command==='files_preview').length,0,'HTML contents are not read until the preview action is pressed');
-  const previewButton=[...window.document.querySelectorAll('button')].find(button=>button.textContent==='Preview in Still');assert.ok(previewButton,'the user has an explicit on-demand preview button');
+  const previewButton=[...window.document.querySelectorAll('button')].find(button=>button.textContent==='Preview now');assert.ok(previewButton,'the user has an explicit on-demand preview button');
   await act(async()=>{previewButton.click();await new Promise(resolve=>setTimeout(resolve,20))});
-  const frame=window.document.querySelector('.file-preview-html');assert.ok(frame,'HTML is displayed in Still after the user requests it');assert.equal(frame.getAttribute('sandbox'),'','scripts and other iframe capabilities stay disabled');assert.match(frame.getAttribute('srcdoc'),/default-src 'none'/,'the preview blocks external resources by default');assert.match(frame.getAttribute('srcdoc'),/<script>alert\(1\)<\/script>/,'the source is shown as-is inside the isolated document');
+  const frame=window.document.querySelector('.file-preview-html');assert.ok(frame,'HTML is displayed in Still after the user requests it');assert.equal(frame.getAttribute('sandbox'),'allow-scripts','page scripts can run in the isolated browser preview');assert.doesNotMatch(frame.getAttribute('sandbox'),/allow-same-origin/,'the page cannot access Still or local files through a shared origin');assert.match(frame.getAttribute('srcdoc'),/<script>alert\(1\)<\/script>/,'the browser receives the original HTML source');
   assert.ok([...window.document.querySelectorAll('button')].some(button=>button.textContent==='Open default app'),'system default app opening remains available');
+  const settings=[...window.document.querySelectorAll('button')].find(button=>button.textContent.includes('Preview settings'));await act(async()=>settings.click());
+  const htmlToggle=[...window.document.querySelectorAll('.note-library-preview-settings-menu label')].find(label=>label.textContent==='HTML')?.querySelector('input');assert.ok(htmlToggle);assert.equal(htmlToggle.checked,false,'HTML is manual by default');
+  assert.equal([...window.document.querySelectorAll('.note-library-preview-settings-menu label')].find(label=>label.textContent==='PDF')?.querySelector('input')?.checked,true,'PDF is automatic by default');
+  assert.equal([...window.document.querySelectorAll('.note-library-preview-settings-menu label')].find(label=>label.textContent==='Markdown and text')?.querySelector('input')?.checked,true,'Markdown and text are automatic by default');
+  const reactProps=element=>element[Object.keys(element).find(key=>key.startsWith('__reactProps$'))];
+  await act(async()=>{reactProps(htmlToggle).onChange({target:{checked:true}});await new Promise(resolve=>setTimeout(resolve,30))});
+  assert.ok(JSON.parse(window.localStorage.getItem('still.files.autoPreviewTypes.v1')).includes('html'),'the chosen automatic preview types are saved on this device');
+  const htmlToggleAfterEnable=[...window.document.querySelectorAll('.note-library-preview-settings-menu label')].find(label=>label.textContent==='HTML').querySelector('input');
+  await act(async()=>{reactProps(htmlToggleAfterEnable).onChange({target:{checked:false}});await new Promise(resolve=>setTimeout(resolve,30))});
+  assert.ok([...window.document.querySelectorAll('button')].some(button=>button.textContent==='Preview now'),'turning off automatic HTML preview restores the on-demand action');
  }finally{if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();for(const [key,descriptor] of old)if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}
 });
 
