@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createStillWorkspaceToolRegistry,validateReviewedGeometryIntent} from '../src/domain/assistantTools.ts';
+import {assistantActionsDescription,validateAssistantActions} from '../src/domain/assistant.ts';
 import {createWidget} from '../src/domain/workspaces.ts';
 import {workspaceWidgetTypes} from '../src/domain/widgetCatalog.ts';
 
@@ -32,6 +33,7 @@ test('inspection is read-only and omits note bodies and local paths',async()=>{
   assert.match(json,/Chemistry/);
   assert.match(json,/"theme":"light"/);
   assert.match(json,/"placement"/);
+  assert.match(json,/"plugins":\{"clockTimer":false,"lockEnabled":false,"locked":false\}/);
   assert.match(json,/Draft/);
   assert.doesNotMatch(json,/private note body|private document body|C:\/private/);
 });
@@ -62,6 +64,26 @@ test('other reversible display preferences are proposed with their actual before
   for(const [key,invalid] of [['density','light'],['background','compact'],['appearance','transparent']]){
     assert.equal((await registry.tools.propose_workspace_action({snapshotRevision:'rev-1',action:{type:'set_setting',ids:[key],settingValue:invalid}})).status,'failed');
   }
+});
+
+test('widget and sidebar plugin controls use the shared action validator and reject invalid plugin combinations',async()=>{
+  const state=snapshot(),group=createWidget('group');state.workspace.widgets.push(group);
+  const registry=createStillWorkspaceToolRegistry({getSnapshot:()=>state,validate:(value,actions)=>validateAssistantActions(value.workspace,actions,value.savedTrayItems,value.workspaces),validateIntent(){},execute(){return 'Saved plugin change.'}});
+  const notes=state.workspace.widgets.find(widget=>widget.type==='notes');
+  const lock=await registry.tools.propose_workspace_action({snapshotRevision:'rev-1',action:{type:'set_widget_plugin',ids:[notes.id],plugin:'lock',enabled:true,locked:false}});
+  assert.equal(lock.status,'requires_confirmation');
+  assert.deepEqual(lock.proposal.action,{type:'set_widget_plugin',ids:[notes.id],plugin:'lock',enabled:true,locked:false});
+  assert.match(assistantActionsDescription([lock.proposal.action],state.workspace,[]),/lock, widget unlocked/);
+  const sidebar=await registry.tools.propose_workspace_action({snapshotRevision:'rev-1',action:{type:'set_sidebar_plugin',ids:['layout'],enabled:true}});
+  assert.equal(sidebar.status,'requires_confirmation');
+  assert.deepEqual(sidebar.proposal.action,{type:'set_sidebar_plugin',ids:['layout'],enabled:true});
+  assert.match(assistantActionsDescription([sidebar.proposal.action],state.workspace,[]),/layout enabled/);
+  for(const action of [
+    {type:'set_widget_plugin',ids:[group.id],plugin:'clock-timer',enabled:true},
+    {type:'set_widget_plugin',ids:[notes.id],plugin:'lock',enabled:true},
+    {type:'set_widget_plugin',ids:[notes.id],plugin:'other',enabled:true},
+    {type:'set_sidebar_plugin',ids:['unknown'],enabled:true},
+  ]) assert.equal((await registry.tools.propose_workspace_action({snapshotRevision:'rev-1',action})).status,'failed');
 });
 
 test('geometry action proposal carries exact before and after placement and rejects malformed geometry',async()=>{

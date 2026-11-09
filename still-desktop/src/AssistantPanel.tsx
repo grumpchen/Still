@@ -62,7 +62,7 @@ function explicitLibraryToolIntent(prompt:string){return /\b(?:browse|search|fin
 function explicitLibraryEditIntent(prompt:string){return /\b(?:edit|update|rewrite|change|replace|write)\b.{0,80}\b(?:notes?\s+)?(?:library|file|note|document)\b|\b(?:notes?\s+)?library\b.{0,80}\b(?:edit|update|rewrite|change|replace|write)\b/i.test(prompt)}
 function explicitLibraryCreateIntent(prompt:string){return /\b(?:create|make|write|add)\b.{0,80}\b(?:new\s+)?(?:notes?\s+)?(?:library|folder|file|note|document)\b|\b(?:library|folder)\b.{0,80}\b(?:create|make|write|add)\b/i.test(prompt)}
 
-export default function AssistantPanel({inboxWidgetId,libraryRoots=[],organiseLibrary,undoLibrary,workspace,preferences,workspaces,canDeleteWorkspace,sidebarPlugins,trayItems,open,close,dimensions,apply,act,moveFile,addCalendarEvents,startTimer,clearTray,deleteWidgets,deleteWorkspace,undo}:Props){
+export default function AssistantPanel({inboxWidgetId,libraryRoots=[],organiseLibrary,undoLibrary,workspace,preferences={theme:'light',density:'comfortable',background:'solid',appearance:'liquid-glass'},workspaces,canDeleteWorkspace,sidebarPlugins,trayItems,open,close,dimensions,apply,act,moveFile,addCalendarEvents,startTimer,clearTray,deleteWidgets,deleteWorkspace,undo}:Props){
   const [recoveredOperations,setRecoveredOperations]=useState<ReviewedOperation[]>([]);
   const [libraryOrganisationContext,setLibraryOrganisationContext]=useState<LibraryOrganisationContext|null>(null),[libraryProposal,setLibraryProposal]=useState<LibraryProposal|null>(null),[libraryWorking,setLibraryWorking]=useState(false);
   const t=useT();
@@ -321,14 +321,16 @@ useEffect(()=>{const attachMany=(event:Event)=>{const detail=(event as CustomEve
             const setting=actions.find(action=>action.type==='set_setting');
             const geometry=actions.find(action=>action.type==='set_widget_geometry');
             if(!setting&&!geometry)return receipt;
-            const readSaved=()=>{try{return JSON.parse(localStorage.getItem('still-workspace-v2')??'null') as Partial<DisplayPreferences>&{workspaces?:Array<{id:string;widgets?:Array<{id:string;placement?:{x:number;y:number;width:number;height:number}}>}>}|null}catch{return null}};
+            const readSaved=()=>{try{return JSON.parse(localStorage.getItem('still-workspace-v2')??'null') as Partial<DisplayPreferences>&{sidebarPlugins?:string[];workspaces?:Array<{id:string;widgets?:Array<{id:string;clockPluginEnabled?:boolean;lockPluginEnabled?:boolean;locked?:boolean;placement?:{x:number;y:number;width:number;height:number}}>}>}|null}catch{return null}};
             for(let attempt=0;attempt<20;attempt++){
               const stored=readSaved();
               if(setting){const key=setting.ids[0] as keyof DisplayPreferences;if(latestContext.current.preferences[key]===setting.settingValue&&stored?.[key]===setting.settingValue)return `${key[0].toUpperCase()+key.slice(1)} preference saved on this device: ${setting.settingValue}.`;}
+              const plugin=actions.find(action=>action.type==='set_widget_plugin'||action.type==='set_sidebar_plugin');
+              if(plugin&&stored){if(plugin.type==='set_sidebar_plugin'&&plugin.ids.every(id=>stored.sidebarPlugins?.includes(id)===plugin.enabled))return `Sidebar plugin change saved on this device: ${plugin.ids.join(', ')} ${plugin.enabled?'enabled':'disabled'}.`;if(plugin.type==='set_widget_plugin'){const widgets=stored.workspaces?.find(item=>item.id===snapshot.workspace.id)?.widgets,verified=plugin.ids.every(id=>{const widget=widgets?.find(item=>item.id===id);if(!widget)return false;if(plugin.plugin==='clock-timer')return widget.clockPluginEnabled===plugin.enabled;return widget.lockPluginEnabled===plugin.enabled&&(!plugin.enabled||widget.locked===(plugin.locked??true))});if(verified)return `Widget plugin change saved on this device: ${plugin.plugin} ${plugin.enabled?'enabled':'disabled'} for ${plugin.ids.length} widget${plugin.ids.length===1?'':'s'}.`;}}
               if(geometry){const old=snapshot.workspace.widgets.find(widget=>widget.id===geometry.ids[0])?.placement,actual=stored?.workspaces?.find(item=>item.id===snapshot.workspace.id)?.widgets?.find(item=>item.id===geometry.ids[0])?.placement,expected=old&&geometry.operation==='move'?{...old,x:geometry.x!,y:geometry.y!}:old?{...old,width:geometry.width!,height:geometry.height!}:undefined;if(actual&&expected&&['x','y','width','height'].every(key=>actual[key as keyof typeof actual]===expected[key as keyof typeof expected]))return `Widget geometry saved on this device: x=${actual.x}, y=${actual.y}, width=${actual.width}, height=${actual.height}.`}
               await new Promise(resolve=>setTimeout(resolve,100));
             }
-            if(setting||geometry)throw new Error('Still could not verify the saved workspace change on this device. Check the workspace before retrying.');
+            if(setting||geometry||actions.some(action=>action.type==='set_widget_plugin'||action.type==='set_sidebar_plugin'))throw new Error('Still could not verify the saved workspace change on this device. Check the workspace before retrying.');
             return receipt;
           },
         });

@@ -32,6 +32,7 @@ export type StillWorkspaceInspection = {
     minimized: boolean;
     placement: { x: number; y: number; width: number; height: number };
     tagColor: string | null;
+    plugins: { clockTimer: boolean; lockEnabled: boolean; locked: boolean };
     openNoteTitles?: string[];
     schedule?: Array<{ id: string; title: string; day: number; time: string }>;
   }>;
@@ -51,6 +52,9 @@ export type SafeWorkspaceAction =
   | { type: 'set_timer'; ids: [string]; seconds: number }
   | { type: 'control_timer'; ids: [string]; operation: 'pause' | 'resume' | 'reset' }
   | { type: 'set_ui_visibility'; ids: ['sidebar' | 'apps-bar']; enabled: boolean }
+  | { type: 'set_widget_plugin'; ids: string[]; plugin: 'clock-timer'; enabled: boolean }
+  | { type: 'set_widget_plugin'; ids: string[]; plugin: 'lock'; enabled: boolean; locked?: boolean }
+  | { type: 'set_sidebar_plugin'; ids: ['stack' | 'layout']; enabled: boolean }
   | { type: 'set_setting'; ids: ['theme']; settingValue: 'light' | 'dark' }
   | { type: 'set_setting'; ids: ['density']; settingValue: 'comfortable' | 'compact' }
   | { type: 'set_setting'; ids: ['background']; settingValue: 'solid' | 'dots' | 'transparent' }
@@ -276,6 +280,7 @@ function inspect(snapshot: StillToolSnapshot): StillWorkspaceInspection {
     minimized: widget.minimized,
     placement: { ...widget.placement },
     tagColor: widget.tagColor ?? null,
+    plugins: { clockTimer: widget.clockPluginEnabled, lockEnabled: widget.lockPluginEnabled, locked: widget.locked },
     ...(widget.type === 'notes' ? { openNoteTitles: widget.noteDocuments.map(document => document.title) } : {}),
     ...(widget.type === 'timetable' ? { schedule: widget.schedule.slice(0, 80).map(entry => ({
       id: entry.id, title: entry.title, day: entry.day, time: entry.time,
@@ -330,6 +335,17 @@ function parseSafeWorkspaceAction(input: unknown): { revision: string; action: S
     if (!onlyKeys('type','ids','enabled') || !Array.isArray(ids) || ids.length !== 1
       || !['sidebar','apps-bar'].includes(String(ids[0])) || typeof raw.enabled !== 'boolean') throw new Error('Choose the Still sidebar or Apps bar and set its visibility.');
     return {revision:value.snapshotRevision,action:{type,ids:[ids[0] as 'sidebar'|'apps-bar'],enabled:raw.enabled}};
+  }
+  if (type === 'set_sidebar_plugin') {
+    if(!onlyKeys('type','ids','enabled')||!Array.isArray(ids)||ids.length!==1||!['stack','layout'].includes(String(ids[0]))||typeof raw.enabled!=='boolean')throw new Error('Choose one supported sidebar plugin and turn it on or off.');
+    return {revision:value.snapshotRevision,action:{type,ids:[ids[0] as 'stack'|'layout'],enabled:raw.enabled}};
+  }
+  if (type === 'set_widget_plugin') {
+    if(!Array.isArray(ids)||ids.length<1||ids.length>100||ids.some(id=>!validWidgetId(id))||typeof raw.enabled!=='boolean')throw new Error('Choose valid widgets and turn one supported plugin on or off.');
+    if(raw.plugin==='clock-timer'&&onlyKeys('type','ids','plugin','enabled'))return {revision:value.snapshotRevision,action:{type,ids:ids as string[],plugin:'clock-timer',enabled:raw.enabled}};
+    if(raw.plugin==='lock'&&onlyKeys('type','ids','plugin','enabled')&&!raw.enabled)return {revision:value.snapshotRevision,action:{type,ids:ids as string[],plugin:'lock',enabled:false}};
+    if(raw.plugin==='lock'&&onlyKeys('type','ids','plugin','enabled','locked')&&raw.enabled&&typeof raw.locked==='boolean')return {revision:value.snapshotRevision,action:{type,ids:ids as string[],plugin:'lock',enabled:true,locked:raw.locked}};
+    throw new Error('Choose a supported widget plugin and a valid lock state.');
   }
   if (type === 'set_setting') {
     if (!onlyKeys('type','ids','settingValue') || !Array.isArray(ids) || ids.length !== 1 || typeof ids[0]!=='string'
