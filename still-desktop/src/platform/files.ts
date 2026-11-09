@@ -2,7 +2,7 @@ import { invoke, isTauri } from '@tauri-apps/api/core';
 export interface FileEntry { name:string; path:string; directory:boolean; size:number; blocked:boolean; revision?:string|null }
 export type ReviewedMoveExpectation={rootPath:string;sourceRevision:string};
 export interface FolderListing { rootName:string; location:string; entries:FileEntry[]; truncated:boolean }
-export interface NativeFilePreview {mimeType:string;base64:string}
+export interface NativeFilePreview {mimeType:string;base64?:string;text?:string}
 export interface StillInbox {listing:FolderListing;path:string}
 export interface FileMoveResult {sourcePath:string;destinationPath:string}
 export interface ReviewedOperation {id:string;workspaceId:string;runId:string;sequence:number;sourcePath:string;destinationPath:string;state:string;outcome?:string|null}
@@ -81,6 +81,13 @@ export const localFiles={
     if(file.size>20*1024*1024)throw new Error('This file is larger than the 20 MB preview limit. Open it in your default app instead.');
     return file.slice(0,file.size,file.type||mimeFor(file.name));
   },
+  async previewText(id:string,path:string):Promise<string>{
+    if(this.native){const result=await invoke<NativeFilePreview>('files_preview',{id,path});if(typeof result.text!=='string')throw new Error('This file does not contain previewable text.');return result.text}
+    const file=selected.get(id)?.files.get(path);if(!file)throw new Error('Select the folder again to preview this file.');
+    if(programFile(file.name))throw new Error('Programs and shortcuts cannot be previewed.');
+    if(file.size>20*1024*1024)throw new Error('This file is larger than the 20 MB preview limit. Open it in your default app instead.');
+    return file.text();
+  },
   async extractPdfText(id:string,path:string):Promise<ExtractedPdfText>{
     if(!this.native)throw new Error('PDF text extraction is available in the Still desktop app.');
     return invoke<ExtractedPdfText>('files_extract_pdf_text',{id,path});
@@ -96,7 +103,8 @@ export function mimeFor(name:string):string{
  return ({pdf:'application/pdf',txt:'text/plain',md:'text/plain',csv:'text/plain',log:'text/plain',png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',gif:'image/gif',webp:'image/webp',bmp:'image/bmp',mp4:'video/mp4',m4v:'video/mp4',webm:'video/webm',mp3:'audio/mpeg',wav:'audio/wav',ogg:'audio/ogg'} as Record<string,string>)[extension]??'application/octet-stream';
 }
 function previewBlob(value:NativeFilePreview):Blob{
- const binary=atob(value.base64),bytes=new Uint8Array(binary.length);
+ if(typeof value.text==='string')return new Blob([value.text],{type:value.mimeType});
+ const binary=atob(value.base64??''),bytes=new Uint8Array(binary.length);
  for(let index=0;index<binary.length;index++)bytes[index]=binary.charCodeAt(index);
  return new Blob([bytes],{type:value.mimeType});
 }

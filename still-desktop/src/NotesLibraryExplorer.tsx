@@ -66,6 +66,8 @@ export default function NotesLibraryExplorer({widgetId,connected,libraryName,ent
     await onOpenNote({path:file.path,name:file.name,size:file.size});
     if(!isCurrent())return;
     const text=await notesLibrary.read(widgetId,file.path);if(isCurrent()){if(!noteBaseline.current.has(file.path))noteBaseline.current.set(file.path,text);setNoteDraft(noteDrafts.current.get(file.path)??text);setPreview({url:null,mimeType:'text/plain',text})};
+   }else if(/\.html?$/i.test(file.name)){
+    const text=await localFiles.previewText(widgetId,file.path);if(isCurrent())setPreview({url:null,mimeType:'text/html',text});
    }else if(/\.pdf$/i.test(file.name)){
     setPreview({url:null,mimeType:'application/pdf',text:null});
    }else{

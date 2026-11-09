@@ -82,7 +82,7 @@ pub(crate) fn journal_file_identity(root:&Path,relative:&str)->Option<String>{
 }
 #[derive(Serialize)]
 #[serde(rename_all="camelCase")]
-pub(crate) struct FilePreview { mime_type: String, base64: String }
+pub(crate) struct FilePreview { mime_type: String, base64: String, #[serde(skip_serializing_if="Option::is_none")] text:Option<String> }
 #[derive(Serialize)]
 #[serde(rename_all="camelCase")]
 pub(crate) struct LibrarySearchHit { widget_id:String, entry:FileEntry }
@@ -225,8 +225,10 @@ pub(crate) fn read_preview(path:&Path)->Result<FilePreview,String>{
     fs::File::open(path).map_err(|_|"Could not read this file")?.take(MAX_PREVIEW_BYTES+1)
         .read_to_end(&mut bytes).map_err(|_|"Could not read this file")?;
     if bytes.len() as u64>MAX_PREVIEW_BYTES{return Err("This file is larger than the 20 MB preview limit. Open it in your default app instead.".into())}
-    if mime_type=="text/plain"&&std::str::from_utf8(&bytes).is_err(){return Err("This text file is not valid UTF-8, so it cannot be previewed.".into())}
-    Ok(FilePreview{mime_type:mime_type.into(),base64:STANDARD.encode(bytes)})
+    let (text,base64)=if mime_type=="text/plain"||mime_type=="text/html"{
+        (Some(String::from_utf8(bytes).map_err(|_|"This text file is not valid UTF-8, so it cannot be previewed.")?),String::new())
+    }else{(None,STANDARD.encode(bytes))};
+    Ok(FilePreview{mime_type:mime_type.into(),base64,text})
 }
 fn listing(root: &Path, location: &str) -> Result<FolderListing,String> {
     let directory=resolve(root,location)?;
@@ -777,8 +779,9 @@ mod tests {
         let fixture=std::env::temp_dir().join(format!("still-preview-test-{}-{}",std::process::id(),std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
         fs::create_dir_all(&fixture).unwrap();
         let text=fixture.join("lecture.MD");fs::write(&text,"local lecture notes").unwrap();
-        let preview=read_preview(&text).unwrap();assert_eq!(preview.mime_type,"text/plain");assert_eq!(base64::engine::general_purpose::STANDARD.decode(preview.base64).unwrap(),b"local lecture notes");
-        let html=fixture.join("active.html");fs::write(&html,"<script>alert(1)</script>").unwrap();let html_preview=read_preview(&html).unwrap();assert_eq!(html_preview.mime_type,"text/html");assert_eq!(base64::engine::general_purpose::STANDARD.decode(html_preview.base64).unwrap(),b"<script>alert(1)</script>");
+        let preview=read_preview(&text).unwrap();assert_eq!(preview.mime_type,"text/plain");assert_eq!(preview.text.as_deref(),Some("local lecture notes"));assert!(preview.base64.is_empty());
+        let html=fixture.join("active.html");fs::write(&html,"<script>alert(1)</script>").unwrap();let html_preview=read_preview(&html).unwrap();assert_eq!(html_preview.mime_type,"text/html");assert_eq!(html_preview.text.as_deref(),Some("<script>alert(1)</script>"));assert!(html_preview.base64.is_empty());
+        let image=fixture.join("pixel.png");fs::write(&image,[137,80,78,71]).unwrap();let image_preview=read_preview(&image).unwrap();assert_eq!(image_preview.mime_type,"image/png");assert_eq!(base64::engine::general_purpose::STANDARD.decode(image_preview.base64).unwrap(),[137,80,78,71]);assert!(image_preview.text.is_none());
         let binary=fixture.join("broken.txt");fs::write(&binary,[0xff,0xfe]).unwrap();assert!(read_preview(&binary).is_err());
         fs::remove_dir_all(fixture).unwrap();
     }
