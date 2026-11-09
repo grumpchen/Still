@@ -58,7 +58,8 @@ export default function NotesLibraryExplorer({widgetId,connected,libraryName,ent
  async function selectFile(file:FileEntry,forcePreview=false){
   if(file.directory){navigate(file.path);return}
   const request=++selectionRequest.current,isCurrent=()=>mounted.current&&request===selectionRequest.current;
-  setSelected(file);setPreview(null);setNoteDraft('');setPreviewError('');setPreviewBusy(true);
+  const keepPendingPreview=forcePreview&&selected?.path===file.path&&preview?.onDemand===true;
+  setSelected(file);if(!keepPendingPreview)setPreview(null);setNoteDraft('');setPreviewError('');setPreviewBusy(true);
   const kind=previewKind(file.name);if(kind&&!forcePreview&&!autoPreviewTypes.includes(kind)){setPreview({url:null,mimeType:pendingPreviewMime(kind),text:null,onDemand:true});setPreviewBusy(false);return}
   try{
    if(editableNote(file.name)){
