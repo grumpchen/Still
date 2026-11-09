@@ -13,7 +13,7 @@ import { createInitialState, createWidget, createWorkspace } from '../../src/dom
 const mode = process.argv[2];
 const expect=playwrightExpect.configure({timeout:15_000});
 assert(process.platform === 'win32' && process.env.APPDATA, 'This fixture requires Windows with WebView2.');
-assert(['success','stale','timeout','restart','revoke','theme','move-widget','resize-widget','library-edit','library-conflict','library-create','library-folder-create','pdf-highlights','files-viewers'].includes(mode), 'Specify an acceptance case from tests/native/README.md.');
+assert(['success','stale','timeout','restart','revoke','theme','move-widget','resize-widget','library-edit','library-conflict','library-create','library-folder-create','library-folder-browse','pdf-highlights','files-viewers'].includes(mode), 'Specify an acceptance case from tests/native/README.md.');
 const libraryCase = mode.startsWith('library-');
 const pdfCase = mode==='pdf-highlights';
 const filesViewerCase = mode==='files-viewers';
@@ -187,6 +187,13 @@ geminiAssistant.agentTurn=async function(request){
   if(receipt?.result?.receipt!=='Created Course/Week 2/Welcome.md in the selected Notes Library after review.')throw new Error('Did not receive the verified native note creation receipt after the folder receipt.');
   return {kind:'final',response:{intent:'chat',reply:'Fixture Library folder and note workflow complete.',layout:[],actions:[]}};
  }
+ if(${JSON.stringify(mode==='library-folder-browse')}){
+  if(!request.enable_library_tool)throw new Error('The selected Notes Library browse tool is not enabled.');
+  if(records.length===1)return call('list_library_folder',{location:'',offset:0},'fixture-library-folder-root');
+  if(records.length===2){const result=receipt?.result;if(!result||!result.entries?.some(entry=>entry.path==='Course'&&entry.directory)||result.entries.some(entry=>'text'in entry))throw new Error('The root folder receipt is missing safe directory metadata: '+JSON.stringify(receipt));return call('list_library_folder',{location:'Course',offset:0},'fixture-library-folder-course');}
+  const result=receipt?.result;if(!result||!result.entries?.some(entry=>entry.path==='Course/empty'&&entry.directory)||!result.entries?.some(entry=>entry.path==='Course/handout.docx'&&!entry.directory)||result.entries.some(entry=>'text'in entry))throw new Error('The nested folder receipt did not include empty folders and attachment metadata only.');
+  return {kind:'final',response:{intent:'chat',reply:'Fixture Library folder browsing complete.',layout:[],actions:[]}};
+ }
  if(${JSON.stringify(libraryCase)}){
   if(!request.enable_library_tool||!request.enable_library_edit_tool)throw new Error('The selected Notes Library and edit tools are not enabled.');
   if(records.length===1)return call('inspect_library',{},'fixture-library-inspect');
@@ -315,6 +322,22 @@ async function runControl(page) {
 }
 
 async function runLibrary(page) {
+  if(mode==='library-folder-browse'){
+    await mkdir(join(notesRoot,'Course','empty'),{recursive:true});
+    await writeFile(join(notesRoot,'Course','handout.docx'),'Synthetic attachment metadata fixture.');
+    await expect(page.locator('[data-file-path="Course"]')).toBeVisible();
+    await openAssistant(page);
+    await mentionNotes(page,'Browse my Notes Library, then list its files and folders in Course.');
+    await page.locator('.assistant-compose').evaluate(form=>form.requestSubmit());
+    await expect(page.getByText('Fixture Library folder browsing complete.',{exact:true})).toBeVisible();
+    const rootReceipt=await page.evaluate(()=>JSON.parse(window.__fixtureTurns[1].messages.at(-1).content));
+    const nestedReceipt=await page.evaluate(()=>JSON.parse(window.__fixtureTurns[2].messages.at(-1).content));
+    assert.equal(rootReceipt.mutation,'none');assert.equal(rootReceipt.result.location,'');
+    assert.equal(nestedReceipt.mutation,'none');assert.equal(nestedReceipt.result.location,'Course');
+    assert.equal(nestedReceipt.result.nextOffset,null);assert.equal(nestedReceipt.result.truncated,false);
+    assert.equal(await readFile(join(notesRoot,'Course','handout.docx'),'utf8'),'Synthetic attachment metadata fixture.');
+    return;
+  }
   if(mode==='library-folder-create'){
     const folder=join(notesRoot,'Course','Week 2');
     const note=join(folder,'Welcome.md');

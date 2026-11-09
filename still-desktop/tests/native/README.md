@@ -16,6 +16,7 @@ node --import tsx tests/native/assistant-reliability.mjs library-edit
 node --import tsx tests/native/assistant-reliability.mjs library-conflict
 node --import tsx tests/native/assistant-reliability.mjs library-create
 node --import tsx tests/native/assistant-reliability.mjs library-folder-create
+node --import tsx tests/native/assistant-reliability.mjs library-folder-browse
 node --import tsx tests/native/assistant-reliability.mjs pdf-highlights
 node --import tsx tests/native/assistant-reliability.mjs files-viewers
 ```
@@ -30,6 +31,6 @@ The PDF case opens a synthetic text PDF from the fixture Notes Library through t
 
 The Files viewer case opens a synthetic same-folder Office lock file from the Files widget, verifies Still offers the matching document through Windows' default app without opening the lock file, then checks the default-app and other-app options for a regular DOCX file. The DOCX preview fallback explains the available viewer choices.
 
-The control cases check exact persisted values and undo. The Library cases exercise browse, search, read, and reviewed save through the Notes widget’s grant; the conflict case edits the file outside Still after the review opens and checks that approval does not overwrite it. The `library-folder-create` case performs two successive approvals: first create a folder, then create a Markdown note inside it. It checks both items are absent before their respective approvals, verifies each native receipt is sent into the next provider turn, and confirms the folder and note appear in the Files sidebar without manual refresh.
+The control cases check exact persisted values and undo. The Library cases exercise browse, search, read, and reviewed save through the Notes widget’s grant; the conflict case edits the file outside Still after the review opens and checks that approval does not overwrite it. The `library-folder-create` case performs two successive approvals: first create a folder, then create a Markdown note inside it. It checks both items are absent before their respective approvals, verifies each native receipt is sent into the next provider turn, and confirms the folder and note appear in the Files sidebar without manual refresh. The `library-folder-browse` case makes two real native Tauri tool calls against only a disposable granted Library: first the root, then a nested folder containing an empty directory and a DOCX attachment. It checks that the agent receives relative metadata in both tool receipts and that the DOCX content is not included.
 
 Artifacts remain under the Rust target's `assistant-native-fixtures/` directory and the uniquely named test app data directory for diagnosis. If necessary, set `STILL_FIXTURE_CARGO_TARGET` to a local, dedicated Cargo output directory with sufficient free space. Relaunch normal Still without the fixture config or WebView debug arguments after testing.
