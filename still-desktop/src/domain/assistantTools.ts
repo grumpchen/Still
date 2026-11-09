@@ -6,20 +6,22 @@ import { workspaceWidgetTypes, type WidgetType } from './widgetCatalog.ts';
 import { constrainPlacement } from './layout.ts';
 
 /** A fresh, app-owned view of the state that existing UI operations validate against. */
+export type DisplayPreferences = { theme: 'light' | 'dark'; density: 'comfortable' | 'compact'; background: 'solid' | 'dots' | 'transparent'; appearance: 'minimal' | 'liquid-glass' };
+
 export type StillToolSnapshot = {
   revision: string;
   workspace: Workspace;
   savedTrayItems: AssistantTrayItem[];
   workspaces: AssistantWorkspaceChoice[];
-  /** A deliberately narrow, reversible preference exposed to reviewed agent actions. */
-  preferences?: { theme: 'light' | 'dark' };
+  /** Reversible display preferences exposed to reviewed agent actions. */
+  preferences: DisplayPreferences;
   canvasSize?: { width: number; height: number };
 };
 
 export type StillWorkspaceInspection = {
   revision: string;
   activeWorkspace: { id: string; name: string; fixedWidgets: boolean };
-  preferences?: { theme: 'light' | 'dark' };
+  preferences: DisplayPreferences;
   canvasSize?: { width: number; height: number };
   workspaces: AssistantWorkspaceChoice[];
   savedItems: AssistantTrayItem[];
@@ -50,6 +52,9 @@ export type SafeWorkspaceAction =
   | { type: 'control_timer'; ids: [string]; operation: 'pause' | 'resume' | 'reset' }
   | { type: 'set_ui_visibility'; ids: ['sidebar' | 'apps-bar']; enabled: boolean }
   | { type: 'set_setting'; ids: ['theme']; settingValue: 'light' | 'dark' }
+  | { type: 'set_setting'; ids: ['density']; settingValue: 'comfortable' | 'compact' }
+  | { type: 'set_setting'; ids: ['background']; settingValue: 'solid' | 'dots' | 'transparent' }
+  | { type: 'set_setting'; ids: ['appearance']; settingValue: 'minimal' | 'liquid-glass' }
   | { type: 'set_widget_geometry'; ids: [string]; operation: 'move'; x: number; y: number }
   | { type: 'set_widget_geometry'; ids: [string]; operation: 'resize'; width: number; height: number }
   | { type: 'create_note_document'; ids: [string]; title: string; text?: string };
@@ -70,7 +75,7 @@ export type SafeWorkspaceActionProposal = {
   kind: 'workspace_action';
   snapshotRevision: string;
   action: Readonly<SafeWorkspaceAction>;
-  preferenceChange?: Readonly<{ key: 'theme'; before: 'light'|'dark'; after: 'light'|'dark' }>;
+  preferenceChange?: Readonly<{ key: 'theme'|'density'|'background'|'appearance'; before: string; after: string }>;
   geometryChange?: Readonly<{ widgetId: string; operation: 'move'|'resize'; before: {x:number;y:number;width:number;height:number}; after: {x:number;y:number;width:number;height:number} }>;
 };
 
@@ -164,8 +169,8 @@ export function createStillWorkspaceToolRegistry(deps: StillWorkspaceToolDepende
         catch (error) { return failed(message(error)); }
         const current = await deps.getSnapshot();
         if (current.revision !== before.revision) return failed('Workspace state changed before the proposal could be reviewed. Refresh and try again.');
-        const preferenceChange = parsed.action.type==='set_setting' && before.preferences
-          ? Object.freeze({key:'theme' as const,before:before.preferences.theme,after:parsed.action.settingValue}) : undefined;
+        const preferenceChange = parsed.action.type==='set_setting'
+          ? Object.freeze({key:parsed.action.ids[0],before:before.preferences[parsed.action.ids[0]],after:parsed.action.settingValue}) : undefined;
         const geometryTarget = parsed.action.type==='set_widget_geometry' ? before.workspace.widgets.find(widget=>widget.id===parsed.action.ids[0]) : undefined;
         const geometryChange = geometryTarget && parsed.action.type==='set_widget_geometry' ? Object.freeze({widgetId:geometryTarget.id,operation:parsed.action.operation,before:Object.freeze({...geometryTarget.placement}),after:Object.freeze(constrainPlacement(geometryTarget.type,parsed.action.operation==='move'?{...geometryTarget.placement,x:parsed.action.x,y:parsed.action.y}:{...geometryTarget.placement,width:parsed.action.width,height:parsed.action.height},before.canvasSize?.width??3000,{},before.canvasSize?.height??3000))}) : undefined;
         if(geometryChange && parsed.action.type==='set_widget_geometry' && (parsed.action.operation==='move'&&(geometryChange.after.x!==parsed.action.x||geometryChange.after.y!==parsed.action.y)||parsed.action.operation==='resize'&&(geometryChange.after.width!==parsed.action.width||geometryChange.after.height!==parsed.action.height)))return failed('Those geometry values exceed the active canvas or widget limits. Nothing was changed. Choose values that fit the current workspace.');
@@ -279,7 +284,7 @@ function inspect(snapshot: StillToolSnapshot): StillWorkspaceInspection {
   return {
     revision: snapshot.revision,
     activeWorkspace: { id: snapshot.workspace.id, name: snapshot.workspace.name, fixedWidgets: snapshot.workspace.role==='dashboard'||snapshot.workspace.role==='library' },
-    ...(snapshot.preferences ? { preferences: snapshot.preferences } : {}),
+    preferences: snapshot.preferences,
     ...(snapshot.canvasSize ? { canvasSize: snapshot.canvasSize } : {}),
     workspaces: snapshot.workspaces.map(({ id, name }) => ({ id, name })),
     savedItems: snapshot.savedTrayItems.map(({ id, name, type, kind }) => ({ id, name, type, kind })),
@@ -327,9 +332,14 @@ function parseSafeWorkspaceAction(input: unknown): { revision: string; action: S
     return {revision:value.snapshotRevision,action:{type,ids:[ids[0] as 'sidebar'|'apps-bar'],enabled:raw.enabled}};
   }
   if (type === 'set_setting') {
-    if (!onlyKeys('type','ids','settingValue') || !Array.isArray(ids) || ids.length !== 1 || ids[0] !== 'theme'
-      || typeof raw.settingValue !== 'string' || !['light','dark'].includes(raw.settingValue)) throw new Error('Choose the reversible theme preference and set it to light or dark.');
-    return {revision:value.snapshotRevision,action:{type,ids:['theme'],settingValue:raw.settingValue as 'light'|'dark'}};
+    if (!onlyKeys('type','ids','settingValue') || !Array.isArray(ids) || ids.length !== 1 || typeof ids[0]!=='string'
+      || typeof raw.settingValue!=='string') throw new Error('Choose a supported reversible display setting and one of its listed values.');
+    const key=ids[0], settingValue=raw.settingValue;
+    if(key==='theme'&&['light','dark'].includes(settingValue))return {revision:value.snapshotRevision,action:{type,ids:[key],settingValue:settingValue as 'light'|'dark'}};
+    if(key==='density'&&['comfortable','compact'].includes(settingValue))return {revision:value.snapshotRevision,action:{type,ids:[key],settingValue:settingValue as 'comfortable'|'compact'}};
+    if(key==='background'&&['solid','dots','transparent'].includes(settingValue))return {revision:value.snapshotRevision,action:{type,ids:[key],settingValue:settingValue as 'solid'|'dots'|'transparent'}};
+    if(key==='appearance'&&['minimal','liquid-glass'].includes(settingValue))return {revision:value.snapshotRevision,action:{type,ids:[key],settingValue:settingValue as 'minimal'|'liquid-glass'}};
+    throw new Error('Choose a supported reversible display setting and one of its listed values.');
   }
   if (type === 'set_widget_geometry') {
     if (raw.operation === 'move' && onlyKeys('type','ids','operation','x','y') && Array.isArray(ids) && ids.length===1 && validWidgetId(ids[0])

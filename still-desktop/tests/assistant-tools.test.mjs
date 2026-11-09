@@ -18,7 +18,7 @@ function snapshot(revision='rev-1'){
     workspace:{id:'workspace-1',name:'Study',widgets:[notes,timetable],groups:[],layout:'canvas',role:'study'},
     savedTrayItems:[{id:'preset-p1',name:'Saved Notes',type:'notes',kind:'preset'}],
     workspaces:[{id:'workspace-1',name:'Study'},{id:'workspace-2',name:'Library'}],
-    preferences:{theme:'light'},
+    preferences:{theme:'light',density:'comfortable',background:'solid',appearance:'liquid-glass'},
     canvasSize:{width:1000,height:700},
   };
 }
@@ -48,6 +48,20 @@ test('theme preference action is reviewed with exact before and after values and
   assert.equal(done.result.receipt,'Theme preference is dark.');
   assert.deepEqual(executed,[{type:'set_setting',ids:['theme'],settingValue:'dark'}]);
   assert.equal(current.preferences.theme,'dark');
+});
+
+test('other reversible display preferences are proposed with their actual before and after values',async()=>{
+  let current=snapshot();
+  const registry=createStillWorkspaceToolRegistry({getSnapshot:()=>current,validate(){},validateIntent(){},execute(_snapshot,actions){const action=actions[0];current={...current,preferences:{...current.preferences,[action.ids[0]]:action.settingValue}};return 'Saved.'}});
+  for(const [key,before,after] of [['density','comfortable','compact'],['background','solid','transparent'],['appearance','liquid-glass','minimal']]){
+    const prepared=await registry.tools.propose_workspace_action({snapshotRevision:'rev-1',action:{type:'set_setting',ids:[key],settingValue:after}});
+    assert.equal(prepared.status,'requires_confirmation');
+    assert.deepEqual(prepared.proposal.preferenceChange,{key,before,after});
+    assert.equal((await registry.executeConfirmedAction(prepared.proposal)).status,'succeeded');
+  }
+  for(const [key,invalid] of [['density','light'],['background','compact'],['appearance','transparent']]){
+    assert.equal((await registry.tools.propose_workspace_action({snapshotRevision:'rev-1',action:{type:'set_setting',ids:[key],settingValue:invalid}})).status,'failed');
+  }
 });
 
 test('geometry action proposal carries exact before and after placement and rejects malformed geometry',async()=>{
