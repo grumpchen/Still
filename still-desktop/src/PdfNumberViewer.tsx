@@ -5,6 +5,7 @@ import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import {localFiles} from './platform/files.ts';
 import {includePdfNumberSelection,pdfOperationAt,scanPdfNumbers,togglePdfNumberSelection,type PdfArithmeticOperation} from './domain/pdfCalculations.ts';
 import {checkedPdfHighlightKeywords,findPdfHighlightRanges,pdfHighlightStorageKey,readPdfHighlights,writePdfHighlights,type PdfHighlightRange} from './domain/pdfHighlights.ts';
+import {pdfBookmarkStorageKey,readPdfBookmarks,writePdfBookmarks} from './domain/pdfBookmarks.ts';
 import {useT} from './localization.tsx';
 
 interface Props {widgetId:string;path:string;name?:string;createCalculation?:(values:number[],operation:PdfArithmeticOperation)=>void}
@@ -16,8 +17,9 @@ const operations:[PdfArithmeticOperation,string][]=[['+','pdfOperationAdd'],['-'
 
 export default function PdfNumberViewer({widgetId,path,name='PDF',createCalculation}:Props){
  const t=useT(),stage=useRef<HTMLDivElement>(null),canvas=useRef<HTMLCanvasElement>(null),textLayerContainer=useRef<HTMLDivElement>(null),pageRef=useRef<PDFPageProxy|null>(null),detectionRun=useRef(0),textCache=useRef(new Map<number,PdfTextSpan[]>()),pendingKeywordRequest=useRef(''),pendingKeywordText=useRef(''),selectedRef=useRef<NumberToken[]>([]);
- const [document,setDocument]=useState<PDFDocumentProxy|null>(null),[pageNumber,setPageNumber]=useState(1),[scale,setScale]=useState(1),[renderScale,setRenderScale]=useState(1),[busy,setBusy]=useState(true),[error,setError]=useState(''),[numberMode,setNumberMode]=useState(false),[numbers,setNumbers]=useState<NumberToken[]>([]),[selected,setSelected]=useState<NumberToken[]>([]),[selectionError,setSelectionError]=useState(''),[wheel,setWheel]=useState<Wheel|null>(null),[stageSize,setStageSize]=useState({width:0,height:0}),[pdfFingerprint,setPdfFingerprint]=useState(''),[textDivs,setTextDivs]=useState<HTMLElement[]>([]),[positionedKeywords,setPositionedKeywords]=useState<PositionedKeywordRange[]>([]),[appliedKeywords,setAppliedKeywords]=useState<string[]>([]),[proposedKeywords,setProposedKeywords]=useState<string[]>([]),[keywordBusy,setKeywordBusy]=useState(false),[keywordError,setKeywordError]=useState('');
+ const [document,setDocument]=useState<PDFDocumentProxy|null>(null),[pageNumber,setPageNumber]=useState(1),[scale,setScale]=useState(1),[renderScale,setRenderScale]=useState(1),[busy,setBusy]=useState(true),[error,setError]=useState(''),[numberMode,setNumberMode]=useState(false),[numbers,setNumbers]=useState<NumberToken[]>([]),[selected,setSelected]=useState<NumberToken[]>([]),[selectionError,setSelectionError]=useState(''),[wheel,setWheel]=useState<Wheel|null>(null),[stageSize,setStageSize]=useState({width:0,height:0}),[pdfFingerprint,setPdfFingerprint]=useState(''),[textDivs,setTextDivs]=useState<HTMLElement[]>([]),[positionedKeywords,setPositionedKeywords]=useState<PositionedKeywordRange[]>([]),[appliedKeywords,setAppliedKeywords]=useState<string[]>([]),[proposedKeywords,setProposedKeywords]=useState<string[]>([]),[keywordBusy,setKeywordBusy]=useState(false),[keywordError,setKeywordError]=useState(''),[bookmarks,setBookmarks]=useState<number[]>([]),[bookmarkError,setBookmarkError]=useState('');
  const storageKey=pdfFingerprint?pdfHighlightStorageKey(widgetId,path,pdfFingerprint):'';
+ const bookmarkKey=pdfFingerprint?pdfBookmarkStorageKey(widgetId,path,pdfFingerprint):'';
  useLayoutEffect(()=>{
   const target=stage.current,container=textLayerContainer.current;if(!target||!container||!textDivs.length||!appliedKeywords.length){setPositionedKeywords([]);return}
   const bounds=target.getBoundingClientRect(),ranges=findPdfHighlightRanges(textDivs.map(div=>div.textContent??''),appliedKeywords),rectangles:PositionedKeywordRange[]=[];
@@ -47,6 +49,7 @@ export default function PdfNumberViewer({widgetId,path,name='PDF',createCalculat
  },[widgetId,path]);
 
  useEffect(()=>{if(!storageKey){setAppliedKeywords([]);return}try{setAppliedKeywords(readPdfHighlights(localStorage,storageKey))}catch{setAppliedKeywords([])}},[storageKey]);
+ useEffect(()=>{if(!bookmarkKey||!document){setBookmarks([]);return}setBookmarks(readPdfBookmarks(localStorage,bookmarkKey,document.numPages))},[bookmarkKey,document]);
  useEffect(()=>{const ready=(event:Event)=>{const detail=(event as CustomEvent<{requestId?:unknown;keywords?:unknown}>).detail;if(detail?.requestId!==pendingKeywordRequest.current||!Array.isArray(detail.keywords))return;pendingKeywordRequest.current='';setKeywordBusy(false);try{const keywords=checkedPdfHighlightKeywords(JSON.stringify({keywords:detail.keywords}),pendingKeywordText.current);pendingKeywordText.current='';setKeywordError('');setProposedKeywords(keywords)}catch(reason){pendingKeywordText.current='';setKeywordError(reason instanceof Error?reason.message:t('pdfKeywordFailure'))}},failed=(event:Event)=>{const detail=(event as CustomEvent<{requestId?:unknown;error?:unknown}>).detail;if(detail?.requestId!==pendingKeywordRequest.current)return;pendingKeywordRequest.current='';pendingKeywordText.current='';setKeywordBusy(false);setKeywordError(typeof detail.error==='string'?detail.error:t('pdfKeywordFailure'))};window.addEventListener('still-pdf-keywords-ready',ready);window.addEventListener('still-pdf-keywords-error',failed);return()=>{window.removeEventListener('still-pdf-keywords-ready',ready);window.removeEventListener('still-pdf-keywords-error',failed)}},[t]);
 
  useEffect(()=>{const timer=window.setTimeout(()=>setRenderScale(scale),120);return()=>window.clearTimeout(timer)},[scale]);
@@ -132,6 +135,19 @@ export default function PdfNumberViewer({widgetId,path,name='PDF',createCalculat
   catch(reason){setKeywordError(reason instanceof Error?reason.message:t('pdfKeywordSaveFailed'))}
  }
 
+ function toggleCurrentPageBookmark(){
+  if(!bookmarkKey||!document)return;
+  const next=bookmarks.includes(pageNumber)?bookmarks.filter(page=>page!==pageNumber):[...bookmarks,pageNumber];
+  try{writePdfBookmarks(localStorage,bookmarkKey,next,document.numPages);setBookmarks(next.sort((a,b)=>a-b));setBookmarkError('')}
+  catch{setBookmarkError(t('pdfBookmarkSaveFailed'))}
+ }
+ function removePageBookmark(page:number){
+  if(!bookmarkKey||!document)return;
+  const next=bookmarks.filter(item=>item!==page);
+  try{writePdfBookmarks(localStorage,bookmarkKey,next,document.numPages);setBookmarks(next);setBookmarkError('')}
+  catch{setBookmarkError(t('pdfBookmarkSaveFailed'))}
+ }
+
  useEffect(()=>{selectedRef.current=selected},[selected]);
  const closeWheel=useCallback(()=>setWheel(null),[]);
  const applyWheel=useCallback((operation:PdfArithmeticOperation|null)=>{
@@ -159,7 +175,7 @@ export default function PdfNumberViewer({widgetId,path,name='PDF',createCalculat
  return <section className="pdf-number-viewer" aria-label={t('previewFile')} onContextMenu={event=>{event.preventDefault();event.stopPropagation()}}>
   <header className="pdf-viewer-toolbar">
    <div><button type="button" disabled={!document||pageNumber<=1} aria-label={t('pdfPreviousPage')} onClick={()=>setPageNumber(value=>Math.max(1,value-1))}>‹</button><span>{t('pdfPage').replace('{page}',String(pageNumber)).replace('{count}',String(pageCount||'—'))}</span><button type="button" disabled={!document||pageNumber>=pageCount} aria-label={t('pdfNextPage')} onClick={()=>setPageNumber(value=>Math.min(pageCount,value+1))}>›</button></div>
-   <div><button type="button" disabled={!document} aria-label={t('pdfZoomOut')} onClick={()=>setScale(value=>Math.max(.5,Math.round((value-.15)*100)/100))}>−</button><span>{Math.round(scale*100)}%</span><button type="button" disabled={!document} aria-label={t('pdfZoomIn')} onClick={()=>setScale(value=>Math.min(2.5,Math.round((value+.15)*100)/100))}>+</button><button type="button" aria-pressed={numberMode} onClick={()=>{const next=!numberMode;setNumberMode(next);setNumbers([]);setSelected([]);setSelectionError('');if(!next)setBusy(false)}}>{numberMode?t('pdfCloseNumberMode'):t('pdfDetectNumbers')}</button><button type="button" title={t('pdfKeywordSharingNotice')} disabled={!document||keywordBusy} onClick={()=>void requestKeywordHighlights()}>{keywordBusy?t('pdfFindingKeywords'):t('pdfHighlightKeywords')}</button>{appliedKeywords.length>0&&<button type="button" onClick={clearKeywordHighlights}>{t('pdfClearHighlights')}</button>}</div>
+   <div><button type="button" disabled={!document} aria-label={t('pdfZoomOut')} onClick={()=>setScale(value=>Math.max(.5,Math.round((value-.15)*100)/100))}>−</button><span>{Math.round(scale*100)}%</span><button type="button" disabled={!document} aria-label={t('pdfZoomIn')} onClick={()=>setScale(value=>Math.min(2.5,Math.round((value+.15)*100)/100))}>+</button><button type="button" aria-pressed={numberMode} onClick={()=>{const next=!numberMode;setNumberMode(next);setNumbers([]);setSelected([]);setSelectionError('');if(!next)setBusy(false)}}>{numberMode?t('pdfCloseNumberMode'):t('pdfDetectNumbers')}</button><button type="button" title={t('pdfKeywordSharingNotice')} disabled={!document||keywordBusy} onClick={()=>void requestKeywordHighlights()}>{keywordBusy?t('pdfFindingKeywords'):t('pdfHighlightKeywords')}</button>{appliedKeywords.length>0&&<button type="button" onClick={clearKeywordHighlights}>{t('pdfClearHighlights')}</button>}<button type="button" disabled={!document||!bookmarkKey} aria-pressed={bookmarks.includes(pageNumber)} aria-label={bookmarks.includes(pageNumber)?t('pdfRemoveBookmark').replace('{page}',String(pageNumber)):t('pdfBookmarkPage').replace('{page}',String(pageNumber))} onClick={toggleCurrentPageBookmark}>{bookmarks.includes(pageNumber)?'★':'☆'} {bookmarks.includes(pageNumber)?t('pdfBookmarked'):t('pdfBookmark')}</button><details className="pdf-bookmark-menu"><summary>{t('pdfBookmarks')} ({bookmarks.length})</summary><div className="pdf-bookmark-list">{bookmarks.length?bookmarks.map(page=><div key={page}><button type="button" onClick={event=>{setPageNumber(page);event.currentTarget.closest('details')?.removeAttribute('open')}}>{t('pdfPage').replace('{page}',String(page)).replace('{count}',String(pageCount||'—'))}</button><button type="button" aria-label={t('pdfRemoveBookmark').replace('{page}',String(page))} onClick={()=>removePageBookmark(page)}>×</button></div>):<p>{t('pdfNoBookmarks')}</p>}</div></details></div>
   </header>
   {busy&&<p className="files-message" role="status">{t('loadingFiles')}</p>}{error&&<p className="widget-error" role="alert">{error}</p>}
   <div className="pdf-scroll-viewport"><div ref={stage} className={'pdf-page-stage'+(numberMode?' is-number-mode':'')} style={{width:stageSize.width||undefined,height:stageSize.height||undefined}}>
@@ -173,6 +189,7 @@ export default function PdfNumberViewer({widgetId,path,name='PDF',createCalculat
   </div></div>
   {proposedKeywords.length>0&&<section className="pdf-keyword-review" aria-label={t('pdfReviewKeywords')}><strong>{t('pdfReviewKeywords')}</strong><div>{proposedKeywords.map(keyword=><label key={keyword}><input type="checkbox" checked onChange={()=>toggleProposedKeyword(keyword)}/>{keyword}</label>)}</div><footer><span>{t('pdfHighlightsStayLocal')}</span><button type="button" disabled={!proposedKeywords.length||!storageKey} onClick={applyKeywordHighlights}>{t('pdfApplyHighlights')}</button><button type="button" onClick={()=>setProposedKeywords([])}>{t('pdfDiscardHighlights')}</button></footer></section>}
   {keywordError&&<p className="widget-error pdf-keyword-error" role="alert">{keywordError}</p>}
+  {bookmarkError&&<p className="widget-error pdf-keyword-error" role="alert">{bookmarkError}</p>}
   {numberMode&&<footer className="pdf-number-footer"><span>{selected.map(item=>item.raw).join(' · ')||t('pdfNumbersDetected')}</span><span>{selected.length?`${selected.length} / 32`:numbers.length?`${numbers.length}`:t('pdfNoNumbers')}</span>{selected.length>0&&<button type="button" onClick={()=>createCalculation?.(selected.map(item=>item.value),'+')}>{t('pdfAddCalculation')}</button>}{selectionError&&<small role="status">{selectionError}</small>}<small>{t('pdfSelectionHint')}</small></footer>}
  </section>;
 }

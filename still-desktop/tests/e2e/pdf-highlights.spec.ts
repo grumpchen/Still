@@ -68,3 +68,23 @@ test('PDF keyword highlights render across pages, survive reload, zoom with the 
  await toolbar.getByRole('button',{name:'Clear highlights'}).click();await expect(page.locator('.pdf-keyword-highlight')).toHaveCount(0);
  await toolbar.getByRole('button',{name:'Previous page'}).click();await expect(toolbar).toContainText('Page 1 of 2');await expect(page.locator('.pdf-keyword-highlight')).toHaveCount(0);
 });
+
+test('PDF page bookmarks can be saved, revisited, removed and restored after remount',async({page})=>{
+ test.setTimeout(90000);
+ await page.goto('/tests/e2e/fixtures/pdf-viewer.html',{waitUntil:'commit'});
+ await expect.poll(()=>page.evaluate(()=>typeof window.mountPdfViewer==='function'),{timeout:60000}).toBe(true);
+ await page.evaluate(base64=>window.mountPdfViewer?.(base64),textPdf(['First page concept.','Second page worked example.']));
+ await expect.poll(()=>page.evaluate(()=>window.pdfFixturePreviewResolved===true),{timeout:5000}).toBe(true);
+ const toolbar=page.locator('.pdf-viewer-toolbar'),bookmarkPage1=toolbar.getByRole('button',{name:'Bookmark page 1'});
+ await expect(bookmarkPage1).toBeEnabled();await bookmarkPage1.click();await expect(toolbar.getByRole('button',{name:'Remove bookmark for page 1'})).toHaveAttribute('aria-pressed','true');
+ await toolbar.getByRole('button',{name:'Next page'}).click();
+ const bookmarkPage2=toolbar.getByRole('button',{name:'Bookmark page 2'});await expect(bookmarkPage2).toBeEnabled();await bookmarkPage2.click();
+ const menu=toolbar.locator('details.pdf-bookmark-menu');await menu.locator('summary').click();
+ await expect(menu.locator('.pdf-bookmark-list>div')).toHaveCount(2);
+ await menu.getByRole('button',{name:'Page 1 of 2'}).click();await expect(toolbar).toContainText('Page 1 of 2');
+ await page.evaluate(()=>window.remountPdfViewer?.());
+ const restoredMenu=page.locator('.pdf-bookmark-menu');await restoredMenu.locator('summary').click();
+ await expect(restoredMenu.locator('.pdf-bookmark-list>div')).toHaveCount(2);
+ await restoredMenu.getByRole('button',{name:'Remove bookmark for page 2'}).click();
+ await expect(restoredMenu.locator('.pdf-bookmark-list>div')).toHaveCount(1);
+});
