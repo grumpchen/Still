@@ -421,6 +421,8 @@ dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
 .pdf-still-preview[hidden]{display:none}
 .pdf-system-preview{display:flex;flex:1;min-width:0;min-height:0;overflow:hidden;background:#fff}
 .pdf-system-preview .file-preview-frame{flex:1;min-width:0;min-height:0}
+.unsupported-file-preview{display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px;text-align:center}
+.unsupported-file-preview>p{margin:0}
 .pdf-number-viewer{display:flex;flex:1;min-width:0;min-height:0;flex-direction:column;overflow:hidden;background:rgba(25,27,30,.58)}
 .pdf-viewer-toolbar,.pdf-number-footer{display:flex;flex:none;align-items:center;justify-content:space-between;gap:8px;padding:6px 9px;border-bottom:1px solid var(--line);background:rgba(30,32,35,.74)}
 .pdf-viewer-toolbar>div{display:flex;align-items:center;gap:5px;flex-wrap:wrap}.pdf-viewer-toolbar button,.pdf-number-footer button{min-height:28px;padding:3px 8px}.pdf-viewer-toolbar span{min-width:62px;text-align:center;font-size:11px}

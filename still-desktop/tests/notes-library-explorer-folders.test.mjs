@@ -47,7 +47,7 @@ test('Files lists empty folders and unsupported documents with external viewer a
  const old=Object.keys(globals).map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]);let root;
  try{
   for(const [key,value] of Object.entries(globals))setGlobal(key,value);
-  window.__TAURI_INTERNALS__={};mockIPC((command,args)=>command==='files_list'?{rootName:'Course',location:args.location,entries:args.location===''?[{name:'Empty',path:'Empty',directory:true,size:0,blocked:false},{name:'Project',path:'Project',directory:true,size:0,blocked:false}]:[{name:'Report.docx',path:'Project/Report.docx',directory:false,size:42,blocked:false}],truncated:false}:null,{shouldMockEvents:true});
+  window.__TAURI_INTERNALS__={};mockIPC((command,args)=>{if(command==='files_list')return{rootName:'Course',location:args.location,entries:args.location===''?[{name:'Empty',path:'Empty',directory:true,size:0,blocked:false},{name:'Project',path:'Project',directory:true,size:0,blocked:false}]:[{name:'Report.docx',path:'Project/Report.docx',directory:false,size:42,blocked:false}],truncated:false};if(command==='files_preview')return{mimeType:'application/octet-stream',base64:''};if(command==='files_open')throw new Error('No default application is associated with this file.');return null},{shouldMockEvents:true});
   const {default:NotesLibraryExplorer}=await vite.ssrLoadModule('/src/NotesLibraryExplorer.tsx');
   root=createRoot(window.document.querySelector('#root'));
   await act(async()=>root.render(createElement(NotesLibraryExplorer,{widgetId:'course-library',connected:true,libraryName:'Course',entries:[{name:'Empty',path:'Empty',size:0,directory:true},{name:'Project',path:'Project',size:0,directory:true},{name:'Report.docx',path:'Project/Report.docx',size:42}],busy:false,error:'',newName:'',onNewName(){},onRefresh(){},onChoose(){},onCreate:async()=>null,onOpenNote:async()=>{},renderNoteEditor:()=>null})));
@@ -56,6 +56,9 @@ test('Files lists empty folders and unsupported documents with external viewer a
   const documentRow=window.document.querySelector('[data-file-path="Project/Report.docx"]');assert.ok(documentRow,'unsupported documents remain visible in their folder');
   await act(async()=>{documentRow.click();await new Promise(resolve=>setTimeout(resolve,10))});
   assert.ok([...window.document.querySelectorAll('button')].some(button=>button.textContent==='Open default app'),'unsupported documents remain available to the system default viewer');
+  const openDefault=[...window.document.querySelectorAll('button')].find(button=>button.textContent==='Open default app');
+  await act(async()=>{openDefault.click();await new Promise(resolve=>setTimeout(resolve,10))});
+  assert.match(window.document.querySelector('.unsupported-file-preview [role="alert"]')?.textContent??'',/No default application is associated/,'missing system handlers report their error in the preview area');
  }finally{if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();for(const [key,descriptor] of old)if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}
 });
 
