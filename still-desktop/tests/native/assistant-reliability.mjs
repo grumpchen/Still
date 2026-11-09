@@ -13,7 +13,7 @@ import { createInitialState, createWidget, createWorkspace } from '../../src/dom
 const mode = process.argv[2];
 const expect=playwrightExpect.configure({timeout:15_000});
 assert(process.platform === 'win32' && process.env.APPDATA, 'This fixture requires Windows with WebView2.');
-assert(['success','stale','timeout','restart','revoke','theme','move-widget','resize-widget','library-edit','library-conflict','library-create','library-folder-create','library-folder-browse','pdf-highlights','files-viewers'].includes(mode), 'Specify an acceptance case from tests/native/README.md.');
+assert(['success','stale','timeout','restart','revoke','theme','move-widget','resize-widget','workspace-marquee','library-edit','library-conflict','library-create','library-folder-create','library-folder-browse','pdf-highlights','files-viewers'].includes(mode), 'Specify an acceptance case from tests/native/README.md.');
 const libraryCase = mode.startsWith('library-');
 const pdfCase = mode==='pdf-highlights';
 const filesViewerCase = mode==='files-viewers';
@@ -53,6 +53,10 @@ if(libraryCase||geometry||pdfCase){
   notes.title='Fixture Notes';
   if(libraryCase||pdfCase){notes.notesLibraryKey=notes.id;notes.notesLibraryName=pdfCase?'Fixture PDF Library':'Fixture Notes Library';}
   canvas.widgets.push(notes);
+}
+if(mode==='workspace-marquee'){
+  notes.placement={x:220,y:160,width:440,height:320};
+  const second=createWidget('notes');second.title='Fixture Notes Two';second.placement={x:780,y:160,width:440,height:320};canvas.widgets.push(notes,second);
 }
 if(filesViewerCase){
   const files=createWidget('files');
@@ -319,6 +323,20 @@ async function runControl(page) {
   if(!geometry)assert.match(receipt.result.receipt,/saved.*dark/i);
   await page.getByRole('button',{name:'Undo change',exact:true}).click();
   await expect.poll(persisted).toEqual(before);
+}
+
+async function runWorkspaceMarquee(page){
+  const viewport=page.locator('.canvas-viewport'),cards=page.locator('.canvas-card');
+  await expect(cards.first()).toBeVisible();await expect(cards).toHaveCount(2);
+  const viewportRect=await viewport.evaluate(node=>{const r=node.getBoundingClientRect();return{x:r.x,y:r.y}});
+  const start={x:viewportRect.x+20,y:viewportRect.y+20},end={x:viewportRect.x+1280,y:viewportRect.y+700};
+  await page.mouse.move(start.x,start.y);await page.mouse.down();await page.mouse.move(end.x,end.y,{steps:8});await page.mouse.up();
+  await expect(cards.nth(0)).toHaveClass(/widget-selected/);await expect(cards.nth(1)).toHaveClass(/widget-selected/);
+  const before=await page.evaluate(()=>Array.from(document.querySelectorAll('.canvas-card')).slice(0,2).map(item=>({left:parseFloat(item.style.left),top:parseFloat(item.style.top)})));
+  const header=await page.evaluate(()=>{const r=document.querySelector('.canvas-card .card-head').getBoundingClientRect();return{x:r.x,y:r.y,width:r.width,height:r.height}});
+  await page.mouse.move(header.x+header.width/2,header.y+header.height/2);await page.mouse.down();await page.mouse.move(header.x+header.width/2+44,header.y+header.height/2+32,{steps:6});await page.mouse.up();
+  await expect.poll(()=>page.evaluate(()=>Array.from(document.querySelectorAll('.canvas-card')).slice(0,2).map(item=>({left:parseFloat(item.style.left),top:parseFloat(item.style.top)})))).toEqual(before.map(item=>({left:item.left+44,top:item.top+32})));
+  await expect(viewport).toBeVisible();
 }
 
 async function runLibrary(page) {
@@ -600,6 +618,7 @@ export default {...base,plugins:[...base.plugins,bootstrap],server:{...base.serv
   await seed(page);
   await assertGrant(page,inbox);
   if(mode==='theme'||geometry)await runControl(page);
+  else if(mode==='workspace-marquee')await runWorkspaceMarquee(page);
   else if(libraryCase)await runLibrary(page);
   else if(pdfCase)await runPdfHighlights(page);
   else if(filesViewerCase)await runFilesViewers(page);
