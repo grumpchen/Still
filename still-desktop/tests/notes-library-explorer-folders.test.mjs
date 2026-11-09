@@ -62,6 +62,24 @@ test('Files lists empty folders and unsupported documents with external viewer a
  }finally{if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();for(const [key,descriptor] of old)if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}
 });
 
+test('HTML preview is loaded only on demand and rendered in a script-isolated frame',async()=>{
+ const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true}),{window}=dom;
+ const globals={window,document:window.document,navigator:window.navigator,localStorage:window.localStorage,HTMLElement:window.HTMLElement,Element:window.Element,Node:window.Node,MutationObserver:window.MutationObserver,IS_REACT_ACT_ENVIRONMENT:true,isTauri:true};
+ const old=Object.keys(globals).map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]),calls=[];let root;
+ try{
+  for(const [key,value] of Object.entries(globals))setGlobal(key,value);
+  window.__TAURI_INTERNALS__={};mockIPC((command,args)=>{calls.push({command,args});if(command==='files_list')return{rootName:'Course',location:'',entries:[{name:'advanced.html',path:'advanced.html',directory:false,size:40,blocked:false}],truncated:false};if(command==='files_preview')return{mimeType:'text/html',base64:Buffer.from('<html><head></head><body><script>alert(1)</script><p>Lecture</p></body></html>').toString('base64')};return null},{shouldMockEvents:true});
+  const {default:NotesLibraryExplorer}=await vite.ssrLoadModule('/src/NotesLibraryExplorer.tsx');root=createRoot(window.document.querySelector('#root'));
+  await act(async()=>root.render(createElement(NotesLibraryExplorer,{widgetId:'course-library',connected:true,libraryName:'Course',entries:[{name:'advanced.html',path:'advanced.html',size:40}],busy:false,error:'',newName:'',onNewName(){},onRefresh(){},onChoose(){},onCreate:async()=>null,onOpenNote:async()=>{},renderNoteEditor:()=>null})));
+  await act(async()=>{window.document.querySelector('[data-file-path="advanced.html"]').click();await new Promise(resolve=>setTimeout(resolve,10))});
+  assert.equal(calls.filter(call=>call.command==='files_preview').length,0,'HTML contents are not read until the preview action is pressed');
+  const previewButton=[...window.document.querySelectorAll('button')].find(button=>button.textContent==='Preview in Still');assert.ok(previewButton,'the user has an explicit on-demand preview button');
+  await act(async()=>{previewButton.click();await new Promise(resolve=>setTimeout(resolve,20))});
+  const frame=window.document.querySelector('.file-preview-html');assert.ok(frame,'HTML is displayed in Still after the user requests it');assert.equal(frame.getAttribute('sandbox'),'','scripts and other iframe capabilities stay disabled');assert.match(frame.getAttribute('srcdoc'),/default-src 'none'/,'the preview blocks external resources by default');assert.match(frame.getAttribute('srcdoc'),/<script>alert\(1\)<\/script>/,'the source is shown as-is inside the isolated document');
+  assert.ok([...window.document.querySelectorAll('button')].some(button=>button.textContent==='Open default app'),'system default app opening remains available');
+ }finally{if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();for(const [key,descriptor] of old)if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}
+});
+
 test('Files selects rows with a pointer marquee and does not add checkbox controls',async()=>{
  const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true}),{window}=dom;
  const globals={window,document:window.document,navigator:window.navigator,localStorage:window.localStorage,HTMLElement:window.HTMLElement,Element:window.Element,Node:window.Node,Event:window.Event,CustomEvent:window.CustomEvent,MutationObserver:window.MutationObserver,IS_REACT_ACT_ENVIRONMENT:true,isTauri:true};

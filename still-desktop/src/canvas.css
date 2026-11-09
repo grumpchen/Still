@@ -413,6 +413,7 @@ dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
 .note-library-preview-head button{padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:9px}
 .note-library-preview .document-preview{min-height:0}
 .note-library-preview .file-preview-frame{min-height:0}
+.note-library-preview .file-preview-html{display:block;flex:1;width:100%;min-height:320px;border:0;border-radius:6px;background:#fff}
 .note-library-preview .file-preview-image{width:100%;height:100%}
 .note-library-preview-empty{display:flex;flex:1;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:12px;color:var(--muted);text-align:center}
 .note-library-preview-empty>span{font-size:20px;opacity:.65}

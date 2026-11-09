@@ -212,7 +212,7 @@ pub(crate) fn read_preview(path:&Path)->Result<FilePreview,String>{
     const MAX_PREVIEW_BYTES:u64=20*1024*1024;
     let extension=path.extension().and_then(|value|value.to_str()).unwrap_or("").to_ascii_lowercase();
     let mime_type=match extension.as_str(){
-        "pdf"=>"application/pdf","txt"|"md"|"csv"|"log"=>"text/plain",
+        "pdf"=>"application/pdf","txt"|"md"|"csv"|"log"=>"text/plain","html"|"htm"=>"text/html",
         "png"=>"image/png","jpg"|"jpeg"=>"image/jpeg","gif"=>"image/gif","webp"=>"image/webp","bmp"=>"image/bmp",
         "mp4"|"m4v"=>"video/mp4","webm"=>"video/webm","mp3"=>"audio/mpeg","wav"=>"audio/wav","ogg"=>"audio/ogg",
         _=>return Err("Preview supports PDF, text, common image and audio/video files.".into()),
@@ -778,7 +778,7 @@ mod tests {
         fs::create_dir_all(&fixture).unwrap();
         let text=fixture.join("lecture.MD");fs::write(&text,"local lecture notes").unwrap();
         let preview=read_preview(&text).unwrap();assert_eq!(preview.mime_type,"text/plain");assert_eq!(base64::engine::general_purpose::STANDARD.decode(preview.base64).unwrap(),b"local lecture notes");
-        let html=fixture.join("active.html");fs::write(&html,"<script>alert(1)</script>").unwrap();assert!(read_preview(&html).is_err());
+        let html=fixture.join("active.html");fs::write(&html,"<script>alert(1)</script>").unwrap();let html_preview=read_preview(&html).unwrap();assert_eq!(html_preview.mime_type,"text/html");assert_eq!(base64::engine::general_purpose::STANDARD.decode(html_preview.base64).unwrap(),b"<script>alert(1)</script>");
         let binary=fixture.join("broken.txt");fs::write(&binary,[0xff,0xfe]).unwrap();assert!(read_preview(&binary).is_err());
         fs::remove_dir_all(fixture).unwrap();
     }
