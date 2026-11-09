@@ -8,16 +8,16 @@ import {checkedPdfHighlightKeywords,findPdfHighlightRanges,pdfHighlightStorageKe
 import {PDF_PAGE_BOOKMARK_DRAG_TYPE,pdfBookmarkStorageKey,readPdfBookmarks,writePdfBookmarks} from './domain/pdfBookmarks.ts';
 import {useT} from './localization.tsx';
 
-interface Props {widgetId:string;path:string;name?:string;initialPage?:number;createCalculation?:(values:number[],operation:PdfArithmeticOperation)=>void}
+interface Props {widgetId:string;path:string;name?:string;initialPage?:number;onPageChange?:(page:number)=>void;createCalculation?:(values:number[],operation:PdfArithmeticOperation)=>void}
 interface NumberToken {id:string;raw:string;value:number;left:number;top:number;width:number;height:number}
 interface PositionedKeywordRange extends PdfHighlightRange {left:number;top:number;width:number;height:number}
 interface PdfTextSpan {str:string;transform:number[];width:number}
 interface Wheel {x:number;y:number;operation:PdfArithmeticOperation|null;pointerId:number}
 const operations:[PdfArithmeticOperation,string][]=[['+','pdfOperationAdd'],['-','pdfOperationSubtract'],['×','pdfOperationMultiply'],['÷','pdfOperationDivide']];
 
-export default function PdfNumberViewer({widgetId,path,name='PDF',initialPage,createCalculation}:Props){
+export default function PdfNumberViewer({widgetId,path,name='PDF',initialPage,onPageChange,createCalculation}:Props){
  const t=useT(),stage=useRef<HTMLDivElement>(null),canvas=useRef<HTMLCanvasElement>(null),textLayerContainer=useRef<HTMLDivElement>(null),pageRef=useRef<PDFPageProxy|null>(null),detectionRun=useRef(0),textCache=useRef(new Map<number,PdfTextSpan[]>()),pendingKeywordRequest=useRef(''),pendingKeywordText=useRef(''),selectedRef=useRef<NumberToken[]>([]);
- const [document,setDocument]=useState<PDFDocumentProxy|null>(null),[pageNumber,setPageNumber]=useState(1),[scale,setScale]=useState(1),[renderScale,setRenderScale]=useState(1),[busy,setBusy]=useState(true),[error,setError]=useState(''),[numberMode,setNumberMode]=useState(false),[numbers,setNumbers]=useState<NumberToken[]>([]),[selected,setSelected]=useState<NumberToken[]>([]),[selectionError,setSelectionError]=useState(''),[wheel,setWheel]=useState<Wheel|null>(null),[stageSize,setStageSize]=useState({width:0,height:0}),[pdfFingerprint,setPdfFingerprint]=useState(''),[textDivs,setTextDivs]=useState<HTMLElement[]>([]),[positionedKeywords,setPositionedKeywords]=useState<PositionedKeywordRange[]>([]),[appliedKeywords,setAppliedKeywords]=useState<string[]>([]),[proposedKeywords,setProposedKeywords]=useState<string[]>([]),[keywordBusy,setKeywordBusy]=useState(false),[keywordError,setKeywordError]=useState(''),[bookmarks,setBookmarks]=useState<number[]>([]),[bookmarkError,setBookmarkError]=useState('');
+ const [document,setDocument]=useState<PDFDocumentProxy|null>(null),[pageNumber,setPageNumber]=useState(initialPage??1),[scale,setScale]=useState(1),[renderScale,setRenderScale]=useState(1),[busy,setBusy]=useState(true),[error,setError]=useState(''),[numberMode,setNumberMode]=useState(false),[numbers,setNumbers]=useState<NumberToken[]>([]),[selected,setSelected]=useState<NumberToken[]>([]),[selectionError,setSelectionError]=useState(''),[wheel,setWheel]=useState<Wheel|null>(null),[stageSize,setStageSize]=useState({width:0,height:0}),[pdfFingerprint,setPdfFingerprint]=useState(''),[textDivs,setTextDivs]=useState<HTMLElement[]>([]),[positionedKeywords,setPositionedKeywords]=useState<PositionedKeywordRange[]>([]),[appliedKeywords,setAppliedKeywords]=useState<string[]>([]),[proposedKeywords,setProposedKeywords]=useState<string[]>([]),[keywordBusy,setKeywordBusy]=useState(false),[keywordError,setKeywordError]=useState(''),[bookmarks,setBookmarks]=useState<number[]>([]),[bookmarkError,setBookmarkError]=useState('');
  const storageKey=pdfFingerprint?pdfHighlightStorageKey(widgetId,path,pdfFingerprint):'';
  const bookmarkKey=pdfFingerprint?pdfBookmarkStorageKey(widgetId,path,pdfFingerprint):'';
  useLayoutEffect(()=>{
@@ -49,6 +49,7 @@ export default function PdfNumberViewer({widgetId,path,name='PDF',initialPage,cr
  },[widgetId,path]);
 
  useEffect(()=>{if(document&&Number.isSafeInteger(initialPage)&&initialPage!>0&&initialPage!<=document.numPages)setPageNumber(initialPage!)},[document,initialPage]);
+ useEffect(()=>{if(document&&pageNumber>=1&&pageNumber<=document.numPages)onPageChange?.(pageNumber)},[document,onPageChange,pageNumber]);
 
  useEffect(()=>{if(!storageKey){setAppliedKeywords([]);return}try{setAppliedKeywords(readPdfHighlights(localStorage,storageKey))}catch{setAppliedKeywords([])}},[storageKey]);
  useEffect(()=>{if(!bookmarkKey||!document){setBookmarks([]);return}setBookmarks(readPdfBookmarks(localStorage,bookmarkKey,document.numPages))},[bookmarkKey,document]);

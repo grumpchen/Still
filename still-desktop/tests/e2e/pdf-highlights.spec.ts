@@ -22,6 +22,24 @@ function textPdf(pages:readonly string[]):string{
  return Buffer.from(pdf,'ascii').toString('base64');
 }
 
+test('PDF preview switches between the built-in viewer and Still reader while retaining its page',async({page})=>{
+ await page.goto('/tests/e2e/fixtures/pdf-viewer.html',{waitUntil:'commit'});
+ await expect.poll(()=>page.evaluate(()=>typeof window.mountPdfViewer==='function'),{timeout:60000}).toBe(true);
+ await page.evaluate(base64=>window.mountPdfViewer?.(base64),textPdf(['First page.','Second page.']));
+ await expect(page.locator('.pdf-number-viewer')).toBeVisible();
+ await page.getByRole('button',{name:'Next page'}).click();
+ await expect(page.locator('.pdf-viewer-toolbar')).toContainText('Page 2 of 2');
+ await page.getByRole('button',{name:'System preview'}).click();
+ const systemFrame=page.locator('.pdf-system-preview iframe');
+ await expect(systemFrame).toBeVisible();
+ await expect(systemFrame).toHaveAttribute('src',/#page=2$/);
+ await page.getByRole('button',{name:'Still reader'}).click();
+ await expect(page.locator('.pdf-viewer-toolbar')).toContainText('Page 2 of 2',{timeout:15000});
+ await page.getByRole('button',{name:'System preview'}).click();
+ await page.evaluate(()=>window.remountPdfViewer?.());
+ await expect(page.locator('.pdf-system-preview iframe')).toBeVisible();
+});
+
 test('PDF keyword highlights render across pages, survive reload, zoom with the page, and clear locally',async({page})=>{
  test.setTimeout(90000);
  await page.goto('/tests/e2e/fixtures/pdf-viewer.html',{waitUntil:'commit'});

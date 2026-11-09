@@ -2,7 +2,7 @@ import {createRoot,type Root} from 'react-dom/client';
 import {useState} from 'react';
 import '../../../src/styles.css';
 import '../../../src/canvas.css';
-import PdfNumberViewer from '../../../src/PdfNumberViewer.tsx';
+import PdfPreview from '../../../src/PdfPreview.tsx';
 import TimetableWidget from '../../../src/TimetableWidget.tsx';
 import {localFiles} from '../../../src/platform/files.ts';
 import type {WidgetInstance} from '../../../src/domain/workspaces.ts';
@@ -18,7 +18,7 @@ const widgetId='pdf-viewer-e2e-fixture';
 function Fixture(){
  const [instance,setInstance]=useState(0);
  window.remountPdfViewer=()=>setInstance(value=>value+1);
- return <PdfNumberViewer key={instance} widgetId={widgetId} path="fixture.pdf" name="Fixture lecture.pdf"/>;
+ return <PdfPreview key={instance} widgetId={widgetId} path="fixture.pdf" name="Fixture lecture.pdf"/>;
 }
 
 window.mountPdfViewer=base64=>{

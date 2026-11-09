@@ -412,7 +412,15 @@ dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
 .note-library-preview-empty p,.note-library-preview-empty small{margin:0;font-size:10px}
 .note-library-preview-empty small{max-width:200px;line-height:1.4;opacity:.8}
 .note-library-preview .document-preview:has(.note-rich-file-editor){display:flex;align-items:stretch;justify-content:stretch;background:transparent}
-.note-library-preview .document-preview:has(.pdf-number-viewer){display:flex;align-items:stretch;justify-content:stretch;background:transparent}
+.note-library-preview .document-preview:has(.pdf-preview-shell){display:flex;align-items:stretch;justify-content:stretch;background:transparent}
+.pdf-preview-shell{display:flex;flex:1;min-width:0;min-height:0;flex-direction:column;overflow:hidden}
+.pdf-preview-modes{display:flex;flex:none;justify-content:flex-end;gap:5px;padding:4px 7px;border-bottom:1px solid var(--line);background:rgba(30,32,35,.74)}
+.pdf-preview-modes button{min-height:26px;padding:3px 8px;font-size:10px}
+.pdf-preview-modes button[aria-pressed="true"]{border-color:color-mix(in srgb,var(--accent) 62%,var(--border));background:color-mix(in srgb,var(--accent) 18%,var(--surface))}
+.pdf-still-preview{display:flex;flex:1;min-width:0;min-height:0;overflow:hidden}
+.pdf-still-preview[hidden]{display:none}
+.pdf-system-preview{display:flex;flex:1;min-width:0;min-height:0;overflow:hidden;background:#fff}
+.pdf-system-preview .file-preview-frame{flex:1;min-width:0;min-height:0}
 .pdf-number-viewer{display:flex;flex:1;min-width:0;min-height:0;flex-direction:column;overflow:hidden;background:rgba(25,27,30,.58)}
 .pdf-viewer-toolbar,.pdf-number-footer{display:flex;flex:none;align-items:center;justify-content:space-between;gap:8px;padding:6px 9px;border-bottom:1px solid var(--line);background:rgba(30,32,35,.74)}
 .pdf-viewer-toolbar>div{display:flex;align-items:center;gap:5px;flex-wrap:wrap}.pdf-viewer-toolbar button,.pdf-number-footer button{min-height:28px;padding:3px 8px}.pdf-viewer-toolbar span{min-width:62px;text-align:center;font-size:11px}
