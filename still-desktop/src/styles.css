@@ -56,6 +56,17 @@ dialog{width:min(440px,calc(100vw - 32px));border:1px solid var(--border);border
 .size-control output{margin-left:auto;color:var(--accent);font-family:Consolas,monospace}
 .size-control input{width:100%;accent-color:var(--accent);cursor:ew-resize}
 .files-widget{display:flex;flex-direction:column;min-height:220px;flex:1}
+.files-browser{display:grid;grid-template-columns:minmax(150px,.82fr) minmax(0,1.18fr);flex:1;min-height:150px;overflow:hidden;border:1px solid var(--border);border-radius:10px;background:color-mix(in srgb,var(--surface) 72%,transparent)}
+.files-browser-list{display:flex;min-width:0;min-height:0;flex-direction:column;border-right:1px solid var(--border)}
+.files-browser-list .file-filter{flex:none;margin:8px;width:calc(100% - 16px)}
+.files-browser .file-list{max-height:none;min-height:0;flex:1;padding:0 6px 8px}
+.files-browser .file-row.is-selected{background:var(--tint)}
+.files-browser .folder-file-preview{min-width:0;min-height:0}
+.files-browser .folder-file-preview-head{flex-wrap:wrap;gap:5px;padding:6px}
+.files-browser .folder-file-preview-head>strong{flex:1 1 100%;order:-1}
+.files-browser .folder-file-preview-head button{font-size:10px}
+.files-browser .document-preview{min-height:0;flex:1}
+.files-browser .file-note{flex:none}
 .files-toolbar{display:flex;gap:7px;align-items:center;padding:11px 12px;border-bottom:1px solid var(--border)}
 .files-toolbar button{font-size:11px;padding:7px 10px}.files-toolbar button:last-child:not(:first-child){margin-left:auto}
 .files-location{display:flex;align-items:center;gap:8px;padding:9px 12px;font-size:11px;color:var(--muted)}
