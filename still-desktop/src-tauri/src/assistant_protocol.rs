@@ -312,6 +312,7 @@ fn compatible_chat_body(request:&Request,provider:Provider)->Result<Value,String
         payload["max_tokens"]=json!(4096);
         payload.as_object_mut().unwrap().remove("max_completion_tokens");
         payload["response_format"]=json!({"type":"json_object"});
+        payload["thinking"]=json!({"type":"disabled"});
     }
     Ok(payload)
 }
@@ -643,6 +644,7 @@ mod tests {
         let mut r=request();r.provider=Provider::Deepseek;r.model="deepseek-chat".into();r.context="widget bounds".into();r.image=Some("/9j/AA==".into());
         let payload=deepseek_body(&r).unwrap();
         assert_eq!(payload["response_format"]["type"],"json_object");
+        assert_eq!(payload["thinking"]["type"],"disabled");
         assert_eq!(payload["max_tokens"],4096);
         assert!(payload.get("max_completion_tokens").is_none());
         assert!(payload["messages"][1]["content"].is_string());

@@ -223,6 +223,7 @@ fn compatible_agent_body(request: &AgentRequest, provider: Provider) -> Result<V
     if provider==Provider::Deepseek {
         payload["max_tokens"]=json!(4096);
         payload.as_object_mut().unwrap().remove("max_completion_tokens");
+        payload["thinking"]=json!({"type":"disabled"});
     }
     Ok(payload)
 }
@@ -709,6 +710,7 @@ mod tests {
         let payload=deepseek_agent_body(&request).unwrap();
         assert_eq!(payload["model"],"deepseek-chat");
         assert_eq!(payload["max_tokens"],4096);
+        assert_eq!(payload["thinking"]["type"],"disabled");
         assert!(payload.get("max_completion_tokens").is_none());
         let turn=parse_deepseek_agent_response_with_all_tools(json!({"choices":[{"finish_reason":"stop","message":{"content":"{\"intent\":\"chat\",\"reply\":\"Ready\",\"layout\":[],\"actions\":[],\"fileProposals\":[],\"calendarProposals\":[]}"}}]}),false,false,false).unwrap();
         assert!(matches!(turn,AgentTurn::Final { .. }));
