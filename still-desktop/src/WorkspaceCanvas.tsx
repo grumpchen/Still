@@ -12,6 +12,7 @@ import GroupHeaderName from './GroupHeaderName.tsx';
 import type {GroupEditMode} from './GroupEditor.tsx';
 import PresetTray from './PresetTray.tsx';
 import SavedItemContextMenu,{type SavedItemMenuTarget} from './SavedItemContextMenu.tsx';
+import AddToolContextMenu from './AddToolContextMenu.tsx';
 import {presetFromWidget,type WidgetPreset,type PresetType} from './domain/presets.ts';
 import {trayDropDecision,droppedWebsite,type GroupTrayDropTarget} from './domain/trayDrop.ts';
 import {resourceDrop,previewFileDrop,presetForDroppedResource,type ResourceDropEvent,type DroppedResource} from './platform/resourceDrop.ts';
@@ -49,6 +50,8 @@ export default function WorkspaceCanvas({workspaceId,canvasFrameRate='display',m
   const [saveTarget,setSaveTarget]=useState<SaveCue|null>(null),[canvasGroupDropId,setCanvasGroupDropId]=useState<string|null>(null),[externalDragging,setExternalDragging]=useState(false),[trayGhost,setTrayGhost]=useState<TrayDragPosition|null>(null);
   const [savedMenu,setSavedMenu]=useState<SavedItemMenuTarget|null>(null);
   const closeSavedMenu=useCallback(()=>setSavedMenu(null),[]);
+  const [addMenu,setAddMenu]=useState<{x:number;y:number}|null>(null);
+  const closeAddMenu=useCallback(()=>setAddMenu(null),[]);
   function popupPosition(rect:DOMRect,width:number){return{top:Math.max(4,rect.top-40),right:Math.max(4,Math.min(window.innerWidth-rect.right,window.innerWidth-width-4))}}
   const popupKind=tagPicker?'tag':pluginPicker?'plugin':clockPicker?'clock':null,popupWidgetId=tagPicker?.id??pluginPicker?.id??clockPicker?.id;
   useEffect(()=>{
@@ -250,6 +253,13 @@ export default function WorkspaceCanvas({workspaceId,canvasFrameRate='display',m
   const ghostPayload=trayGhost?.payload;
   const ghostLabel=ghostPayload?.kind==='type'?t('widget_'+ghostPayload.type):ghostPayload?.kind==='preset'?presets.find(p=>p.id===ghostPayload.id)?.name:'Widget';
   function isPresetType(type:WidgetType):type is PresetType{return type!=='group'&&type!=='ai'}
+  function canvasContextMenu(event:ReactMouseEvent<HTMLDivElement>){
+    if(!workspaceActive||obscured)return;
+    if((event.target as HTMLElement).closest('input,textarea,select,[contenteditable="true"]'))return;
+    event.preventDefault();event.stopPropagation();
+    setTagPicker(null);setPluginPicker(null);setClockPicker(null);setSavedMenu(null);
+    setAddMenu({x:event.clientX,y:event.clientY});
+  }
   function trayTypeClick(type:WidgetType){
     type==='apps'?pickApp(undefined,visibleOrigin(),extent):add(type,undefined,extent)
   }
@@ -262,7 +272,7 @@ export default function WorkspaceCanvas({workspaceId,canvasFrameRate='display',m
       <PresetTray presets={presets} add={preset=>openPreset(preset,visibleOrigin(),extent)} onContextMenu={(event,id)=>openSavedContextMenu(event,'preset',id)}/>
       </>}/>
     <div className="canvas-view-shell">
-    <div className={`canvas-viewport ${overCanvas?'canvas-drop':''} ${activeSnapLayout?'layout-scroll-locked':''}`} ref={viewport} aria-label={t('workspaceCanvas')}>
+    <div className={`canvas-viewport ${overCanvas?'canvas-drop':''} ${activeSnapLayout?'layout-scroll-locked':''}`} ref={viewport} aria-label={t('workspaceCanvas')} onContextMenu={canvasContextMenu}>
        <section className="workspace-canvas" aria-label={t('workspaceWidgets')} style={{width:extent,height}}>
          {widgets.map((w,index)=>{const d=widgetRegistry[w.type],Component=d.component,p=bounded(w,placement(w.type,w.placement)),group=w.type==='group'?groups.find(item=>item.id===w.groupId):undefined,groupCollapsed=!w.minimized&&w.type==='group'&&w.groupCollapsed;const count=widgetCounts.get(w.type)??0;const number=w.instanceNumber;const title=w.title||t('widget_'+w.type)+(count>1?' '+number:'');const relaunchToken=relaunchTokens[w.id]??0,nativeWidget=w.type==='apps',clockVisible=w.clockPluginEnabled&&showClockControl(clockPluginMode,clockPluginColors,w.tagColor,clockPluginColorOverrides);return <article id={'widget-'+w.id} key={w.id} data-widget-id={w.id} data-group-drop-target={w.type==='group'&&w.groupId?'canvas':undefined} data-group-id={w.type==='group'?w.groupId??undefined:undefined} className={`card canvas-card widget-${w.type} ${w.minimized?'widget-minimized':''} ${w.lockPluginEnabled&&w.locked?'widget-locked':''} ${groupCollapsed?'group-collapsed':''} ${active===w.id?'gesture-card':''} ${w.type==='group'&&!!w.groupId&&w.groupId===canvasGroupDropId?'group-drop-active':''}`} style={{left:p.x,top:p.y,width:p.width,height:p.height,zIndex:active===w.id?widgets.length+1:index+1}} onContextMenu={event=>{if(event.button!==2||event.ctrlKey!==minimizeModifiers.ctrl||event.altKey!==minimizeModifiers.alt||event.shiftKey!==minimizeModifiers.shift||event.metaKey)return;event.preventDefault();event.stopPropagation();if(!w.minimized)minimize(w)}}>
           {w.minimized?<><button className="widget-minimized-button" data-capture-ignore aria-label={t('restoreWidget').replace('{title}',title)+(w.tagColor?' · '+t('tag_'+w.tagColor)+' '+t('tagLabel'):'')} title={w.lockPluginEnabled&&w.locked?t('unlockOrRestoreWidget').replace('{title}',title):t('doubleClickRestoreWidget').replace('{title}',title)} onPointerDown={e=>start(e,w,'move')} onPointerMove={move} onPointerUp={e=>finish(e)} onPointerCancel={e=>finish(e,true)} onLostPointerCapture={e=>{if(gesture.current)finish(e)}} onKeyDown={e=>key(e,w,'move')} onDoubleClick={e=>{e.stopPropagation();restore(w)}}>{w.type==='apps'&&w.appIconData?<img className="widget-app-icon widget-minimized-icon" src={w.appIconData} alt=""/>:<Icon name={d.icon}/>}{w.tagColor&&<i className="widget-minimized-tag" data-tag-color={w.tagColor} aria-hidden="true"/>}<span>{title}</span></button>{w.lockPluginEnabled&&w.locked&&<button type="button" className="widget-minimized-lock" data-capture-ignore aria-label={t('unlockTitle').replace('{title}',title)} title={t('unlockWidget')} onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();update(w.id,{locked:false})}}><Icon name="lock"/></button>}</>:
@@ -308,5 +318,6 @@ export default function WorkspaceCanvas({workspaceId,canvasFrameRate='display',m
      </div>
     {trayGhost&&<div className="tray-drag-ghost" aria-hidden="true" style={{left:trayGhost.clientX+14,top:trayGhost.clientY+14}}>＋ {ghostLabel}</div>}
     {savedMenu&&<SavedItemContextMenu target={savedMenu} close={closeSavedMenu} rename={()=>savedMenu.kind==='preset'?renamePreset(savedMenu.id):renameGroup(savedMenu.id)} remove={()=>savedMenu.kind==='preset'?removePreset(savedMenu.id):removeGroup(savedMenu.id)}/>}
+    {addMenu&&<AddToolContextMenu target={addMenu} close={closeAddMenu} choose={type=>{const at=canvasPoint(addMenu.x,addMenu.y);closeAddMenu();type==='apps'?pickApp(undefined,at,extent):add(type,at,extent)}}/>}
   </div></TrayDragProvider>;
 }
