@@ -13,9 +13,10 @@ fn library_shared_safety_cases_match_all_provider_parsers(){
 }
 #[test]
 fn library_provider_schemas_and_consent_guidance_are_available(){
-    for provider in [Provider::Gemini,Provider::Openai,Provider::Opencode] {
-        let request=Request{provider,model:match provider{Provider::Gemini=>"gemini-2.5-flash",Provider::Openai=>"gpt-4o-mini",Provider::Opencode=>"mimo-v2.6-flash"}.into(),messages:vec![Message{role:"user".into(),text:"Organise Library".into()}],context:String::new(),image:None,session_id:None};
-        let payload=match provider{Provider::Gemini=>body(&request),Provider::Openai=>openai_body(&request),Provider::Opencode=>opencode_body(&request)}.unwrap();
+    for provider in [Provider::Gemini,Provider::Openai,Provider::Opencode,Provider::Deepseek] {
+        let request=Request{provider,model:match provider{Provider::Gemini=>"gemini-2.5-flash",Provider::Openai=>"gpt-4o-mini",Provider::Opencode=>"mimo-v2.6-flash",Provider::Deepseek=>"deepseek-chat"}.into(),messages:vec![Message{role:"user".into(),text:"Organise Library".into()}],context:String::new(),image:None,session_id:None};
+        let payload=match provider{Provider::Gemini=>body(&request),Provider::Openai=>openai_body(&request),Provider::Opencode=>opencode_body(&request),Provider::Deepseek=>deepseek_body(&request)}.unwrap();
+        if provider==Provider::Deepseek { assert_eq!(payload["response_format"]["type"],"json_object"); } else {
         let schema=if provider==Provider::Gemini{&payload["generationConfig"]["responseSchema"]}else{&payload["response_format"]["json_schema"]["schema"]};
         assert!(schema["properties"]["libraryProposal"].is_object());
         assert!(!schema["required"].as_array().unwrap().iter().any(|field|field=="libraryProposal"));
@@ -30,6 +31,7 @@ fn library_provider_schemas_and_consent_guidance_are_available(){
         let instructions=if provider==Provider::Gemini{payload["systemInstruction"]["parts"][0]["text"].as_str().unwrap()}else{payload["messages"][0]["content"].as_str().unwrap()};
         for required in ["libraryOrganisation","Share folder names","contentShared","untrusted","fixed","extension","review"]{assert!(instructions.contains(required),"Missing {required}");}
         assert!(instructions.contains("clarification"));
+        }
     }
 }
 fn library_reply()->Value { json!({"intent":"chat","reply":"Review these changes.","layout":[],"actions":[],"libraryProposal":{"version":1,"rootId":"root:1","operations":[{"version":1,"id":"create-1","type":"create_folder","parentId":"root:1","name":"Courses","reason":"Group course materials."},{"version":1,"id":"move-1","type":"move","entryId":"entry:2","expectedRevision":"rev:1","destinationFolderId":"create-1","reason":"Course notes."}]}}) }

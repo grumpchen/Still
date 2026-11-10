@@ -112,6 +112,10 @@ pub fn opencode_agent_body(request: &AgentRequest) -> Result<Value, String> {
     compatible_agent_body(request, Provider::Opencode)
 }
 
+pub fn deepseek_agent_body(request: &AgentRequest) -> Result<Value, String> {
+    compatible_agent_body(request, Provider::Deepseek)
+}
+
 pub fn gemini_agent_body(request: &AgentRequest) -> Result<Value, String> {
     validate_agent_request(request, Provider::Gemini)?;
     let mut contents = Vec::with_capacity(request.messages.len());
@@ -208,14 +212,19 @@ fn compatible_agent_body(request: &AgentRequest, provider: Provider) -> Result<V
     if request.enable_add_widget_tool { tools.push(add_widget_tool()); }
     if request.enable_safe_workspace_action_tool { tools.push(safe_workspace_action_tool()); }
     if request.enable_assistant_memory_tool { tools.push(propose_assistant_memory_tool()); }
-    Ok(json!({
+    let mut payload=json!({
         "model": request.model,
         "messages": messages,
         "max_completion_tokens": 4096,
         "parallel_tool_calls": false,
         "tool_choice": "auto",
         "tools": tools
-    }))
+    });
+    if provider==Provider::Deepseek {
+        payload["max_tokens"]=json!(4096);
+        payload.as_object_mut().unwrap().remove("max_completion_tokens");
+    }
+    Ok(payload)
 }
 
 pub fn validate_agent_request(
@@ -372,6 +381,10 @@ pub fn parse_opencode_agent_response_with_all_tools(value: Value, enable_add_wid
     parse_compatible_agent_response(value, "OpenCode Go", enable_add_widget_tool, enable_safe_workspace_action_tool, enable_assistant_memory_tool)
 }
 
+pub fn parse_deepseek_agent_response_with_all_tools(value: Value, enable_add_widget_tool: bool, enable_safe_workspace_action_tool: bool, enable_assistant_memory_tool: bool) -> Result<AgentTurn, String> {
+    parse_compatible_agent_response(value, "DeepSeek", enable_add_widget_tool, enable_safe_workspace_action_tool, enable_assistant_memory_tool)
+}
+
 pub fn parse_gemini_agent_response(value: Value, local_call_id: &str, enable_add_widget_tool: bool, enable_safe_workspace_action_tool: bool, enable_assistant_memory_tool: bool) -> Result<AgentTurn, String> {
     let candidate = value["candidates"].as_array().and_then(|items| items.first()).ok_or("Gemini did not return an agent turn.")?;
     let raw_content = candidate.get("content").filter(|content| content.is_object()).ok_or("Gemini returned no model Content.")?.clone();
@@ -481,6 +494,9 @@ fn parse_compatible_agent_response(value: Value, provider: &str, enable_add_widg
         .ok_or_else(|| format!("{provider} returned no final answer."))?;
     let response = match provider {
         "OpenAI" => assistant_protocol::parse_openai_response(
+            json!({"choices":[{"message":{"content":content}}]}),
+        )?,
+        "DeepSeek" => assistant_protocol::parse_deepseek_response(
             json!({"choices":[{"message":{"content":content}}]}),
         )?,
         _ => assistant_protocol::parse_opencode_response(
@@ -620,6 +636,7 @@ fn valid_agent_model(model: &str, provider: Provider) -> bool {
     match provider {
         Provider::Gemini => model.starts_with("gemini-") && model.len() >= 10,
         Provider::Openai => model.starts_with("gpt-"),
+        Provider::Deepseek => model.starts_with("deepseek-"),
         Provider::Opencode => {
             ![
                 "gpt-",
@@ -642,6 +659,7 @@ fn provider_name(provider: Provider) -> &'static str {
     match provider {
         Provider::Openai => "OpenAI",
         Provider::Opencode => "OpenCode Go",
+        Provider::Deepseek => "DeepSeek",
         Provider::Gemini => "OpenAI-compatible",
     }
 }
@@ -682,6 +700,18 @@ mod tests {
             enable_safe_workspace_action_tool: false,
             enable_assistant_memory_tool: false,
         }
+    }
+
+    #[test]
+    fn deepseek_uses_openai_compatible_tool_turns() {
+        let mut request=request(vec![AgentMessage::User { content: "Which notes are open?".into() }]);
+        request.provider=Provider::Deepseek;request.model="deepseek-chat".into();
+        let payload=deepseek_agent_body(&request).unwrap();
+        assert_eq!(payload["model"],"deepseek-chat");
+        assert_eq!(payload["max_tokens"],4096);
+        assert!(payload.get("max_completion_tokens").is_none());
+        let turn=parse_deepseek_agent_response_with_all_tools(json!({"choices":[{"finish_reason":"stop","message":{"content":"{\"intent\":\"chat\",\"reply\":\"Ready\",\"layout\":[],\"actions\":[],\"fileProposals\":[],\"calendarProposals\":[]}"}}]}),false,false,false).unwrap();
+        assert!(matches!(turn,AgentTurn::Final { .. }));
     }
 
     fn message_history() -> Vec<AgentMessage> {

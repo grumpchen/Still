@@ -8,7 +8,7 @@ import {widgetTagColors} from './widgetTags.ts';
 import {checkedStudyCalendarDrafts,type StudyCalendarEventDraft} from './studyCalendar.ts';
 import {shortcutError,shortcutsError,type Shortcut,type WorkspaceShortcuts} from './shortcuts.ts';
 
-export type AssistantProvider = 'gemini' | 'openai' | 'opencode' | 'chatgpt';
+export type AssistantProvider = 'gemini' | 'openai' | 'opencode' | 'deepseek' | 'chatgpt';
 export type ChatMessage = {role:'user'|'model'; text:string};
 export function resolveAcceptedNotesOffer(prompt:string,messages:ChatMessage[]):{action:AssistantAction;intent:string}|null{
   if(!/^(?:yes|yeah|yep|sure|ok|okay|please|do it|go ahead|yes please)[.!?]*$/i.test(prompt.trim()))return null;
@@ -61,7 +61,7 @@ export function resolveNamedNotesCreation(prompt:string):{title:string;topic:str
 export type AssistantReply = {intent?:AssistantResponseIntent;reply:string; layout:LayoutItem[]; actions:AssistantAction[];fileProposals?:AssistantFileProposal[];calendarProposals?:StudyCalendarEventDraft[];libraryProposal?:AssistantLibraryProposal};
 export type LayoutPlan = {workspaceId:string; fingerprint:string; width:number; height:number; items:LayoutItem[]};
 export const DEFAULT_MODEL = 'gemini-2.5-flash';
-export const DEFAULT_MODELS:Record<AssistantProvider,string> = {gemini:DEFAULT_MODEL,openai:'gpt-4o-mini',opencode:'mimo-v2.6-flash',chatgpt:''};
+export const DEFAULT_MODELS:Record<AssistantProvider,string> = {gemini:DEFAULT_MODEL,openai:'gpt-4o-mini',opencode:'mimo-v2.6-flash',deepseek:'deepseek-chat',chatgpt:''};
 export const HISTORY_LIMIT = 12;
 export function preferredModel(models:string[],provider:AssistantProvider='gemini'):string {
   const preferred=DEFAULT_MODELS[provider];

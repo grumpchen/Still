@@ -10,7 +10,7 @@ pub struct AssistantState { keys: Mutex<HashMap<Provider,String>> }
 impl AssistantState {
     pub fn from_environment() -> Self {
         let mut keys=HashMap::new();
-        for (provider,environment) in [(Provider::Gemini,"GEMINI_API_KEY"),(Provider::Openai,"OPENAI_API_KEY"),(Provider::Opencode,"OPENCODE_API_KEY")] {
+        for (provider,environment) in [(Provider::Gemini,"GEMINI_API_KEY"),(Provider::Openai,"OPENAI_API_KEY"),(Provider::Opencode,"OPENCODE_API_KEY"),(Provider::Deepseek,"DEEPSEEK_API_KEY")] {
             let environment_key=std::env::var(environment).ok();
             let key=initial_key(environment_key.clone(),None).or_else(||{
                 match crate::credential_store::load(provider){
@@ -71,6 +71,15 @@ async fn fetch_models_at(client:&reqwest::Client,endpoint:&str,key:&str)->Result
     if models.is_empty() { return Err("This project has no Gemini models available for content generation.".into()); }
     Ok(models)
 }
+async fn fetch_deepseek_models(client:&reqwest::Client,key:&str)->Result<Vec<String>,String>{
+    fetch_deepseek_models_at(client,"https://api.deepseek.com/models",key).await
+}
+async fn fetch_deepseek_models_at(client:&reqwest::Client,endpoint:&str,key:&str)->Result<Vec<String>,String>{
+    let response=client.get(endpoint).bearer_auth(key).send().await.map_err(|_|"Could not reach DeepSeek. Check your connection and try again.".to_string())?;
+    if !response.status().is_success(){return Err(match response.status().as_u16(){401|403=>"DeepSeek could not authorize this key. Check your DeepSeek API settings and reconnect.",429=>"DeepSeek rate limit or balance limit reached. Check your DeepSeek account before retrying.",_=>"DeepSeek could not list models. Check your key and connection."}.into());}
+    let value=response.json::<serde_json::Value>().await.map_err(|_|"DeepSeek returned an unreadable model list.".to_string())?;
+    let models=assistant_protocol::deepseek_models(value);if models.is_empty(){return Err("No DeepSeek chat models are available for this key.".into());}Ok(models)
+}
 async fn fetch_opencode_models(client:&reqwest::Client,key:&str)->Result<Vec<String>,String> {
     fetch_opencode_models_at(client,"https://opencode.ai/zen/go/v1/models",key).await
 }
@@ -124,12 +133,12 @@ fn openai_http_error(status:u16)->String {
     }.into()
 }
 async fn list_provider_models(client:&reqwest::Client,provider:Provider,key:&str)->Result<Vec<String>,String>{
-    match provider {Provider::Gemini=>fetch_models(client,key).await,Provider::Openai=>fetch_openai_models(client,key).await,Provider::Opencode=>fetch_opencode_models(client,key).await}
+    match provider {Provider::Gemini=>fetch_models(client,key).await,Provider::Openai=>fetch_openai_models(client,key).await,Provider::Opencode=>fetch_opencode_models(client,key).await,Provider::Deepseek=>fetch_deepseek_models(client,key).await}
 }
 #[tauri::command]
 pub fn assistant_key_setup(app:tauri::AppHandle,webview:Webview,provider:Provider) -> Result<(),String> {
     crate::security::authorize(&webview)?;
-    let (url,error)=match provider {Provider::Gemini=>("https://aistudio.google.com/apikey","Could not open Google AI Studio. Visit aistudio.google.com/apikey in your browser."),Provider::Openai=>("https://platform.openai.com/api-keys","Could not open OpenAI API settings. Visit platform.openai.com/api-keys in your browser."),Provider::Opencode=>("https://opencode.ai/auth","Could not open OpenCode Go. Visit opencode.ai/auth in your browser.")};
+    let (url,error)=match provider {Provider::Gemini=>("https://aistudio.google.com/apikey","Could not open Google AI Studio. Visit aistudio.google.com/apikey in your browser."),Provider::Openai=>("https://platform.openai.com/api-keys","Could not open OpenAI API settings. Visit platform.openai.com/api-keys in your browser."),Provider::Opencode=>("https://opencode.ai/auth","Could not open OpenCode Go. Visit opencode.ai/auth in your browser."),Provider::Deepseek=>("https://platform.deepseek.com/api_keys","Could not open DeepSeek API settings. Visit platform.deepseek.com/api_keys in your browser.")};
     app.opener().open_url(url,None::<String>).map_err(|_|error.into())
 }
 #[tauri::command]
@@ -167,27 +176,28 @@ pub async fn assistant_chat(webview:Webview,state:State<'_,AssistantState>,reque
     crate::security::authorize(&webview)?;
     let provider=request.provider;
     let key=state.keys.lock().map_err(|_|"AI settings are unavailable.")?.get(&provider).cloned().unwrap_or_default();
-    if key.trim().is_empty() { return Err(format!("Connect an {} API key in AI settings first.",match provider {Provider::Gemini=>"Gemini",Provider::Openai=>"OpenAI",Provider::Opencode=>"OpenCode Go"})); }
-    let body=match provider {Provider::Gemini=>assistant_protocol::body(&request)?,Provider::Openai=>assistant_protocol::openai_body(&request)?,Provider::Opencode=>assistant_protocol::opencode_body(&request)?};
+    if key.trim().is_empty() { return Err(format!("Connect an {} API key in AI settings first.",match provider {Provider::Gemini=>"Gemini",Provider::Openai=>"OpenAI",Provider::Opencode=>"OpenCode Go",Provider::Deepseek=>"DeepSeek"})); }
+    let body=match provider {Provider::Gemini=>assistant_protocol::body(&request)?,Provider::Openai=>assistant_protocol::openai_body(&request)?,Provider::Opencode=>assistant_protocol::opencode_body(&request)?,Provider::Deepseek=>assistant_protocol::deepseek_body(&request)?};
     let client=reqwest::Client::builder().timeout(std::time::Duration::from_secs(45))
         .redirect(reqwest::redirect::Policy::none()).build().map_err(|_|"Could not start the AI connection.")?;
-    let endpoint=match provider {Provider::Gemini=>format!("https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",request.model),Provider::Openai=>"https://api.openai.com/v1/chat/completions".into(),Provider::Opencode=>"https://opencode.ai/zen/go/v1/chat/completions".into()};
+    let endpoint=match provider {Provider::Gemini=>format!("https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",request.model),Provider::Openai=>"https://api.openai.com/v1/chat/completions".into(),Provider::Opencode=>"https://opencode.ai/zen/go/v1/chat/completions".into(),Provider::Deepseek=>"https://api.deepseek.com/chat/completions".into()};
     let builder=client.post(endpoint).json(&body);
     let builder=match provider {
         Provider::Gemini=>builder.header("x-goog-api-key",&key),
         Provider::Openai=>builder.bearer_auth(&key),
+        Provider::Deepseek=>builder.bearer_auth(&key),
         Provider::Opencode=>{
             let session_id=request.session_id.as_deref().filter(|id|!id.is_empty()&&id.len()<=128&&id.bytes().all(|byte|byte.is_ascii_alphanumeric()||matches!(byte,b'-'|b'_')))
                 .ok_or("OpenCode Go needs a valid workspace session ID. Restart Still and try again.")?;
             builder.bearer_auth(&key).header("user-agent","Still-Desktop").header("x-opencode-session",session_id)
         }
     };
-    let mut response=builder.send().await.map_err(|_|match provider {Provider::Gemini=>"Gemini could not be reached or the request timed out. Check your connection and try again.",Provider::Openai=>"OpenAI could not be reached or the request timed out. Check your connection and try again.",Provider::Opencode=>"OpenCode Go could not be reached or the request timed out. Check your connection and try again."})?;
+    let mut response=builder.send().await.map_err(|_|match provider {Provider::Gemini=>"Gemini could not be reached or the request timed out. Check your connection and try again.",Provider::Openai=>"OpenAI could not be reached or the request timed out. Check your connection and try again.",Provider::Opencode=>"OpenCode Go could not be reached or the request timed out. Check your connection and try again.",Provider::Deepseek=>"DeepSeek could not be reached or the request timed out. Check your connection and try again."})?;
     if !response.status().is_success(){
         let status=response.status().as_u16();
         return Err(match provider {
             Provider::Gemini=>{let detail=read_error_body(response).await;assistant_protocol::http_error_with_details(status,&detail,&key)}
-            Provider::Openai=>openai_http_error(status),Provider::Opencode=>opencode_http_error(status),
+            Provider::Openai=>openai_http_error(status),Provider::Opencode=>opencode_http_error(status),Provider::Deepseek=>match status{401|403=>"DeepSeek could not authorize this key. Check your API key.",402|429=>"DeepSeek balance or rate limit reached. Check your DeepSeek account before retrying.",500..=599=>"DeepSeek is temporarily unavailable.",_=>"DeepSeek could not complete the request."}.into(),
         });
     }
     let mut bytes=Vec::new();
@@ -198,7 +208,7 @@ pub async fn assistant_chat(webview:Webview,state:State<'_,AssistantState>,reque
     let value=serde_json::from_slice(&bytes).map_err(|_|"The AI returned an unreadable response.")?;
     match provider {
         Provider::Gemini=>assistant_protocol::parse_response(value),
-        Provider::Openai=>assistant_protocol::parse_openai_response(value),Provider::Opencode=>assistant_protocol::parse_opencode_response(value),
+        Provider::Openai=>assistant_protocol::parse_openai_response(value),Provider::Opencode=>assistant_protocol::parse_opencode_response(value),Provider::Deepseek=>assistant_protocol::parse_deepseek_response(value),
     }
 }
 
@@ -211,12 +221,13 @@ pub async fn assistant_agent_turn(webview:Webview,state:State<'_,AssistantState>
     let provider=request.provider;
     let key=state.keys.lock().map_err(|_|"AI settings are unavailable.")?.get(&provider).cloned().unwrap_or_default();
     if key.trim().is_empty() {
-        return Err(format!("Connect an {} API key in AI settings first.",match provider {Provider::Gemini=>"Gemini",Provider::Openai=>"OpenAI",Provider::Opencode=>"OpenCode Go"}));
+        return Err(format!("Connect an {} API key in AI settings first.",match provider {Provider::Gemini=>"Gemini",Provider::Openai=>"OpenAI",Provider::Opencode=>"OpenCode Go",Provider::Deepseek=>"DeepSeek"}));
     }
     let body=match provider {
         Provider::Gemini=>assistant_agent_protocol::gemini_agent_body(&request)?,
         Provider::Openai=>assistant_agent_protocol::openai_agent_body(&request)?,
         Provider::Opencode=>assistant_agent_protocol::opencode_agent_body(&request)?,
+        Provider::Deepseek=>assistant_agent_protocol::deepseek_agent_body(&request)?,
     };
     let client=reqwest::Client::builder().timeout(std::time::Duration::from_secs(45))
         .redirect(reqwest::redirect::Policy::none()).build()
@@ -225,11 +236,13 @@ pub async fn assistant_agent_turn(webview:Webview,state:State<'_,AssistantState>
         Provider::Gemini=>format!("https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",request.model),
         Provider::Openai=>"https://api.openai.com/v1/chat/completions".into(),
         Provider::Opencode=>"https://opencode.ai/zen/go/v1/chat/completions".into(),
+        Provider::Deepseek=>"https://api.deepseek.com/chat/completions".into(),
     };
     let builder=client.post(endpoint).json(&body);
     let builder=match provider {
         Provider::Gemini=>builder.header("x-goog-api-key",&key),
         Provider::Openai=>builder.bearer_auth(&key),
+        Provider::Deepseek=>builder.bearer_auth(&key),
         Provider::Opencode=>{
             let session_id=request.session_id.as_deref().expect("OpenCode session validated by agent request body");
             builder.bearer_auth(&key).header("user-agent","Still-Desktop").header("x-opencode-session",session_id)
@@ -239,10 +252,11 @@ pub async fn assistant_agent_turn(webview:Webview,state:State<'_,AssistantState>
         Provider::Gemini=>"Gemini could not be reached or the request timed out. Check your connection and try again.",
         Provider::Openai=>"OpenAI could not be reached or the request timed out. Check your connection and try again.",
         Provider::Opencode=>"OpenCode Go could not be reached or the request timed out. Check your connection and try again.",
+        Provider::Deepseek=>"DeepSeek could not be reached or the request timed out. Check your connection and try again.",
     })?;
     if !response.status().is_success() {
         let status=response.status().as_u16();
-        return Err(match provider {Provider::Gemini=>assistant_protocol::http_error(status),Provider::Openai=>openai_http_error(status),Provider::Opencode=>opencode_http_error(status)});
+        return Err(match provider {Provider::Gemini=>assistant_protocol::http_error(status),Provider::Openai=>openai_http_error(status),Provider::Opencode=>opencode_http_error(status),Provider::Deepseek=>match status{401|403=>"DeepSeek could not authorize this key.",402|429=>"DeepSeek balance or rate limit reached.",_=>"DeepSeek request failed."}.into()});
     }
     let mut bytes=Vec::new();
     while let Some(chunk)=response.chunk().await.map_err(|_|"The AI response could not be read.")? {
@@ -254,6 +268,7 @@ pub async fn assistant_agent_turn(webview:Webview,state:State<'_,AssistantState>
         Provider::Gemini=>assistant_agent_protocol::parse_gemini_agent_response(value,&format!("gemini-local-{}",request.messages.len()),request.enable_add_widget_tool,request.enable_safe_workspace_action_tool,request.enable_assistant_memory_tool),
         Provider::Openai=>assistant_agent_protocol::parse_openai_agent_response_with_all_tools(value,request.enable_add_widget_tool,request.enable_safe_workspace_action_tool,request.enable_assistant_memory_tool),
         Provider::Opencode=>assistant_agent_protocol::parse_opencode_agent_response_with_all_tools(value,request.enable_add_widget_tool,request.enable_safe_workspace_action_tool,request.enable_assistant_memory_tool),
+        Provider::Deepseek=>assistant_agent_protocol::parse_deepseek_agent_response_with_all_tools(value,request.enable_add_widget_tool,request.enable_safe_workspace_action_tool,request.enable_assistant_memory_tool),
     }
 }
 

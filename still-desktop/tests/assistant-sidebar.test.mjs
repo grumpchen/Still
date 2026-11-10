@@ -27,16 +27,20 @@ test('Gemini assistant is reachable from the sidebar and native commands are reg
   assert.ok(capabilities.includes('allow-'+command.replaceAll('_','-')),command+' is allowed on the local UI capability');
  }
 });
-test('AI assistant has Gemini, OpenAI, and OpenCode Go providers',()=>{
+test('AI assistant offers Gemini, OpenAI, OpenCode Go, and DeepSeek providers',()=>{
  const protocol=readFileSync(new URL('../src-tauri/src/assistant_protocol.rs',import.meta.url),'utf8');
  const backend=readFileSync(new URL('../src-tauri/src/assistant.rs',import.meta.url),'utf8');
- assert.match(panel,/PROVIDERS:AssistantProvider\[\]=\['gemini','openai','opencode'\]/);
- assert.match(protocol,/pub enum Provider \{ Gemini, Openai, Opencode \}/);
+ assert.match(panel,/PROVIDERS:AssistantProvider\[\]=\['gemini','openai','opencode','deepseek','chatgpt'\]/);
+ assert.match(protocol,/pub enum Provider \{ Gemini, Openai, Opencode, Deepseek \}/);
  assert.match(protocol,/pub fn openai_body/);
  assert.match(backend,/https:\/\/api\.openai\.com\/v1\/chat\/completions/);
  assert.match(backend,/OPENAI_API_KEY/);
  assert.match(panel,/OpenCode Go/);
  assert.match(backend,/OPENCODE_API_KEY/);
+ assert.match(backend,/DEEPSEEK_API_KEY/);
+ assert.ok(backend.includes('https://api.deepseek.com/chat/completions'));
+ assert.ok(backend.includes('https://platform.deepseek.com/api_keys'));
+ assert.match(panel,/deepseek:'DeepSeek'/);
  assert.match(backend,/https:\/\/opencode\.ai\/zen\/go\/v1\/models/);
  assert.match(backend,/https:\/\/opencode\.ai\/zen\/go\/v1\/chat\/completions/);
  assert.match(backend,/x-opencode-session/);
@@ -47,10 +51,10 @@ test('AI assistant has Gemini, OpenAI, and OpenCode Go providers',()=>{
  assert.match(panel,/t\('aiSecureKeyNotice'\)/);
  assert.match(protocol,/Never guess an edit when the requested change is vague/,'the model is told to clarify underspecified edits instead of inventing a change');
  assert.match(protocol,/visible Still workspace canvas, including visible app panels attached inside it/,'a shared image includes attached app panels but remains scoped to the workspace canvas');
- assert.match(protocol,/image alone is not permission to change anything/,'visual context never authorizes workspace edits by itself');
+ assert.match(protocol,/The image does not authorize changes by itself/,'visual context never authorizes workspace edits by itself');
 });
 test('clear all-widget actions are resolved locally before any model request',()=>{
- assert.match(panel,/resolveDirectAssistantActions\(input,workspace,selectedIds,trayItems\)/);
+ assert.match(panel,/resolveDirectAssistantActions\(input,workspace,selectedIds,trayItems,workspaces\)/);
  assert.ok(panel.indexOf('if(localActions){')<panel.indexOf('geminiAssistant.send('),'deterministic workspace actions must not depend on model output');
  assert.match(panel,/!directActions&&!confirmationRequest&&!directTimerRequest&&\(!configured\|\|!currentModels\.includes\(model\)\|\|!geminiAssistant\.available\)/,'local actions remain available without AI credentials');
  assert.match(panel,/result\.layout\.length&&assistantLayoutRequested\(prompt\)/,'only explicit layout requests may show a layout proposal');
