@@ -1,15 +1,17 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createWidget,createWorkspace,duplicateWorkspace,parseState,transferWidgetInstance,minimizeWidgetInstance,moveMinimizedWidgetInstance,restoreWidgetInstance,widgetTypes} from '../src/domain/workspaces.ts';
+import {widgetCatalog} from '../src/domain/widgetCatalog.ts';
 
 test('every widget type minimizes as the same instance with validated restore geometry',()=>{
   for(const type of widgetTypes){
-    const widget=createWidget(type);widget.id='widget-'+type;widget.placement={x:240,y:180,width:420,height:360};
+    const meta=widgetCatalog[type],placement={x:240,y:180,width:Math.max(420,meta.minWidth),height:Math.max(360,meta.minHeight)};
+    const widget=createWidget(type);widget.id='widget-'+type;widget.placement={...placement};
     const compact=minimizeWidgetInstance(widget,1500,1200);
     assert.equal(compact.id,widget.id);assert.equal(compact.type,type);assert.equal(compact.minimized,true);
     assert.deepEqual(compact.restorePlacement,widget.placement);
     assert.ok(compact.placement.width<widget.placement.width&&compact.placement.height<widget.placement.height);
-    assert.deepEqual(widget.placement,{x:240,y:180,width:420,height:360},'the original widget object is not mutated');
+    assert.deepEqual(widget.placement,placement,'the original widget object is not mutated');
   }
 });
 

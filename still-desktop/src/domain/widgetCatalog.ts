@@ -2,6 +2,7 @@
 export const widgetCatalog = {
   group: {name:'Group', icon:'group', description:'Named tray collections · reusable widget types and course links', width:400, height:360, minWidth:280, minHeight:240},
   desmos: {name:'Calculator', icon:'desmos', description:'Live Desmos scientific calculator', width:440, height:490, minWidth:280, minHeight:300},
+  casio570: {name:'Casio FX-570E', icon:'casio', description:'Black Casio FX-570E scientific calculator with 2-line display', width:400, height:720, minWidth:330, minHeight:560},
   notes: {name:'Notes', icon:'notes', description:'Independent notes, saved locally', width:400, height:340, minWidth:240, minHeight:180},
   focus: {name:'Focus', icon:'focus', description:'A timer for your next study session', width:360, height:430, minWidth:280, minHeight:330},
   files: {name:'Files', icon:'files', description:'Your local course files', width:400, height:380, minWidth:280, minHeight:240},
