@@ -688,6 +688,11 @@ dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
 .casio-field>span{font-size:7.5px;letter-spacing:.06em;color:#8f949d;text-transform:uppercase}
 .casio-field-wide{grid-column:1/-1}
 .casio-field-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+.casio-field-scroll{overflow-x:auto;overflow-y:hidden;padding-bottom:3px;scrollbar-width:thin;scrollbar-color:#4a4e56 transparent}
+.casio-field-scroll::-webkit-scrollbar{height:7px}
+.casio-field-scroll::-webkit-scrollbar-track{background:transparent}
+.casio-field-scroll::-webkit-scrollbar-thumb{background:#4a4e56;border-radius:4px}
+.casio-eqn-grid{display:grid;gap:5px}
 .casio-readout{display:block;padding:3px 5px;border:1px solid #3a3d44;border-radius:5px;background:#0e1013;color:#eef0f3;font:9.5px ui-monospace,Consolas,monospace;overflow:hidden;text-overflow:ellipsis}
 .casio-panel-result{margin:0;padding:6px;border:1px solid #3a3d44;border-radius:6px;background:#0e1013;color:#9fe0a6;font:9.5px/1.5 ui-monospace,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
 .casio-panel-note{color:#8f949d;font-size:8.5px;line-height:1.4}

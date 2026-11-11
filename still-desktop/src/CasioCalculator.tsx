@@ -40,10 +40,57 @@ const EQN_LABELS:Record<string,string[]>={
  degree3:['a','b','c','d'],
 };
 
+interface FieldEntry{el:HTMLInputElement;set:(value:string)=>void}
+// The panel slot the user picked, and the React setter for every slot element.
+// Tracking the picked element directly (instead of relying on focus staying put)
+// lets the on-screen keypad type into a slot even though key presses are buttons.
+let selectedField:HTMLInputElement|null=null;
+let replaceOnNextKey=false;
+const fieldSetters=new WeakMap<HTMLInputElement,(value:string)=>void>();
+const FIELD_TEXT:Record<string,string>={'×':'*','÷':'/','⁻¹':'^-1','²':'^2','³':'^3'};
+
+function fieldText(text:string):string|null{
+ if(text in FIELD_TEXT)return FIELD_TEXT[text];
+ return /^[0-9.+\-*/^()%E]$/.test(text)?text:null;
+}
+
+// Move focus to the next slot in the same panel, then to the panel's main action.
+function focusNextField(el:HTMLInputElement){
+ const scope=el.closest('.casio-panel');
+ if(!scope){el.blur();return}
+ const inputs=Array.from(scope.querySelectorAll('input'));
+ const index=inputs.indexOf(el);
+ const next=inputs[index+1];
+ if(next){next.focus();return}
+ const primary=scope.querySelector<HTMLButtonElement>('button.primary');
+ if(primary){primary.click();return}
+ el.blur();
+}
+
+// Text slot used by every mode panel. Remembers the slot when it is clicked or
+// focused so the on-screen keypad can type into it, and Enter jumps to the next.
+function PanelInput({value,onChange,label,className}:{
+ value:string;onChange:(value:string)=>void;label?:string;className?:string;
+}){
+ const ref=useRef<HTMLInputElement>(null);
+ useEffect(()=>{const el=ref.current;if(el)fieldSetters.set(el,onChange)},[onChange]);
+ useEffect(()=>()=>{const el=ref.current;if(el)fieldSetters.delete(el)},[]);
+ return <input ref={ref} className={className} value={value} inputMode="decimal" aria-label={label}
+  onChange={event=>{replaceOnNextKey=false;onChange(event.target.value)}}
+  onPointerDown={event=>{selectedField=event.currentTarget;replaceOnNextKey=true}}
+  onFocus={event=>{selectedField=event.currentTarget;replaceOnNextKey=true;event.currentTarget.select()}}
+  onKeyDown={event=>{
+   if(event.key==='Enter'){event.preventDefault();focusNextField(event.currentTarget)}
+   else if(event.key==='Escape'){event.preventDefault();selectedField=null;event.currentTarget.blur()}
+  }}/>;
+}
+
 function Key({label,shiftLabel,alphaLabel,tone,onPress}:{
  label:string;shiftLabel?:string;alphaLabel?:string;tone?:string;onPress:()=>void;
 }){
- return <button type="button" className={`casio-key${tone?' casio-'+tone:''}`} onClick={onPress}>
+ return <button type="button" className={`casio-key${tone?' casio-'+tone:''}`}
+  onMouseDown={event=>event.preventDefault()}
+  onClick={onPress}>
   {shiftLabel&&<span className="casio-key-shift">{shiftLabel}</span>}
   {alphaLabel&&<span className="casio-key-alpha">{alphaLabel}</span>}
   <span className="casio-key-face">{label}</span>
@@ -58,7 +105,7 @@ function Panel({title,close,children}:{title:string;close:()=>void;children:Reac
 }
 
 function Field({label,value,onChange,wide}:{label:string;value:string;onChange:(value:string)=>void;wide?:boolean}){
- return <label className={`casio-field${wide?' casio-field-wide':''}`}><span>{label}</span><input value={value} inputMode="decimal" onChange={event=>onChange(event.target.value)}/></label>;
+ return <label className={`casio-field${wide?' casio-field-wide':''}`}><span>{label}</span><PanelInput value={value} onChange={onChange} label={label}/></label>;
 }
 
 export default function CasioCalculator({workspaceActive}:WidgetProps){
@@ -164,7 +211,59 @@ export default function CasioCalculator({workspaceActive}:WidgetProps){
  const valueText=(value:Num)=>{try{return formatValue(value,formatOptions)}catch{return 'Math ERROR'}};
 
  function clearMods(){setShift(false);setAlpha(false);setHyp(false)}
+ function activeField():FieldEntry|null{
+  const el=selectedField;
+  if(!el||!el.isConnected||el.closest('.casio570')!==root.current)return null;
+  const set=fieldSetters.get(el);
+  return set?{el,set}:null;
+ }
+ function fieldCaret(entry:FieldEntry){
+  const el=entry.el;
+  const start=el.selectionStart??el.value.length;
+  return {start,end:el.selectionEnd??start};
+ }
+ function writeField(entry:FieldEntry,next:string,caret:number){
+  entry.set(next);
+  const apply=()=>{
+   const el=entry.el;
+   el.focus();
+   try{el.setSelectionRange(caret,caret)}catch{/* jsdom and old browsers may not support it */}
+  };
+  if(typeof requestAnimationFrame==='function')requestAnimationFrame(apply);
+  else setTimeout(apply,0);
+ }
+ function insertIntoField(text:string){
+  const entry=activeField();
+  if(!entry)return false;
+  const mapped=fieldText(text);
+  if(mapped===null)return false;
+  const value=entry.el.value;
+  const {start,end}=replaceOnNextKey?{start:0,end:value.length}:fieldCaret(entry);
+  replaceOnNextKey=false;
+  writeField(entry,value.slice(0,start)+mapped+value.slice(end),start+mapped.length);
+  return true;
+ }
+ function fieldBackspace(){
+  const entry=activeField();
+  if(!entry)return false;
+  replaceOnNextKey=false;
+  const {start,end}=fieldCaret(entry);
+  const value=entry.el.value;
+  if(start===0&&end===0)return true;
+  const caret=start===end?Math.max(0,start-1):start;
+  const next=start===end?value.slice(0,caret)+value.slice(end):value.slice(0,start)+value.slice(end);
+  writeField(entry,next,caret);
+  return true;
+ }
+ function fieldClear(){
+  const entry=activeField();
+  if(!entry)return false;
+  replaceOnNextKey=false;
+  writeField(entry,'',0);
+  return true;
+ }
  function insert(text:string){
+  if(insertIntoField(text))return;
   setMessage('');
   setResult('');
   const continues=justEvaluated&&(/^[+\-*/^!%),]$/.test(text)||text==='⁻¹'||text==='²'||text==='³');
@@ -326,9 +425,9 @@ export default function CasioCalculator({workspaceActive}:WidgetProps){
    <div className={`casio-stat-row casio-stat-header${statType==='2VAR'?' two':''}`}><span>#</span><span>x</span>{statType==='2VAR'&&<span>y</span>}<span>Freq</span><span/></div>
    {statRows.map((row,index)=><div key={index} className={`casio-stat-row${statType==='2VAR'?' two':''}`}>
     <span>{index+1}</span>
-    <input value={row.x} inputMode="decimal" onChange={event=>setStatRows(previous=>previous.map((item,position)=>position===index?{...item,x:event.target.value}:item))}/>
-    {statType==='2VAR'&&<input value={row.y} inputMode="decimal" onChange={event=>setStatRows(previous=>previous.map((item,position)=>position===index?{...item,y:event.target.value}:item))}/>}
-    <input value={row.freq} inputMode="decimal" onChange={event=>setStatRows(previous=>previous.map((item,position)=>position===index?{...item,freq:event.target.value}:item))}/>
+    <PanelInput value={row.x} label={`x${index+1}`} onChange={value=>setStatRows(previous=>previous.map((item,position)=>position===index?{...item,x:value}:item))}/>
+    {statType==='2VAR'&&<PanelInput value={row.y} label={`y${index+1}`} onChange={value=>setStatRows(previous=>previous.map((item,position)=>position===index?{...item,y:value}:item))}/>}
+    <PanelInput value={row.freq} label={`freq${index+1}`} onChange={value=>setStatRows(previous=>previous.map((item,position)=>position===index?{...item,freq:value}:item))}/>
     <button type="button" className="casio-row-remove" onClick={()=>setStatRows(previous=>previous.length>1?previous.filter((_item,position)=>position!==index):previous)}>×</button>
    </div>)}
    {one&&<div className="casio-grid-results">
@@ -353,6 +452,7 @@ export default function CasioCalculator({workspaceActive}:WidgetProps){
 
  function renderEqnPanel(){
   const labels=EQN_LABELS[eqnType];
+  const eqnColumns=eqnType==='simul3'||eqnType==='degree3'?4:3;
   function solve(){
    const coefficients=eqnCoeffs.map(value=>numberValue(value,0));
    try{
@@ -375,9 +475,12 @@ export default function CasioCalculator({workspaceActive}:WidgetProps){
     {([['simul2','2 unknowns'],['simul3','3 unknowns'],['degree2','Degree 2'],['degree3','Degree 3']] as const).map(([id,label])=>
      <button key={id} type="button" className={eqnType===id?'active':''} onClick={()=>{setEqnType(id);setEqnCoeffs(Array(EQN_LABELS[id].length).fill(''));setEqnResult([])}}>{label}</button>)}
    </div>
-   <div className="casio-field-grid">
-    {labels.map((label,index)=><Field key={label} label={label} value={eqnCoeffs[index]??''} onChange={value=>setEqnCoeffs(previous=>previous.map((item,position)=>position===index?value:item))}/>)}
+   <div className="casio-field-scroll">
+    <div className="casio-eqn-grid" style={{gridTemplateColumns:`repeat(${eqnColumns},minmax(72px,1fr))`}}>
+     {labels.map((label,index)=><Field key={label} label={label} value={eqnCoeffs[index]??''} onChange={value=>setEqnCoeffs(previous=>previous.map((item,position)=>position===index?value:item))}/>)}
+    </div>
    </div>
+   {eqnColumns===4&&<div className="casio-panel-note">Four coefficients per row — scroll sideways if the last column is cut off.</div>}
    <div className="casio-panel-actions"><button type="button" className="primary" onClick={solve}>SOLVE</button></div>
    {eqnResult.length>0&&<div className="casio-panel-result">{eqnResult.map((line,index)=><div key={index}>{line}</div>)}</div>}
   </Panel>;
@@ -404,8 +507,8 @@ export default function CasioCalculator({workspaceActive}:WidgetProps){
    </div>
    <div className="casio-matrix-grid" style={{gridTemplateColumns:`repeat(${matrixSize},minmax(0,1fr))`}}>
     {Array.from({length:matrixSize},(_v,row)=>Array.from({length:matrixSize},(_w,column)=>
-     <input key={`${row}-${column}`} value={active[row][column]} inputMode="decimal" aria-label={`${matrixName}${row+1}${column+1}`}
-      onChange={event=>setMatrices(previous=>({...previous,[matrixName]:previous[matrixName].map((item,rowIndex)=>rowIndex===row?item.map((cell,columnIndex)=>columnIndex===column?event.target.value:cell):item)}))}/>))}
+     <PanelInput key={`${row}-${column}`} value={active[row][column]} label={`${matrixName}${row+1}${column+1}`}
+      onChange={value=>setMatrices(previous=>({...previous,[matrixName]:previous[matrixName].map((item,rowIndex)=>rowIndex===row?item.map((cell,columnIndex)=>columnIndex===column?value:cell):item)}))}/>))}
    </div>
    <div className="casio-panel-actions">
     <button type="button" onClick={()=>applyMatrix(()=>matrixAdd(readMatrix('A'),readMatrix('B')))}>A+B</button>
@@ -441,8 +544,8 @@ export default function CasioCalculator({workspaceActive}:WidgetProps){
    </div>
    <div className="casio-matrix-grid" style={{gridTemplateColumns:`repeat(${vectorSize},minmax(0,1fr))`}}>
     {Array.from({length:vectorSize},(_v,index)=>
-     <input key={index} value={active[index]} inputMode="decimal" aria-label={`${vectorName}${index+1}`}
-      onChange={event=>setVectors(previous=>({...previous,[vectorName]:previous[vectorName].map((item,position)=>position===index?event.target.value:item)}))}/>)}
+     <PanelInput key={index} value={active[index]} label={`${vectorName}${index+1}`}
+      onChange={value=>setVectors(previous=>({...previous,[vectorName]:previous[vectorName].map((item,position)=>position===index?value:item)}))}/>)}
    </div>
    <div className="casio-panel-actions">
     <button type="button" onClick={()=>applyVector(()=>vectorAdd(readVector('A'),readVector('B')))}>A+B</button>
@@ -637,7 +740,7 @@ export default function CasioCalculator({workspaceActive}:WidgetProps){
  ].filter(Boolean);
 
  return <div ref={root} className="casio570" tabIndex={0} onKeyDown={handleKeyDown} onPointerDown={event=>{
-  if(!(event.target as HTMLElement).closest('input,select,textarea,button'))root.current?.focus();
+  if(!(event.target as HTMLElement).closest('input,select,textarea,button')){selectedField=null;replaceOnNextKey=false;root.current?.focus()}
  }}>
   <div className="casio-plate">
    <div className="casio-brand"><strong>CASIO</strong><span>fx-570E</span></div>
@@ -731,8 +834,8 @@ export default function CasioCalculator({workspaceActive}:WidgetProps){
      <Key label="7" alphaLabel="A" onPress={()=>{digit('7',{alpha});clearMods()}}/>
      <Key label="8" alphaLabel="B" onPress={()=>{digit('8',{alpha});clearMods()}}/>
      <Key label="9" alphaLabel="C" onPress={()=>{digit('9',{alpha});clearMods()}}/>
-     <Key label="DEL" onPress={()=>{clearMods();backspace()}}/>
-     <Key label="AC" shiftLabel="OFF" tone="ac" onPress={()=>{const shifted=shift;clearMods();shifted?hardReset():clearAll()}}/>
+     <Key label="DEL" onPress={()=>{clearMods();if(!fieldBackspace())backspace()}}/>
+     <Key label="AC" shiftLabel="OFF" tone="ac" onPress={()=>{const shifted=shift;clearMods();if(shifted){hardReset();return}if(!fieldClear())clearAll()}}/>
 
      <Key label="4" alphaLabel="D" onPress={()=>{digit('4',{alpha});clearMods()}}/>
      <Key label="5" alphaLabel="E" onPress={()=>{digit('5',{alpha});clearMods()}}/>
@@ -756,7 +859,6 @@ export default function CasioCalculator({workspaceActive}:WidgetProps){
   </>}
  </div>;
 }
-
 function variablesInLocal(expression:string):string[]{
  const found=new Set<string>();
  for(const match of expression.matchAll(/\b([A-FXY])\b/g))found.add(match[1]);
