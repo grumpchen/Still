@@ -207,6 +207,12 @@ input[type=checkbox]{appearance:none;-webkit-appearance:none;width:14px!importan
 .saved-item-context-menu{position:fixed;z-index:10000;display:grid;min-width:144px;gap:4px;padding:5px;border:1px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text);box-shadow:0 8px 24px #10182035;backdrop-filter:blur(18px)}
 .saved-item-context-menu button{width:100%;text-align:left;padding:7px 10px;border:0;border-radius:8px;background:transparent;box-shadow:none;font:inherit;color:inherit;cursor:pointer}
 .saved-item-context-menu button:hover,.saved-item-context-menu button:focus-visible{background:var(--tint);outline:2px solid color-mix(in srgb,var(--accent) 55%,transparent);outline-offset:-2px}
+.add-tool-context-menu{position:fixed;z-index:10000;display:grid;min-width:212px;gap:2px;padding:6px;border:1px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text);box-shadow:0 8px 24px #10182035;backdrop-filter:blur(18px);max-height:calc(100vh - 16px);overflow:auto}
+.add-tool-context-menu .add-tool-heading{margin:3px 8px 6px;font-size:10px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.add-tool-context-menu button{display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:7px 10px;border:0;border-radius:8px;background:transparent;box-shadow:none;font:inherit;color:inherit;cursor:pointer}
+.add-tool-context-menu button svg{width:15px;height:15px;flex-shrink:0;color:var(--accent)}
+.add-tool-context-menu button span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.add-tool-context-menu button:hover,.add-tool-context-menu button:focus-visible{background:var(--tint);outline:2px solid color-mix(in srgb,var(--accent) 55%,transparent);outline-offset:-2px}
 .tray-group-separator{align-self:stretch;flex-shrink:0;width:1px;background:var(--border);margin:3px 4px}
 .tray-items .tray-group-button{cursor:pointer;border-color:color-mix(in srgb,var(--accent) 28%,var(--border))}
 .tray-group-button small{font-size:9px;color:var(--muted);padding:2px 4px;background:var(--tint);border-radius:5px}

@@ -417,7 +417,7 @@ export function parseState(source: unknown): WorkspaceState {
     if (!workspace || typeof workspace.id!=='string' || ids.has(workspace.id) || !Array.isArray(workspace.widgets)) throw new Error('Invalid workspace');
     ids.add(workspace.id);
     const widgets:WidgetInstance[]=[];
-    for(const raw of workspace.widgets){if(raw&&typeof raw==='object'&&(raw as {type?:unknown}).type==='browser')continue;const widget=checkedWidget(raw);if(!(raw as WidgetInstance).placement)widget.placement=nextPlacement(widget.type,widgets);if(!(raw as WidgetInstance).instanceNumber || widgets.some(w=>w.type===widget.type&&w.instanceNumber===widget.instanceNumber))widget.instanceNumber=nextInstanceNumber(widget.type,widgets);widgets.push(widget)}
+    for(const raw of workspace.widgets){if(raw&&typeof raw==='object'&&!widgetTypes.includes((raw as {type?:unknown}).type as WidgetType))continue;const widget=checkedWidget(raw);if(!(raw as WidgetInstance).placement)widget.placement=nextPlacement(widget.type,widgets);if(!(raw as WidgetInstance).instanceNumber || widgets.some(w=>w.type===widget.type&&w.instanceNumber===widget.instanceNumber))widget.instanceNumber=nextInstanceNumber(widget.type,widgets);widgets.push(widget)}
     for (const widget of widgets) { if (widgetIds.has(widget.id)) throw new Error('Duplicate widget instance'); widgetIds.add(widget.id); }
     const groups=migrateLegacyBrowserGroups(workspace.widgets,parseGroups(workspace.groups)),collectedIds=new Set(widgets.map(item=>item.id));let iconBytes=0;
     for(const group of groups){
