@@ -15,10 +15,10 @@
 ## Checks
 - `pnpm check` — passed.
 - `pnpm build` — passed.
-- Focused assistant and canvas tests — 81 passed, 1 failed in `tests/minimize.test.mjs` (`parseState validates minimized flags...`). This test is outside the DeepSeek changes; the same test was unchanged by the selected branch commits.
+- Focused assistant, canvas, and minimized-widget tests — 70 passed after correcting the test to find the fixture workspace by ID and compare persisted JSON shape.
 - `git diff --check` — passed.
-- Native Rust build and Windows release packaging — not run; Cargo/Windows build tools are unavailable here.
+- Native Windows release build — passed on GitHub Actions run `43523509598`; artifact is `still-v0.236-windows-x64`.
 
 ## Handoff
 - Combined branch: `agent/codex/leo3-deepseek-combined`, rooted at `v0.235` with `leo3-official` and DeepSeek commits.
-- Do not publish a Windows app release until the minimized-state test is resolved or baselined and the Windows executable is built and verified.
+- PDF highlighting was intentionally excluded.

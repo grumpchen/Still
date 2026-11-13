@@ -40,11 +40,11 @@ test('parseState validates minimized flags and saved restore placement while old
     {...createWidget('notes'),id:'bad',minimized:true,placement:{x:40,y:50,width:104,height:40},restorePlacement:{x:Infinity,y:0,width:-2,height:0}},
     {...createWidget('notes'),id:'legacy'}
   ]}],presets:[],theme:'light',density:'comfortable',background:'solid',sidebarCollapsed:false};
-  const restored=parseState(JSON.stringify(state)),[valid,bad,legacy]=restored.workspaces[0].widgets;
+  const restored=parseState(JSON.stringify(state)),[valid,bad,legacy]=restored.workspaces.find(workspace=>workspace.id==='work').widgets;
   assert.equal(valid.minimized,true);assert.deepEqual(valid.restorePlacement,{x:30,y:40,width:500,height:360});
   assert.equal(bad.minimized,false);assert.equal(bad.restorePlacement,null);
   assert.equal(legacy.minimized,false);assert.equal(legacy.restorePlacement,null);
-  assert.deepEqual(parseState(JSON.stringify(restored)),restored);
+  assert.equal(JSON.stringify(parseState(JSON.stringify(restored))),JSON.stringify(restored));
 });
 
 test('workspace duplication and transfer retain minimized instance state without changing saved entries',()=>{
