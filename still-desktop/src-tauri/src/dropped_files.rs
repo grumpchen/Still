@@ -91,13 +91,6 @@ impl AppGrants {
         validate_app_arguments(&selected.path, &selected.arguments)?;
         Ok(selected)
     }
-    pub(crate) fn set_chrome_profile(&self, id: &str, arguments: Vec<String>) -> Result<(), String> {
-        let mut grants = self.0.lock().map_err(|_| "App shortcuts are unavailable")?;
-        let target = grants.get_mut(id).ok_or("Choose the app again to reconnect its shortcut.")?;
-        validate_app_arguments(&target.path, &arguments)?;
-        target.arguments = arguments;
-        Ok(())
-    }
     pub(crate) fn persist(&self, directory: &Path) -> Result<(), String> {
         let grants = self.0.lock().map_err(|_| "App shortcuts are unavailable")?;
         fs::create_dir_all(directory).map_err(|error| error.to_string())?;

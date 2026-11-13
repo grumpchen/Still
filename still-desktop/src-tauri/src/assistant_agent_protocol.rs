@@ -358,10 +358,12 @@ pub fn validate_agent_request(
     Ok(())
 }
 
+#[cfg(test)]
 pub fn parse_openai_agent_response(value: Value, enable_add_widget_tool: bool) -> Result<AgentTurn, String> {
     parse_openai_agent_response_with_tools(value, enable_add_widget_tool, false)
 }
 
+#[cfg(test)]
 pub fn parse_openai_agent_response_with_tools(value: Value, enable_add_widget_tool: bool, enable_safe_workspace_action_tool: bool) -> Result<AgentTurn, String> {
     parse_openai_agent_response_with_all_tools(value, enable_add_widget_tool, enable_safe_workspace_action_tool, false)
 }
@@ -370,10 +372,12 @@ pub fn parse_openai_agent_response_with_all_tools(value: Value, enable_add_widge
     parse_compatible_agent_response(value, "OpenAI", enable_add_widget_tool, enable_safe_workspace_action_tool, enable_assistant_memory_tool)
 }
 
+#[cfg(test)]
 pub fn parse_opencode_agent_response(value: Value, enable_add_widget_tool: bool) -> Result<AgentTurn, String> {
     parse_opencode_agent_response_with_tools(value, enable_add_widget_tool, false)
 }
 
+#[cfg(test)]
 pub fn parse_opencode_agent_response_with_tools(value: Value, enable_add_widget_tool: bool, enable_safe_workspace_action_tool: bool) -> Result<AgentTurn, String> {
     parse_opencode_agent_response_with_all_tools(value, enable_add_widget_tool, enable_safe_workspace_action_tool, false)
 }
