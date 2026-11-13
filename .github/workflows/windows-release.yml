@@ -1,0 +1,76 @@
+name: Windows prerelease
+
+on:
+  push:
+    tags:
+      - v0.*
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-publish:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.24.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: still-desktop/pnpm-lock.yaml
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Install frontend dependencies
+        working-directory: still-desktop
+        run: pnpm install --frozen-lockfile
+
+      - name: TypeScript check
+        working-directory: still-desktop
+        run: pnpm check
+
+      - name: Focused assistant, canvas, and workspace tests
+        working-directory: still-desktop
+        run: pnpm exec tsx --test --test-concurrency=1 tests/assistant-sidebar.test.mjs tests/assistant.test.mjs tests/canvas-add-tool-menu.test.mjs tests/minimize.test.mjs
+
+      - name: Rust tests
+        working-directory: still-desktop/src-tauri
+        run: cargo test
+
+      - name: Build Windows executable
+        working-directory: still-desktop
+        run: pnpm tauri build --no-bundle
+
+      - name: Prepare release asset and checksum
+        id: release-asset
+        shell: pwsh
+        run: |
+          $version = $env:GITHUB_REF_NAME -replace '^v', ''
+          $source = 'still-desktop/src-tauri/target/release/still-desktop.exe'
+          $name = "ver$version.exe"
+          Copy-Item $source "still-desktop/$name"
+          $hash = (Get-FileHash "still-desktop/$name" -Algorithm SHA256).Hash.ToLowerInvariant()
+          "name=$name" >> $env:GITHUB_OUTPUT
+          "sha256=$hash" >> $env:GITHUB_OUTPUT
+
+      - name: Publish GitHub prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Still ${{ github.ref_name }}
+          prerelease: true
+          files: still-desktop/${{ steps.release-asset.outputs.name }}
+          body: |
+            Still ${{ github.ref_name }} is a prerelease based on v0.235.
+
+            Includes the canvas right-click Add Tool menu and the DeepSeek AI provider.
+
+            Windows x64 SHA-256: `${{ steps.release-asset.outputs.sha256 }}`
+
+            TypeScript checks, focused assistant/canvas/workspace tests, and Rust tests ran in this workflow. No live Windows GUI test was performed.

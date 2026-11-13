@@ -4,6 +4,11 @@ on:
   push:
     branches:
       - agent/codex/leo3-deepseek-combined
+    paths:
+      - still-desktop/src/**
+      - still-desktop/src-tauri/**
+      - still-desktop/package.json
+      - still-desktop/pnpm-lock.yaml
   workflow_dispatch:
 
 permissions:
