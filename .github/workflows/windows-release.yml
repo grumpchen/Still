@@ -2,6 +2,10 @@ name: Windows prerelease
 
 on:
   push:
+    branches:
+      - agent/codex/leo3-deepseek-combined
+    paths:
+      - .github/workflows/windows-release.yml
     tags:
       - v0.*
 
@@ -42,7 +46,7 @@ jobs:
 
       - name: Rust tests
         working-directory: still-desktop/src-tauri
-        run: cargo test
+        run: cargo test --bin still-desktop
 
       - name: Build Windows executable
         working-directory: still-desktop
@@ -52,22 +56,25 @@ jobs:
         id: release-asset
         shell: pwsh
         run: |
-          $version = $env:GITHUB_REF_NAME -replace '^v', ''
+          $tag = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME } else { 'v0.236' }
+          $version = $tag -replace '^v', ''
           $source = 'still-desktop/src-tauri/target/release/still-desktop.exe'
           $name = "ver$version.exe"
           Copy-Item $source "still-desktop/$name"
           $hash = (Get-FileHash "still-desktop/$name" -Algorithm SHA256).Hash.ToLowerInvariant()
+          "tag=$tag" >> $env:GITHUB_OUTPUT
           "name=$name" >> $env:GITHUB_OUTPUT
           "sha256=$hash" >> $env:GITHUB_OUTPUT
 
       - name: Publish GitHub prerelease
         uses: softprops/action-gh-release@v2
         with:
-          name: Still ${{ github.ref_name }}
+          tag_name: ${{ steps.release-asset.outputs.tag }}
+          name: Still ${{ steps.release-asset.outputs.tag }}
           prerelease: true
           files: still-desktop/${{ steps.release-asset.outputs.name }}
           body: |
-            Still ${{ github.ref_name }} is a prerelease based on v0.235.
+            Still ${{ steps.release-asset.outputs.tag }} is a prerelease based on v0.235.
 
             Includes the canvas right-click Add Tool menu and the DeepSeek AI provider.
 
