@@ -1,0 +1,54 @@
+name: Windows build
+
+on:
+  push:
+    branches:
+      - agent/codex/leo3-deepseek-combined
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: still-desktop/pnpm-lock.yaml
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.24.0
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Install frontend dependencies
+        working-directory: still-desktop
+        run: pnpm install --frozen-lockfile
+
+      - name: TypeScript check
+        working-directory: still-desktop
+        run: pnpm check
+
+      - name: Focused assistant and canvas tests
+        working-directory: still-desktop
+        run: pnpm exec tsx --test --test-concurrency=1 tests/assistant-sidebar.test.mjs tests/assistant.test.mjs tests/canvas-add-tool-menu.test.mjs
+
+      - name: Build Windows executable
+        working-directory: still-desktop
+        run: pnpm tauri build --no-bundle
+
+      - name: Upload Windows executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: still-v0.236-windows-x64
+          path: still-desktop/src-tauri/target/release/still-desktop.exe
+          if-no-files-found: error
+          retention-days: 14
