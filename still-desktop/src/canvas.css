@@ -627,3 +627,52 @@ dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
 
 .note-library{overflow:hidden;border-radius:16px}.note-library-explorer{border-radius:14px}.note-library-files{overflow:auto;border-radius:13px 0 0 13px}.note-library-preview{border-radius:0 13px 13px 0}.note-library-edit-area{display:flex;flex:1;min-height:0;flex-direction:column;gap:8px;padding:10px}.note-library-editor{flex:1;min-height:180px;resize:none;padding:11px;border:1px solid var(--border);border-radius:10px;background:color-mix(in srgb,var(--surface) 74%,transparent);color:var(--text);font:13px/1.65 ui-monospace,SFMono-Regular,Consolas,monospace;outline:none}.note-library-edit-actions{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--muted);font-size:10px}.note-library-edit-actions>div{display:flex;gap:6px}.note-library-edit-actions button{padding:5px 9px;border:1px solid var(--border);border-radius:9px;background:var(--surface);color:var(--text);font-size:10px}.canvas-card.group-collapsed{border-radius:16px}.canvas-card.group-collapsed::before,.canvas-card.group-collapsed::after{border-radius:15px}.canvas-card.group-collapsed::before{inset:3px -3px -3px 3px;opacity:.82}.canvas-card.group-collapsed::after{inset:6px -6px -6px 6px;opacity:.62}
 .course-environment-offer{padding:10px 0;border-bottom:1px solid var(--border)}.course-environment-offer p{margin:0 0 8px;display:flex;flex-direction:column;gap:4px}.course-environment-offer small{color:var(--muted)}
+
+/* Files widget: keep its existing card and workspace geometry while improving the in-card reader. */
+.files-content-with-preview,.files-content-browse{display:flex;flex:1;min-height:0;overflow:hidden}
+.files-selection-list{display:flex;flex:0 0 min(36%,220px);flex-direction:column;min-width:150px;min-height:0;border-right:1px solid var(--border);overflow:hidden}
+.files-selection-list .file-filter{flex:none;margin-top:9px}
+.files-selection-list .file-list{max-height:none;min-height:0}
+.files-selection-list .file-row.selected{background:var(--tint);color:var(--accent)}
+.folder-file-preview{flex:1;min-width:0}
+.pdf-highlight-count{flex:none;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#a63232;font-size:10px}
+.document-preview:has(.pdf-keyword-view){display:block;min-height:0;padding:0;background:#eef0f3}
+.pdf-keyword-view{height:100%;width:100%;overflow:auto;padding:14px 16px 22px;overscroll-behavior:contain;scrollbar-gutter:stable}
+.pdf-render-page{position:relative;margin:0 auto 14px;background:#fff;box-shadow:0 2px 9px #17212d20;overflow:hidden}
+.pdf-render-page>canvas{display:block}
+.pdf-render-page .pdf-text-layer{position:absolute;inset:0;overflow:hidden;opacity:1;line-height:1;z-index:1}
+.pdf-render-page .pdf-text-layer span{color:transparent!important}
+.pdf-keyword-overlay{position:absolute;inset:0;pointer-events:none;z-index:2}
+.pdf-keyword-mark{position:absolute;border-radius:2px;background:rgb(231 50 50 / .23);border-bottom:2px solid #cf3434;mix-blend-mode:multiply}
+.pdf-page-limit{padding:7px 9px;margin:0 auto 10px;width:max-content;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--muted);font-size:10px}
+.pdf-highlight-controls{flex:none;padding:10px 12px 9px;border-top:1px solid var(--border);background:var(--surface)}
+.pdf-highlight-controls>label{display:block;margin:0 0 6px;color:var(--text);font-size:11px;font-weight:600}
+.pdf-highlight-instruction{display:flex;align-items:stretch;gap:8px}
+.pdf-highlight-instruction textarea{flex:1;min-width:0;min-height:44px;max-height:80px;resize:vertical;padding:8px 9px;border:1px solid var(--border);border-radius:8px;background:var(--canvas);color:var(--text);font:inherit;font-size:11px;line-height:1.45}
+.pdf-highlight-instruction button{flex:none;align-self:center;padding:8px 11px;border:1px solid #315fcc;border-radius:8px;background:#315fcc;color:#fff;font-size:10px}
+.pdf-highlight-instruction button:hover{background:#244ca8}
+.pdf-highlight-meta{display:flex;justify-content:space-between;gap:10px;margin-top:6px;color:var(--muted);font-size:9px;line-height:1.4}
+.pdf-highlight-meta span:last-child{flex:none;color:#a63232}
+.file-note-disclosure{flex:none;border-top:1px solid var(--border);padding:6px 12px 8px;color:var(--muted);font-size:10px}
+.file-note-disclosure summary{cursor:pointer}
+.file-note-disclosure .file-note{padding:8px 0 0}
+.file-note-disclosure .file-note>span{display:none}
+@container (max-width:560px){
+ .files-content-with-preview{flex-direction:column}
+ .files-selection-list{flex:0 0 30%;min-width:0;max-height:130px;border-right:0;border-bottom:1px solid var(--border)}
+ .files-selection-list .file-filter{margin:7px 9px}
+ .files-selection-list .file-list{padding-bottom:3px}
+ .files-selection-list .file-row{padding:6px 7px;font-size:10px}
+ .files-selection-list .file-row small{display:none}
+ .folder-file-preview-head{gap:5px;padding-inline:6px}
+ .folder-file-preview-head button{font-size:9px;padding:4px 6px}
+ .pdf-highlight-controls{padding:7px 8px}
+ .pdf-highlight-controls>label{margin-bottom:4px}
+ .pdf-highlight-instruction{gap:5px}
+ .pdf-highlight-instruction textarea{min-height:38px;font-size:10px}
+ .pdf-highlight-instruction button{padding:6px 8px;font-size:9px}
+ .pdf-highlight-meta{font-size:8px;gap:4px}
+}
+
+.liquid-glass .canvas-card.widget-files .pdf-highlight-instruction textarea{color:var(--text);background:rgba(30,30,30,.78);border-color:rgba(255,255,255,.3)}
+.files-widget{container-type:inline-size}
