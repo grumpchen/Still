@@ -18,9 +18,9 @@ after(()=>vite.close());
 async function setup(widgets,{identity={hwnd:451,pid:902},startupDeferredIds=new Set(),screenshotPluginMode='global',screenshotPluginColors=[],screenshotPluginColorOverrides={},clockPluginMode='global',clockPluginColors=[],clockPluginColorOverrides={},showAppAttachAction=false,showAppDetachAction=false,showAppSaveAction=false,showWidgetRelaunchAction=true,showWidgetExportPngAction=true,responses={}}={}){
  const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true});
  const oldGlobals=new Map();
- for(const key of ['window','document','navigator','HTMLElement','Element','Node','MutationObserver','ResizeObserver','requestAnimationFrame','cancelAnimationFrame','getComputedStyle','isTauri','IS_REACT_ACT_ENVIRONMENT'])oldGlobals.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
+ for(const key of ['window','document','navigator','HTMLElement','Element','Node','CustomEvent','MutationObserver','ResizeObserver','requestAnimationFrame','cancelAnimationFrame','getComputedStyle','isTauri','IS_REACT_ACT_ENVIRONMENT'])oldGlobals.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
  const {window}=dom;
- setGlobal('window',window);setGlobal('document',window.document);setGlobal('navigator',window.navigator);setGlobal('HTMLElement',window.HTMLElement);setGlobal('Element',window.Element);setGlobal('Node',window.Node);setGlobal('MutationObserver',window.MutationObserver);setGlobal('ResizeObserver',class{observe(){}disconnect(){}});setGlobal('requestAnimationFrame',callback=>setTimeout(()=>callback(Date.now()),0));setGlobal('cancelAnimationFrame',clearTimeout);setGlobal('getComputedStyle',window.getComputedStyle.bind(window));setGlobal('isTauri',true);setGlobal('IS_REACT_ACT_ENVIRONMENT',true);
+ setGlobal('window',window);setGlobal('document',window.document);setGlobal('navigator',window.navigator);setGlobal('HTMLElement',window.HTMLElement);setGlobal('Element',window.Element);setGlobal('Node',window.Node);setGlobal('CustomEvent',window.CustomEvent);setGlobal('MutationObserver',window.MutationObserver);setGlobal('ResizeObserver',class{observe(){}disconnect(){}});setGlobal('requestAnimationFrame',callback=>setTimeout(()=>callback(Date.now()),0));setGlobal('cancelAnimationFrame',clearTimeout);setGlobal('getComputedStyle',window.getComputedStyle.bind(window));setGlobal('isTauri',true);setGlobal('IS_REACT_ACT_ENVIRONMENT',true);
  window.HTMLElement.prototype.getBoundingClientRect=function(){
   if(this.classList.contains('canvas-viewport'))return rect(0,0,1400,900);
   if(this.classList.contains('workspace-canvas'))return rect(0,0,4000,3000);
@@ -90,6 +90,42 @@ test('Notes opens a second tab and switching tabs keeps each page text separate'
   assert.equal(app.window.document.querySelector('[aria-label="Note text"]').value,'');
   await act(async()=>tabs[0].click());assert.equal(app.window.document.querySelector('[aria-label="Note text"]').value,original.text);
   await act(async()=>tabs[1].click());assert.equal(app.window.document.querySelector('[aria-label="Note text"]').value,'');
+ }finally{await app.cleanup()}
+});
+
+test('selected Files text can be saved to a chosen non-active note from the right-click menu',async()=>{
+ const notes=createWidget('notes'),files=createWidget('files');notes.id='note-target';notes.title='Study Notes';notes.noteDocuments=[{id:'main-note',title:'Main note',text:'Keep this unchanged.'},{id:'quote-note',title:'Quote bank',text:'Existing quote.'}];notes.activeNoteDocumentId='main-note';notes.text=notes.noteDocuments[0].text;files.id='selected-files';
+ const app=await setup([notes,files],{responses:{files_list:{rootName:'Course',location:'',entries:[{name:'chapter.txt',path:'chapter.txt',directory:false,size:18,blocked:false}],truncated:false},files_preview:{mimeType:'text/plain',base64:'U2VsZWN0ZWQgZXhjZXJwdA=='}}});
+ try{
+  await act(async()=>{await new Promise(resolve=>setTimeout(resolve,0))});
+  const fileButton=[...app.window.document.querySelectorAll('.file-row')].find(button=>button.textContent.includes('chapter.txt'));assert.ok(fileButton);
+  await act(async()=>fileButton.click());await act(async()=>{await new Promise(resolve=>setTimeout(resolve,0))});
+  const preview=app.window.document.querySelector('.document-preview');assert.ok(preview);
+  let selectionText='',cleared=0;app.window.getSelection=()=>({toString:()=>selectionText,removeAllRanges:()=>{cleared++}});
+  const emptyEvent=new app.window.MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:120,clientY:140});await act(async()=>preview.dispatchEvent(emptyEvent));assert.equal(app.window.document.querySelector('.save-selection-context-menu'),null);
+  selectionText='Selected excerpt';const selectionEvent=new app.window.MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:120,clientY:140});await act(async()=>preview.dispatchEvent(selectionEvent));assert.equal(selectionEvent.defaultPrevented,true);
+  const menu=app.window.document.querySelector('.save-selection-context-menu');assert.ok(menu);const target=[...menu.querySelectorAll('[role="menuitem"]')].find(button=>button.textContent.includes('Quote bank'));assert.ok(target);
+  await act(async()=>target.click());
+  const saved=app.currentState.workspaces[0].widgets.find(widget=>widget.id==='note-target');assert.equal(saved.noteDocuments.find(note=>note.id==='main-note').text,'Keep this unchanged.');assert.equal(saved.noteDocuments.find(note=>note.id==='quote-note').text,'Existing quote.\n\nSelected excerpt');assert.equal(saved.activeNoteDocumentId,'quote-note');assert.equal(saved.text,'Existing quote.\n\nSelected excerpt');assert.equal(cleared,1);
+ }finally{await app.cleanup()}
+});
+
+test('saving selected text to a Notes library document uses the revision-checked write path',async()=>{
+ const notes=createWidget('notes');notes.id='library-notes';notes.notesLibraryKey=notes.id;notes.noteDocuments=[{id:'library-doc',title:'Definitions.md',text:'Original definition.',sourcePath:'Definitions.md'}];notes.activeNoteDocumentId='library-doc';notes.title='Definitions.md';notes.text='Original definition.';
+ const app=await setup([notes],{responses:{notes_library_list:[],notes_library_write:null}});
+ try{
+  let receipt;await act(async()=>{receipt=await new Promise((resolve,reject)=>app.window.dispatchEvent(new app.window.CustomEvent('still-notes-save-selection',{detail:{widgetId:notes.id,noteId:'library-doc',text:'Saved excerpt',resolve,reject}})))});
+  const write=app.calls.find(call=>call.command==='notes_library_write');assert.deepEqual(write?.args,{id:notes.id,path:'Definitions.md',text:'Original definition.\n\nSaved excerpt',expected:'Original definition.'});
+  const saved=app.currentState.workspaces[0].widgets[0];assert.equal(saved.noteDocuments[0].text,'Original definition.\n\nSaved excerpt');assert.equal(receipt,'Definitions.md');
+ }finally{await app.cleanup()}
+});
+
+test('failed Notes library writes leave the destination unchanged and return an error',async()=>{
+ const notes=createWidget('notes');notes.id='stale-library-notes';notes.notesLibraryKey=notes.id;notes.noteDocuments=[{id:'stale-doc',title:'Reference.md',text:'Original text.',sourcePath:'Reference.md'}];notes.activeNoteDocumentId='stale-doc';notes.title='Reference.md';notes.text='Original text.';
+ const app=await setup([notes],{responses:{notes_library_list:[],notes_library_write:()=>{throw new Error('The file changed outside Still.')}}});
+ try{
+  let failure;await act(async()=>{await new Promise(resolve=>app.window.dispatchEvent(new app.window.CustomEvent('still-notes-save-selection',{detail:{widgetId:notes.id,noteId:'stale-doc',text:'New excerpt',resolve:()=>resolve(),reject:error=>{failure=error;resolve()}}})))});
+  const saved=app.currentState.workspaces[0].widgets[0];assert.equal(saved.noteDocuments[0].text,'Original text.');assert.equal(failure?.message,'The file changed outside Still.');
  }finally{await app.cleanup()}
 });
 
