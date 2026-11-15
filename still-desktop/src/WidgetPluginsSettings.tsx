@@ -20,6 +20,7 @@ export default function WidgetPluginsSettings({state,update,setRelaunchStatus,se
   <div className="widget-plugin-settings-heading"><h4>{name}</h4><p>{t('plugin_'+key+'_desc')}</p></div>
   {plugin.id==='color-tag'&&<p className="notice">{t('tagHelp')}</p>}
   {plugin.id==='lock'&&<p className="notice">{t('lockHelp')}</p>}
+  {plugin.id==='pin-to-front'&&<p className="notice">{t('pinHelp')}</p>}
   {plugin.id==='screenshot'&&<>
    <label className="settings-row"><span>{t('cameraButton')}</span><select aria-label={t('plugin_screenshot_name')} value={state.screenshotPluginMode} onChange={event=>update({screenshotPluginMode:event.target.value as typeof state.screenshotPluginMode})}><option value="global">{t('applyGlobally')}</option><option value="tag-colors">{t('applyByTag')}</option><option value="off">{t('closed')}</option></select></label>
    {state.screenshotPluginMode==='tag-colors'&&<fieldset className="screenshot-plugin-colors" aria-label={t('plugin_screenshot_name')+' · '+t('tagColor')}><legend>{t('showScreenshotFor')}</legend>{widgetTagColors.map(color=><label key={color}><input type="checkbox" aria-label={color+' '+t('plugin_screenshot_name')} checked={state.screenshotPluginColors.includes(color)} onChange={event=>setScreenshotColor(color,event.target.checked)}/>{color[0].toUpperCase()+color.slice(1)}</label>)}</fieldset>}

@@ -29,9 +29,10 @@ test('sidebar Settings opens a tabbed dialog with General, Appearance, and Plugi
  assert.match(general,/className="shortcut-settings-link" onClick=\{openShortcuts\}/);
  assert.doesNotMatch(appearance,/shortcut-settings-link|Keyboard shortcuts/);
  assert.match(app,/settingsTab==='plugins'[\s\S]*?<WidgetPluginsSettings/);
- for(const [id,name] of [['color-tag','Color Tag'],['clock-timer','Clock Timer'],['screenshot','Screenshot'],['widget-relaunch','Widget Relaunch'],['lock','Lock']])assert.ok(widgetPluginCatalog.includes("id:'"+id+"',name:'"+name+"'"),name+' is registered');
+ for(const [id,name] of [['color-tag','Color Tag'],['clock-timer','Clock Timer'],['screenshot','Screenshot'],['widget-relaunch','Widget Relaunch'],['lock','Lock'],['pin-to-front','Pin to Front']])assert.ok(widgetPluginCatalog.includes("id:'"+id+"',name:'"+name+"'"),name+' is registered');
  assert.match(widgetPlugins,/widgetPluginCatalog\.map\(plugin/,'registered widget plugins automatically get a settings section');
  assert.match(widgetPlugins,/plugin\.id==='lock'[\s\S]*?t\('lockHelp'\)/);
+ assert.match(widgetPlugins,/plugin\.id==='pin-to-front'[\s\S]*?t\('pinHelp'\)/);
  for(const id of ['color-tag','clock-timer','screenshot','widget-relaunch'])assert.ok(widgetPlugins.includes("plugin.id==='"+id+"'"),id+' settings are handled');
  assert.match(widgetPlugins,/plugin\.id==='clock-timer'[\s\S]*?t\('applyByTag'\)[\s\S]*?t\('showClockFor'\)/);
  assert.match(widgetPlugins,/plugin\.id==='screenshot'[\s\S]*?t\('applyByTag'\)[\s\S]*?t\('showScreenshotFor'\)/);

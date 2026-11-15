@@ -355,9 +355,11 @@ dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
 .canvas-card.widget-locked .widget-move{cursor:default}
 .canvas-card.widget-locked .move-grip{opacity:.42}
 .canvas-card.widget-locked .widget-minimized-button{cursor:default}
-.canvas-card .widget-lock-toggle,.widget-minimized-lock{display:grid;place-items:center;min-width:27px;width:27px;height:27px;padding:5px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);box-shadow:none}
+.canvas-card .widget-lock-toggle,.canvas-card .widget-pin-toggle,.widget-minimized-lock{display:grid;place-items:center;min-width:27px;width:27px;height:27px;padding:5px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);box-shadow:none}
 .canvas-card .widget-lock-toggle[aria-pressed=true]{color:var(--accent);background:var(--tint)}
-.canvas-card .widget-lock-toggle svg,.widget-minimized-lock svg{width:15px;height:15px}
+.canvas-card .widget-pin-toggle[aria-pressed=true]{color:var(--accent);background:var(--tint)}
+.canvas-card .widget-lock-toggle svg,.canvas-card .widget-pin-toggle svg,.widget-minimized-lock svg{width:15px;height:15px}
+.canvas-card.widget-pinned{outline:1px solid color-mix(in srgb,var(--accent) 40%,transparent);outline-offset:-1px}
 .canvas-card .widget-controls>button:disabled{opacity:.45;cursor:not-allowed}
 .widget-minimized-lock{position:absolute;z-index:2;top:7px;right:38px;cursor:pointer}
 .note-tabs{display:flex;align-items:center;gap:4px;min-height:34px;padding:4px 10px 0;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;border-bottom:1px solid var(--border)}
