@@ -1,4 +1,5 @@
-export interface NoteDocument {id:string;title:string;text:string;sourcePath?:string;tags?:string[]}
+export interface NoteSource {widgetId:string;path:string;fileName:string;page?:number}
+export interface NoteDocument {id:string;title:string;text:string;sourcePath?:string;tags?:string[];sources?:NoteSource[]}
 export const NOTE_DOCUMENT_LIMIT=40;
 export const NOTE_DOCUMENT_TEXT_LIMIT=256000;
 export const NOTE_DOCUMENT_TOTAL_LIMIT=4000000;
@@ -20,7 +21,7 @@ export function checkedNoteDocuments(value:unknown,fallback:{id:string;title:str
   if(typeof item.id!=='string'||!/^[a-zA-Z0-9-]{1,500}$/.test(item.id)||ids.has(item.id)||typeof item.title!=='string'||typeof item.text!=='string'||(item.sourcePath!==undefined&&(typeof item.sourcePath!=='string'||item.sourcePath.length>1000)))continue;
   const title=item.title.trim().slice(0,60),text=item.text.slice(0,NOTE_DOCUMENT_TEXT_LIMIT),room=NOTE_DOCUMENT_TOTAL_LIMIT-total;
   if(room<=0)break;
-  const checkedText=text.slice(0,room),tags=checkedNoteTags(item.tags);total+=checkedText.length;ids.add(item.id);result.push({id:item.id,title,text:checkedText,...(item.sourcePath&&checkedText.length===item.text.length?{sourcePath:item.sourcePath}:{}),...(tags.length?{tags}:{})});
+  const checkedText=text.slice(0,room),tags=checkedNoteTags(item.tags),sources=checkedNoteSources(item.sources);total+=checkedText.length;ids.add(item.id);result.push({id:item.id,title,text:checkedText,...(item.sourcePath&&checkedText.length===item.text.length?{sourcePath:item.sourcePath}:{}),...(tags.length?{tags}:{}),...(sources.length?{sources}:{})});
  }
  return result.length?result:[{id:fallback.id,title:fallback.title.trim().slice(0,60),text:fallback.text.slice(0,NOTE_DOCUMENT_TEXT_LIMIT)}];
 }
@@ -33,9 +34,16 @@ export function detachNoteLibraryDocuments(documents:NoteDocument[]):NoteDocumen
  return documents.map(({sourcePath,...document})=>document);
 }
 
-export function updatedNoteDocument(documents:NoteDocument[],id:string|undefined,patch:Partial<Pick<NoteDocument,'title'|'text'|'tags'>>):NoteDocument[]{
+export function checkedNoteSources(value:unknown):NoteSource[]{
+ if(!Array.isArray(value))return[];const seen=new Set<string>(),result:NoteSource[]=[];
+ for(const raw of value){if(!raw||typeof raw!=='object'||Array.isArray(raw))continue;const item=raw as Partial<NoteSource>;
+  if(typeof item.widgetId!=='string'||!/^[a-zA-Z0-9-]{1,80}$/.test(item.widgetId)||typeof item.path!=='string'||!item.path||item.path.length>1000||item.path.startsWith('/')||/^[a-z]:/i.test(item.path)||item.path.split(/[\\/]/).some(part=>part==='..'||part==='.'||!part)||typeof item.fileName!=='string'||!item.fileName||item.fileName.length>255)continue;
+  const page=typeof item.page==='number'&&Number.isInteger(item.page)&&item.page>=1&&item.page<=5000?item.page:undefined,key=`${item.widgetId}:${item.path}:${page??''}`;if(seen.has(key))continue;seen.add(key);result.push({widgetId:item.widgetId,path:item.path,fileName:item.fileName,...(page?{page}:{})});if(result.length===100)break;
+ }return result;
+}
+export function updatedNoteDocument(documents:NoteDocument[],id:string|undefined,patch:Partial<Pick<NoteDocument,'title'|'text'|'tags'|'sources'>>):NoteDocument[]{
  const active=noteDocument(documents,id);
- return documents.map(item=>item.id!==active.id?item:{...active,...patch,title:(patch.title??active.title).trim().slice(0,60),text:(patch.text??active.text).slice(0,NOTE_DOCUMENT_TEXT_LIMIT),...(patch.tags!==undefined?{tags:checkedNoteTags(patch.tags)}:{})});
+ return documents.map(item=>item.id!==active.id?item:{...active,...patch,title:(patch.title??active.title).trim().slice(0,60),text:(patch.text??active.text).slice(0,NOTE_DOCUMENT_TEXT_LIMIT),...(patch.tags!==undefined?{tags:checkedNoteTags(patch.tags)}:{}),...(patch.sources!==undefined?{sources:checkedNoteSources(patch.sources)}:{})});
 }
 
 export function createNoteDocument(title=''):{id:string;title:string;text:string}{

@@ -66,7 +66,7 @@ function PdfPage({documentProxy,pageNumber,width,terms,onMatches,scroller}:{docu
   return <div className="pdf-render-page" ref={host} aria-label={`PDF page ${pageNumber}`}/>;
 }
 
-export default function PdfKeywordPreview({url,terms,onError,onPageCount,loadingLabel,pageLimitLabel}:{url:string;terms:readonly string[];onError:(error:string)=>void;onPageCount:(count:number)=>void;loadingLabel:string;pageLimitLabel:(shown:number,total:number)=>string}){
+export default function PdfKeywordPreview({url,terms,targetPage,onError,onPageCount,loadingLabel,pageLimitLabel}:{url:string;terms:readonly string[];targetPage?:number;onError:(error:string)=>void;onPageCount:(count:number)=>void;loadingLabel:string;pageLimitLabel:(shown:number,total:number)=>string}){
   const scroller=useRef<HTMLDivElement>(null),documentRef=useRef<PDFDocumentProxy|null>(null),[width,setWidth]=useState(560),[documentProxy,setDocumentProxy]=useState<PDFDocumentProxy|null>(null),[error,setError]=useState('');
   const onErrorRef=useRef(onError),onPageCountRef=useRef(onPageCount);onErrorRef.current=onError;onPageCountRef.current=onPageCount;
   useEffect(()=>{
@@ -79,5 +79,6 @@ export default function PdfKeywordPreview({url,terms,onError,onPageCount,loading
     void fetch(url).then(response=>{if(!response.ok)throw new Error('Could not load the selected PDF.');return response.arrayBuffer()}).then(data=>loadPdfJs().then(pdfjs=>pdfjs.getDocument({data:new Uint8Array(data)}).promise)).then(pdf=>{if(!active){void pdf.destroy();return}documentRef.current=pdf;setDocumentProxy(pdf);onPageCountRef.current(pdf.numPages)}).catch(reason=>{if(active){const message=reason instanceof Error?reason.message:'Could not render this PDF.';setError(message);onErrorRef.current(message)}});
     return()=>{active=false;const current=documentRef.current;documentRef.current=null;if(current)void current.destroy()};
   },[url]);
+  useEffect(()=>{if(!documentProxy||!targetPage||targetPage>documentProxy.numPages)return;const frame=requestAnimationFrame(()=>scroller.current?.querySelector(`[aria-label="PDF page ${targetPage}"]`)?.scrollIntoView({block:'start'}));return()=>cancelAnimationFrame(frame)},[documentProxy,targetPage]);
   return <div className="pdf-keyword-view" ref={scroller}>{error?<p className="files-message">{error}</p>:documentProxy?Array.from({length:Math.min(documentProxy.numPages,30)},(_,index)=><PdfPage key={index+1} documentProxy={documentProxy} pageNumber={index+1} width={width} terms={terms} onMatches={ignoreMatches} scroller={scroller.current}/>):<p className="files-message">{loadingLabel}</p>}{documentProxy&&documentProxy.numPages>30&&<p className="pdf-page-limit">{pageLimitLabel(30,documentProxy.numPages)}</p>}</div>;
 }

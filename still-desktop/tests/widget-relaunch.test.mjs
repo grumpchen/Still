@@ -18,9 +18,9 @@ after(()=>vite.close());
 async function setup(widgets,{identity={hwnd:451,pid:902},startupDeferredIds=new Set(),screenshotPluginMode='global',screenshotPluginColors=[],screenshotPluginColorOverrides={},clockPluginMode='global',clockPluginColors=[],clockPluginColorOverrides={},showAppAttachAction=false,showAppDetachAction=false,showAppSaveAction=false,showWidgetRelaunchAction=true,showWidgetExportPngAction=true,responses={}}={}){
  const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true});
  const oldGlobals=new Map();
- for(const key of ['window','document','navigator','HTMLElement','Element','Node','CustomEvent','MutationObserver','ResizeObserver','requestAnimationFrame','cancelAnimationFrame','getComputedStyle','isTauri','IS_REACT_ACT_ENVIRONMENT'])oldGlobals.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
+ for(const key of ['window','document','navigator','localStorage','HTMLElement','Element','Node','CustomEvent','MutationObserver','ResizeObserver','requestAnimationFrame','cancelAnimationFrame','getComputedStyle','isTauri','IS_REACT_ACT_ENVIRONMENT'])oldGlobals.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
  const {window}=dom;
- setGlobal('window',window);setGlobal('document',window.document);setGlobal('navigator',window.navigator);setGlobal('HTMLElement',window.HTMLElement);setGlobal('Element',window.Element);setGlobal('Node',window.Node);setGlobal('CustomEvent',window.CustomEvent);setGlobal('MutationObserver',window.MutationObserver);setGlobal('ResizeObserver',class{observe(){}disconnect(){}});setGlobal('requestAnimationFrame',callback=>setTimeout(()=>callback(Date.now()),0));setGlobal('cancelAnimationFrame',clearTimeout);setGlobal('getComputedStyle',window.getComputedStyle.bind(window));setGlobal('isTauri',true);setGlobal('IS_REACT_ACT_ENVIRONMENT',true);
+ setGlobal('window',window);setGlobal('document',window.document);setGlobal('navigator',window.navigator);setGlobal('localStorage',window.localStorage);setGlobal('HTMLElement',window.HTMLElement);setGlobal('Element',window.Element);setGlobal('Node',window.Node);setGlobal('CustomEvent',window.CustomEvent);setGlobal('MutationObserver',window.MutationObserver);setGlobal('ResizeObserver',class{observe(){}disconnect(){}});setGlobal('requestAnimationFrame',callback=>setTimeout(()=>callback(Date.now()),0));setGlobal('cancelAnimationFrame',clearTimeout);setGlobal('getComputedStyle',window.getComputedStyle.bind(window));setGlobal('isTauri',true);setGlobal('IS_REACT_ACT_ENVIRONMENT',true);
  window.HTMLElement.prototype.getBoundingClientRect=function(){
   if(this.classList.contains('canvas-viewport'))return rect(0,0,1400,900);
   if(this.classList.contains('workspace-canvas'))return rect(0,0,4000,3000);
@@ -126,6 +126,66 @@ test('failed Notes library writes leave the destination unchanged and return an 
  try{
   let failure;await act(async()=>{await new Promise(resolve=>app.window.dispatchEvent(new app.window.CustomEvent('still-notes-save-selection',{detail:{widgetId:notes.id,noteId:'stale-doc',text:'New excerpt',resolve:()=>resolve(),reject:error=>{failure=error;resolve()}}})))});
   const saved=app.currentState.workspaces[0].widgets[0];assert.equal(saved.noteDocuments[0].text,'Original text.');assert.equal(failure?.message,'The file changed outside Still.');
+ }finally{await app.cleanup()}
+});
+
+test('Files generates a reviewed study-question draft with the configured provider, suggests related notes and saves its source',async()=>{
+ const files=createWidget('files'),notes=createWidget('notes');files.id='study-source';notes.id='study-destination';notes.title='Research notes';notes.noteDocuments[0].title='Report deadlines';notes.noteDocuments[0].text='Interim report deadlines and grant agreement.';notes.title=notes.noteDocuments[0].title;
+ const sourceText='The interim report is due September 30. The grant agreement requires a final report.';
+ const answer=JSON.stringify([{question:'When is the interim report due?',answer:'September 30.'}]);
+ const app=await setup([files,notes],{responses:{
+  files_list:{rootName:'Course',location:'',entries:[{name:'agreement.txt',path:'agreement.txt',directory:false,size:sourceText.length,blocked:false}],truncated:false},
+  files_preview:{mimeType:'text/plain',base64:Buffer.from(sourceText).toString('base64')},
+  assistant_configured:true,
+  assistant_chat:{reply:answer,layout:[],actions:[]},
+ }});
+ try{
+  await act(async()=>{await new Promise(resolve=>setTimeout(resolve,0))});
+  const fileCard=app.window.document.querySelector('[data-widget-id="study-source"]');assert.ok(fileCard);
+  const fileButton=[...fileCard.querySelectorAll('.file-row')].find(button=>button.textContent.includes('agreement.txt'));assert.ok(fileButton);
+  await act(async()=>fileButton.click());await act(async()=>{await new Promise(resolve=>setTimeout(resolve,0))});
+  await act(async()=>[...fileCard.querySelectorAll('button')].find(button=>button.textContent.includes('Find related notes')).click());await act(async()=>{await new Promise(resolve=>setTimeout(resolve,0))});
+  assert.match(fileCard.querySelector('.files-related-notes')?.textContent??'',/Report deadlines/);
+  const status=fileCard.querySelector('[aria-label="Reading status"]');assert.ok(status);status.value='done';await act(async()=>status.dispatchEvent(new app.window.Event('change',{bubbles:true})));
+  assert.equal(app.currentState.workspaces[0].widgets.find(widget=>widget.id==='study-source').fileReadingStatus['Course/agreement.txt'],'done');
+  const generate=[...fileCard.querySelectorAll('button')].find(button=>button.textContent.includes('Generate study questions'));assert.ok(generate);
+  await act(async()=>generate.click());await act(async()=>{await new Promise(resolve=>setTimeout(resolve,0))});
+  const draft=fileCard.querySelector('textarea[aria-label="Review generated questions and answers"]');assert.ok(draft);assert.match(draft.value,/When is the interim report due\?/);
+  const calls=app.calls.filter(call=>call.command==='assistant_chat');assert.equal(calls.length,1);assert.equal(calls[0].args.request.provider,'gemini');assert.match(calls[0].args.request.messages[0].text,/agreement.txt/);
+  await act(async()=>[...fileCard.querySelectorAll('button')].find(button=>button.textContent.includes('Save questions to note')).click());
+  const saved=app.currentState.workspaces[0].widgets.find(widget=>widget.id==='study-destination');
+  assert.match(saved.noteDocuments[0].text,/When is the interim report due\?/);
+  assert.deepEqual(saved.noteDocuments[0].sources,[{widgetId:'study-source',path:'agreement.txt',fileName:'agreement.txt'}]);
+  assert.ok(fileCard.querySelector('.file-note-disclosure summary'));
+ }finally{await app.cleanup()}
+});
+
+test('Files uses the selected AI provider to match PDF keywords to the user preference',async()=>{
+ const files=createWidget('files');files.id='keyword-file';
+ const app=await setup([files],{responses:{
+  files_list:{rootName:'Course',location:'',entries:[{name:'agreement.pdf',path:'agreement.pdf',directory:false,size:24,blocked:false}],truncated:false},
+  files_preview:{mimeType:'application/pdf',base64:'JVBERi0xLjQK'},
+  files_extract_pdf_text:{text:'Payment of $500 is due September 30, 2025.',pagesRead:1,totalPages:1,truncated:false},
+  assistant_configured:true,
+  assistant_chat:{reply:'["$500", "September 30, 2025"]',layout:[],actions:[]},
+ }});
+ try{
+  app.window.localStorage.setItem('still-assistant-model','deepseek::deepseek-chat');
+  await act(async()=>{await new Promise(resolve=>setTimeout(resolve,0))});
+  const card=app.window.document.querySelector('[data-widget-id="keyword-file"]');assert.ok(card);
+  const file=[...card.querySelectorAll('.file-row')].find(button=>button.textContent.includes('agreement.pdf'));assert.ok(file);
+  await act(async()=>file.click());await act(async()=>{await new Promise(resolve=>setTimeout(resolve,0))});
+  const preset=card.querySelector('[aria-label="Highlight preset"]');assert.ok(preset);
+  preset.value='payments';await act(async()=>preset.dispatchEvent(new app.window.Event('change',{bubbles:true})));
+  assert.match(card.querySelector('textarea[id^="pdf-highlight-"]').value,/payment amounts, fees/);assert.equal(card.querySelector('.pdf-highlight-instruction button').disabled,false);
+  await act(async()=>card.querySelector('.pdf-highlight-instruction button').click());await act(async()=>{await new Promise(resolve=>setTimeout(resolve,0))});
+  assert.equal(app.calls.filter(call=>call.command==='assistant_chat').length,1);
+  const request=app.calls.find(call=>call.command==='assistant_chat').args.request;
+  assert.equal(request.provider,'deepseek');assert.equal(request.model,'deepseek-chat');
+  assert.match(request.messages[0].text,/payment amounts, fees/);
+  assert.match(request.messages[0].text,/September 30, 2025/);
+  assert.equal(card.querySelectorAll('.pdf-highlight-count').length,1,'accepted exact PDF terms produce visible highlight feedback');
+  assert.deepEqual(app.calls.find(call=>call.command==='files_extract_pdf_text').args,{id:'keyword-file',path:'agreement.pdf'});
  }finally{await app.cleanup()}
 });
 

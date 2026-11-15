@@ -11,6 +11,7 @@ import {type ClockPluginColorOverrides,type ClockPluginMode} from './clockPlugin
 import {widgetTagColors,type WidgetTagColor} from './widgetTags.ts';
 import {type CanvasFrameRate} from './performance.ts';
 import {checkedFileNotes} from './fileNotes.ts';
+import {checkedFileReadingStatus} from './fileStudy.ts';
 import {checkedNoteDocuments,createNoteDocument,noteDocument,type NoteDocument} from './noteDocuments.ts';
 import {checkedCalendarEvents,type StudyCalendarEvent} from './studyCalendar.ts';
 import {type Locale} from '../localization.tsx';
@@ -38,6 +39,7 @@ export interface WidgetInstance {
   noteDocuments:NoteDocument[];activeNoteDocumentId:string;
   notesLibraryKey:string|null;notesLibraryName?:string;
   fileNotes:Record<string,string>;
+  fileReadingStatus?:Record<string,'unread'|'in-progress'|'done'>;
   text: string;
   remaining: number; end: number | null;
    homeVersion?: number; folderName?: string;folderKey:string|null;fileKey:string|null;fileName?:string;fileKind?:FileKind;appKey:string|null;appName?:string;appIconData?:string;appPanelOpen:boolean;appWasCollected?:boolean;appReuseExisting:boolean;appMinWidth?:number;appMinHeight?:number;
@@ -69,7 +71,7 @@ export interface WorkspaceState {
 export function createWidget(type: WidgetType): WidgetInstance {
   const id=crypto.randomUUID(),initialText='A clear space, a clear mind.\n\nStart with one important thing.\nLeave room for a new idea.',initialNote=createNoteDocument();initialNote.text=initialText;
   return { id, type, instanceNumber:1, title:'', tagColor:null, relaunchOverride:'follow',pluginControls:type==='tagStatus'?['widget-relaunch.tag-colors']:[], span: type === 'ai' ? 2 : 1,
-    clockPluginEnabled:false,lockPluginEnabled:false,locked:false,noteFont:'sans',noteFontSize:14,noteDocuments:type==='notes'?[initialNote]:[],activeNoteDocumentId:type==='notes'?initialNote.id:'',notesLibraryKey:null,fileNotes:{},text: type === 'notes' ? initialText : '',
+    clockPluginEnabled:false,lockPluginEnabled:false,locked:false,noteFont:'sans',noteFontSize:14,noteDocuments:type==='notes'?[initialNote]:[],activeNoteDocumentId:type==='notes'?initialNote.id:'',notesLibraryKey:null,fileNotes:{},fileReadingStatus:{},text: type === 'notes' ? initialText : '',
     remaining: 1500, end: null, placement:placement(type,null), shortcuts:[], schedule:[],groupId:null,folderKey:null,fileKey:null,appKey:null,appPanelOpen:false,appReuseExisting:false,
     minimized:false,restorePlacement:null,groupCollapsed:false,groupExpandedPlacement:null,calendarEvents:[] };
 }
@@ -391,6 +393,7 @@ function checkedWidget(value: unknown): WidgetInstance {
     noteFont:item.noteFont==='serif'||item.noteFont==='mono'?item.noteFont:'sans',noteFontSize:typeof item.noteFontSize==='number'&&Number.isFinite(item.noteFontSize)?Math.max(12,Math.min(28,Math.round(item.noteFontSize/2)*2)):14,
     noteDocuments,activeNoteDocumentId:item.type==='notes'?activeNote.id:'',notesLibraryKey:item.type==='notes'&&typeof item.notesLibraryKey==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(item.notesLibraryKey)?item.notesLibraryKey:null,notesLibraryName:item.type==='notes'&&typeof item.notesLibraryName==='string'?item.notesLibraryName.slice(0,255):undefined,
     fileNotes:checkedFileNotes(item.fileNotes),
+    fileReadingStatus:item.type==='files'?checkedFileReadingStatus(item.fileReadingStatus):{},
     groupId:item.type==='group'&&typeof item.groupId==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(item.groupId)?item.groupId:null,
     folderName:typeof item.folderName==='string'?item.folderName:undefined,
     folderKey:!checkedFileKey&&item.type==='files'&&typeof item.folderKey==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(item.folderKey)?item.folderKey:null,

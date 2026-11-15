@@ -679,6 +679,21 @@ dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
 .save-selection-context-menu{position:fixed;z-index:10000;width:min(300px,calc(100vw - 24px));max-height:min(360px,calc(100vh - 24px));overflow-y:auto;padding:8px;border:1px solid var(--border);border-radius:11px;background:var(--surface);color:var(--text);box-shadow:0 10px 34px #10203035;display:flex;flex-direction:column;gap:4px}
 .save-selection-context-menu>strong{padding:5px 7px;font-size:11px;font-weight:650}
 .save-selection-context-menu>p{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;padding:6px 8px;margin:0 0 4px;border-radius:6px;background:var(--canvas);color:var(--muted);font-size:10px;line-height:1.5;white-space:pre-wrap}
+.save-selection-context-menu>textarea{min-height:72px;max-height:180px;resize:vertical;padding:7px 8px;border:1px solid var(--border);border-radius:6px;background:var(--canvas);color:var(--text);font:inherit;font-size:11px;line-height:1.5;white-space:pre-wrap}
+.save-selection-context-menu>small{padding:2px 7px;color:var(--muted);font-size:10px}
 .save-selection-context-menu>button{width:100%;padding:8px;text-align:left;border-color:transparent;background:transparent;font-size:11px;overflow-wrap:anywhere}
 .save-selection-context-menu>button:hover{background:var(--tint);color:var(--accent)}
+.note-sources{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 10px;border-top:1px solid var(--border);font-size:10px;color:var(--muted)}
+.note-sources>button{padding:4px 7px;border-radius:6px;font-size:10px}
+.files-reading-filter,.files-reading-status{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:10px}
+.files-study-actions{display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:5px 10px;border-bottom:1px solid var(--border)}
+.files-study-actions button{padding:5px 8px;font-size:10px}
+.files-reading-filter select,.files-reading-status select,.files-study-question-draft select{min-width:0;max-width:170px;padding:5px 7px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--text);font-size:11px}
+.files-related-notes,.files-study-question-draft{display:grid;gap:7px;padding:10px;border-top:1px solid var(--border);font-size:11px}
+.files-related-notes>strong,.files-study-question-draft label>span{font-weight:600;color:var(--text)}
+.files-related-notes>button{padding:6px 8px;text-align:left}
+.files-related-notes>p{margin:0;color:var(--muted)}
+.files-study-question-draft textarea{width:100%;min-height:120px;resize:vertical;padding:8px;border:1px solid var(--border);border-radius:7px;background:var(--canvas);color:var(--text);font:inherit;line-height:1.5}
+.files-study-question-draft label{display:grid;gap:5px}
+.files-study-question-draft>button{justify-self:start}
 .save-selection-no-notes{padding:8px;color:var(--muted);font-size:10px}
