@@ -23,7 +23,8 @@
 - `pnpm build` — passed; Vite emitted its existing large-chunk advisory.
 - Focused Files tests — 6 passed.
 - Full suite — 456 passed, 37 failed. The same 37 failures were present in the pre-feature baseline at `c028c79`.
-- Windows packaging and release upload run in GitHub Actions after pushing v0.2366.
+- Windows GitHub Actions release workflow — completed successfully; TypeScript, focused Files tests, and Rust tests passed.
+- Published `v0.2366` with `ver0.2366.exe` (SHA-256 `1071318ca6fd13e83d014db8f0f3373567eae9386317ddbb7fa8efa8e30bd7c8`).
 
 ## Handoff
-- Await the v0.2366 Windows prerelease workflow to finish and verify that its executable asset uploaded.
+- No live Windows GUI test was performed; CI produced and uploaded the Windows release executable.
