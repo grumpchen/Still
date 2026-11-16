@@ -59,7 +59,7 @@ jobs:
         id: release-asset
         shell: pwsh
         run: |
-          $tag = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME } else { 'v0.236' }
+          $tag = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME } else { 'v0.2365' }
           $version = $tag -replace '^v', ''
           $source = 'still-desktop/src-tauri/target/release/still-desktop.exe'
           $name = "ver$version.exe"
@@ -77,9 +77,14 @@ jobs:
           prerelease: true
           files: still-desktop/${{ steps.release-asset.outputs.name }}
           body: |
-            Still ${{ steps.release-asset.outputs.tag }} is a prerelease based on v0.235.
+            Still ${{ steps.release-asset.outputs.tag }} is a prerelease based on v0.236.
 
-            Includes the canvas right-click Add Tool menu and the DeepSeek AI provider.
+            This release retains the canvas right-click Add Tool menu and DeepSeek provider, and adds:
+
+            - User-directed PDF keyword highlighting with reusable preferences and red overlays.
+            - Editable Files excerpts saved to Notes with clickable file and PDF page citations.
+            - Reading status filters, related-note suggestions, and reviewed AI study-question drafts.
+            - The Pin to Front widget add-on, with pin state preserved when a widget is collected into a Group.
 
             Windows x64 SHA-256: `${{ steps.release-asset.outputs.sha256 }}`
 
