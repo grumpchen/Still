@@ -8,6 +8,7 @@ Still is a Windows-first Tauri 2 desktop application. React and TypeScript rende
 - `src/domain/` contains serializable workspace, widget, layout, shortcut, preset, and appearance rules. These modules should remain independent of React and Tauri.
 - `src/widgets.tsx` binds the widget catalog to first-party renderers. `src/domain/widgetCatalog.ts` supplies widget metadata. `src/Icon.tsx` is a leaf renderer shared by the widget shell and editors.
 - `src/domain/widgetAddons.ts` catalogs first-party per-card add-ons, their menu labels/icons, widget applicability, enabled state, and toggle transitions. `WorkspaceCanvas` renders the add-on menu from this catalog; add-on state and runtime behavior remain in the domain/widget feature modules. `src/domain/widgetPlugins.ts` separately catalogs plugin settings controls.
+- `src/domain/widgetTaskStatus.ts` validates per-widget To do/In progress/Done status and provides pure count/filter helpers. The Tag Color Status widget owns the count and filter UI; each workspace canvas owns its temporary, non-persisted active filter.
 - `src/WorkspaceCanvas.tsx` owns card interaction and presentation. Browser and Apps widgets send geometry through `src/platform/` adapters.
 - `src/platform/` contains narrow adapters for Tauri commands, events, native files, capture, browser panels, and workspace shortcuts.
 - `src-tauri/src/main.rs` wires Tauri commands and state. Native behavior is grouped into Rust modules for browser views, attached Apps, file grants, capture, shortcuts, and z-order coordination.

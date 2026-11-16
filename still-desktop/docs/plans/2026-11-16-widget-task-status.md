@@ -4,13 +4,15 @@
 
 Extend the existing Color Tag Status workflow so users can label workspace widgets by progress and quickly focus the canvas on unfinished work. Keep color tags and progress status as separate properties: color can represent subject or category while status represents completion.
 
+Implementation is on `agent/codex/files-widget-refine`; the first version is complete and checked in the task report.
+
 ## Backlog: first version
 
-- Add an optional per-widget progress label: **To do**, **In progress**, or **Done**. The original request specifically names To do and Done; In progress is included as a proposed useful middle state and should remain optional in the UI if it complicates the first release.
-- Show the selected status as a compact, accessible widget-header badge; preserve it through minimize/restore, workspace saves, and Groups.
-- Expand the existing **Tag Color Status** widget into a status overview with counts and quick filters for To do, In progress, Done, and All.
-- Keep status filtering reversible and non-destructive: filtered widgets remain in the workspace and their saved layout is not altered.
-- Keep existing color-tag rules and relaunch/screenshot/clock settings intact.
+- [x] Add optional per-widget **To do**, **In progress**, and **Done** states. Widgets start unlabeled; In progress was included as the useful middle state.
+- [x] Show the selected status in an accessible, editable widget-header selector; preserve it through workspace saves and Group collect/restore.
+- [x] Expand **Tag Color Status** into a status overview with counts and quick filters for To do, In progress, Done, Unlabeled, and All.
+- [x] Keep filtering reversible and non-destructive. The view filter is held by each workspace canvas and does not change saved geometry; removing the last Tag Color Status widget clears it.
+- [x] Keep existing color-tag rules and relaunch/screenshot/clock settings intact.
 
 ## Later ideas
 
@@ -23,17 +25,17 @@ Extend the existing Color Tag Status workflow so users can label workspace widge
 
 ## Design and implementation notes
 
-- Extend `WidgetInstance` with a validated optional status and migrate old workspace data to the unset state.
-- Keep status rules in a pure domain module; make the Tag Color Status widget own overview/filter controls.
-- Filtering must not mutate widget positions or saved workspace contents. Provide an obvious clear-filter action.
+- [x] Extend `WidgetInstance` with a validated optional status. Older workspace records default to unset during parsing, so the additive field does not require a workspace schema version bump.
+- [x] Keep status rules in a pure domain module; let Tag Color Status own overview/filter controls.
+- [x] Keep filtering separate from saved widget positions and provide an obvious All filter and empty-result reset action.
 - Use localized labels, keyboard-operable controls, and a non-color-only visual indicator.
 - Check how Group collection/restoration and minimized widget badges should behave before implementation.
 
 ## Acceptance checklist
 
-- Existing saved workspaces load with no status and retain their prior layout.
-- Users can set, change, and clear status on a widget.
-- Status survives save/restart, minimize/restore, workspace switching, and Group collect/restore.
-- Tag Color Status shows correct counts and filters without deleting or moving widgets.
-- Clearing a filter restores all widgets; color tags continue to work independently.
-- English and Chinese labels and keyboard/accessibility states are present.
+- [x] Existing workspace saves load with no status and retain their prior layout.
+- [x] Users can set, change, and clear status on a widget.
+- [x] Status survives serialization and Group collect/restore; minimize and workspace geometry remain intact.
+- [x] Tag Color Status shows counts and filters without deleting or moving widgets.
+- [x] All restores every widget; color tags work independently.
+- [x] English and Chinese labels and accessible button/select states are present.

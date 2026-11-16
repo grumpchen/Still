@@ -699,3 +699,10 @@ dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
 .files-study-question-draft label{display:grid;gap:5px}
 .files-study-question-draft>button{justify-self:start}
 .save-selection-no-notes{padding:8px;color:var(--muted);font-size:10px}
+.canvas-card .widget-controls .widget-task-status{width:auto;max-width:104px;height:24px;min-width:72px;padding:3px 18px 3px 6px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--text);font-size:9px;line-height:1.1;cursor:pointer;touch-action:auto;user-select:auto}
+.liquid-glass .canvas-card .widget-controls .widget-task-status{background:rgb(255 255 255 / .28);color:var(--text);border-color:rgb(255 255 255 / .38);backdrop-filter:blur(10px)}
+.liquid-glass.dark .canvas-card .widget-controls .widget-task-status{background:rgb(9 22 13 / .4);border-color:rgb(236 255 240 / .2);color-scheme:dark}
+.task-status-overview{display:grid;gap:8px;padding:10px;margin-bottom:7px;border:1px solid var(--border);border-radius:9px;background:color-mix(in srgb,var(--canvas) 55%,transparent)}
+.task-status-overview h2{margin:0 0 3px;font-size:13px}.task-status-overview p{margin:0;color:var(--muted);font-size:10px;line-height:1.4}
+.task-status-filters{display:flex;flex-wrap:wrap;gap:4px}.task-status-filters button{padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--surface);font-size:9px;line-height:1.2;white-space:nowrap}.task-status-filters button[aria-pressed=true]{border-color:var(--accent);background:var(--tint);color:var(--accent)}
+.canvas-empty.task-status-empty{pointer-events:auto;display:grid;gap:8px;place-items:center}.task-status-empty p{margin:0}.task-status-empty button{pointer-events:auto}

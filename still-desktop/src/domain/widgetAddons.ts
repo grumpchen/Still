@@ -1,5 +1,6 @@
 import type {WidgetInstance,WidgetType} from './workspaces.ts';
 import {setWidgetLock} from './widgetLock.ts';
+import type {WidgetTaskStatus} from './widgetTaskStatus.ts';
 
 /** First-party widget add-ons that can be installed from a card's + menu. */
 export interface WidgetAddonDefinition {
@@ -25,6 +26,11 @@ export const widgetAddonCatalog:readonly WidgetAddonDefinition[]=[
   id:'color-tag',label:'tagColor',addLabel:'addColorTagPlugin',removeLabel:'removeColorTagPlugin',icon:'stack',availableFor:allWidgets,
   isEnabled:widget=>widget.tagColor!==null,
   toggle:widget=>({tagColor:widget.tagColor===null?'blue':null}),
+ },
+ {
+  id:'task-status',label:'taskStatusAddon',addLabel:'addTaskStatusAddon',removeLabel:'removeTaskStatusAddon',icon:'study',availableFor:type=>type!=='tagStatus',
+  isEnabled:widget=>widget.taskStatus!==null,
+  toggle:widget=>({taskStatus:widget.taskStatus===null?'todo':null as WidgetTaskStatus|null}),
  },
  {
   id:'clock-timer',label:'clockAddon',addLabel:'addClockTimerPlugin',removeLabel:'removeClockTimerPlugin',icon:'clock',availableFor:type=>type!=='group',

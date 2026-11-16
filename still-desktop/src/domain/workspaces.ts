@@ -14,6 +14,7 @@ import {checkedFileNotes} from './fileNotes.ts';
 import {checkedFileReadingStatus} from './fileStudy.ts';
 import {checkedNoteDocuments,createNoteDocument,noteDocument,type NoteDocument} from './noteDocuments.ts';
 import {checkedCalendarEvents,type StudyCalendarEvent} from './studyCalendar.ts';
+import {checkedWidgetTaskStatus,type WidgetTaskStatus} from './widgetTaskStatus.ts';
 import {type Locale} from '../localization.tsx';
 export {widgetTypes, type WidgetType} from './widgetCatalog.ts';
 export {widgetTagColors,type WidgetTagColor} from './widgetTags.ts';
@@ -31,6 +32,7 @@ export function deleteSavedGroup(workspace:Workspace,id:string):Workspace{
 export interface WidgetInstance {
   id: string; type: WidgetType; span: 1 | 2 | 3; instanceNumber:number; title:string;
   tagColor:WidgetTagColor|null;
+  taskStatus:WidgetTaskStatus|null;
   relaunchOverride:WidgetRelaunchOverride;
   pluginControls:string[];
   clockPluginEnabled:boolean;
@@ -71,7 +73,7 @@ export interface WorkspaceState {
 }
 export function createWidget(type: WidgetType): WidgetInstance {
   const id=crypto.randomUUID(),initialText='A clear space, a clear mind.\n\nStart with one important thing.\nLeave room for a new idea.',initialNote=createNoteDocument();initialNote.text=initialText;
-  return { id, type, instanceNumber:1, title:'', tagColor:null, relaunchOverride:'follow',pluginControls:type==='tagStatus'?['widget-relaunch.tag-colors']:[], span: type === 'ai' ? 2 : 1,
+  return { id, type, instanceNumber:1, title:'', tagColor:null,taskStatus:null, relaunchOverride:'follow',pluginControls:type==='tagStatus'?['widget-relaunch.tag-colors']:[], span: type === 'ai' ? 2 : 1,
     clockPluginEnabled:false,pinPluginEnabled:false,pinned:false,lockPluginEnabled:false,locked:false,noteFont:'sans',noteFontSize:14,noteDocuments:type==='notes'?[initialNote]:[],activeNoteDocumentId:type==='notes'?initialNote.id:'',notesLibraryKey:null,fileNotes:{},fileReadingStatus:{},text: type === 'notes' ? initialText : '',
     remaining: 1500, end: null, placement:placement(type,null), shortcuts:[], schedule:[],groupId:null,folderKey:null,fileKey:null,appKey:null,appPanelOpen:false,appReuseExisting:false,
     minimized:false,restorePlacement:null,groupCollapsed:false,groupExpandedPlacement:null,calendarEvents:[] };
@@ -261,7 +263,7 @@ function parseGroupEntries(value:unknown):GroupWidgetEntry[]{
   const item=groupWidgetEntry({id:typeof v.id==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(v.id)&&!ids.has(v.id)?v.id:undefined,type:v.type,name:v.name,icon:typeof v.icon==='string'?v.icon:undefined,iconData:typeof v.iconData==='string'?v.iconData:undefined});ids.add(item.id);return[item];
  }catch{return []}});
 }
-const PERSISTED_WIDGET_FIELDS:(keyof WidgetInstance)[]=['id','type','span','instanceNumber','title','tagColor','relaunchOverride','pluginControls','clockPluginEnabled','pinPluginEnabled','pinned','lockPluginEnabled','locked','noteFont','noteFontSize','noteDocuments','activeNoteDocumentId','notesLibraryKey','notesLibraryName','fileNotes','fileReadingStatus','text','remaining','end','folderName','folderKey','fileKey','fileName','fileKind','appKey','appName','appIconData','appPanelOpen','appWasCollected','appReuseExisting','appMinWidth','appMinHeight','placement','minimized','restorePlacement','shortcuts','schedule','calendarEvents','groupId'];
+const PERSISTED_WIDGET_FIELDS:(keyof WidgetInstance)[]=['id','type','span','instanceNumber','title','tagColor','taskStatus','relaunchOverride','pluginControls','clockPluginEnabled','pinPluginEnabled','pinned','lockPluginEnabled','locked','noteFont','noteFontSize','noteDocuments','activeNoteDocumentId','notesLibraryKey','notesLibraryName','fileNotes','fileReadingStatus','text','remaining','end','folderName','folderKey','fileKey','fileName','fileKind','appKey','appName','appIconData','appPanelOpen','appWasCollected','appReuseExisting','appMinWidth','appMinHeight','placement','minimized','restorePlacement','shortcuts','schedule','calendarEvents','groupId'];
 function persistentWidgetSnapshot(value:unknown):WidgetInstance {
  if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('Invalid collected widget.');
  const source=value as Record<string,unknown>,filtered=Object.fromEntries(PERSISTED_WIDGET_FIELDS.filter(key=>key in source).map(key=>[key,source[key]]));
@@ -387,6 +389,7 @@ function checkedWidget(value: unknown): WidgetInstance {
     title:item.type==='notes'?activeNote.title:typeof item.title==='string'?item.title.trim().slice(0,60):'',
     text:item.type==='notes'?activeNote.text:typeof item.text==='string'?item.text:defaults.text,
     tagColor:widgetTagColors.includes(item.tagColor as WidgetTagColor)?item.tagColor as WidgetTagColor:null,
+    taskStatus:checkedWidgetTaskStatus(item.taskStatus),
     relaunchOverride:item.relaunchOverride==='automatic'||item.relaunchOverride==='manual'?item.relaunchOverride:'follow',
     pluginControls:Array.isArray(item.pluginControls)?[...new Set(item.pluginControls.filter((control):control is string=>typeof control==='string'&&/^[a-z0-9.-]{1,80}$/.test(control)))].slice(0,20):defaults.pluginControls,
     clockPluginEnabled:item.clockPluginEnabled===true,

@@ -76,7 +76,7 @@ test('renaming a group updates its instances and duplicate workspaces keep indep
 
 test('collecting a canvas widget moves its full state and restores the same instance from a Group',()=>{
  const workspace=workspaces.createWorkspace('Chemistry',['notes','group']);
- const source=workspace.widgets.find(widget=>widget.type==='notes');source.id='notes-kept';source.title='Lab notes';source.noteDocuments=source.noteDocuments.map(document=>document.id===source.activeNoteDocumentId?{...document,title:'Lab notes'}:document);setNoteText(source,'Moles = mass / molar mass');source.placement={x:310,y:140,width:420,height:330};source.pinPluginEnabled=true;source.pinned=true;
+ const source=workspace.widgets.find(widget=>widget.type==='notes');source.id='notes-kept';source.title='Lab notes';source.noteDocuments=source.noteDocuments.map(document=>document.id===source.activeNoteDocumentId?{...document,title:'Lab notes'}:document);setNoteText(source,'Moles = mass / molar mass');source.placement={x:310,y:140,width:420,height:330};source.pinPluginEnabled=true;source.pinned=true;source.taskStatus='done';
  const groupId=workspace.widgets.find(widget=>widget.type==='group').groupId;
  assert.equal(typeof workspaces.collectWidgetIntoGroup,'function');
  assert.equal(typeof workspaces.restoreCollectedWidget,'function');
@@ -85,13 +85,15 @@ test('collecting a canvas widget moves its full state and restores the same inst
  assert.equal(collected.groups.find(group=>group.id===groupId).widgets[0].kind,'collected');
  assert.equal(collected.groups.find(group=>group.id===groupId).widgets[0].instance.text,source.text);
  assert.equal(collected.groups.find(group=>group.id===groupId).widgets[0].instance.pinned,true);
+ assert.equal(collected.groups.find(group=>group.id===groupId).widgets[0].instance.taskStatus,'done');
  assert.equal(collected.groups.find(group=>group.id===groupId).widgets[0].instance.placement.x,310);
  const restored=parseWorkspace({...workspaces.createInitialState(),workspaces:[collected],activeId:collected.id},collected.id);
  assert.equal(restored.groups.find(group=>group.id===groupId).widgets[0].instance.text,source.text);
  assert.equal(restored.groups.find(group=>group.id===groupId).widgets[0].instance.pinPluginEnabled,true);
+ assert.equal(restored.groups.find(group=>group.id===groupId).widgets[0].instance.taskStatus,'done');
  const reopened=workspaces.restoreCollectedWidget(restored,source.id,1000,700);
  const same=reopened.widgets.find(widget=>widget.id===source.id);
- assert.equal(same.text,source.text);assert.equal(same.title,'Lab notes');
+ assert.equal(same.text,source.text);assert.equal(same.title,'Lab notes');assert.equal(same.taskStatus,'done');
  assert.equal(same.pinned,true);
  assert.equal(same.placement.x,310);assert.equal(reopened.groups.find(group=>group.id===groupId).widgets.length,0);
  assert.equal(workspaces.collectedWidgetCount(reopened.groups.find(group=>group.id===groupId)),0);

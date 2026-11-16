@@ -3,9 +3,12 @@ import type {WidgetRelaunchMode,WidgetRelaunchPluginStatus} from './widgetRelaun
 import type {ScreenshotPluginMode} from './screenshotPlugin.ts';
 import type {ClockPluginMode} from './clockPlugin.ts';
 import type {WidgetInstance,WidgetTagColor} from './workspaces.ts';
+import type {WidgetTaskStatusFilter} from './widgetTaskStatus.ts';
 import {ClockTimerSettingsControl,LockWidgetControl,RelaunchGlobalModeControl,RelaunchTagColorsControl,ScreenshotSettingsControl,widgetColorSettingCatalog} from '../WidgetPluginStatusControls.tsx';
 
 export interface WidgetPluginContext{
+ taskStatusFilter?:WidgetTaskStatusFilter;
+ setTaskStatusFilter?:(filter:WidgetTaskStatusFilter)=>void;
  relaunchPluginStatus:WidgetRelaunchPluginStatus;
  globalMode:WidgetRelaunchMode;
  colors:Partial<Record<WidgetTagColor,WidgetRelaunchMode>>;
