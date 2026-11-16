@@ -40,9 +40,9 @@ jobs:
         working-directory: still-desktop
         run: pnpm check
 
-      - name: Focused assistant, canvas, and workspace tests
+      - name: Focused Files, assistant, canvas, and workspace tests
         working-directory: still-desktop
-        run: pnpm exec tsx --test --test-concurrency=1 tests/assistant-sidebar.test.mjs tests/assistant.test.mjs tests/canvas-add-tool-menu.test.mjs tests/minimize.test.mjs
+        run: pnpm exec tsx --test --test-concurrency=1 tests/files-browse-layout.test.mjs tests/files-preview-lifecycle.test.mjs tests/assistant-sidebar.test.mjs tests/assistant.test.mjs tests/canvas-add-tool-menu.test.mjs tests/minimize.test.mjs
 
       - name: Rust tests
         working-directory: still-desktop/src-tauri
@@ -59,7 +59,7 @@ jobs:
         id: release-asset
         shell: pwsh
         run: |
-          $tag = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME } else { 'v0.2365' }
+          $tag = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME } else { 'v0.2366' }
           $version = $tag -replace '^v', ''
           $source = 'still-desktop/src-tauri/target/release/still-desktop.exe'
           $name = "ver$version.exe"
@@ -77,14 +77,9 @@ jobs:
           prerelease: true
           files: still-desktop/${{ steps.release-asset.outputs.name }}
           body: |
-            Still ${{ steps.release-asset.outputs.tag }} is a prerelease based on v0.236.
+            Still ${{ steps.release-asset.outputs.tag }} is a fix release based on v0.2365.
 
-            This release retains the canvas right-click Add Tool menu and DeepSeek provider, and adds:
-
-            - User-directed PDF keyword highlighting with reusable preferences and red overlays.
-            - Editable Files excerpts saved to Notes with clickable file and PDF page citations.
-            - Reading status filters, related-note suggestions, and reviewed AI study-question drafts.
-            - The Pin to Front widget add-on, with pin state preserved when a widget is collected into a Group.
+            Fixed the Files widget browse layout so the search field no longer squeezes the file list out of view.
 
             Windows x64 SHA-256: `${{ steps.release-asset.outputs.sha256 }}`
 

@@ -632,6 +632,7 @@ dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
 
 /* Files widget: keep its existing card and workspace geometry while improving the in-card reader. */
 .files-content-with-preview,.files-content-browse{display:flex;flex:1;min-height:0;overflow:hidden}
+.files-content-browse>.files-selection-list{flex:1;max-width:none;border-right:0}
 .files-selection-list{display:flex;flex:0 0 min(36%,220px);flex-direction:column;min-width:150px;min-height:0;border-right:1px solid var(--border);overflow:hidden}
 .files-selection-list .file-filter{flex:none;margin-top:9px}
 .files-selection-list .file-list{max-height:none;min-height:0}
