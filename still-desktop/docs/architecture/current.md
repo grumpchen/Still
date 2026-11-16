@@ -7,6 +7,7 @@ Still is a Windows-first Tauri 2 desktop application. React and TypeScript rende
 - `src/App.tsx` composes the application, workspace state, dialogs, persistence, and native adapters.
 - `src/domain/` contains serializable workspace, widget, layout, shortcut, preset, and appearance rules. These modules should remain independent of React and Tauri.
 - `src/widgets.tsx` binds the widget catalog to first-party renderers. `src/domain/widgetCatalog.ts` supplies widget metadata. `src/Icon.tsx` is a leaf renderer shared by the widget shell and editors.
+- `src/domain/widgetAddons.ts` catalogs first-party per-card add-ons, their menu labels/icons, widget applicability, enabled state, and toggle transitions. `WorkspaceCanvas` renders the add-on menu from this catalog; add-on state and runtime behavior remain in the domain/widget feature modules. `src/domain/widgetPlugins.ts` separately catalogs plugin settings controls.
 - `src/WorkspaceCanvas.tsx` owns card interaction and presentation. Browser and Apps widgets send geometry through `src/platform/` adapters.
 - `src/platform/` contains narrow adapters for Tauri commands, events, native files, capture, browser panels, and workspace shortcuts.
 - `src-tauri/src/main.rs` wires Tauri commands and state. Native behavior is grouped into Rust modules for browser views, attached Apps, file grants, capture, shortcuts, and z-order coordination.
@@ -28,7 +29,7 @@ The main window minimum is 780 × 660 logical pixels. The canvas bounds its inte
 
 ## Extension and security model
 
-The current extension points are first-party registries: `widgetCatalog` plus the renderer table, saved widget presets, and allow-listed sidebar plugin IDs (`stack`, `layout`). The Plugins settings page enables or removes these built-in actions. This does not implement third-party discovery, installation, arbitrary plugin code, plugin-specific configuration, or an external lifecycle API. Adding a first-party widget currently requires code and schema changes.
+The current extension points are first-party registries: `widgetCatalog` plus the renderer table, `widgetAddonCatalog` for per-card add-ons, `widgetPluginCatalog` for settings controls, saved widget presets, and allow-listed sidebar plugin IDs (`stack`, `layout`). The Plugins settings page enables or removes these built-in actions. New add-ons no longer require a hand-written canvas menu entry, but add-ons with persistent state still need a typed state field, parsing/migration, and feature behavior. This does not implement third-party discovery, installation, arbitrary plugin code, plugin-specific configuration, or an external lifecycle API.
 
 Still deliberately does not evaluate third-party JavaScript in the privileged main webview. A future third-party host needs a sandboxed view/process, a versioned message protocol, per-plugin permission grants, config isolation, and failure containment before loading plugin code. Tauri commands must remain unavailable to untrusted plugin views. The current built-in registries are safe extension seams for maintainers, not a claim of user-installable plugins.
 
