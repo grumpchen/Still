@@ -382,7 +382,7 @@ function checkedWidget(value: unknown): WidgetInstance {
   const activeNote=noteDocument(noteDocuments,typeof item.activeNoteDocumentId==='string'?item.activeNoteDocumentId:undefined);
   return {...defaults,...item,type:item.type as WidgetType,span:item.span===2?2:item.span===3?3:1,
     title:item.type==='notes'?activeNote.title:typeof item.title==='string'?item.title.trim().slice(0,60):'',
-    text:item.type==='notes'?activeNote.text:typeof item.text==='string'?item.text:defaults.text,
+    text:item.type==='notes'?activeNote.text:item.type==='aiCommand'&&typeof item.text==='string'?item.text.slice(0,8000):typeof item.text==='string'?item.text:defaults.text,
     tagColor:widgetTagColors.includes(item.tagColor as WidgetTagColor)?item.tagColor as WidgetTagColor:null,
     relaunchOverride:item.relaunchOverride==='automatic'||item.relaunchOverride==='manual'?item.relaunchOverride:'follow',
     pluginControls:Array.isArray(item.pluginControls)?[...new Set(item.pluginControls.filter((control):control is string=>typeof control==='string'&&/^[a-z0-9.-]{1,80}$/.test(control)))].slice(0,20):defaults.pluginControls,

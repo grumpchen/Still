@@ -9,6 +9,7 @@ export const widgetCatalog = {
   timetable: {name:'Timetable', icon:'study', description:'A weekly schedule you can edit', width:460, height:360, minWidth:280, minHeight:220},
   calendar: {name:'Calendar', icon:'calendar', description:'Plan classes, assignments, exams, and study sessions', width:560, height:480, minWidth:320, minHeight:300},
   ai: {name:'Assistant', icon:'ai', description:'Gemini chat · read selected widgets · propose workspace layouts', width:380, height:300, minWidth:260, minHeight:220},
+  aiCommand: {name:'AI Command', icon:'ai', description:'Save a reusable AI instruction and run it on demand', width:380, height:340, minWidth:280, minHeight:250},
   tagStatus: {name:'Tag Color Status', icon:'stack', description:'Quick controls for widget relaunch and other enabled widget plugins', width:400, height:300, minWidth:280, minHeight:200},
 } as const;
 export type WidgetType = keyof typeof widgetCatalog;
