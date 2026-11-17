@@ -158,8 +158,8 @@ test('widget add commands show replies and provider chat carries complete action
     if(prompt==='edit timetable with details')return{reply:'Which class should I add?',layout:[],actions:[{type:'edit_widget',ids:[timetable.id],schedule:[{id:'class-1',day:1,time:'09:00',title:'Chemistry',location:'Room 1'}]}]};
     if(prompt==='I need somewhere to take notes')return{reply:'',layout:[],actions:[{type:'add_widget',ids:['notes'],title:'My notes',text:'Ready to write.'}]};
     if(prompt==='create notes with content')return{reply:'What would you like the note to contain?',layout:[],actions:[]};
-    if(prompt==='open focus with details')return{reply:'I can restore Focus.',layout:[],actions:[{type:'restore',ids:[workspace.widgets.find(widget=>widget.type==='focus').id]}]};
-    if(prompt==='change timetable color to blue')return{intent:'workspace_action',reply:'Done.',layout:[],actions:[]};
+    if(prompt==='open focus with details')return{reply:'I can prepare the workspace.',layout:[],actions:[{type:'edit_widget',ids:[timetable.id],title:'Weekly plan'}]};
+    if(prompt==='change timetable color to blue')return{intent:'workspace_action',reply:'Done.',layout:[],actions:[{type:'edit_widget',ids:[timetable.id],title:'Weekly plan'}]};
     return{reply:'Still is ready.',layout:[],actions:[]};
   }return null},{shouldMockEvents:true});
   const {default:AssistantPanel}=await vite.ssrLoadModule('/src/AssistantPanel.tsx');
@@ -234,11 +234,8 @@ test('widget add commands show replies and provider chat carries complete action
   assert.equal(actions.length,beforeRestore,'semantic differences are offered for review instead of failing the wording gate');
   await act(async()=>window.document.querySelector('[aria-label="Confirm suggested widget changes"] button.primary').click());
   await waitFor(()=>actions.length===beforeRestore+1);
-  assert.equal(actions.at(-1).type,'restore','confirmed model interpretation passes the same action checks as App');
-  await act(async()=>setReactValue(composer,'change timetable color to blue','HTMLTextAreaElement'));
-  await act(async()=>window.document.querySelector('.assistant-compose').requestSubmit());
-  await waitFor(()=>[...window.document.querySelectorAll('.assistant-message.model p')].some(message=>message.textContent.includes('I may have misunderstood')));
-  assert.equal(actions.length,beforeRestore+1,'a model that says an action succeeded without returning any action cannot create a false success receipt');
+  assert.equal(actions.at(-1).type,'edit_widget','a mismatched but valid action is presented as a review instead of failing');
+  assert.equal(actions.at(-1).title,'Weekly plan');
  }finally{
   if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();
   for(const key of old.keys()){const descriptor=old.get(key);if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}

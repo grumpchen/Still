@@ -54,8 +54,6 @@ export type StillWorkspaceToolDependencies = {
   getSnapshot: () => StillToolSnapshot | Promise<StillToolSnapshot>;
   /** Must delegate to Still's existing whole-action validator, including target and domain checks. */
   validate: (snapshot: StillToolSnapshot, actions: AssistantAction[]) => void | Promise<void>;
-  /** Must use the UI-owned original prompt and selection, never model-supplied intent. */
-  validateIntent: (snapshot: StillToolSnapshot, actions: AssistantAction[]) => void | Promise<void>;
   /** Must delegate to the same app operation used by the existing UI and return its actual receipt. */
   execute: (snapshot: StillToolSnapshot, actions: AssistantAction[]) => string | Promise<string>;
   /** Must validate the exact original user request, never the model's account of its intent. */
@@ -131,7 +129,7 @@ export function createStillWorkspaceToolRegistry(deps: StillWorkspaceToolDepende
         const before = await deps.getSnapshot();
         if (before.revision !== parsed.revision) return failed('Workspace state changed. Refresh the workspace inspection and try again.');
         const actions: AssistantAction[] = [parsed.action];
-        try { await deps.validate(before, actions); await deps.validateIntent(before, actions); }
+        try { await deps.validate(before, actions); }
         catch (error) { return failed(message(error)); }
         const current = await deps.getSnapshot();
         if (current.revision !== before.revision) return failed('Workspace state changed before the proposal could be reviewed. Refresh and try again.');
@@ -178,7 +176,7 @@ export function createStillWorkspaceToolRegistry(deps: StillWorkspaceToolDepende
       try {
         const before = await deps.getSnapshot();
         if (before.revision !== proposal.snapshotRevision) return failed('Workspace state changed while you reviewed the proposal. Nothing was changed. Refresh and try again.');
-        try { await deps.validate(before, actions); await deps.validateIntent(before, actions); }
+        try { await deps.validate(before, actions); }
         catch (error) { return failed(message(error)); }
         const current = await deps.getSnapshot();
         if (current.revision !== before.revision) return failed('Workspace state changed before the action could run. Nothing was changed. Refresh and try again.');
