@@ -2,10 +2,6 @@ name: Windows prerelease
 
 on:
   push:
-    branches:
-      - agent/codex/leo3-deepseek-combined
-    paths:
-      - .github/workflows/windows-release.yml
     tags:
       - v0.*
 
@@ -40,9 +36,9 @@ jobs:
         working-directory: still-desktop
         run: pnpm check
 
-      - name: Focused Files, assistant, canvas, and workspace tests
+      - name: Focused AI Command, Files, assistant, canvas, and workspace tests
         working-directory: still-desktop
-        run: pnpm exec tsx --test --test-concurrency=1 tests/files-browse-layout.test.mjs tests/files-preview-lifecycle.test.mjs tests/assistant-sidebar.test.mjs tests/assistant.test.mjs tests/canvas-add-tool-menu.test.mjs tests/minimize.test.mjs
+        run: pnpm exec tsx --test --test-concurrency=1 tests/ai-command-widget.test.mjs tests/files-browse-layout.test.mjs tests/files-preview-lifecycle.test.mjs tests/assistant-sidebar.test.mjs tests/assistant.test.mjs tests/canvas-add-tool-menu.test.mjs tests/minimize.test.mjs
 
       - name: Rust tests
         working-directory: still-desktop/src-tauri
@@ -59,7 +55,7 @@ jobs:
         id: release-asset
         shell: pwsh
         run: |
-          $tag = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME } else { 'v0.2366' }
+          $tag = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME } else { 'v0.2367' }
           $version = $tag -replace '^v', ''
           $source = 'still-desktop/src-tauri/target/release/still-desktop.exe'
           $name = "ver$version.exe"
@@ -77,10 +73,10 @@ jobs:
           prerelease: true
           files: still-desktop/${{ steps.release-asset.outputs.name }}
           body: |
-            Still ${{ steps.release-asset.outputs.tag }} is a fix release based on v0.2365.
+            Still ${{ steps.release-asset.outputs.tag }} is based on v0.2366.
 
-            Fixed the Files widget browse layout so the search field no longer squeezes the file list out of view.
+            Adds the AI Command widget: save a named instruction in any workspace and run it on demand through the configured Still AI provider. Workspace changes continue to use Still's existing review and confirmation flow.
 
             Windows x64 SHA-256: `${{ steps.release-asset.outputs.sha256 }}`
 
-            TypeScript checks and focused assistant/canvas/workspace tests passed. Rust tests passed except for two real-window fixture tests skipped on the hosted runner because it does not provide the expected desktop window geometry. No live Windows GUI test was performed.
+            TypeScript checks and focused AI Command, Files, assistant, canvas, and workspace tests passed. Rust tests passed except for two real-window fixture tests skipped on the hosted runner because it does not provide the expected desktop window geometry. No live Windows GUI test was performed.
