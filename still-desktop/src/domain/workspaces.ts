@@ -13,12 +13,13 @@ import {type CanvasFrameRate} from './performance.ts';
 import {checkedFileNotes} from './fileNotes.ts';
 import {checkedNoteDocuments,createNoteDocument,noteDocument,type NoteDocument} from './noteDocuments.ts';
 import {checkedCalendarEvents,type StudyCalendarEvent} from './studyCalendar.ts';
+import {parseGeneratedWidgetDefinition,type GeneratedWidgetDefinition} from './generatedWidget.ts';
 import {type Locale} from '../localization.tsx';
 export {widgetTypes, type WidgetType} from './widgetCatalog.ts';
 export {widgetTagColors,type WidgetTagColor} from './widgetTags.ts';
 export const DESMOS_URL = 'https://www.desmos.com/scientific';
 export interface ScheduleEntry {id:string; day:number; time:string; title:string; location:string; workspaceId?:string; autoOpen?:boolean}
-export interface GroupWidgetEntry {id:string;type:Exclude<WidgetType,'group'>;name:string;icon:string;iconData?:string;kind?:'shortcut'|'collected';instance?:WidgetInstance}
+export interface GroupWidgetEntry {id:string;type:Exclude<WidgetType,'group'>;name:string;icon:string;iconData?:string;generatedDefinition?:GeneratedWidgetDefinition;kind?:'shortcut'|'collected';instance?:WidgetInstance}
 export interface SavedGroup {id:string;name:string;shortcuts:WebShortcut[];widgets:GroupWidgetEntry[];expanded:boolean}
 export function collectedWidgetCount(group:SavedGroup|undefined):number{return group?.widgets.filter(entry=>entry.kind==='collected').length??0}
 export function savedGroupHasContents(group:SavedGroup|undefined):boolean{return !!group&&(group.shortcuts.length>0||group.widgets.length>0)}
@@ -38,6 +39,7 @@ export interface WidgetInstance {
   noteDocuments:NoteDocument[];activeNoteDocumentId:string;
   notesLibraryKey:string|null;notesLibraryName?:string;
   fileNotes:Record<string,string>;
+  generatedDefinition?:GeneratedWidgetDefinition;
   text: string;
   remaining: number; end: number | null;
    homeVersion?: number; folderName?: string;folderKey:string|null;fileKey:string|null;fileName?:string;fileKind?:FileKind;appKey:string|null;appName?:string;appIconData?:string;appPanelOpen:boolean;appWasCollected?:boolean;appReuseExisting:boolean;appMinWidth?:number;appMinHeight?:number;
@@ -197,15 +199,15 @@ export function groupIconBudget(groups:SavedGroup[],candidate?:GroupWidgetEntry)
  const total=groups.reduce((sum,group)=>sum+group.widgets.reduce((amount,item)=>amount+(groupEntryIconData(item)?.length??0),0),0)+(candidate?groupEntryIconData(candidate)?.length??0:0);
  return total<=GROUP_ICON_BUDGET;
 }
-export function groupWidgetEntry(value:{id?:string;type:WidgetType;name?:string;icon?:string;iconData?:string}):GroupWidgetEntry {
+export function groupWidgetEntry(value:{id?:string;type:WidgetType;name?:string;icon?:string;iconData?:string;generatedDefinition?:GeneratedWidgetDefinition}):GroupWidgetEntry {
  if(!widgetTypes.includes(value.type)||value.type==='group')throw new Error('Choose a widget type for this group.');
  const name=value.name===undefined?widgetCatalog[value.type].name:value.name.trim();
  if(!name||name.length>60)throw new Error('Use a name from 1 to 60 characters.');
  const iconData=checkedAppIconData(value.iconData);
- return{id:value.id??crypto.randomUUID(),type:value.type,name,icon:(value.icon?.trim()||name.slice(0,2).toUpperCase()).slice(0,8),kind:'shortcut',...(value.type==='apps'&&iconData?{iconData}:{})};
+ return{id:value.id??crypto.randomUUID(),type:value.type,name,icon:(value.icon?.trim()||name.slice(0,2).toUpperCase()).slice(0,8),kind:'shortcut',...(value.type==='apps'&&iconData?{iconData}:{}),...(value.type==='generated'&&value.generatedDefinition?{generatedDefinition:parseGeneratedWidgetDefinition(value.generatedDefinition)}:{})};
 }
 export function saveWidgetToGroup(workspace:Workspace,widget:WidgetInstance,groupId?:string):Workspace {
- let entry=groupWidgetEntry({type:widget.type,name:widget.title.trim()||widgetCatalog[widget.type].name,iconData:widget.type==='apps'?widget.appIconData:undefined});
+ let entry=groupWidgetEntry({type:widget.type,name:widget.title.trim()||widgetCatalog[widget.type].name,iconData:widget.type==='apps'?widget.appIconData:undefined,generatedDefinition:widget.type==='generated'?widget.generatedDefinition:undefined});
  if(!groupIconBudget(workspace.groups,entry)){const {iconData:_ignored,...fallback}=entry;entry=fallback}
  if(groupId){
   const group=workspace.groups.find(item=>item.id===groupId);
@@ -255,10 +257,10 @@ function parseGroupEntries(value:unknown):GroupWidgetEntry[]{
    ids.add(item.id);return[item];
   }
   if(v.kind!==undefined&&v.kind!=='shortcut')return [];
-  const item=groupWidgetEntry({id:typeof v.id==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(v.id)&&!ids.has(v.id)?v.id:undefined,type:v.type,name:v.name,icon:typeof v.icon==='string'?v.icon:undefined,iconData:typeof v.iconData==='string'?v.iconData:undefined});ids.add(item.id);return[item];
+  const item=groupWidgetEntry({id:typeof v.id==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(v.id)&&!ids.has(v.id)?v.id:undefined,type:v.type,name:v.name,icon:typeof v.icon==='string'?v.icon:undefined,iconData:typeof v.iconData==='string'?v.iconData:undefined,...(v.type==='generated'&&v.generatedDefinition?{generatedDefinition:parseGeneratedWidgetDefinition(v.generatedDefinition)}:{})});ids.add(item.id);return[item];
  }catch{return []}});
 }
-const PERSISTED_WIDGET_FIELDS:(keyof WidgetInstance)[]=['id','type','span','instanceNumber','title','tagColor','relaunchOverride','pluginControls','clockPluginEnabled','lockPluginEnabled','locked','noteFont','noteFontSize','noteDocuments','activeNoteDocumentId','notesLibraryKey','notesLibraryName','fileNotes','text','remaining','end','folderName','folderKey','fileKey','fileName','fileKind','appKey','appName','appIconData','appPanelOpen','appWasCollected','appReuseExisting','appMinWidth','appMinHeight','placement','minimized','restorePlacement','shortcuts','schedule','calendarEvents','groupId'];
+const PERSISTED_WIDGET_FIELDS:(keyof WidgetInstance)[]=['id','type','span','instanceNumber','title','tagColor','relaunchOverride','pluginControls','clockPluginEnabled','lockPluginEnabled','locked','noteFont','noteFontSize','noteDocuments','activeNoteDocumentId','notesLibraryKey','notesLibraryName','fileNotes','text','generatedDefinition','remaining','end','folderName','folderKey','fileKey','fileName','fileKind','appKey','appName','appIconData','appPanelOpen','appWasCollected','appReuseExisting','appMinWidth','appMinHeight','placement','minimized','restorePlacement','shortcuts','schedule','calendarEvents','groupId'];
 function persistentWidgetSnapshot(value:unknown):WidgetInstance {
  if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('Invalid collected widget.');
  const source=value as Record<string,unknown>,filtered=Object.fromEntries(PERSISTED_WIDGET_FIELDS.filter(key=>key in source).map(key=>[key,source[key]]));
@@ -300,11 +302,12 @@ function migrateLegacyBrowserGroups(widgets:unknown[],existing:SavedGroup[]):Sav
 }
 export function createWidgetFromGroupEntry(entry:GroupWidgetEntry,widgets:WidgetInstance[],at?:{x:number;y:number},width?:number):WidgetInstance {
  if(entry.kind==='collected')throw new Error('Collected widgets must be restored as the same instance.');
- const checked=groupWidgetEntry(entry),widget=createWidget(checked.type);widget.title=checked.name;widget.instanceNumber=nextInstanceNumber(checked.type,widgets);if(checked.type==='apps')widget.appIconData=checked.iconData;
+ const checked=groupWidgetEntry(entry),widget=createWidget(checked.type);widget.title=checked.name;widget.instanceNumber=nextInstanceNumber(checked.type,widgets);if(checked.type==='apps')widget.appIconData=checked.iconData;if(checked.type==='generated')widget.generatedDefinition=checked.generatedDefinition;
  widget.placement=at?placement(checked.type,{...widget.placement,...at}):nextPlacement(checked.type,widgets,width);return widget;
 }
 export function createWidgetFromPreset(preset:WidgetPreset,widgets:WidgetInstance[],at?:{x:number;y:number},width?:number):WidgetInstance {
  const checked=widgetPreset(preset),widget=createWidget(checked.type);widget.title=checked.name;widget.instanceNumber=nextInstanceNumber(checked.type,widgets);widget.clockPluginEnabled=checked.clockPluginEnabled===true;if(checked.remaining!==undefined)widget.remaining=checked.remaining;
+ if(checked.type==='generated'){widget.text=checked.text??'';widget.generatedDefinition=checked.generatedDefinition}
  if(checked.type==='files'&&checked.resourceKind==='document'){widget.fileKey=checked.fileSourceId;widget.fileName=checked.fileName;widget.fileKind=checked.fileKind;widget.fileNotes=checked.fileNotes??{}}
  else if(checked.type==='files'){widget.folderName=checked.folderName;widget.folderKey=checked.folderSourceId;widget.fileNotes=checked.fileNotes??{}}
   else if(checked.type==='apps'){widget.appKey=checked.appSourceId;widget.appName=checked.appName;widget.appIconData=checked.iconData}
@@ -380,9 +383,12 @@ function checkedWidget(value: unknown): WidgetInstance {
   if (item.text !== undefined && typeof item.text !== 'string') throw new Error('Invalid note');
   const noteDocuments=item.type==='notes'?checkedNoteDocuments(item.noteDocuments,{id:`legacy-${item.id.slice(0,70)}`,title:typeof item.title==='string'?item.title:'',text:typeof item.text==='string'?item.text:defaults.text}):[];
   const activeNote=noteDocument(noteDocuments,typeof item.activeNoteDocumentId==='string'?item.activeNoteDocumentId:undefined);
+  let generatedDefinition:GeneratedWidgetDefinition|undefined;
+  if(item.type==='generated'&&item.generatedDefinition){try{generatedDefinition=parseGeneratedWidgetDefinition(item.generatedDefinition)}catch{/* Keep the card and let the user regenerate its invalid definition. */}}
   return {...defaults,...item,type:item.type as WidgetType,span:item.span===2?2:item.span===3?3:1,
     title:item.type==='notes'?activeNote.title:typeof item.title==='string'?item.title.trim().slice(0,60):'',
-    text:item.type==='notes'?activeNote.text:item.type==='aiCommand'&&typeof item.text==='string'?item.text.slice(0,8000):typeof item.text==='string'?item.text:defaults.text,
+    text:item.type==='notes'?activeNote.text:item.type==='aiCommand'&&typeof item.text==='string'?item.text.slice(0,8000):item.type==='generated'&&typeof item.text==='string'?item.text.slice(0,4000):typeof item.text==='string'?item.text:defaults.text,
+    generatedDefinition,
     tagColor:widgetTagColors.includes(item.tagColor as WidgetTagColor)?item.tagColor as WidgetTagColor:null,
     relaunchOverride:item.relaunchOverride==='automatic'||item.relaunchOverride==='manual'?item.relaunchOverride:'follow',
     pluginControls:Array.isArray(item.pluginControls)?[...new Set(item.pluginControls.filter((control):control is string=>typeof control==='string'&&/^[a-z0-9.-]{1,80}$/.test(control)))].slice(0,20):defaults.pluginControls,

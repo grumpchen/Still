@@ -3,6 +3,7 @@ import type {WidgetInstance} from './workspaces.ts';
 import {checkedFileNotes} from './fileNotes.ts';
 import {checkedNoteDocuments,detachNoteLibraryDocuments,noteDocument,type NoteDocument} from './noteDocuments.ts';
 import {checkedCalendarEvents,type StudyCalendarEvent} from './studyCalendar.ts';
+import {parseGeneratedWidgetDefinition,type GeneratedWidgetDefinition} from './generatedWidget.ts';
 export type FileKind='pdf'|'image'|'media'|'document';
 export type PresetType=Exclude<WidgetType,'group'>;
 export type GenericPresetType=Exclude<PresetType,'files'|'apps'>;
@@ -10,7 +11,7 @@ export interface PresetScheduleEntry {id:string;day:number;time:string;title:str
 export type WidgetPreset={id:string;type:'files';name:string;resourceKind?:'folder';folderSourceId:string;folderName:string;fileNotes?:Record<string,string>;remaining?:number;clockPluginEnabled?:boolean}
  |{id:string;type:'files';name:string;resourceKind:'document';fileSourceId:string;fileName:string;fileKind:FileKind;fileNotes?:Record<string,string>;remaining?:number;clockPluginEnabled?:boolean}
  |{id:string;type:'apps';name:string;appSourceId:string;appName:string;iconData?:string;remaining?:number;clockPluginEnabled?:boolean}
- |{id:string;type:GenericPresetType;name:string;text?:string;noteDocuments?:NoteDocument[];activeNoteDocumentId?:string;noteFont?:'sans'|'serif'|'mono';noteFontSize?:number;remaining?:number;schedule?:PresetScheduleEntry[];calendarEvents?:StudyCalendarEvent[];pluginControls?:string[];clockPluginEnabled?:boolean};
+ |{id:string;type:GenericPresetType;name:string;text?:string;generatedDefinition?:GeneratedWidgetDefinition;noteDocuments?:NoteDocument[];activeNoteDocumentId?:string;noteFont?:'sans'|'serif'|'mono';noteFontSize?:number;remaining?:number;schedule?:PresetScheduleEntry[];calendarEvents?:StudyCalendarEvent[];pluginControls?:string[];clockPluginEnabled?:boolean};
 export function fileKind(value:unknown):value is FileKind{return value==='pdf'||value==='image'||value==='media'||value==='document'}
 export function fileName(value:unknown):value is string{return typeof value==='string'&&value.length>0&&value.length<=260&&!/[\\/\x00-\x1f]/.test(value)&&value!=='.'&&value!=='..'}
 function checkedIconData(value:unknown):string|undefined{return typeof value==='string'&&value.length<=32*1024&&/^data:image\/png;base64,iVBORw0KGgo[A-Za-z0-9+/]*={0,2}$/.test(value)?value:undefined}
@@ -42,6 +43,7 @@ export function widgetPreset(value:WidgetPreset):WidgetPreset {
    const iconData=checkedIconData(value.iconData);
    return{id:value.id,type:'apps',name,appSourceId:value.appSourceId,appName:value.appName,...(iconData?{iconData}:{}),...remaining,...(clockPluginEnabled?{clockPluginEnabled}:{})};
  }
+ if(value.type==='generated')return{id:value.id,type:'generated',name,...(typeof value.text==='string'?{text:value.text.slice(0,4000)}:{}),...(value.generatedDefinition?{generatedDefinition:parseGeneratedWidgetDefinition(value.generatedDefinition)}:{}),...remaining,...(clockPluginEnabled?{clockPluginEnabled}:{})};
  if(value.type==='notes'||value.type==='ai'){
   if(value.text!==undefined&&(typeof value.text!=='string'||value.text.length>2*1024*1024))throw new Error('Use valid saved text.');
   // Tray copies preserve note content but deliberately sever the selected-folder relationship.
@@ -76,6 +78,7 @@ export function presetFromWidget(widget:WidgetInstance):WidgetPreset {
  return widgetPreset({id,type:widget.type,name,
   ...(widget.clockPluginEnabled?{clockPluginEnabled:true}:{}),
   ...(widget.type==='notes'||widget.type==='ai'?{text:widget.text}:{}),
+  ...(widget.type==='generated'?{text:widget.text,generatedDefinition:widget.generatedDefinition}:{}),
   ...(widget.type==='notes'?{noteFont:widget.noteFont,noteFontSize:widget.noteFontSize,noteDocuments:widget.noteDocuments,activeNoteDocumentId:widget.activeNoteDocumentId}:{}),
   ...(widget.type==='focus'||widget.clockPluginEnabled?{remaining}:{}),
   ...(widget.type==='timetable'?{schedule:widget.schedule}:{}),

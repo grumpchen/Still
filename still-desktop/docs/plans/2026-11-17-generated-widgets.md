@@ -2,6 +2,12 @@
 
 基于 `agent/codex/leo3-deepseek-combined`，包含 `e78babf` 的 AI Command 按钮。此文档是实现交接，不代表功能已经完成。
 
+## 当前实现进度
+
+`agent/codex/generated-widgets` 已实现第一版基础闭环：组件菜单中新增 AI Component；用户输入需求后，所选 Gemini、OpenAI、OpenCode Go 或 DeepSeek API 生成并校验组件定义；定义随 workspace、Group 和托盘保存；组件可选取最多 1 MB 的 TXT/Markdown 文件，运行时最多发送 12,000 个字符并在卡片显示回复。输入文件和运行结果只留在组件运行时，不持久化。
+
+本版尚未实现 PDF 输入、扫描件/OCR、把结果保存到 Notes、ChatGPT plan provider、Explorer 原生拖入、真实 provider 验收。创建和执行各会产生一次 API 请求；用户点击运行前不会发送所选文件文本。执行结果目前只能在组件内审阅，后续应加上用户选择 Notes 目标并确认保存。
+
 ## 结构现状
 
 - `src/domain/widgetCatalog.ts` 和 `src/widgets.tsx` 是第一方 widget 类型及 renderer 注册点。不要为每个用户 prompt 动态注册新 React 类型。
@@ -15,7 +21,7 @@
 
 把生成结果实现为一个固定的 `generatedWidget` 类型，所有卡片由 Still 的 React renderer 显示和执行。AI 只返回版本化声明式定义；定义选择 Still 已实现的输入/动作/输出组合。不要执行模型生成的 JavaScript、shell 命令或任意文件路径。现有 `aiCommand` 保持兼容，作为手动 prompt 快捷方式；之后可提供“转为组件”入口，但不要悄悄改变其既有语义。
 
-首条可用路径：用户描述“把讲义变成五道复习题” → 生成预览 → 用户拖入或选择 TXT、Markdown 或有文字层的 PDF → 用户点击运行 → 结果在卡片中审阅 → 用户明确选择 Notes 目标并保存。模型创建定义时只收到需求及允许的能力；文档正文只在用户运行时按显示的范围发送给当前提供方。
+下一条完整路径：用户描述“把讲义变成五道复习题” → 生成预览 → 用户拖入或选择 TXT、Markdown 或有文字层的 PDF → 用户点击运行 → 结果在卡片中审阅 → 用户明确选择 Notes 目标并保存。当前第一版仅实现文本/Markdown 文件选择。模型创建定义时只收到需求及允许的能力；所选正文只在用户运行时发送给当前 API 提供方。
 
 初始 schema 建议：`schemaVersion: 1`、`title`、`input: 'pdf-or-text'`、`action: { kind: 'askAI', instruction }`、`output: 'review-note'`。初始版本只开放此组合。图片转 PDF 作为第二个受控组合（`images` + `imagesToPdf` + `save-pdf`），等选定和验证 PDF 写入库后再开放。标题和提示词有长度上限；统一解析器校验 AI 回复、用户编辑、local storage、Group snapshot 与 preset。
 
