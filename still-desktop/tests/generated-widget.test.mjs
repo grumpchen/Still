@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {parseGeneratedWidgetDefinition,parseGeneratedWidgetReply} from '../src/domain/generatedWidget.ts';
 import {collectWidgetIntoGroup,createInitialState,createWidget,createWidgetFromGroupEntry,createWidgetFromPreset,duplicateWorkspace,parseState,restoreCollectedWidget,saveWidgetToGroup} from '../src/domain/workspaces.ts';
 import {presetFromWidget} from '../src/domain/presets.ts';
+import {addGeneratedResultNote} from '../src/domain/generatedWidgetNotes.ts';
 import {widgetCatalog,widgetTypes} from '../src/domain/widgetCatalog.ts';
 import {readFile} from 'node:fs/promises';
 
@@ -55,4 +56,31 @@ test('AI Component is in the gallery and generation and execution use the select
  const assistantSource=await readFile(new URL('../src/AssistantPanel.tsx',import.meta.url),'utf8'),transportSource=await readFile(new URL('../src/platform/assistant.ts',import.meta.url),'utf8');
  assert.match(widgetSource,/still-generate-widget-definition/);assert.match(widgetSource,/still-run-generated-widget/);assert.match(widgetSource,/MAX_SOURCE_CHARS=12000/);
  assert.match(assistantSource,/addEventListener\('still-generate-widget-definition'/);assert.match(assistantSource,/addEventListener\('still-run-generated-widget'/);assert.match(transportSource,/geminiAssistant\.send\(\{provider,model/);
+});
+
+test('saving a generated result creates a new local Notes document without overwriting existing notes',()=>{
+ const state=createInitialState(),workspace=state.workspaces.find(item=>item.role==='dashboard'),generated=createWidget('generated'),notes=workspace.widgets.find(item=>item.type==='notes'),oldText=notes.noteDocuments[0].text;
+ generated.title=definition.title;workspace.widgets.push(generated);
+ const saved=addGeneratedResultNote(workspace,generated.id,notes.id,'Lecture review result','Five questions and answers.');
+ const target=saved.workspace.widgets.find(item=>item.id===notes.id);
+ assert.equal(target.noteDocuments.length,notes.noteDocuments.length+1);assert.equal(target.noteDocuments.find(item=>item.id===saved.noteId).text,'Five questions and answers.');
+ assert.equal(target.noteDocuments[0].text,oldText);assert.equal(target.activeNoteDocumentId,saved.noteId);assert.equal(notes.noteDocuments.length+1,target.noteDocuments.length);
+ const nextState={...state,workspaces:state.workspaces.map(item=>item.id===workspace.id?saved.workspace:item)},roundTrip=parseState(JSON.stringify(nextState)).workspaces.find(item=>item.id===workspace.id).widgets.find(item=>item.id===notes.id);
+ assert.equal(roundTrip.noteDocuments.find(item=>item.id===saved.noteId).text,'Five questions and answers.');
+});
+
+test('generated result saving rejects stale targets, folder-connected Notes, and full note widgets',()=>{
+ const state=createInitialState(),workspace=state.workspaces.find(item=>item.role==='dashboard'),generated=createWidget('generated'),notes=workspace.widgets.find(item=>item.type==='notes');workspace.widgets.push(generated);
+ assert.throws(()=>addGeneratedResultNote(workspace,generated.id,'missing','Result','Text'),/generatedWidgetSaveTargetMissing/);
+ const libraryNotes={...notes,notesLibraryKey:'folder-grant'};workspace.widgets=workspace.widgets.map(item=>item.id===notes.id?libraryNotes:item);
+ assert.throws(()=>addGeneratedResultNote(workspace,generated.id,notes.id,'Result','Text'),/generatedWidgetSaveFolderNotes/);
+ const fullNotes={...libraryNotes,notesLibraryKey:null,noteDocuments:Array.from({length:40},(_,index)=>({id:`note-${index}`,title:'Note',text:''}))};workspace.widgets=workspace.widgets.map(item=>item.id===notes.id?fullNotes:item);
+ assert.throws(()=>addGeneratedResultNote(workspace,generated.id,notes.id,'Result','Text'),/generatedWidgetSaveNoteLimit/);
+});
+
+test('the app validates the active workspace and persists the note before showing the save result',async()=>{
+ const appSource=await readFile(new URL('../src/App.tsx',import.meta.url),'utf8');
+ assert.match(appSource,/current\.activeId!==workspaceId/);
+ assert.match(appSource,/if\(!persistNow\.current\(next\)\)throw new Error\(translate\(current\.locale,'generatedWidgetSaveStorageFailed'\)\)/);
+ assert.ok(appSource.indexOf('if(!persistNow.current(next))')<appSource.indexOf('setState(next)'));
 });

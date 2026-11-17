@@ -4,9 +4,9 @@
 
 ## 当前实现进度
 
-`agent/codex/generated-widgets` 已实现第一版基础闭环：组件菜单中新增 AI Component；用户输入需求后，所选 Gemini、OpenAI、OpenCode Go 或 DeepSeek API 生成并校验组件定义；定义随 workspace、Group 和托盘保存；组件可选取最多 1 MB 的 TXT/Markdown 文件，运行时最多发送 12,000 个字符并在卡片显示回复。输入文件和运行结果只留在组件运行时，不持久化。
+`agent/codex/generated-widgets` 已实现第一版闭环：组件菜单中新增 AI Component；用户输入需求后，所选 Gemini、OpenAI、OpenCode Go 或 DeepSeek API 生成并校验组件定义；定义随 workspace、Group 和托盘保存；组件可选取最多 1 MB 的 TXT/Markdown 文件，运行时最多发送 12,000 个字符并在卡片显示回复。用户可以明确选择同一 workspace 中的本地 Notes widget，并将结果保存为新笔记。覆盖目标、容量及 active workspace 校验；先写入 workspace local storage，写入失败时不显示保存成功。输入文件和运行结果只留在组件运行时，不持久化。
 
-本版尚未实现 PDF 输入、扫描件/OCR、把结果保存到 Notes、ChatGPT plan provider、Explorer 原生拖入、真实 provider 验收。创建和执行各会产生一次 API 请求；用户点击运行前不会发送所选文件文本。执行结果目前只能在组件内审阅，后续应加上用户选择 Notes 目标并确认保存。
+本版尚未实现 PDF 输入、扫描件/OCR、保存到文件夹连接的 Notes、ChatGPT plan provider、Explorer 原生拖入、真实 provider 验收。创建和执行各会产生一次 API 请求；用户点击运行前不会发送所选文件文本。Notes 保存为新增本地笔记，不覆盖已有内容。
 
 ## 结构现状
 
@@ -21,15 +21,15 @@
 
 把生成结果实现为一个固定的 `generatedWidget` 类型，所有卡片由 Still 的 React renderer 显示和执行。AI 只返回版本化声明式定义；定义选择 Still 已实现的输入/动作/输出组合。不要执行模型生成的 JavaScript、shell 命令或任意文件路径。现有 `aiCommand` 保持兼容，作为手动 prompt 快捷方式；之后可提供“转为组件”入口，但不要悄悄改变其既有语义。
 
-下一条完整路径：用户描述“把讲义变成五道复习题” → 生成预览 → 用户拖入或选择 TXT、Markdown 或有文字层的 PDF → 用户点击运行 → 结果在卡片中审阅 → 用户明确选择 Notes 目标并保存。当前第一版仅实现文本/Markdown 文件选择。模型创建定义时只收到需求及允许的能力；所选正文只在用户运行时发送给当前 API 提供方。
+当前首条路径：用户描述“把讲义变成五道复习题” → 生成预览 → 用户选择 TXT 或 Markdown 文件 → 用户点击运行 → 结果在卡片中审阅 → 用户明确选择本地 Notes widget，保存为新笔记。模型创建定义时只收到需求及允许的能力；所选正文只在用户运行时发送给当前 API 提供方。下一阶段扩展到 PDF，并让 Notes 可选择文件夹中新建的目标文件。
 
-初始 schema 建议：`schemaVersion: 1`、`title`、`input: 'pdf-or-text'`、`action: { kind: 'askAI', instruction }`、`output: 'review-note'`。初始版本只开放此组合。图片转 PDF 作为第二个受控组合（`images` + `imagesToPdf` + `save-pdf`），等选定和验证 PDF 写入库后再开放。标题和提示词有长度上限；统一解析器校验 AI 回复、用户编辑、local storage、Group snapshot 与 preset。
+初始 schema：`schemaVersion: 1`、`title`、`input: 'text-file'`、`action: { kind: 'askAI', instruction }`、`output: 'review-note'`。当前只开放此组合。图片转 PDF 作为第二个受控组合（`images` + `imagesToPdf` + `save-pdf`），等选定和验证 PDF 写入库后再开放。标题和提示词有长度上限；统一解析器校验 AI 回复、用户编辑、local storage、Group snapshot 与 preset。
 
 ## 实现阶段
 
-1. **Schema 与静态 widget。** 注册固定类型、纯 domain schema parser 和默认值；定义错误/未知版本的局部恢复行为。完成 workspace reload、复制、Group 收纳/恢复、托盘 preset 往返。旧数据不含定义时继续正常运行，损坏的一张卡不能抛弃整个 workspace。
-2. **卡片编辑和运行。** 组件菜单提供创建入口；先用本地表单与固定样例跑通定义编辑、预览和保存。再接 Assistant 现有 provider transport。运行状态绑定 `workspaceId/widgetId/runId`；重复点击去重，切换工作区或删卡后丢弃迟到结果。
-3. **本地文件输入和 Notes 输出。** TXT、Markdown、PDF 可选/拖入；显示来源、文件大小及 PDF 页码/截取范围。复用 Files/PDF.js 已有读取能力；扫描件明确说明无文字层。保留输入文件授权，替换/删除/卸载时释放。结果先可编辑审阅；用户主动选 Notes 目标，确认写入成功后才显示已保存。
+1. **Schema 与静态 widget — 已完成。** 注册固定类型、纯 domain schema parser 和默认值；定义错误/未知版本的局部恢复行为。完成 workspace reload、复制、Group 收纳/恢复、托盘 preset 往返。
+2. **卡片编辑和 AI 运行 — 已完成第一版。** 组件菜单提供创建入口；可编辑定义、预览，并通过 Assistant 现有 API transport 生成/运行。`workspaceId/widgetId/runId` 绑定迟到结果；目标删除或编辑后丢弃旧响应。
+3. **本地文件输入和 Notes 输出 — 部分完成。** TXT/Markdown 选择，1 MB 文件限制，最多发送 12,000 字符；结果可审阅并另存到用户选择的本地 Notes widget 新笔记，不覆盖现有笔记。待补 PDF 文本提取、页码/截断提示、文件夹连接 Notes 的新建目标，以及 Windows Explorer drop。
 4. **Assistant 创建入口。** Agent 可生成同一 schema 的待审提案，再交给阶段 2 的编辑器。验证中文/英文、无效 JSON、不支持能力、拒绝、重复审批和 workspace 变化；不要在 Assistant 里另写 widget renderer 或绕开当前审核机制。
 5. **图片转 PDF 与发布验收。** 仅支持 PNG/JPEG，先固定 PDF 写入依赖并验证离线构建；图序来自可见排序，输出另存为。完成模拟 AI Playwright 流程、Windows CI 和 Windows 桌面验收：Explorer drop、125%/150% DPI、取消保存对话框、重启恢复。真实 provider 只做一次短样本人工验收并记录请求次数。
 
