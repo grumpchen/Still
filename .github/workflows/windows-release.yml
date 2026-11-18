@@ -38,7 +38,7 @@ jobs:
 
       - name: Focused AI Command, Files, assistant, canvas, and workspace tests
         working-directory: still-desktop
-        run: pnpm exec tsx --test --test-concurrency=1 tests/ai-command-widget.test.mjs tests/files-browse-layout.test.mjs tests/files-preview-lifecycle.test.mjs tests/assistant-sidebar.test.mjs tests/assistant.test.mjs tests/canvas-add-tool-menu.test.mjs tests/minimize.test.mjs
+        run: pnpm exec tsx --test --test-concurrency=1 tests/ai-command-widget.test.mjs tests/files-browse-layout.test.mjs tests/files-preview-lifecycle.test.mjs tests/assistant-sidebar.test.mjs tests/assistant.test.mjs tests/assistant-panel.test.mjs tests/canvas-add-tool-menu.test.mjs tests/minimize.test.mjs
 
       - name: Rust tests
         working-directory: still-desktop/src-tauri
@@ -55,7 +55,7 @@ jobs:
         id: release-asset
         shell: pwsh
         run: |
-          $tag = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME } else { 'v0.2367' }
+          $tag = $env:GITHUB_REF_NAME
           $version = $tag -replace '^v', ''
           $source = 'still-desktop/src-tauri/target/release/still-desktop.exe'
           $name = "ver$version.exe"
@@ -72,10 +72,11 @@ jobs:
           name: Still ${{ steps.release-asset.outputs.tag }}
           prerelease: true
           files: still-desktop/${{ steps.release-asset.outputs.name }}
+          fail_on_unmatched_files: true
           body: |
-            Still ${{ steps.release-asset.outputs.tag }} is based on v0.2366.
+            Still ${{ steps.release-asset.outputs.tag }} is based on v0.2367.
 
-            Adds the AI Command widget: save a named instruction in any workspace and run it on demand through the configured Still AI provider. Workspace changes continue to use Still's existing review and confirmation flow.
+            Fixes `open a files` and similar commands in AI Command and Assistant. Still adds one Files widget locally, with no DeepSeek request.
 
             Windows x64 SHA-256: `${{ steps.release-asset.outputs.sha256 }}`
 
