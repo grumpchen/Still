@@ -9,9 +9,17 @@ Still is a Windows desktop workspace app with movable widgets, saved shortcuts, 
 - This repository is the canonical shared workspace: `C:\Users\haoka\Projects\Default Project`.
 - Read this file, `README.md`, and relevant design/implementation notes before starting a task.
 - Give each agent a clearly scoped task. Use a separate Git worktree and branch per concurrent agent; do not have concurrent agents edit the same working tree or task files.
-- Keep `main` stable. Make focused commits on task branches and have the coordinator review before merging. Do not push, force-push, rewrite shared history, or merge to `main` without the user's approval.
+- Keep `main` stable. Workers push their own task branches for coordinator review. The coordinator merges to `main` and publishes releases with the user's authorization. Shared history rewrites and force pushes require separate authorization.
 - Record durable decisions, task assignments, and handoffs in repository files. Agent conversations are not shared memory.
-- Do not overwrite another agent's report or unrelated work. If scope overlaps, coordinate before editing.
+- Do not overwrite another agent's report or unrelated work. The coordinator assigns an order when tasks overlap.
+
+## UI A and AI A workflow
+
+- UI A leads interface tasks. AI A leads Still Agent behavior and tooling tasks. Start each task branch from the latest `origin/main`.
+- The worker leading a feature implements and validates a usable version, then pushes their branch. They can edit the files needed for their task, including shared wiring such as `App.tsx`. Routine implementation decisions are theirs.
+- After pushing, the worker sends one handoff with the branch, commit SHA, user-facing changes, checks and results, and any concrete limitation. If blocked, complete independent work and report the specific blocker and the evidence.
+- The coordinator reviews what shipped on the branch and assigns follow-up work only when needed. For UI-led work, AI A takes any AI integration after UI A hands off. For AI-led work, UI A takes any interface integration after AI A hands off. The coordinator gives the next worker the baseline containing the lead changes.
+- Independent tasks can run in parallel. For changes to the same feature or shared integration points, use the handoff order above. The coordinator owns integration and release.
 
 ## Naming conventions
 
