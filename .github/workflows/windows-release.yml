@@ -74,10 +74,10 @@ jobs:
           files: still-desktop/${{ steps.release-asset.outputs.name }}
           fail_on_unmatched_files: true
           body: |
-            Still ${{ steps.release-asset.outputs.tag }} is based on v0.2367.
+            Still ${{ steps.release-asset.outputs.tag }} is based on v0.2368.
 
-            Fixes `open a files` and similar commands in AI Command and Assistant. Still adds one Files widget locally, with no DeepSeek request.
+            Bulk close/delete commands from AI Command now keep the command widget and every locked widget in place. The first run asks for confirmation; confirming remembers approval for that saved command in that workspace, so later runs do not ask again. “Close everything” requests use the local confirmation flow and do not depend on a provider response.
 
             Windows x64 SHA-256: `${{ steps.release-asset.outputs.sha256 }}`
 
-            TypeScript checks and focused AI Command, Files, assistant, canvas, and workspace tests passed. Rust tests passed except for two real-window fixture tests skipped on the hosted runner because it does not provide the expected desktop window geometry. No live Windows GUI test was performed.
+            TypeScript checks and focused AI Command, bulk removal, assistant, canvas, and workspace tests passed. Rust tests passed except for two real-window fixture tests skipped on the hosted runner because it does not provide the expected desktop window geometry. No live Windows GUI test was performed.
