@@ -62,12 +62,13 @@ test('clear all-widget actions are resolved locally before any model request',()
  assert.match(panel,/confirmation==='delete_workspace'\?'confirmDeleteWorkspaceTitle'/);
  assert.match(panel,/confirmation==='delete_widgets'\?'confirmDeleteWidgetsTitle'/);
  assert.match(panel,/t\('assistantRemoveWidgetsConfirm'\)/);
- assert.match(panel,/deleteWidgets\(owner\.id\)/);
+ assert.match(panel,/deleteWidgets\(owner\.id,commandRemoval\?\.widgetId\)/);
  assert.match(panel,/settleAssistantConfirmation\(current,receipt\)/,'confirmation result replaces the pending reply instead of breaking chat turn order');
  assert.match(app,/clearTray=\{clearAssistantTray\}/);
  assert.match(app,/deleteWidgets=\{deleteAssistantWidgets\}/);
  assert.match(app,/deleteWorkspace=\{deleteAssistantWorkspace\}/);
- assert.match(app,/widgets:\[\]/,'bulk widget removal clears canvas cards without clearing saved tray groups');
+ assert.match(app,/preservedIds\.has\(widget\.id\)/,'bulk widget removal keeps locked widgets and its running AI Command');
+ assert.match(app,/assistantBulkRemovalSelection\(owner\.widgets,preserveWidgetId\)/,'bulk removal uses the tested locked-widget preservation policy');
  assert.match(app,/undo\.current=current;[\s\S]*presets:\[\],workspaces:/,'tray clearing records state for Undo');
 });
 test('local widget actions always record a nonempty receipt and repair old blank turns',()=>{

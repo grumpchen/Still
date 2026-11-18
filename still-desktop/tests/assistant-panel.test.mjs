@@ -360,3 +360,31 @@ test('assistant previews a requested resize before applying it',async()=>{
   for(const key of old.keys()){const descriptor=old.get(key);if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}
  }
 });
+
+test('AI Command asks once before removing unlocked widgets and keeps itself available for reruns',async()=>{
+ const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true}),{window}=dom,old=new Map();
+ for(const key of ['window','document','navigator','localStorage','HTMLElement','Element','Node','Event','MutationObserver','requestAnimationFrame','cancelAnimationFrame','IS_REACT_ACT_ENVIRONMENT','isTauri'])old.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
+ let root;const removals=[];
+ try{
+  for(const [key,value] of Object.entries({window,document:window.document,navigator:window.navigator,localStorage:window.localStorage,HTMLElement:window.HTMLElement,Element:window.Element,Node:window.Node,Event:window.Event,MutationObserver:window.MutationObserver,requestAnimationFrame:callback=>setTimeout(()=>callback(Date.now()),0),cancelAnimationFrame:clearTimeout,IS_REACT_ACT_ENVIRONMENT:true,isTauri:true}))setGlobal(key,value);
+  window.HTMLElement.prototype.scrollTo=function(){};window.HTMLTextAreaElement.prototype.focus=function(){};window.__TAURI_INTERNALS__={};
+  const workspace=createWorkspace('Study',[]),command=createWidget('aiCommand'),note=createWidget('notes');
+  command.text='delete all widgets';command.lockPluginEnabled=true;command.locked=true;workspace.widgets=[command,note];
+  const {default:AssistantPanel}=await vite.ssrLoadModule('/src/AssistantPanel.tsx');root=createRoot(window.document.querySelector('#root'));
+  await act(async()=>root.render(createElement(AssistantPanel,{workspace,workspaces:[{id:workspace.id,name:workspace.name}],canDeleteWorkspace:true,sidebarPlugins:[],trayItems:[],open:true,close(){},dimensions:()=>({width:900,height:700}),apply(){},undo(){},deleteWidgets:async(workspaceId,preserveWidgetId)=>{removals.push({workspaceId,preserveWidgetId});return 'Removed the other widgets.'}})));
+  const run=async()=>{await act(async()=>window.dispatchEvent(new window.CustomEvent('still-run-ai-command',{detail:{prompt:command.text,widgetId:command.id}})));await act(async()=>new Promise(resolve=>setTimeout(resolve,100)))};
+  await run();await waitFor(()=>window.document.querySelector('.assistant-confirmation'));
+  assert.match(window.document.querySelector('.assistant-confirmation').textContent,/future runs of this saved command will not ask again/i);
+  assert.equal(removals.length,0,'the first click waits for the user confirmation');
+  await act(async()=>window.document.querySelector('.assistant-confirmation button.primary').click());
+  await waitFor(()=>removals.length===1);
+  assert.deepEqual(removals[0],{workspaceId:workspace.id,preserveWidgetId:command.id});
+  assert.equal(window.document.querySelector('.assistant-confirmation'),null);
+  await run();await waitFor(()=>removals.length===2);
+  assert.equal(window.document.querySelector('.assistant-confirmation'),null,'the same saved command does not ask again');
+  assert.deepEqual(removals[1],{workspaceId:workspace.id,preserveWidgetId:command.id});
+ }finally{
+  if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();
+  for(const key of old.keys()){const descriptor=old.get(key);if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}
+ }
+});

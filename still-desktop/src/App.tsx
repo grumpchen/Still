@@ -3,6 +3,7 @@ import { createWidgetFromPreset,createWidgetFromGroupEntry,openSavedGroup,update
 import {startupDeferredWidgetIds,applyRelaunchModeToAll,type WidgetRelaunchMode,type WidgetRelaunchPluginStatus} from './domain/widgetRelaunch.ts';
 import {type ClockPluginMode} from './domain/clockPlugin.ts';
 import {createNoteDocument,NOTE_DOCUMENT_LIMIT} from './domain/noteDocuments.ts';
+import {assistantBulkRemovalSelection} from './domain/assistantBulkRemoval.ts';
 import { Icon } from './Icon.tsx';
 import {LocaleContext,localizeOperationalMessage,translate,type Locale} from './localization.tsx';
 import BrandMark from './BrandMark.tsx';
@@ -507,18 +508,21 @@ export default function App(){
     for(const group of owner.groups)for(const entry of group.widgets)if(entry.kind==='collected'&&entry.type==='apps'&&appPanel.available)void appPanel.release(entry.id,current.closeAppOnWidgetClose).catch(error=>notify(translate(current.locale,'trayClearedAppError').replace('{name}',entry.name).replace('{detail}',String(error))));
     return `Removed ${current.presets.length} saved shortcut${current.presets.length===1?'':'s'} from the shared tray and ${owner.groups.length} Group${owner.groups.length===1?'':'s'} from ${owner.name}. Undo change restores the saved tray data.`;
   }
-  async function deleteAssistantWidgets(workspaceId:string):Promise<string>{
+  async function deleteAssistantWidgets(workspaceId:string,preserveWidgetId?:string):Promise<string>{
     const current=captureState.current,owner=current.workspaces.find(item=>item.id===workspaceId);
     if(!owner||current.activeId!==workspaceId)throw new Error('The active workspace changed. Nothing was removed; try again.');
     if(owner.role==='dashboard'||owner.role==='library')throw new Error(translate(current.locale,owner.role==='dashboard'?'dashboardModulesFixed':'libraryModulesFixed'));
     if(!owner.widgets.length)return translate(current.locale,'emptyWorkspaceWidgets').replace('{workspace}',owner.name);
-    if(owner.widgets.some(widget=>widget.lockPluginEnabled&&widget.locked))throw new Error(translate(current.locale,'unlockWidgetsBeforeRemove'));
-    const count=owner.widgets.length,appIds=owner.widgets.filter(widget=>widget.type==='apps').map(widget=>widget.id);
+    if(preserveWidgetId&&!owner.widgets.some(widget=>widget.id===preserveWidgetId&&widget.type==='aiCommand'))throw new Error(translate(current.locale,'aiCommandChangedBeforeRun'));
+    const {preserved,removed}=assistantBulkRemovalSelection(owner.widgets,preserveWidgetId),locked=preserved.filter(widget=>widget.lockPluginEnabled&&widget.locked),preservedIds=new Set(preserved.map(widget=>widget.id));
+    if(!removed.length)return current.locale==='zh-CN'?'没有可移除的其他组件；锁定组件和 AI 指令组件均已保留。':'There are no other unlocked widgets to remove. Locked widgets and this AI Command were kept.';
+    const count=removed.length,appIds=removed.filter(widget=>widget.type==='apps').map(widget=>widget.id);
     undo.current=current;
-    setState({...current,workspaces:current.workspaces.map(item=>item.id===workspaceId?{...item,widgets:[]}:item)});
+    setState({...current,workspaces:current.workspaces.map(item=>item.id===workspaceId?{...item,widgets:item.widgets.filter(widget=>preservedIds.has(widget.id))}:item)});
     setAppAttachments(attachments=>Object.fromEntries(Object.entries(attachments).filter(([id])=>!appIds.includes(id))));
     for(const id of appIds)if(appPanel.available)void appPanel.release(id,current.closeAppOnWidgetClose).catch(error=>notify(translate(current.locale,'widgetsRemovedAppError').replace('{detail}',String(error))));
-    return `Removed ${count} widget${count===1?'':'s'} from ${owner.name}. Saved shortcuts and Groups in the tray were kept. Undo change restores the widget cards; attached app windows were returned to the desktop.`;
+    const lockedNote=locked.length?` Kept ${locked.length} locked widget${locked.length===1?'':'s'}.`:'';
+    return `Removed ${count} widget${count===1?'':'s'} from ${owner.name}.${lockedNote} Saved shortcuts and Groups in the tray were kept. Undo change restores the widget cards; attached app windows were returned to the desktop.`;
   }
   async function deleteAssistantWorkspace(workspaceId:string):Promise<string>{
     const current=captureState.current,owner=current.workspaces.find(item=>item.id===workspaceId);

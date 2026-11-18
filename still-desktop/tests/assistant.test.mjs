@@ -656,6 +656,11 @@ test('explicit all-widget tray requests resolve to real workspace IDs without re
   const {workspace}=fixture();
   assert.deepEqual(resolveDirectAssistantActions('add note',workspace,[]),[{type:'add_widget',ids:['notes']}]);
   assert.deepEqual(resolveDirectAssistantActions('remove focus',workspace,[]),[{type:'remove_widget',ids:[workspace.widgets.find(widget=>widget.type==='focus').id]}]);
+  const closeAllPrompt='close all widgets in the workspace',closeAll=resolveDirectAssistantActions(closeAllPrompt,workspace,[]);
+  assert.equal(closeAll,null,'bulk close commands use Still’s explicit confirmation flow instead of a provider action proposal');
+  assert.equal(unsupportedAssistantRequest(closeAllPrompt),'delete_widgets');
+  const closeFocus=resolveDirectAssistantActions('close all Focus widgets',workspace,[]);
+  assert.deepEqual(closeFocus,[{type:'remove_widget',ids:workspace.widgets.filter(widget=>widget.type==='focus').map(widget=>widget.id)}]);
   assert.equal(unsupportedAssistantRequest('remove all focus widgets'),null,'a type-specific removal must not be treated as removing every widget');
   assert.equal(unsupportedAssistantRequest('remove all widgets from this workspace'),'delete_widgets');
   const actions=resolveDirectAssistantActions('save all widget in this workspace into widget tray',workspace,[]);
@@ -674,6 +679,8 @@ test('the assistant only shows a layout proposal when layout was requested',()=>
   assert.equal(unsupportedAssistantRequest('delete all items in widget tray'),'clear_tray');
   assert.equal(unsupportedAssistantRequest('delete all widget on the workspace'),'delete_widgets');
   assert.equal(unsupportedAssistantRequest('remove every widget from this workspace'),'delete_widgets');
+  assert.equal(unsupportedAssistantRequest('close everything beside this locked widget'),'delete_widgets');
+  assert.equal(unsupportedAssistantRequest('close all widgets in this workspace'),'delete_widgets');
   assert.equal(unsupportedAssistantRequest('How do I delete all widgets on the workspace?'),null);
   assert.equal(assistantLayoutRequested('delete all widget on the workspace'),false);
   assert.equal(unsupportedAssistantRequest('How do I delete a saved tray item?'),null);

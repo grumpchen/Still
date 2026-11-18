@@ -720,7 +720,7 @@ export function unsupportedAssistantRequest(text:string):'clear_tray'|'delete_wi
   if(isQuestionOrExplanation(text))return null;
   if(/\b(?:delete|remove|clear|empty|erase|purge)\b[\s\S]{0,100}\b(?:all|every|entire|whole)\b[\s\S]{0,100}\b(?:widget\s+)?tray\b/i.test(text)||/\b(?:delete|remove|clear|empty|erase|purge)\b[\s\S]{0,100}\b(?:widget\s+)?tray\b[\s\S]{0,100}\b(?:all|every|entire|whole)\b/i.test(text))return 'clear_tray';
   const namesSpecificWidget=widgetTypes.some(type=>widgetNameMentioned(text,type));
-  if((/\b(?:delete|remove|clear|erase)\b[\s\S]{0,100}\b(?:all|every|entire|whole)\b[\s\S]{0,100}\bwidgets?\b(?:[\s\S]{0,60}\b(?:on|in|from)\s+(?:the\s+)?(?:current\s+)?(?:workspace|canvas))?/i.test(text)&&!namesSpecificWidget)||(/\b(?:delete|remove|clear|erase)\b[\s\S]{0,100}\bwidgets?\b[\s\S]{0,60}\b(?:on|in|from)\s+(?:the\s+)?(?:current\s+)?(?:workspace|canvas)\b/i.test(text)&&!namesSpecificWidget))return 'delete_widgets';
+  if((/\b(?:delete|remove|clear|close|erase)\b[\s\S]{0,100}\b(?:all|every|entire|whole)\b[\s\S]{0,100}\bwidgets?\b(?:[\s\S]{0,60}\b(?:on|in|from)\s+(?:the\s+)?(?:current\s+)?(?:workspace|canvas))?/i.test(text)&&!namesSpecificWidget)||(/\b(?:delete|remove|clear|close|erase)\b[\s\S]{0,100}\bwidgets?\b[\s\S]{0,60}\b(?:on|in|from)\s+(?:the\s+)?(?:current\s+)?(?:workspace|canvas)\b/i.test(text)&&!namesSpecificWidget)||/\b(?:delete|remove|clear|close|erase)\s+everything\b/i.test(text))return 'delete_widgets';
   if(/\b(?:delete|remove)\b[\s\S]{0,40}\b(?:this|current|active|the)?\s*workspace\b/i.test(text))return 'delete_workspace';
   return null;
 }
