@@ -3,7 +3,7 @@ import {mockAssistant} from './helpers/mock-assistant';
 
 test('assistant UI submits a prompt to the mocked provider and renders its response',async({page})=>{
  await mockAssistant(page,'Mock response: mitochondria produce cellular energy.');
- await page.addInitScript(()=>localStorage.setItem('still-first-run-tutorial-v1','done'));
+ await page.addInitScript(()=>{localStorage.setItem('still-first-run-tutorial-v1','done');localStorage.setItem('still-assistant-share-workspace-image','false')});
  await page.setViewportSize({width:1440,height:900});
  await page.goto('/design-preview.html');
  await page.getByRole('button',{name:'Ask AI',exact:true}).click();
