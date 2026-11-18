@@ -602,6 +602,19 @@ test('make notes widget is a permitted local creation command instead of a provi
   assert.equal(resolveDirectAssistantActions('Write an email saying make notes widget',workspace,[]),null,'writing and explanation requests remain general chat');
   assert.deepEqual(assistantActionRequest('make all widgets smaller'),[],'make can request a change without meaning creation');
 });
+test('short Files widget commands resolve locally without treating file requests as widget creation',()=>{
+  const {workspace}=fixture();
+  const tray=[{id:'saved-files',name:'Files',type:'files',kind:'preset'}];
+  for(const prompt of ['open a files','Please open a new Files card.','Could you open new Files?']){
+    const actions=resolveDirectAssistantActions(prompt,workspace,[],tray);
+    assert.deepEqual(actions,[{type:'add_widget',ids:['files']}]);
+    validateAssistantActionIntent(prompt,workspace,actions,tray);
+  }
+  for(const prompt of ['open a file','open a files folder','how do I open a Files widget?','do not open a files']){
+    assert.equal(resolveDirectAssistantActions(prompt,workspace,[]),null);
+  }
+  assert.deepEqual(resolveDirectAssistantActions('open saved Files',workspace,[],tray),[{type:'open_saved',ids:['saved-files']}]);
+});
 test('asking whether Still can edit a timetable must not create a timetable',()=>{
   const {workspace}=fixture();
   assert.deepEqual(assistantActionRequest('can you make edit to the timetable'),[]);

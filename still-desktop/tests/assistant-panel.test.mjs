@@ -142,6 +142,61 @@ test('opted-in provider agent proposals still pass through Still removal confirm
  }
 });
 
+test('AI Command opens a Files widget locally with DeepSeek selected',async()=>{
+ const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true});
+ const {window}=dom;
+ const globals={window,document:window.document,navigator:window.navigator,localStorage:window.localStorage,HTMLElement:window.HTMLElement,Element:window.Element,Node:window.Node,Event:window.Event,CustomEvent:window.CustomEvent,IS_REACT_ACT_ENVIRONMENT:true,isTauri:true};
+ const previous=new Map(Object.keys(globals).map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]));
+ const providerCalls=[],actions=[];
+ let root;
+ try{
+  for(const [key,value] of Object.entries(globals))setGlobal(key,value);
+  window.HTMLElement.prototype.scrollTo=function(){};
+  window.localStorage.setItem('still-assistant-model','deepseek::deepseek-flash');
+  window.localStorage.setItem('still-assistant-agent-preview','true');
+  mockIPC(command=>{
+   if(command==='assistant_configured')return true;
+   if(command==='assistant_models')return ['deepseek-flash'];
+   if(command==='assistant_chat'||command==='assistant_agent_turn'){
+    providerCalls.push(command);
+    throw new Error('DeepSeek returned an invalid answer. Try again.');
+   }
+   return null;
+  },{shouldMockEvents:true});
+  const {default:AssistantPanel}=await vite.ssrLoadModule('/src/AssistantPanel.tsx');
+  const {widgetRegistry}=await vite.ssrLoadModule('/src/widgets.tsx');
+  const workspace=createWorkspace('Study',[]),command=createWidget('aiCommand');
+  command.text='open a files';
+  workspace.widgets=[command];
+  root=createRoot(window.document.querySelector('#root'));
+  await act(async()=>root.render([
+   createElement(widgetRegistry.aiCommand.component,{key:'command',widget:command,update(){},obscured:false}),
+   createElement(AssistantPanel,{key:'assistant',workspace,open:true,close(){},dimensions:()=>({width:900,height:700}),apply(){},undo(){},act:async(id,batch,prompt)=>{
+    assert.equal(id,workspace.id);
+    assert.equal(prompt,command.text);
+    actions.push(...batch);
+    return 'Added to the canvas. Files.';
+   }}),
+  ]));
+  await waitFor(()=>window.document.querySelector('#ai-model option[value="deepseek::deepseek-flash"]'));
+  const run=window.document.querySelector('.ai-command-widget button.primary');
+  assert.ok(run);
+  await act(async()=>run.click());
+  await act(async()=>waitFor(()=>actions.length||providerCalls.length));
+  assert.deepEqual(actions,[{type:'add_widget',ids:['files']}]);
+  assert.deepEqual(providerCalls,[]);
+  assert.match(window.document.body.textContent,/Added to the canvas\. Files\./);
+ }finally{
+  if(root)await act(async()=>root.unmount());
+  clearMocks();
+  dom.window.close();
+  for(const [key,descriptor] of previous){
+   if(descriptor)Object.defineProperty(globalThis,key,descriptor);
+   else delete globalThis[key];
+  }
+ }
+});
+
 test('widget add commands show replies and provider chat carries complete action history',async()=>{
  const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true}),{window}=dom,old=new Map();
  for(const key of ['window','document','navigator','localStorage','HTMLElement','Element','Node','MutationObserver','requestAnimationFrame','cancelAnimationFrame','IS_REACT_ACT_ENVIRONMENT','isTauri'])old.set(key,Object.getOwnPropertyDescriptor(globalThis,key));

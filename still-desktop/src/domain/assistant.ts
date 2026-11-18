@@ -589,9 +589,13 @@ function resolveCourseAutoOpen(text:string,workspace:Workspace,selectedIds:strin
 export function assistantCourseAutoOpenClarification(text:string,workspace:Workspace,selectedIds:string[]):string|null{
   return courseAutoOpenRequest(text)&&!resolveCourseAutoOpen(text,workspace,selectedIds)?'Which linked course should I change? Use its exact name and select its Timetable if more than one matches.':null;
 }
+export function isFilesWidgetOpenCommand(text:string):boolean{
+  return /^(?:(?:please|can you|could you|would you)\s+)*open\s+(?:(?:a|an)\s+(?:new\s+)?|new\s+)files(?:\s+(?:widget|card))?(?:\s+please)?[.!?]*$/i.test(text.trim());
+}
 export function assistantActionRequest(text:string,savedTrayItems:AssistantTrayItem[]=[],workspaces:AssistantWorkspaceChoice[]=[]):AssistantActionType[]{
   const prompt=text.trim();
   if(isQuestionOrExplanation(prompt))return [];
+  if(isFilesWidgetOpenCommand(prompt))return ['add_widget'];
   const requested:AssistantActionType[]=[];
   if(courseEnvironmentRequest(prompt))requested.push('set_course_environment');
   if(courseAutoOpenRequest(prompt))requested.push('set_course_auto_open');
@@ -722,6 +726,7 @@ export function unsupportedAssistantRequest(text:string):'clear_tray'|'delete_wi
 }
 /** Resolve unambiguous local commands without asking the language model to reconstruct workspace IDs. */
 export function resolveDirectAssistantActions(text:string,workspace:Workspace,selectedWidgetIds:string[],savedTrayItems:AssistantTrayItem[]=[],workspaces:AssistantWorkspaceChoice[]=[]):AssistantAction[]|null{
+  if(isFilesWidgetOpenCommand(text))return [{type:'add_widget',ids:['files']}];
   const types=assistantActionRequest(text,savedTrayItems,workspaces);
   if(!types.length)return null;
   if(types.includes('set_course_environment')){const action=resolveCourseEnvironment(text,workspace,selectedWidgetIds,workspaces);return types.length===1&&action?[action]:null}
