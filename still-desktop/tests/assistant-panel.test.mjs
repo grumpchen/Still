@@ -369,11 +369,12 @@ test('AI Command asks once before removing unlocked widgets and keeps itself ava
   for(const [key,value] of Object.entries({window,document:window.document,navigator:window.navigator,localStorage:window.localStorage,HTMLElement:window.HTMLElement,Element:window.Element,Node:window.Node,Event:window.Event,MutationObserver:window.MutationObserver,requestAnimationFrame:callback=>setTimeout(()=>callback(Date.now()),0),cancelAnimationFrame:clearTimeout,IS_REACT_ACT_ENVIRONMENT:true,isTauri:true}))setGlobal(key,value);
   window.HTMLElement.prototype.scrollTo=function(){};window.HTMLTextAreaElement.prototype.focus=function(){};window.__TAURI_INTERNALS__={};
   const workspace=createWorkspace('Study',[]),command=createWidget('aiCommand'),note=createWidget('notes');
-  command.text='delete all widgets';command.lockPluginEnabled=true;command.locked=true;workspace.widgets=[command,note];
+  command.text='close everything beside this locked widget';command.lockPluginEnabled=true;command.locked=true;workspace.widgets=[command,note];
   const {default:AssistantPanel}=await vite.ssrLoadModule('/src/AssistantPanel.tsx');root=createRoot(window.document.querySelector('#root'));
   await act(async()=>root.render(createElement(AssistantPanel,{workspace,workspaces:[{id:workspace.id,name:workspace.name}],canDeleteWorkspace:true,sidebarPlugins:[],trayItems:[],open:true,close(){},dimensions:()=>({width:900,height:700}),apply(){},undo(){},deleteWidgets:async(workspaceId,preserveWidgetId)=>{removals.push({workspaceId,preserveWidgetId});return 'Removed the other widgets.'}})));
   const run=async()=>{await act(async()=>window.dispatchEvent(new window.CustomEvent('still-run-ai-command',{detail:{prompt:command.text,widgetId:command.id}})));await act(async()=>new Promise(resolve=>setTimeout(resolve,100)))};
   await run();await waitFor(()=>window.document.querySelector('.assistant-confirmation'));
+  assert.match(window.document.querySelector('.assistant-confirmation').textContent,/locked widgets and this AI Command will stay/i);
   assert.match(window.document.querySelector('.assistant-confirmation').textContent,/future runs of this saved command will not ask again/i);
   assert.equal(removals.length,0,'the first click waits for the user confirmation');
   await act(async()=>window.document.querySelector('.assistant-confirmation button.primary').click());
