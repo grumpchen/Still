@@ -333,11 +333,12 @@ fn restore(entry:&mut Entry){unsafe{
  let mut placement=entry.original_placement;if !entry.original_visible{placement.showCmd=SW_HIDE.0 as u32;}
  let _=SetWindowPlacement(hwnd,&placement);let _=ShowWindow(hwnd,if entry.original_visible{SW_SHOWNA}else{SW_HIDE});
 }}
+fn request_normal_close(hwnd:HWND)->bool{unsafe{IsWindow(Some(hwnd)).as_bool()&&PostMessageW(Some(hwnd),WM_CLOSE,windows::Win32::Foundation::WPARAM(0),LPARAM(0)).as_bool()}}
 fn apply_shutdown_action(hwnd:HWND,action:ShutdownAction){unsafe{
  if !IsWindow(Some(hwnd)).as_bool(){return}
  match action{
   ShutdownAction::Minimize=>{let _=ShowWindow(hwnd,SW_MINIMIZE);}
-  ShutdownAction::Close=>{let _=PostMessageW(Some(hwnd),WM_CLOSE,windows::Win32::Foundation::WPARAM(0),LPARAM(0));}
+  ShutdownAction::Close=>{let _=request_normal_close(hwnd);}
   ShutdownAction::LeaveOpen=>{}
  }
 }}
@@ -527,7 +528,8 @@ pub fn install(app:&AppHandle)->Result<(),String>{
  OWNER.store(main.0 as usize,std::sync::atomic::Ordering::Relaxed);
  unsafe{for (a,b) in [(EVENT_SYSTEM_FOREGROUND,EVENT_SYSTEM_FOREGROUND),(EVENT_OBJECT_DESTROY,EVENT_OBJECT_LOCATIONCHANGE)]{if SetWinEventHook(a,b,None,Some(event),0,0,WINEVENT_OUTOFCONTEXT).0.is_null(){return Err("Unable to synchronize application panels".into())}}}Ok(())
 }
-fn release(app:&AppHandle,id:&str,close_app:bool){if let Ok(mut s)=app.state::<AppPanelState>().0.lock(){*s.generation.entry(id.into()).or_default()+=1;s.pending.remove(id);if let Some(mut entry)=s.items.remove(id){let should_close=close_app&&valid_window(&entry);let hwnd=handle(entry.hwnd);clear_collection_marker(&mut entry);restore(&mut entry);if should_close{apply_shutdown_action(hwnd,ShutdownAction::Close);}}}}
+#[derive(Clone,Copy,Debug,Default,Serialize)]#[serde(rename_all="camelCase")]pub struct AppPanelReleaseResult{pub managed_window:bool,pub close_requested:bool}
+fn release(app:&AppHandle,id:&str,close_app:bool)->AppPanelReleaseResult{let Ok(mut s)=app.state::<AppPanelState>().0.lock()else{return AppPanelReleaseResult::default()};*s.generation.entry(id.into()).or_default()+=1;s.pending.remove(id);let Some(mut entry)=s.items.remove(id)else{return AppPanelReleaseResult::default()};let managed_window=valid_window(&entry);let hwnd=handle(entry.hwnd);clear_collection_marker(&mut entry);restore(&mut entry);let close_requested=close_app&&managed_window&&request_normal_close(hwnd);AppPanelReleaseResult{managed_window,close_requested}}
 pub fn shutdown(app:&AppHandle){let state=app.state::<AppPanelState>();if let Ok(mut s)=state.0.lock(){s.closed=true;s.pending.clear();let action=shutdown_action(s.shutdown_behavior);for (_,mut entry) in s.items.drain(){clear_collection_marker(&mut entry);let hwnd=handle(entry.hwnd);restore(&mut entry);apply_shutdown_action(hwnd,action);}};}
 
 #[tauri::command]
@@ -707,7 +709,7 @@ pub async fn app_panel_present(app:AppHandle,webview:Webview,id:String,bounds:Bo
  let main=owner()?;let entry=s.items.get(&id).ok_or("The app was closed. Reopen it below.")?;let result=info(entry,main,entry.fresh);drop(s);crate::native_panels::apply_order(&app);Ok(result)
 }
 #[tauri::command]
-pub async fn app_panel_release(app:AppHandle,webview:Webview,id:String,close_app:Option<bool>)->Result<(),String>{crate::security::authorize(&webview)?;instance(&id)?;release(&app,&id,close_app.unwrap_or(false));crate::native_panels::apply_order(&app);Ok(())}
+pub async fn app_panel_release(app:AppHandle,webview:Webview,id:String,close_app:Option<bool>)->Result<AppPanelReleaseResult,String>{crate::security::authorize(&webview)?;instance(&id)?;let result=release(&app,&id,close_app.unwrap_or(false));crate::native_panels::apply_order(&app);Ok(result)}
 
 pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
  let state=app.state::<AppPanelState>();let panels=state.0.lock().map_err(|_|"App panels unavailable")?;
