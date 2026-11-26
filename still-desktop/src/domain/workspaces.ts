@@ -54,7 +54,7 @@ export interface WidgetInstance {
   placement:Placement; minimized:boolean; restorePlacement:Placement|null; groupCollapsed:boolean;groupExpandedPlacement:Placement|null;shortcuts:WebShortcut[]; schedule:ScheduleEntry[];calendarEvents:StudyCalendarEvent[]; groupId:string|null;
 }
 export type WorkspaceRole='dashboard'|'study'|'library'|'custom';
-export interface DashboardLayoutSnapshot {order:string[];sizes:Record<string,{width:number;height:number}>}
+export interface DashboardLayoutSnapshot {order:string[];sizes:Record<string,{width:number;height:number}>;placements?:Record<string,Placement>}
 export interface Workspace { id: string; name: string; widgets: WidgetInstance[]; groups:SavedGroup[]; layout: 'canvas';role:WorkspaceRole;dashboardLayout?:DashboardLayoutSnapshot }
 export interface GlobalWorkspaceLayout {id:string;name:string;createdAt:number;widgets:WidgetInstance[];groups:SavedGroup[];dashboardLayout?:DashboardLayoutSnapshot;settings:{theme:'light'|'dark';density:'comfortable'|'compact';background:'solid'|'dots'|'transparent';appearance:Appearance;glass:GlassSettings}}
 /** True when a Focus or Clock add-on timer in this workspace has reached zero. */
@@ -219,9 +219,9 @@ export function cloneGlobalWorkspaceLayout(layout:GlobalWorkspaceLayout,target:W
   })}));
  const mergedGroups=target.role==='dashboard'?[...target.groups,...groups]:mode==='replace'?groups:[...target.groups,...groups];
  if(target.role==='dashboard'){
-  const prior=mode==='append'?(target.dashboardLayout?.order??[]):[],order=[...prior,...widgets.map(widget=>widget.id)],sizes=mode==='append'?{...(target.dashboardLayout?.sizes??{})}:{};
-  for(const widget of widgets)sizes[widget.id]={width:widget.placement.width,height:widget.placement.height};
-  return{...target,widgets:[...target.widgets,...widgets],groups:mergedGroups,dashboardLayout:{order,sizes}};
+  const prior=mode==='append'?(target.dashboardLayout?.order??[]):[],order=[...prior,...widgets.map(widget=>widget.id)],sizes=mode==='append'?{...(target.dashboardLayout?.sizes??{})}:{},placements=mode==='append'?{...(target.dashboardLayout?.placements??{})}:{};
+  for(const widget of widgets){sizes[widget.id]={width:widget.placement.width,height:widget.placement.height};placements[widget.id]=widget.placement}
+  return{...target,widgets:[...target.widgets,...widgets],groups:mergedGroups,dashboardLayout:{order,sizes,placements}};
  }
  return{...target,widgets:mode==='replace'?widgets:[...target.widgets,...widgets],groups:mergedGroups};
 }
@@ -317,16 +317,17 @@ export interface GlobalLayoutCapture {createdAt?:number;dashboardLayout?:Dashboa
 export function createGlobalWorkspaceLayout(name:string,source:Workspace,state:Pick<WorkspaceState,'theme'|'density'|'background'|'appearance'|'glass'>,capture:GlobalLayoutCapture={}):GlobalWorkspaceLayout{
  const clean=name.trim().replace(/\s+/g,' ').slice(0,60);if(!clean)throw new Error('Enter a layout name.');
  const layout=capture.dashboardLayout??source.dashboardLayout,visibleIds=capture.widgetIds??(source.role==='dashboard'?layout?.order??source.widgets.filter(widget=>['calendar','focus','timetable','files'].includes(widget.type)).map(widget=>widget.id):undefined),captureWidgets=capture.widgets??source.widgets,sourceWidgets=visibleIds?visibleIds.map(id=>captureWidgets.find(widget=>widget.id===id)).filter((widget):widget is WidgetInstance=>!!widget):captureWidgets;
- const widgets=sourceWidgets.map(widget=>{const saved=persistentLayoutWidgetSnapshot({...widget,placement:capture.placements?.[widget.id]??{...widget.placement,...(layout?.sizes[widget.id]??{})}});if(saved.end!==null){saved.remaining=Math.max(0,Math.ceil((saved.end-Date.now())/1000));saved.end=null}return saved});
+ const widgets=sourceWidgets.map(widget=>{const saved=persistentLayoutWidgetSnapshot({...widget,placement:capture.placements?.[widget.id]??layout?.placements?.[widget.id]??{...widget.placement,...(layout?.sizes[widget.id]??{})}});if(saved.end!==null){saved.remaining=Math.max(0,Math.ceil((saved.end-Date.now())/1000));saved.end=null}return saved});
  const groups=source.groups.map(group=>({...structuredClone(group),widgets:group.widgets.map(entry=>{if(entry.kind!=='collected'||!entry.instance)return structuredClone(entry);return{...structuredClone(entry),instance:persistentLayoutWidgetSnapshot(entry.instance)}})}));
- const dashboardLayout=source.role==='dashboard'?{order:visibleIds??widgets.map(widget=>widget.id),sizes:Object.fromEntries(widgets.map(widget=>[widget.id,{width:widget.placement.width,height:widget.placement.height}]))}:undefined;
+ const dashboardLayout=source.role==='dashboard'?{order:visibleIds??widgets.map(widget=>widget.id),sizes:Object.fromEntries(widgets.map(widget=>[widget.id,{width:widget.placement.width,height:widget.placement.height}])),placements:Object.fromEntries(widgets.map(widget=>[widget.id,widget.placement]))}:undefined;
  return{id:crypto.randomUUID(),name:clean,createdAt:capture.createdAt??Date.now(),widgets,groups,...(dashboardLayout?{dashboardLayout}:{}),settings:{theme:state.theme,density:state.density,background:state.background,appearance:state.appearance,glass:structuredClone(state.glass)}};
 }
 function checkedDashboardLayout(value:unknown,widgets:WidgetInstance[]):DashboardLayoutSnapshot|undefined{
  if(!value||typeof value!=='object'||Array.isArray(value))return undefined;const raw=value as Partial<DashboardLayoutSnapshot>,widgetIds=new Set(widgets.map(widget=>widget.id));if(!Array.isArray(raw.order))return undefined;
- const order=[...new Set(raw.order.filter((id):id is string=>typeof id==='string'&&widgetIds.has(id)))].slice(0,100),sizes:DashboardLayoutSnapshot['sizes']={};
+ const order=[...new Set(raw.order.filter((id):id is string=>typeof id==='string'&&widgetIds.has(id)))].slice(0,100),sizes:DashboardLayoutSnapshot['sizes']={},placements:NonNullable<DashboardLayoutSnapshot['placements']>={};
  if(raw.sizes&&typeof raw.sizes==='object')for(const [id,value] of Object.entries(raw.sizes))if(widgetIds.has(id)&&value&&typeof value==='object'&&Number.isFinite(value.width)&&Number.isFinite(value.height)){const width=Math.max(220,Math.min(2000,Math.round(value.width))),height=Math.max(180,Math.min(1600,Math.round(value.height)));sizes[id]={width,height}}
- return{order,sizes};
+ if(raw.placements&&typeof raw.placements==='object')for(const [id,value] of Object.entries(raw.placements))if(widgetIds.has(id)&&value&&typeof value==='object'&&Number.isFinite(value.x)&&Number.isFinite(value.y)&&Number.isFinite(value.width)&&Number.isFinite(value.height)){placements[id]={x:Math.max(0,Math.round(value.x)),y:Math.max(0,Math.round(value.y)),width:Math.max(220,Math.min(2000,Math.round(value.width))),height:Math.max(180,Math.min(1600,Math.round(value.height)))}}
+ return{order,sizes,placements};
 }
 export function parseGlobalWorkspaceLayouts(value:unknown):GlobalWorkspaceLayout[]{
  if(!Array.isArray(value))return[];const ids=new Set<string>(),result:GlobalWorkspaceLayout[]=[];
