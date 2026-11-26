@@ -19,17 +19,20 @@ for(const theme of ['light','dark'] as const){
   await expect(dashboard.locator('.dashboard-eyebrow')).toHaveCSS('color','rgb(203, 209, 216)');
   const surfaces=await dashboard.evaluate(el=>{
    const style=getComputedStyle(el);
-   const button=getComputedStyle(el.querySelector('.dashboard-hero-actions button')!);
+   const button=getComputedStyle(el.querySelector('.dashboard-hero-actions button:not(.primary)')!);
+   const todayButton=getComputedStyle(el.querySelector('.dashboard-today>button')!);
    const sidebar=getComputedStyle(document.querySelector('.sidebar')!);
-   return {scheme:style.colorScheme,background:style.backgroundColor,texture:style.backgroundImage,blur:style.backdropFilter,sidebarBlur:sidebar.backdropFilter,sidebarBackground:sidebar.backgroundColor,sidebarTexture:sidebar.backgroundImage,buttonColor:button.color,buttonBackground:button.backgroundColor};
+   return {scheme:style.colorScheme,background:style.backgroundColor,texture:style.backgroundImage,blur:style.backdropFilter,sidebarBlur:sidebar.backdropFilter,sidebarBackground:sidebar.backgroundColor,sidebarTexture:sidebar.backgroundImage,buttonColor:button.color,buttonBackground:button.backgroundColor,todayButtonColor:todayButton.color,todayButtonBackground:todayButton.backgroundColor};
   });
   expect(surfaces.scheme).toBe('dark');
   expect(surfaces.background).toBe(surfaces.sidebarBackground);
   expect(surfaces.texture).toBe(surfaces.sidebarTexture);
   expect(surfaces.blur).toBe(surfaces.sidebarBlur);
   expect(surfaces.blur).toContain('blur(');
-  expect(surfaces.buttonColor).toBe('rgb(255, 255, 255)');
+  expect(surfaces.buttonColor).toBe(theme==='dark'?'rgb(242, 246, 243)':'rgb(27, 42, 33)');
   expect(surfaces.buttonBackground).not.toBe('rgba(0, 0, 0, 0)');
+  expect(surfaces.todayButtonColor).toBe(theme==='dark'?'rgb(242, 246, 243)':'rgb(27, 42, 33)');
+  expect(surfaces.todayButtonBackground).not.toBe('rgba(0, 0, 0, 0)');
   await expect(dashboard.locator('.dashboard-hero-actions .primary')).toHaveCSS('color','rgb(255, 255, 255)');
   await expect(dashboard.locator('.dashboard-hero-actions .primary')).toHaveCSS('background-image',/linear-gradient/);
   await expect(dashboard.locator('.study-calendar-grid > button:not(.is-selected)').first()).toHaveCSS('background-color','rgba(0, 0, 0, 0)');
