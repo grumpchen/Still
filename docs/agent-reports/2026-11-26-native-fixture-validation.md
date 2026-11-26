@@ -16,3 +16,4 @@
 
 ## Handoff
 - Earlier reports of 141 Rust tests passing with two filtered fixtures do not establish native geometry behavior. The original reason for filtering was not preserved in the available report; no prior fixture failure is inferred.
+- The workflow also prints the executable SHA-256 in its log, so the candidate identity remains readable if artifact download is unavailable from the current environment.

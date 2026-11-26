@@ -90,6 +90,7 @@ jobs:
           $candidate = 'still-desktop/src-tauri/target/release/still-desktop.exe'
           $hash = (Get-FileHash $candidate -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  still-desktop.exe" | Set-Content "$candidate.sha256"
+          Write-Output "$hash  still-desktop.exe"
 
       - name: Native Windows workbench smoke
         if: ${{ !cancelled() && steps.executable.conclusion == 'success' }}
