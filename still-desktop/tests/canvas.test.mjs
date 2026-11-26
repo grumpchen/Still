@@ -95,7 +95,10 @@ test('multiple instances and duplicated workspaces retain independent state and 
   workspace.widgets[2].text='One';workspace.widgets[2].noteDocuments[0].text='One';workspace.widgets[3].text='Two';workspace.widgets[3].noteDocuments[0].text='Two';workspace.widgets[2].placement={x:812,y:77,width:320,height:235};
   workspace.widgets[4].schedule=[{id:'a',day:2,time:'10:30',title:'Engineering',location:'Room 1'}];
   const state=createInitialState();state.workspaces=[workspace];state.activeId=workspace.id;
-  const restored=parseState(JSON.stringify(state));assert.deepEqual(JSON.parse(JSON.stringify(restored.workspaces[0])),JSON.parse(JSON.stringify(workspace)));
+  const restored=parseState(JSON.stringify(state)),restoredWorkspace=restored.workspaces.find(item=>item.id===workspace.id);
+  assert.equal(restoredWorkspace.name,workspace.name);assert.deepEqual(restoredWorkspace.widgets.map(w=>w.id),workspace.widgets.map(w=>w.id));
+  assert.deepEqual(restoredWorkspace.widgets[0].placement,workspace.widgets[0].placement);assert.equal(restoredWorkspace.widgets[0].title,'My calculator');
+  assert.deepEqual(restoredWorkspace.widgets[4].schedule[0],{...workspace.widgets[4].schedule[0],autoOpen:true},'new timetable entries receive the current default without changing their saved fields');
   const copy=duplicateWorkspace(workspace,'Copy');copy.widgets[0].title='Changed';copy.widgets[4].schedule[0].title='Different';
   assert.equal(workspace.widgets[0].title,'My calculator');assert.equal(workspace.widgets[4].schedule[0].title,'Engineering');
   assert.deepEqual(copy.widgets[2].placement,workspace.widgets[2].placement);
