@@ -15,6 +15,7 @@ mod chatgpt_plan;
 mod chatgpt_responses;
 mod credential_store;
 mod startup;
+mod automation_runtime;
 #[cfg(windows)] mod app_panel;
 #[cfg(windows)] mod native_panels;
 #[cfg(windows)] mod native_resize;
@@ -22,6 +23,7 @@ mod startup;
 #[cfg(windows)] mod window_input;
 use tauri::Manager;
 fn main() {
+    #[cfg(windows)] automation_runtime::configure_webview2_background_timers();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -32,6 +34,7 @@ fn main() {
             app.manage(assistant::AssistantState::from_environment());
             app.manage(files::FolderRoots::load(app.handle())); app.manage(shortcuts::ShortcutState::default());
             app.manage(dropped_files::DocumentGrants::load(app.handle()));
+            automation_runtime::install(app.handle())?;
             app.manage(dropped_files::AppGrants::load(app.handle()));
             #[cfg(windows)] {
                 app.manage(app_panel::AppPanelState::default());
@@ -48,6 +51,7 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            automation_runtime::automation_ticks_since, automation_runtime::automation_runtime_status, automation_runtime::window_minimize_to_tray,
             assistant::assistant_configured, assistant::assistant_models, assistant::assistant_set_key, assistant::assistant_chat, assistant::assistant_agent_turn, assistant::assistant_key_setup,
             chatgpt_plan::chatgpt_plan_status, chatgpt_plan::chatgpt_plan_connect, chatgpt_plan::chatgpt_plan_disconnect, chatgpt_plan::chatgpt_plan_models, chatgpt_plan::chatgpt_plan_agent_turn,
             chrome::chrome_open, capture::widget_capture, capture::widget_export,
