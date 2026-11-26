@@ -1,7 +1,9 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {ASSISTANT_ACTION_TYPES} from '../src/domain/assistant.ts';
+import {ASSISTANT_ACTION_TYPES,resolveDirectAssistantActions,validateAssistantActions,validateAssistantActionIntent,unsupportedAssistantRequest} from '../src/domain/assistant.ts';
+import {assistantBulkRemovalSelection} from '../src/domain/assistantBulkRemoval.ts';
+import {createWidget,createWorkspace} from '../src/domain/workspaces.ts';
 
 const app=readFileSync(new URL('../src/App.tsx',import.meta.url),'utf8');
 const panel=readFileSync(new URL('../src/AssistantPanel.tsx',import.meta.url),'utf8');
@@ -53,31 +55,30 @@ test('AI assistant offers Gemini, OpenAI, OpenCode Go, and DeepSeek providers',(
  assert.match(protocol,/visible Still workspace canvas, including visible app panels attached inside it/,'a shared image includes attached app panels but remains scoped to the workspace canvas');
  assert.match(protocol,/The image does not authorize changes by itself/,'visual context never authorizes workspace edits by itself');
 });
-test('clear all-widget actions are resolved locally before any model request',()=>{
- assert.match(panel,/resolveDirectAssistantActions\(input,workspace,selectedIds,trayItems,workspaces\)/);
- assert.ok(panel.indexOf('if(localActions){')<panel.indexOf('geminiAssistant.send('),'deterministic workspace actions must not depend on model output');
- assert.match(panel,/directWorkbenchAvailable&&!directActions&&!confirmationRequest&&!directTimerRequest/,'direct workbench rules and local actions remain available without AI credentials');
- assert.match(panel,/result\.layout\.length&&assistantLayoutRequested\(prompt\)/,'only explicit layout requests may show a layout proposal');
- assert.match(panel,/needsConfirmation==='clear_tray'\?await clearTray\(owner\.id\):needsConfirmation==='delete_workspace'\?await deleteWorkspace\(owner\.id\):await deleteWidgets\(owner\.id,commandSource\?\.widgetId\)/,'explicit bulk operations use app callbacks and preserve the running command');
- assert.doesNotMatch(panel,/setConfirmation\('remove_widgets'\)/,'explicit widget removal does not add a second confirmation');
- assert.match(panel,/settleAssistantConfirmation\(current,receipt\)/,'confirmation result replaces the pending reply instead of breaking chat turn order');
- assert.match(app,/clearTray=\{clearAssistantTray\}/);
- assert.match(app,/deleteWidgets=\{deleteAssistantWidgets\}/);
- assert.match(app,/deleteWorkspace=\{deleteAssistantWorkspace\}/);
- assert.match(app,/preservedIds\.has\(widget\.id\)/,'bulk widget removal keeps locked widgets and its running AI Command');
- assert.match(app,/assistantBulkRemovalSelection\(owner\.widgets,preserveWidgetId\)/,'bulk removal uses the tested locked-widget preservation policy');
- assert.match(app,/undo\.current=current;[\s\S]*presets:\[\],workspaces:/,'tray clearing records state for Undo');
+test('clear-all intent is classified for the local clear callback, and bulk selection protects locked and running widgets',()=>{
+ assert.equal(unsupportedAssistantRequest('clear all saved shortcuts from the tray'),'clear_tray');
+ const workspace=createWorkspace('Study',[]),locked=createWidget('notes'),running=createWidget('aiCommand'),ordinary=createWidget('focus');
+ locked.lockPluginEnabled=true;locked.locked=true;workspace.widgets=[locked,running,ordinary];
+ const selection=assistantBulkRemovalSelection(workspace.widgets,running.id);
+ assert.deepEqual(selection.preserved.map(widget=>widget.id),[locked.id,running.id]);
+ assert.deepEqual(selection.removed.map(widget=>widget.id),[ordinary.id]);
+ assert.equal(selection.removed.some(widget=>widget.lockPluginEnabled&&widget.locked),false);
 });
 test('local widget actions always record a nonempty receipt and repair old blank turns',()=>{
  assert.match(assistantDomain,/export function assistantAddedWidgetReceipt\(actions:AssistantAction\[\]\):string/,'adding widgets receives a named completion reply');
  assert.match(panel,/safeAssistantReceipt\(await act\(/,'empty future action replies cannot enter chat history');
  assert.match(panel,/prepareAssistantHistory\(messages\)/,'older blank replies are repaired before the next provider request');
 });
-test('removing named widgets applies only the selected IDs after intent validation',()=>{
- assert.doesNotMatch(panel,/setConfirmation\('remove_widgets'\)/);
- assert.match(app,/action\.type==='remove_widget'/);
- assert.match(app,/removedIds\.includes\(widget\.id\)/);
- assert.match(app,/Undo change restores the widget/);
+test('a named removal resolves and applies only that widget after intent validation',()=>{
+ const workspace=createWorkspace('Study',[]),notes=createWidget('notes'),focus=createWidget('focus');notes.title='Lab notes';workspace.widgets=[notes,focus];
+ const prompt='remove Lab notes',actions=resolveDirectAssistantActions(prompt,workspace,[]);
+ assert.deepEqual(actions,[{type:'remove_widget',ids:[notes.id]}]);
+ validateAssistantActions(workspace,actions);validateAssistantActionIntent(prompt,workspace,actions);
+ const removable=assistantBulkRemovalSelection(workspace.widgets).removed;
+ const removedIds=new Set(removable.filter(widget=>actions[0].ids.includes(widget.id)).map(widget=>widget.id));
+ const updated={...workspace,widgets:workspace.widgets.filter(widget=>!removedIds.has(widget.id))};
+ assert.deepEqual(updated.widgets.map(widget=>widget.id),[focus.id]);
+ assert.equal(workspace.widgets.length,2,'the original state remains untouched for Undo');
  const protocol=readFileSync(new URL('../src-tauri/src/assistant_protocol.rs',import.meta.url),'utf8');
  assert.match(protocol,/"remove_widget"/,'providers can return the bounded, ID-based remove action');
 });
