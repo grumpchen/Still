@@ -18,7 +18,7 @@ export interface AutomationState {version:2;rules:AutomationRule[];receipts:Auto
 export interface AutomationStorage {getItem(key:string):string|null;setItem(key:string,value:string):void}
 export type AutomationLoadResult={ok:true;state:AutomationState}|{ok:false;error:'corrupt'|'unsupported-version';message:string}
 export interface AutomationOperationContext {ruleId:string;occurrenceKey:string;scheduledAt:string;attempt:number;idempotencyKey:string;captureEventId?:string}
-export interface AutomationCaptureEvent {eventId:string;capturedAt:string;resourceKind:'file'|'link';name:string;sourceWorkspaceId?:string}
+export interface AutomationCaptureEvent {eventId:string;capturedAt:string;resourceKind:'file'|'link'|'idea';name:string;sourceWorkspaceId?:string;widgetId?:string;linkOrigin?:string;linkId?:string;url?:string;resourceId?:string;documentId?:string}
 export type AutomationOperationResult={status:'succeeded';receiptId?:string;message?:string;changed?:boolean}|{status:'failed';message:string;retryable?:boolean}|{status:'needs_clarification';message:string}|{status:'outcome_unknown';message:string}
 /** Implementations must delegate to the same validated app operation service and deduplicate idempotencyKey durably. */
 export interface AutomationOperationService {execute(action:AutomationAction,context:AutomationOperationContext):Promise<AutomationOperationResult>}
@@ -154,7 +154,7 @@ async function evaluateAutomationRulesNow(o:EvaluateOptions):Promise<{ok:true;st
   results.push(unknown);
  }
  let due=dueAutomationOccurrences(state,now);
- if(o.pendingCapture)for(const rule of state.rules)if(rule.enabled&&rule.trigger.kind==='onCapture'&&rule.action.kind==='fileResourcesToCourse'&&rule.action.resourceKinds.includes(o.pendingCapture.resourceKind)&&o.pendingCapture.name.toLocaleLowerCase().includes(rule.action.queryPattern.toLocaleLowerCase())&&(!rule.action.sourceWorkspaceId||rule.action.sourceWorkspaceId===o.pendingCapture.sourceWorkspaceId)){
+ if(o.pendingCapture)for(const rule of state.rules)if(rule.enabled&&rule.trigger.kind==='onCapture'&&rule.action.kind==='fileResourcesToCourse'&&o.pendingCapture.resourceKind!=='idea'&&rule.action.resourceKinds.includes(o.pendingCapture.resourceKind)&&o.pendingCapture.name.toLocaleLowerCase().includes(rule.action.queryPattern.toLocaleLowerCase())&&(!rule.action.sourceWorkspaceId||rule.action.sourceWorkspaceId===o.pendingCapture.sourceWorkspaceId)){
   const occurrenceKey=`capture-event:${o.pendingCapture.eventId}`,old=state.receipts.find(x=>x.ruleId===rule.id&&x.occurrenceKey===occurrenceKey);
   if(!old||old.status==='failed'&&old.retryable)due.push({rule,occurrenceKey,scheduledAt:now.toISOString()});
  }
@@ -167,7 +167,7 @@ async function evaluateAutomationRulesNow(o:EvaluateOptions):Promise<{ok:true;st
   const currentRule=state.rules.find(x=>x.id===candidate.rule.id);
   if(!currentRule?.enabled||JSON.stringify(currentRule.action)!==JSON.stringify(candidate.rule.action)||JSON.stringify(currentRule.trigger)!==JSON.stringify(candidate.rule.trigger))continue;
   if(currentRule.requiresModeChoice||(currentRule.action.kind==='prepareWorkspaceLayout'&&!currentRule.action.mode))continue;
-  if(currentRule.trigger.kind==='onCapture'&&(!o.pendingCapture||currentRule.action.kind!=='fileResourcesToCourse'||!currentRule.action.resourceKinds.includes(o.pendingCapture.resourceKind)||!o.pendingCapture.name.toLocaleLowerCase().includes(currentRule.action.queryPattern.toLocaleLowerCase())||(currentRule.action.sourceWorkspaceId&&currentRule.action.sourceWorkspaceId!==o.pendingCapture.sourceWorkspaceId)))continue;
+  if(currentRule.trigger.kind==='onCapture'&&(!o.pendingCapture||o.pendingCapture.resourceKind==='idea'||currentRule.action.kind!=='fileResourcesToCourse'||!currentRule.action.resourceKinds.includes(o.pendingCapture.resourceKind)||!o.pendingCapture.name.toLocaleLowerCase().includes(currentRule.action.queryPattern.toLocaleLowerCase())||(currentRule.action.sourceWorkspaceId&&currentRule.action.sourceWorkspaceId!==o.pendingCapture.sourceWorkspaceId)))continue;
   const prior=state.receipts.find(x=>x.ruleId===currentRule.id&&x.occurrenceKey===candidate.occurrenceKey);
   if(prior&&(prior.status==='succeeded'||prior.status==='needs_clarification'||prior.status==='outcome_unknown'||prior.status==='running'||prior.status==='failed'&&!prior.retryable))continue;
   const activeKey=`${currentRule.id}/${candidate.occurrenceKey}`;

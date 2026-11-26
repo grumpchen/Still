@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { AutomationRunnerController } from '../src/domain/automationRunner.ts';
 import { createAutomationRuntime, AUTOMATION_TICK_EVENT } from '../src/platform/automationRuntime.ts';
+import { createAutomationCaptureInbox } from '../src/platform/automationCaptureInbox.ts';
 import { emptyAutomationState, saveAutomationState } from '../src/domain/automationRules.ts';
 
 class MemoryStorage { values=new Map();getItem(key){return this.values.get(key)??null}setItem(key,value){this.values.set(key,value)} }
@@ -41,4 +42,16 @@ test('capture queue uses stable business event IDs and failed ACK stays visible 
  const runner=new AutomationRunnerController({storage,runtime:{native:false,runtimeStatus:async()=>status('web',0),ticksSince:async()=>({runtimeId:'web',requestedAfterSequence:0,oldestAvailableSequence:null,latestSequence:0,ticks:[]}),subscribeTicks:async()=>()=>{},hideToTray:async()=>{}},getCaptureQueue:()=>queue,getService:()=>({execute:async(action,context)=>{calls++;assert.equal(context.captureEventId,event.eventId);return{status:'succeeded',receiptId:'real-op'}}}),setPreviewInterval:()=>1,clearPreviewInterval:()=>{},onSnapshot:()=>{}});
  await runner.start();assert.equal(runner.getSnapshot().mode,'web-preview-page-open');assert.match(runner.getSnapshot().error,/acknowledged/);assert.equal(runner.getSnapshot().pendingCaptures.length,1);assert.equal(calls,1);
  await runner.runDueNow();assert.equal(ackAttempts,2);assert.equal(calls,1);assert.equal(runner.getSnapshot().pendingCaptures.length,0);runner.stop();
+});
+
+test('persisted capture notification wakes native runner and executes only the referenced event',async()=>{
+ const storage=new MemoryStorage(),target=new EventTarget(),queue=createAutomationCaptureInbox(storage,target),captureRule={version:2,id:'capture-live',enabled:true,createdAt:'2026-01-01T00:00:00.000Z',updatedAt:'2026-01-01T00:00:00.000Z',sourceText:'file lecture',trigger:{kind:'onCapture'},action:{kind:'fileResourcesToCourse',courseId:'course',workspaceId:'w',resourceKinds:['file'],queryPattern:'lecture'}};
+ saveAutomationState(storage,{version:2,rules:[captureRule],receipts:[]});let listener,calls=[];
+ const runtime={native:true,runtimeStatus:async()=>status('runtime',0),ticksSince:async cursor=>({runtimeId:'runtime',requestedAfterSequence:cursor.sequence,oldestAvailableSequence:null,latestSequence:0,ticks:[]}),subscribeTicks:async callback=>{listener=callback;return()=>{listener=null}},hideToTray:async()=>{}};
+ const runner=new AutomationRunnerController({storage,runtime,getCaptureQueue:()=>queue,getService:()=>({execute:async(action,context)=>{calls.push({action,context});return{status:'succeeded',receiptId:'collection-receipt-1'}}}),onSnapshot:()=>{}});
+ await runner.start();assert.equal(typeof listener,'function');
+ const saved=queue.recordSavedCapture('capture-stable-id',{kind:'file',workspaceId:'w',widgetId:'files-widget',sourceId:'native-source-id',name:'Lecture 4.pdf'});assert.equal(saved.ok,true);
+ await new Promise(resolve=>setTimeout(resolve,20));
+ assert.equal(calls.length,1);assert.equal(calls[0].context.captureEventId,'capture-stable-id');assert.equal(calls[0].context.occurrenceKey,'capture-event:capture-stable-id');assert.equal(calls[0].action.queryPattern,'lecture');
+ assert.equal(queue.pending().value.length,0);assert.equal(queue.get('capture-stable-id').value.status,'acknowledged');runner.stop();
 });

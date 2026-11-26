@@ -3,6 +3,7 @@ import {createAutomationRule,loadAutomationState,parseAutomationRule,saveAutomat
 import {AutomationRunnerController,type AutomationCaptureQueue,type AutomationRunnerSnapshot} from './domain/automationRunner.ts';
 import type {AutomationRuntimePort} from './platform/automationRuntime.ts';
 import {automationRuntime} from './platform/automationRuntime.ts';
+import {automationCaptureInbox} from './platform/automationCaptureInbox.ts';
 import type {AutomationOperationService} from './domain/automationRules.ts';
 
 export type CreateFromTextResult=RuleParseResult|{kind:'error';message:string};
@@ -34,7 +35,7 @@ export function useAutomationRunner(options:UseAutomationRunnerOptions):Automati
  const controller=useRef<AutomationRunnerController|null>(null);
  useEffect(()=>{
   const current=latest.current;
-  const instance=new AutomationRunnerController({storage:current.storage,runtime:current.runtime??automationRuntime,getService:()=>latest.current.getService(),getCaptureQueue:()=>latest.current.getCaptureQueue?.(),onSnapshot:setSnapshot});
+  const instance=new AutomationRunnerController({storage:current.storage,runtime:current.runtime??automationRuntime,getService:()=>latest.current.getService(),getCaptureQueue:()=>latest.current.getCaptureQueue?.()??automationCaptureInbox,onSnapshot:setSnapshot});
   controller.current=instance;
   void instance.start().catch(error=>setSnapshot(value=>({...value,mode:'runtime-error',error:error instanceof Error?error.message:String(error)})));
   return()=>{instance.stop();if(controller.current===instance)controller.current=null};
