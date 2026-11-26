@@ -4,6 +4,7 @@ import {startupDeferredWidgetIds,applyRelaunchModeToAll,type WidgetRelaunchMode,
 import {type ClockPluginMode} from './domain/clockPlugin.ts';
 import {createNoteDocument,NOTE_DOCUMENT_LIMIT} from './domain/noteDocuments.ts';
 import {assistantBulkRemovalSelection} from './domain/assistantBulkRemoval.ts';
+import {closeNativeAppsBeforeMutation,moveWithRetainedNativePanel,NativeAppRemovalError} from './domain/nativeWidgetLifecycle.ts';
 import { Icon } from './Icon.tsx';
 import {LocaleContext,localizeOperationalMessage,translate,type Locale} from './localization.tsx';
 import BrandMark from './BrandMark.tsx';
@@ -195,19 +196,23 @@ export default function App(){
   function toggleWidgetTray(){setWidgetTrayHidden(value=>!value)}
   function hideWidgetTray(){setWidgetTrayHidden(true);setModal(null)}
   function boundNewWidget(widget:WidgetInstance,widgets:WidgetInstance[],width?:number){const viewport=document.querySelector<HTMLElement>('.workspace-surface:not([hidden]) .canvas-viewport'),viewportWidth=viewport?.clientWidth??1000,viewportHeight=viewport?.clientHeight??700;const extent=width??canvasExtent(viewportWidth,[...widgets,widget]),height=canvasHeight(viewportHeight,widgets);return {...widget,placement:constrainPlacement(widget.type,widget.placement,extent,{width:widget.appPanelOpen?widget.appMinWidth:undefined,height:widget.appPanelOpen?widget.appMinHeight:undefined},height)}}
-  function transferWidget(sourceWorkspaceId:string,widgetId:string,destinationId:string,previewPlacement?:WidgetInstance['placement'],previewRestorePlacement?:WidgetInstance['restorePlacement']){
-    if(sourceWorkspaceId===destinationId)return;
-    const source=state.workspaces.find(w=>w.id===sourceWorkspaceId),destination=state.workspaces.find(w=>w.id===destinationId),widget=source?.widgets.find(item=>item.id===widgetId);
-    if(!source||!destination||!widget)return;
-    if(widget.lockPluginEnabled&&widget.locked){notify(translate(captureState.current.locale,'unlockWidgetBeforeMove'));return}
-    undo.current=state;
-    const viewport=document.querySelector<HTMLElement>('.workspace-surface:not([hidden]) .canvas-viewport'),viewportWidth=viewport?.clientWidth??1000,viewportHeight=viewport?.clientHeight??700;
-    const width=canvasExtent(viewportWidth,destination.widgets),height=canvasHeight(viewportHeight,destination.widgets);
-    const sourceForTransfer=previewPlacement?{...source,widgets:source.widgets.map(item=>item.id===widgetId?{...item,placement:previewPlacement,...(previewRestorePlacement?{restorePlacement:previewRestorePlacement}:{})}:item)}:source;
-    const transfer=transferWidgetInstance(sourceForTransfer,destination,widgetId,width,height);if(!transfer)return;
-    setState(s=>({...s,activeId:s.followWidgetToWorkspace?destinationId:s.activeId,workspaces:s.workspaces.map(w=>w.id===sourceWorkspaceId?transfer.source:w.id===destinationId?transfer.destination:w)}));
-    setArrange(false);notify(translate(state.locale,'widgetMovedToWorkspace').replace('{widget}',widget.title.trim()||translate(state.locale,'widget_'+widget.type)).replace('{workspace}',destination.name));
+  async function transferWidgetSafely(sourceWorkspaceId:string,widgetId:string,destinationId:string,previewPlacement?:WidgetInstance['placement'],previewRestorePlacement?:WidgetInstance['restorePlacement']):Promise<string>{
+    const initial=captureState.current,initialSource=initial.workspaces.find(w=>w.id===sourceWorkspaceId),initialWidget=initialSource?.widgets.find(item=>item.id===widgetId),initialDestination=initial.workspaces.find(w=>w.id===destinationId);
+    if(sourceWorkspaceId===destinationId)throw new Error('Choose another workspace.');if(!initialSource||!initialDestination||!initialWidget)throw new Error('The widget or destination workspace is no longer available.');
+    if(initialWidget.lockPluginEnabled&&initialWidget.locked)throw new Error(translate(initial.locale,'unlockWidgetBeforeMove'));
+    const keepNative=appPanel.available&&initialWidget.type==='apps'&&(initialWidget.appPanelOpen===true||initialWidget.appWasCollected===true||!!appAttachments[widgetId]);
+    return moveWithRetainedNativePanel(widgetId,keepNative,appPanel,async()=>{
+      const current=captureState.current,source=current.workspaces.find(item=>item.id===sourceWorkspaceId),destination=current.workspaces.find(item=>item.id===destinationId),widget=source?.widgets.find(item=>item.id===widgetId);
+      if(current.activeId!==sourceWorkspaceId||!source||!destination||!widget)throw new Error('The workspace changed while the app was being hidden. The widget was not moved.');
+      if(widget.lockPluginEnabled&&widget.locked)throw new Error(translate(current.locale,'unlockWidgetBeforeMove'));
+      const viewport=document.querySelector<HTMLElement>('.workspace-surface:not([hidden]) .canvas-viewport'),viewportWidth=viewport?.clientWidth??1000,viewportHeight=viewport?.clientHeight??700,width=canvasExtent(viewportWidth,destination.widgets),height=canvasHeight(viewportHeight,destination.widgets);
+      const sourceForTransfer=previewPlacement?{...source,widgets:source.widgets.map(item=>item.id===widgetId?{...item,placement:previewPlacement,...(previewRestorePlacement?{restorePlacement:previewRestorePlacement}:{})}:item)}:source,transfer=transferWidgetInstance(sourceForTransfer,destination,widgetId,width,height);
+      if(!transfer)throw new Error('The widget could not be moved. Its source data was kept.');
+      const receipt=`Moved ${widget.title.trim()||translate(current.locale,'widget_'+widget.type)} to “${destination.name}”.`,next={...current,activeId:current.followWidgetToWorkspace?destinationId:current.activeId,workspaces:current.workspaces.map(item=>item.id===sourceWorkspaceId?transfer.source:item.id===destinationId?transfer.destination:item)};
+      undo.current=current;setState(next);setArrange(false);return receipt;
+    });
   }
+  function transferWidget(sourceWorkspaceId:string,widgetId:string,destinationId:string,previewPlacement?:WidgetInstance['placement'],previewRestorePlacement?:WidgetInstance['restorePlacement']){void transferWidgetSafely(sourceWorkspaceId,widgetId,destinationId,previewPlacement,previewRestorePlacement).then(notify).catch(error=>notify(String((error as Error).message??error)))}
   function openAppsTrayDialog(workspaceId:string){setAppTarget({workspaceId});setAppsDialogMode('attach');setModal('appsTray')}
   function stackWidgets(){const viewport=document.querySelector<HTMLElement>('.workspace-surface:not([hidden]) .canvas-viewport'),width=canvasExtent(viewport?.clientWidth??1000,workspace.widgets),height=canvasHeight(viewport?.clientHeight??700,workspace.widgets);undo.current=state;setState(s=>({...s,workspaces:s.workspaces.map(w=>w.id===s.activeId?{...w,widgets:stackWorkspaceWidgets(w.widgets,width,height)}:w)}));notify(translate(captureState.current.locale,'widgetsArrangedIntoStacks'))}
   function addSidebarPlugin(plugin:SidebarPlugin){setState(s=>s.sidebarPlugins.includes(plugin)?s:{...s,sidebarPlugins:[...s.sidebarPlugins,plugin]});setModal(null);notify(translate(captureState.current.locale,'sidebarPluginAdded').replace('{name}',translate(captureState.current.locale,plugin==='stack'?'stack':'layout')))}
@@ -393,18 +398,61 @@ export default function App(){
     setState(value=>({...value,workspaces:value.workspaces.map(item=>item.id!==workspaceId?item:{...item,widgets:item.widgets.map(widget=>widget.id!==widgetId?widget:{...widget,calendarEvents:merged})})}));
     return translate(state.locale,'calendarProposalAdded').replace('{count}',String(safeDrafts.length));
   }
+  function markAppPanelsNoLongerOpen(snapshot:WorkspaceState,ids:readonly string[]):WorkspaceState{
+    if(!ids.length)return snapshot;const closed=new Set(ids);
+    return{...snapshot,workspaces:snapshot.workspaces.map(owner=>({...owner,widgets:owner.widgets.map(widget=>closed.has(widget.id)&&widget.type==='apps'?{...widget,appPanelOpen:false,appWasCollected:false}:widget),groups:owner.groups.map(group=>({...group,widgets:group.widgets.map(entry=>entry.kind==='collected'&&closed.has(entry.id)&&entry.instance?{...entry,instance:{...entry.instance,appPanelOpen:false,appWasCollected:false}}:entry)}))}))};
+  }
+  function clearReleasedAppAttachments(ids:readonly string[]){if(ids.length){const released=new Set(ids);setAppAttachments(current=>Object.fromEntries(Object.entries(current).filter(([id])=>!released.has(id))))}}
+  async function commitAfterNativeAppClose<T>(appIds:string[],build:(current:WorkspaceState,closeRequestedIds:readonly string[])=>{next:WorkspaceState;value:T}):Promise<{value:T;closeRequestedIds:string[]}>{
+    const previousUndo=undo.current,nativeIds=appPanel.available?[...new Set(appIds)]:[];
+    try{
+      const result=await closeNativeAppsBeforeMutation(nativeIds,appPanel,closeRequestedIds=>{
+        const current=captureState.current,plan=build(current,closeRequestedIds),closedState=markAppPanelsNoLongerOpen(current,closeRequestedIds);undo.current=closedState;
+        try{commitSnapshot(plan.next)}catch(error){undo.current=previousUndo;throw new Error('Could not persist the native app removal.',{cause:error})}
+        return plan.value;
+      });clearReleasedAppAttachments(result.closeRequestedIds);return result;
+    }catch(error){
+      const closeRequestedIds=error instanceof NativeAppRemovalError?error.closeRequestedIds:[],desktopReleasedIds=error instanceof NativeAppRemovalError?error.desktopReleasedIds:[],completedIds=[...closeRequestedIds,...desktopReleasedIds];clearReleasedAppAttachments(completedIds);undo.current=previousUndo;
+      if(completedIds.length){const latest=captureState.current;try{commitSnapshot(markAppPanelsNoLongerOpen(latest,completedIds))}catch{}const why=error instanceof NativeAppRemovalError&&error.cause instanceof Error?error.cause.message:String(error),closeNote=closeRequestedIds.length?`A normal close request was sent to ${closeRequestedIds.length} app window${closeRequestedIds.length===1?'':'s'}.`:desktopReleasedIds.length?`${desktopReleasedIds.length} app panel${desktopReleasedIds.length===1?' was':'s were'} released to the desktop without an accepted close request.`:'No normal close request was accepted.';throw new Error(`${closeNote} The Still change was not completed: ${why}. Widget data was kept; Undo will not reopen those windows.`)}
+      const cause=error instanceof NativeAppRemovalError?error.cause:error;throw cause instanceof Error?cause:new Error(String(cause));
+    }
+  }
+  async function removeAssistantWidgetIds(workspaceId:string,ids:string[],preserveWidgetId?:string,bulk=false):Promise<string>{
+    const initial=captureState.current,initialOwner=initial.workspaces.find(item=>item.id===workspaceId);
+    if(!initialOwner||initial.activeId!==workspaceId)throw new Error('The active workspace changed. Nothing was removed; try again.');
+    if(initialOwner.role==='dashboard'||initialOwner.role==='library')throw new Error(translate(initial.locale,initialOwner.role==='dashboard'?'dashboardModulesFixed':'libraryModulesFixed'));
+    const selected=[...new Set(ids)],initialTargets=initialOwner.widgets.filter(widget=>selected.includes(widget.id));
+    if(!selected.length||initialTargets.length!==selected.length)throw new Error('One or more selected widgets are no longer available. Nothing was removed.');
+    if(preserveWidgetId&&selected.includes(preserveWidgetId))throw new Error(translate(initial.locale,'aiCommandChangedBeforeRun'));
+    if(initialTargets.some(widget=>widget.lockPluginEnabled&&widget.locked))throw new Error(translate(initial.locale,'unlockWidgetBeforeRemove'));
+    const nativeIds=initialTargets.filter(widget=>widget.type==='apps'&&(widget.appPanelOpen||widget.appWasCollected||!!appAttachments[widget.id])).map(widget=>widget.id);
+    const {value}=await commitAfterNativeAppClose(nativeIds,(current,requested)=>{
+      const owner=current.workspaces.find(item=>item.id===workspaceId);if(!owner||current.activeId!==workspaceId)throw new Error('The active workspace changed while closing its app. Nothing was removed.');
+      const targets=owner.widgets.filter(widget=>selected.includes(widget.id));if(targets.length!==selected.length)throw new Error('The selected widget changed while its app was closing. Nothing was removed.');
+      if(preserveWidgetId&&!owner.widgets.some(widget=>widget.id===preserveWidgetId&&widget.type==='aiCommand'))throw new Error(translate(current.locale,'aiCommandChangedBeforeRun'));
+      if(targets.some(widget=>widget.lockPluginEnabled&&widget.locked))throw new Error(translate(current.locale,'unlockWidgetBeforeRemove'));
+      const next={...current,workspaces:current.workspaces.map(item=>item.id===workspaceId?{...item,widgets:item.widgets.filter(widget=>!selected.includes(widget.id))}:item)};
+      const removedNames=targets.map(widget=>widget.title.trim()||translate(current.locale,'widget_'+widget.type)),lockedCount=owner.widgets.filter(widget=>widget.lockPluginEnabled&&widget.locked&&(!preserveWidgetId||widget.id!==preserveWidgetId)).length,lockedNote=bulk&&lockedCount?` Kept ${lockedCount} locked widget${lockedCount===1?'':'s'}.`:'';
+      const closeNote=requested.length?` Sent normal close request for ${requested.length} Apps window${requested.length===1?'':'s'}; Undo restores the cards without reopening those windows.`:'';
+      return{next,value:`Removed ${removedNames.join(', ')} from ${owner.name}.${lockedNote}${closeNote}`};
+    });
+    return value;
+  }
   async function applyAssistantActions(workspaceId:string,actions:AssistantAction[],prompt:string,selectedIds:string[]):Promise<string>{
     const initial=captureState.current,initialWorkspace=initial.workspaces.find(item=>item.id===workspaceId);
     if(!initialWorkspace||initial.activeId!==workspaceId)throw new Error(translate(captureState.current.locale,'activeWorkspaceChanged'));
     if((initialWorkspace.role==='dashboard'||initialWorkspace.role==='library')&&actions.some(action=>['add_widget','open_saved','remove_widget','minimize','restore'].includes(action.type)))throw new Error(translate(initial.locale,initialWorkspace.role==='dashboard'?'dashboardModulesImmutable':'libraryModulesFixed'));
     const initialTray=assistantTrayItems(initial.presets,initialWorkspace.groups);
     const workspaceChoices=initial.workspaces.map(item=>({id:item.id,name:item.name}));validateAssistantActions(initialWorkspace,actions,initialTray,workspaceChoices);validateAssistantActionIntent(prompt,initialWorkspace,actions,initialTray,workspaceChoices,selectedIds);
+    const removeWidgetAction=actions.find(action=>action.type==='remove_widget');
+    if(removeWidgetAction&&actions.length===1)return removeAssistantWidgetIds(workspaceId,removeWidgetAction.ids);
+    if(removeWidgetAction&&removeWidgetAction.ids.some(id=>initialWorkspace.widgets.find(widget=>widget.id===id)?.type==='apps'))throw new Error('Removing an Apps widget must be the only action so Still can safely close its native window first. Nothing was changed.');
     const createAction=actions.find(action=>action.type==='create_workspace');
     if(createAction){if(actions.length!==1||initial.workspaces.length>=MAX_ASSISTANT_WORKSPACES)throw new Error(`Still supports up to ${MAX_ASSISTANT_WORKSPACES} workspaces. Nothing was changed.`);const name=workspaceName(createAction.title!.trim()),created=createWorkspace(name,createAction.ids as WidgetType[]);undo.current=initial;setState({...initial,activeId:created.id,workspaces:[...initial.workspaces,created]});return `Created workspace “${name}”.`}
     const switchAction=actions.find(action=>action.type==='switch_workspace');
     if(switchAction){if(actions.length!==1)throw new Error('Switching workspaces must be the only action in that request.');const destination=initial.workspaces.find(item=>item.id===switchAction.ids[0]);if(!destination)throw new Error('That workspace no longer exists. Nothing was changed.');setState(value=>({...value,activeId:destination.id}));setArrange(false);return `Switched to “${destination.name}”.`;}
     const moveAction=actions.find(action=>action.type==='move_widget');
-    if(moveAction){if(actions.length!==1||!moveAction.workspaceId)throw new Error('Moving a widget must be the only action in that request.');const source=initialWorkspace.widgets.find(widget=>widget.id===moveAction.ids[0]),destination=initial.workspaces.find(item=>item.id===moveAction.workspaceId);if(!source||!destination)throw new Error('The widget or destination workspace no longer exists. Nothing was changed.');if(initialWorkspace.role==='dashboard'||initialWorkspace.role==='library'||destination.role==='dashboard'||destination.role==='library')throw new Error('Built-in Dashboard and Library widgets cannot be moved between workspaces. Nothing was changed.');if(destination.widgets.length>=MAX_ASSISTANT_WIDGETS)throw new Error(`The destination workspace is limited to ${MAX_ASSISTANT_WIDGETS} widgets. Nothing was changed.`);if(source.lockPluginEnabled&&source.locked)throw new Error('Unlock the widget before moving it. Nothing was changed.');if(source.type==='apps'&&source.appPanelOpen)throw new Error('Close or detach the native app before moving its workspace card. Nothing was changed.');transferWidget(workspaceId,source.id,destination.id);return `Moved ${source.title.trim()||translate(initial.locale,'widget_'+source.type)} to “${destination.name}”.`;}
+    if(moveAction){if(actions.length!==1||!moveAction.workspaceId)throw new Error('Moving a widget must be the only action in that request.');const source=initialWorkspace.widgets.find(widget=>widget.id===moveAction.ids[0]),destination=initial.workspaces.find(item=>item.id===moveAction.workspaceId);if(!source||!destination)throw new Error('The widget or destination workspace no longer exists. Nothing was changed.');if(initialWorkspace.role==='dashboard'||initialWorkspace.role==='library'||destination.role==='dashboard'||destination.role==='library')throw new Error('Built-in Dashboard and Library widgets cannot be moved between workspaces. Nothing was changed.');if(destination.widgets.length>=MAX_ASSISTANT_WIDGETS)throw new Error(`The destination workspace is limited to ${MAX_ASSISTANT_WIDGETS} widgets. Nothing was changed.`);if(source.lockPluginEnabled&&source.locked)throw new Error('Unlock the widget before moving it. Nothing was changed.');return await transferWidgetSafely(workspaceId,source.id,destination.id);}
     if(actions.some(action=>action.type==='undo')){if(actions.length!==1)throw new Error('Undo must be the only action in that request.');if(!undo.current)throw new Error(translate(initial.locale,'noPreviousLayout'));const previous=undo.current;undo.current=null;setState(previous);setArrange(false);return 'Undid the previous Still change.';}
     const tutorialAction=actions.find(action=>action.type==='run_tutorial');
     if(tutorialAction){if(actions.length!==1)throw new Error('Opening the tutorial must be the only action in that request.');setModal('tutorial');return 'Opened the Still tutorial.';}
@@ -531,28 +579,27 @@ export default function App(){
     if(owner.role==='dashboard'||owner.role==='library')throw new Error(translate(current.locale,owner.role==='dashboard'?'dashboardModulesFixed':'libraryModulesFixed'));
     if(!owner.widgets.length)return translate(current.locale,'emptyWorkspaceWidgets').replace('{workspace}',owner.name);
     if(preserveWidgetId&&!owner.widgets.some(widget=>widget.id===preserveWidgetId&&widget.type==='aiCommand'))throw new Error(translate(current.locale,'aiCommandChangedBeforeRun'));
-    const {preserved,removed}=assistantBulkRemovalSelection(owner.widgets,preserveWidgetId),locked=preserved.filter(widget=>widget.lockPluginEnabled&&widget.locked),preservedIds=new Set(preserved.map(widget=>widget.id));
-    if(!removed.length)return current.locale==='zh-CN'?'没有可移除的其他组件；锁定组件和 AI 指令组件均已保留。':'There are no other unlocked widgets to remove. Locked widgets and this AI Command were kept.';
-    const count=removed.length,appIds=removed.filter(widget=>widget.type==='apps').map(widget=>widget.id);
-    undo.current=current;
-    setState({...current,workspaces:current.workspaces.map(item=>item.id===workspaceId?{...item,widgets:item.widgets.filter(widget=>preservedIds.has(widget.id))}:item)});
-    setAppAttachments(attachments=>Object.fromEntries(Object.entries(attachments).filter(([id])=>!appIds.includes(id))));
-    for(const id of appIds)if(appPanel.available)void appPanel.release(id,current.closeAppOnWidgetClose).catch(error=>notify(translate(current.locale,'widgetsRemovedAppError').replace('{detail}',String(error))));
-    const lockedNote=locked.length?` Kept ${locked.length} locked widget${locked.length===1?'':'s'}.`:'';
-    return `Removed ${count} widget${count===1?'':'s'} from ${owner.name}.${lockedNote} Saved shortcuts and Groups in the tray were kept. Undo change restores the widget cards; attached app windows were returned to the desktop.`;
+    const selection=assistantBulkRemovalSelection(owner.widgets,preserveWidgetId);
+    if(!selection.removed.length)return current.locale==='zh-CN'?'没有可移除的其他组件；锁定组件和 AI 指令组件均已保留。':'There are no other unlocked widgets to remove. Locked widgets and this AI Command were kept.';
+    return removeAssistantWidgetIds(workspaceId,selection.removed.map(widget=>widget.id),preserveWidgetId,true);
   }
   async function deleteAssistantWorkspace(workspaceId:string):Promise<string>{
-    const current=captureState.current,owner=current.workspaces.find(item=>item.id===workspaceId);
-    if(!owner||current.activeId!==workspaceId)throw new Error('The active workspace changed. Nothing was deleted; try again.');
-    if(owner.role==='dashboard'||owner.role==='library')throw new Error(translate(current.locale,'builtInWorkspace'));
-    if(current.workspaces.length<=1)throw new Error(translate(current.locale,'keepOneWorkspace'));
-    if(owner.widgets.some(widget=>widget.lockPluginEnabled&&widget.locked)||owner.groups.some(group=>group.widgets.some(entry=>entry.kind==='collected'&&entry.instance?.lockPluginEnabled&&entry.instance.locked)))throw new Error(translate(current.locale,'unlockWidgetsBeforeDeleteWorkspace'));
-    const nextState=removeWorkspaceAndUnlinkCourseEnvironments(current,workspaceId),remaining=nextState.workspaces,appIds=[...owner.widgets.filter(widget=>widget.type==='apps').map(widget=>widget.id),...owner.groups.flatMap(group=>group.widgets.filter(entry=>entry.kind==='collected'&&entry.type==='apps').map(entry=>entry.id))];
-    undo.current=current;setState(nextState);setArrange(false);setLayoutMode(null);
-    setAppAttachments(attachments=>Object.fromEntries(Object.entries(attachments).filter(([id])=>!appIds.includes(id))));
-    for(const id of appIds)if(appPanel.available)void appPanel.release(id,current.closeAppOnWidgetClose).catch(error=>notify(translate(current.locale,'workspaceDeletedAppError').replace('{detail}',String(error))));
-    notify(translate(current.locale,'workspaceDeletedNotice').replace('{workspace}',owner.name).replace('{next}',remaining[0].name));
-    return `Deleted ${owner.name}. Switched to ${remaining[0].name}. Undo change restores the workspace and its widget cards; attached app windows were returned to the desktop.`;
+    const initial=captureState.current,owner=initial.workspaces.find(item=>item.id===workspaceId);
+    if(!owner||initial.activeId!==workspaceId)throw new Error('The active workspace changed. Nothing was deleted; try again.');
+    if(owner.role==='dashboard'||owner.role==='library')throw new Error(translate(initial.locale,'builtInWorkspace'));
+    if(initial.workspaces.length<=1)throw new Error(translate(initial.locale,'keepOneWorkspace'));
+    if(owner.widgets.some(widget=>widget.lockPluginEnabled&&widget.locked)||owner.groups.some(group=>group.widgets.some(entry=>entry.kind==='collected'&&entry.instance?.lockPluginEnabled&&entry.instance.locked)))throw new Error(translate(initial.locale,'unlockWidgetsBeforeDeleteWorkspace'));
+    const attachedAppIds=[...owner.widgets.filter(widget=>widget.type==='apps'&&(widget.appPanelOpen||widget.appWasCollected||!!appAttachments[widget.id])).map(widget=>widget.id),...owner.groups.flatMap(group=>group.widgets.filter(entry=>entry.kind==='collected'&&entry.type==='apps'&&entry.instance&&(entry.instance.appPanelOpen||entry.instance.appWasCollected||!!appAttachments[entry.id])).map(entry=>entry.id))];
+    const {value}=await commitAfterNativeAppClose(attachedAppIds,(current,requested)=>{
+      const live=current.workspaces.find(item=>item.id===workspaceId);if(!live||current.activeId!==workspaceId)throw new Error('The workspace changed while its apps were closing. Nothing was deleted.');
+      if(live.role==='dashboard'||live.role==='library')throw new Error(translate(current.locale,'builtInWorkspace'));
+      if(current.workspaces.length<=1)throw new Error(translate(current.locale,'keepOneWorkspace'));
+      if(live.widgets.some(widget=>widget.lockPluginEnabled&&widget.locked)||live.groups.some(group=>group.widgets.some(entry=>entry.kind==='collected'&&entry.instance?.lockPluginEnabled&&entry.instance.locked)))throw new Error(translate(current.locale,'unlockWidgetsBeforeDeleteWorkspace'));
+      const next=removeWorkspaceAndUnlinkCourseEnvironments(current,workspaceId),remaining=next.workspaces;
+      const closeNote=requested.length?` Sent normal close request for ${requested.length} Apps window${requested.length===1?'':'s'}; Undo restores the workspace data without reopening those windows.`:'';
+      return{next,value:`Deleted ${live.name}. Switched to ${remaining[0].name}.${closeNote}`};
+    });
+    setArrange(false);setLayoutMode(null);return value;
   }
   async function startAssistantTimer(workspaceId:string,seconds:number):Promise<string>{
     const current=captureState.current,owner=current.workspaces.find(item=>item.id===workspaceId);

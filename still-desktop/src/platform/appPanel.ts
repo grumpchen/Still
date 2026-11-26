@@ -7,6 +7,7 @@ import type {AppShutdownBehavior} from '../domain/appSettings.ts';
 export interface AppWindow {hwnd:number;pid:number;title:string}
 export interface AppAttachment {hwnd:number;pid:number;capture?:boolean}
 export function appImageUrl(bytes:number[]):string{let binary='';for(let offset=0;offset<bytes.length;offset+=8192)binary+=String.fromCharCode(...bytes.slice(offset,offset+8192));return'data:image/png;base64,'+btoa(binary)}
+export interface AppPanelReleaseResult {managedWindow:boolean;closeRequested:boolean}
 export interface AppPanelInfo {hwnd:number;pid:number;minWidth:number;minHeight:number;requiredWidth:number|null;requiredHeight:number|null;measured:boolean;probing:boolean;shown:boolean;openedExternally:boolean}
 const pending=new Map<string,Promise<unknown>>();
 let installedRequest:Promise<InstalledAppChoice[]>|undefined;
@@ -36,7 +37,7 @@ export const appPanel={
  selectInstalled:(id:string)=>invoke<DroppedResource>('app_picker_select_installed',{id}),
  prepare:(window:AppAttachment)=>invoke<DroppedResource>('app_picker_prepare',{hwnd:window.hwnd,pid:window.pid}),
  preview:async(window:AppAttachment)=>appImageUrl(await invoke<number[]>('app_picker_preview',{hwnd:window.hwnd,pid:window.pid})),
- release:async(id:string,closeApp=false)=>{retainedForDrag.delete(id);retainedForCollection.delete(id);await command<void>(id,'app_panel_release',{closeApp})},
+ release:async(id:string,closeApp=false)=>{retainedForDrag.delete(id);retainedForCollection.delete(id);return command<AppPanelReleaseResult>(id,'app_panel_release',{closeApp})},
  configureShutdown:(behavior:AppShutdownBehavior)=>invoke<void>('app_panel_configure_shutdown',{behavior}),
  suspendForCollection:async(id:string)=>{retainedForCollection.add(id);try{const suspended=await command<boolean>(id,'app_panel_suspend',{forCollection:true});if(suspended)retainedForDrag.delete(id);else{retainedForCollection.delete(id);appPanel.finishDrag(id)}return suspended}catch(error){retainedForCollection.delete(id);appPanel.finishDrag(id);throw error}},
  isCollectionRetained:(id:string)=>retainedForCollection.has(id),
