@@ -3,6 +3,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import './LiquidChrome.css';
+import {isSoftwareGraphicsRenderer} from './domain/graphicsPerformance.ts';
 
 const PIXEL_BUDGET = 2.4e6;
 const SIM_CELL = 4;
@@ -338,11 +339,14 @@ const LiquidChrome = ({
     });
     const chrome = gl ? link(gl, CHROME) : null;
     if (!gl || !chrome) return;
-    const fluid = Boolean(gl.getExtension('EXT_color_buffer_float'));
+    const debugRenderer = gl.getExtension('WEBGL_debug_renderer_info');
+    const rendererName = debugRenderer ? gl.getParameter(debugRenderer.UNMASKED_RENDERER_WEBGL) : '';
+    const softwareRenderer = isSoftwareGraphicsRenderer(rendererName);
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches || softwareRenderer;
+    const pixelBudget = softwareRenderer ? 700_000 : PIXEL_BUDGET;
+    const fluid = Boolean(gl.getExtension('EXT_color_buffer_float')) && !softwareRenderer;
     const sim = fluid ? link(gl, SIM) : null;
     const slope = fluid ? link(gl, SLOPE) : null;
-
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const vao = gl.createVertexArray();
     const grid = { width: 1, height: 1 };
     const targets = [];
@@ -393,7 +397,7 @@ const LiquidChrome = ({
       const ratio = Math.min(
         window.devicePixelRatio || 1,
         s.maxRatio,
-        Math.sqrt(PIXEL_BUDGET / (cssWidth * cssHeight))
+        Math.sqrt(pixelBudget / (cssWidth * cssHeight))
       );
       const width = Math.max(1, Math.round(cssWidth * ratio));
       const height = Math.max(1, Math.round(cssHeight * ratio));
@@ -506,7 +510,7 @@ const LiquidChrome = ({
       const settling =
         Math.abs(view.vyaw) + Math.abs(view.vpitch) > 1e-4 ||
         Math.abs(targetYaw - view.yaw) + Math.abs(targetPitch - view.pitch) > 1e-4;
-      const busy = s.speed > 0 || presence < 1 || settling || energy > 0.002 || strokes.length > 0;
+      const busy = (s.speed > 0 && !reduced) || presence < 1 || settling || energy > 0.002 || strokes.length > 0;
       if (busy && visible && pageVisible) raf = requestAnimationFrame(frame);
     };
 
