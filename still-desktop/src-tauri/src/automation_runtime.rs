@@ -7,6 +7,7 @@ pub const TICK_INTERVAL: Duration = Duration::from_secs(15);
 const REPLAY_CAPACITY: usize = 256;
 const TICK_EVENT: &str = "still:automation-tick";
 const WEBVIEW2_BACKGROUND_FLAGS: [&str; 3] = ["--disable-background-timer-throttling", "--disable-renderer-backgrounding", "--disable-backgrounding-occluded-windows"];
+const WEBVIEW2_DEFAULT_FLAGS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection";
 
 fn add_webview2_background_flags(existing: &str) -> String {
     let mut args = existing.to_owned();
@@ -17,6 +18,41 @@ fn add_webview2_background_flags(existing: &str) -> String {
         }
     }
     args
+}
+
+fn webview2_browser_args(debug_port: Option<u16>) -> String {
+    let mut args = add_webview2_background_flags(WEBVIEW2_DEFAULT_FLAGS);
+    if let Some(port) = debug_port.filter(|port| *port >= 1024) {
+        args.push_str(&format!(" --remote-debugging-port={port}"));
+    }
+    args
+}
+
+fn smoke_cdp_port(github_actions: bool, value: Option<&str>) -> Option<u16> {
+    if !github_actions { return None; }
+    value?.parse::<u16>().ok().filter(|port| *port >= 1024)
+}
+
+/// Wry reads WebView2 switches from the per-window `additional_browser_args`
+/// configuration while constructing the environment. An environment variable
+/// cannot change those already-constructed WebView2 environment options.
+#[cfg(windows)]
+pub fn configure_webview2_context(context: &mut tauri::Context<tauri::Wry>) {
+    let debug_port = smoke_cdp_port(std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true"), std::env::var("STILL_TEST_CDP_PORT").ok().as_deref());
+    let args = webview2_browser_args(debug_port);
+    if let Some(window) = context.config_mut().app.windows.iter_mut().find(|window| window.label == "main") {
+        window.additional_browser_args = Some(args);
+    }
+}
+
+/// Args for isolated Browser child webviews. The opt-in debugging port is
+/// deliberately restricted to the GitHub smoke harness and a numeric port.
+pub fn browser_webview_args() -> String {
+    #[cfg(windows)]
+    let debug_port = smoke_cdp_port(std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true"), std::env::var("STILL_TEST_CDP_PORT").ok().as_deref());
+    #[cfg(not(windows))]
+    let debug_port = None;
+    webview2_browser_args(debug_port)
 }
 
 fn next_tick_deadline(now: tokio::time::Instant) -> tokio::time::Instant { now + TICK_INTERVAL }
@@ -206,15 +242,6 @@ fn install_tray(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-/// WebView2 reads these Chromium switches when its environment is created.
-/// They keep native-tick handlers runnable while Still is hidden.
-#[cfg(windows)]
-pub fn configure_webview2_background_timers() {
-    const KEY: &str = "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS";
-    let args = add_webview2_background_flags(&std::env::var(KEY).unwrap_or_default());
-    std::env::set_var(KEY, args);
-}
-
 #[tauri::command]
 pub fn automation_ticks_since(webview: tauri::Webview, runtime_id: Option<String>, sequence: u64, runtime: State<'_, AutomationRuntime>) -> Result<TickBatch, String> {
     crate::security::authorize(&webview)?;
@@ -326,6 +353,27 @@ mod tests {
         assert_eq!(args.matches("--disable-background-timer-throttling").count(), 1);
         assert!(args.contains("--disable-renderer-backgrounding"));
         assert!(args.contains("--disable-backgrounding-occluded-windows"));
+    }
+
+    #[test]
+    fn webview2_arguments_include_defaults_background_flags_and_only_numeric_debug_port() {
+        let args = webview2_browser_args(Some(9222));
+        assert!(args.contains("--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection"));
+        assert!(args.contains("--disable-background-timer-throttling"));
+        assert!(args.contains("--disable-renderer-backgrounding"));
+        assert!(args.contains("--disable-backgrounding-occluded-windows"));
+        assert!(args.contains("--remote-debugging-port=9222"));
+        assert!(!webview2_browser_args(None).contains("--remote-debugging-port"));
+        assert!(!webview2_browser_args(Some(80)).contains("--remote-debugging-port"));
+    }
+
+    #[test]
+    fn smoke_debug_port_is_numeric_high_port_and_github_only() {
+        assert_eq!(smoke_cdp_port(true, Some("9222")), Some(9222));
+        assert_eq!(smoke_cdp_port(false, Some("9222")), None);
+        assert_eq!(smoke_cdp_port(true, Some("80")), None);
+        assert_eq!(smoke_cdp_port(true, Some("9222 --no-sandbox")), None);
+        assert_eq!(smoke_cdp_port(true, None), None);
     }
 }
 

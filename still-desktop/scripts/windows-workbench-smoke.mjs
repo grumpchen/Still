@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 import {createHash} from 'node:crypto';
 import {createReadStream} from 'node:fs';
-import {mkdir,rm,writeFile,mkdtemp} from 'node:fs/promises';
+import {mkdir,writeFile} from 'node:fs/promises';
 import path from 'node:path';
-import {tmpdir} from 'node:os';
 import {spawn} from 'node:child_process';
 import {createServer} from 'node:net';
 import {promisify} from 'node:util';
@@ -77,7 +76,7 @@ async function main(){
  const reportPath=path.join(options.artifactDir,'windows-workbench-smoke.json');
  const screenshotPath=path.join(options.artifactDir,'still-main-before-hide.png');
  const report={schemaVersion:1,startedAt:new Date().toISOString(),runner:{platform:process.platform,githubActions:process.env.GITHUB_ACTIONS??null,ci:process.env.CI??null},candidate:{path:options.exe,sha256:null},cdp:{port:options.port,url:`http://127.0.0.1:${options.port}`},checks:[],artifacts:{report:reportPath,screenshot:null},process:{pid:null,stdoutTail:'',stderrTail:''}};
- let appProcess=null,browser=null,page=null,listenerId=null,browserPanelCreated=false,smokeProfile=null,failed=false,currentCheck='preflight',failure=null;
+ let appProcess=null,browser=null,page=null,listenerId=null,browserPanelCreated=false,failed=false,currentCheck='preflight',failure=null;
  const checks=report.checks;
  const check=async(name,fn)=>{currentCheck=name;try{const details=await fn();addCheck(checks,name,'passed',{details:details??null});return details}catch(error){addCheck(checks,name,'failed',{error:errorText(error)});throw error}};
  try{
@@ -96,12 +95,11 @@ async function main(){
    return{port:options.port,free:true};
   });
 
-  smokeProfile=await mkdtemp(path.join(tmpdir(),'still-workbench-smoke-'));
-  const webviewProfile=path.join(smokeProfile,'WebView2');await mkdir(webviewProfile,{recursive:true});
-  // The hosted runner itself is ephemeral. Leave Windows' real APPDATA/LOCALAPPDATA
-  // untouched so WebView2 runtime discovery sees the normal installed runtime.
-  const env={...process.env,WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:`--remote-debugging-port=${options.port}`,WEBVIEW2_USER_DATA_FOLDER:webviewProfile};
-  report.process.appDataOverridesApplied=false;report.process.webview2UserDataFolderIsolated=true;report.process.requestedRemoteDebuggingPort=options.port;
+  // GitHub runners are disposable; preserve their real Windows app-data paths so
+  // WebView2 runtime discovery and Tauri's normal data-directory policy apply.
+  // CDP is explicitly opt-in in native startup and accepted only on GitHub Actions.
+  const env={...process.env,STILL_TEST_CDP_PORT:String(options.port)};
+  report.process.appDataOverridesApplied=false;report.process.webview2UserDataFolderIsolated=false;report.process.requestedRemoteDebuggingPort=options.port;report.process.cdpOptIn='STILL_TEST_CDP_PORT (accepted only when GITHUB_ACTIONS=true)';
   appProcess=spawn(options.exe,[],{cwd:path.dirname(options.exe),env,windowsHide:true,stdio:['ignore','pipe','pipe']});
   report.process.pid=appProcess.pid??null;
   appProcess.stdout?.on('data',chunk=>{report.process.stdoutTail=appendLogTail(report.process.stdoutTail,chunk)});
@@ -206,7 +204,6 @@ async function main(){
   if(page&&listenerId!==null){try{await page.evaluate(eventId=>window.__TAURI_INTERNALS__.invoke('plugin:event|unlisten',{event:'still:automation-tick',eventId}),listenerId)}catch(error){report.cleanupListenerError=errorText(error)}}
   if(browser){try{await browser.close()}catch(error){report.cdpDisconnectError=errorText(error)}}
   if(appProcess){await killProcessTree(appProcess);report.process.exitCode=appProcess.exitCode}
-  if(smokeProfile){try{await rm(smokeProfile,{recursive:true,force:true})}catch(error){report.cleanupProfileError=errorText(error)}}
   report.finishedAt=new Date().toISOString();report.result=failed?'failed':'passed';report.failure=failure;
   await mkdir(options.artifactDir,{recursive:true});await writeFile(reportPath,JSON.stringify(report,null,2)+'\n','utf8');
   console.log(`Smoke report: ${reportPath}`);if(report.artifacts.screenshot)console.log(`Screenshot: ${report.artifacts.screenshot}`);

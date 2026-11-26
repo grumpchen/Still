@@ -24,7 +24,8 @@ mod automation_runtime;
 #[cfg(windows)] mod window_input;
 use tauri::Manager;
 fn main() {
-    #[cfg(windows)] automation_runtime::configure_webview2_background_timers();
+    let mut context = tauri::generate_context!();
+    #[cfg(windows)] automation_runtime::configure_webview2_context(&mut context);
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -69,6 +70,6 @@ fn main() {
             window_input::window_input_update_regions,window_input::window_input_configure_toggle,window_input::window_input_set_click_through,
             startup::startup_status,startup::startup_set,
         ])
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("Unable to start Still");
 }
