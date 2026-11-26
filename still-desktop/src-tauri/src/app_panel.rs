@@ -1017,7 +1017,7 @@ pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
    assert_eq!(info_at(&entry,1.0,true).required_width,Some(600.));assert_eq!(info_at(&entry,2.0,true).required_width,Some(600.));
   }
  #[test]fn real_window_fixture_tracks_bounds_clips_native_content_and_releases_without_closing(){unsafe{
-  let main=Fixture::new("Still fixture owner");let target=Fixture::new("Still fixture app");let original=rect(target.0).unwrap();let original_style=GetWindowLongPtrW(target.0,GWL_STYLE);
+  let geometry_class=GeometryFixtureClass::new();let main=geometry_class.window("Still fixture owner");let target=geometry_class.window("Still fixture app");let original=rect(target.0).unwrap();let original_style=GetWindowLongPtrW(target.0,GWL_STYLE);
   let mut original_placement=WINDOWPLACEMENT{length:std::mem::size_of::<WINDOWPLACEMENT>() as u32,..Default::default()};GetWindowPlacement(target.0,&mut original_placement).unwrap();
   let bounds=Bounds{x:100.,y:140.,width:800.,height:500.};let clip=Bounds{x:130.,y:160.,width:700.,height:450.};let grip=Bounds{x:798.,y:578.,width:32.,height:32.};
    let mut entry=test_entry(target.0.0 as usize,&bounds);entry.clip=clip.clone();entry.grip=Some(grip);entry.original_placement=original_placement;
@@ -1029,6 +1029,20 @@ pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
   entry.bounds.x=220.;position(&mut entry,main.0,POINT{x:30,y:20},1.5).unwrap();assert_eq!(rect(target.0).unwrap().0,360);
   restore(&mut entry);assert_eq!(GetWindowLongPtrW(target.0,GWL_STYLE),original_style);assert!(IsWindow(Some(target.0)).as_bool());assert_eq!(GetWindowLongPtrW(target.0,GWLP_HWNDPARENT),0);assert_eq!(rect(target.0).unwrap(),original);assert!(!IsWindowVisible(target.0).as_bool());
   assert!(GetPropW(target.0,PCWSTR(marker().as_ptr())).0.is_null());
-  drop(target);assert!(!valid_window(&entry),"A closed app window must be rejected instead of retaining an attached card");
+  drop(target);assert!(!valid_window(&entry),"A closed app window must be rejected instead of retaining an attached card");drop(main);drop(geometry_class);
  }}
+ struct GeometryFixtureClass{name:Vec<u16>,instance:windows::Win32::Foundation::HINSTANCE}
+ impl GeometryFixtureClass{
+  fn new()->Self{unsafe{
+   let name=wide("StillAppPanelGeometryFixture");let module=windows::Win32::System::LibraryLoader::GetModuleHandleW(None).unwrap();let instance=windows::Win32::Foundation::HINSTANCE(module.0);
+   let class=WNDCLASSW{lpfnWndProc:Some(geometry_fixture_proc),hInstance:instance,lpszClassName:PCWSTR(name.as_ptr()),..Default::default()};assert_ne!(RegisterClassW(&class),0);
+   Self{name,instance}
+  }}
+  fn window(&self,title:&str)->Fixture{unsafe{let title=wide(title);Fixture(CreateWindowExW(WINDOW_EX_STYLE(0),PCWSTR(self.name.as_ptr()),PCWSTR(title.as_ptr()),WS_OVERLAPPEDWINDOW,50,60,840,520,None,None,Some(self.instance),None).unwrap())}}
+ }
+ impl Drop for GeometryFixtureClass{fn drop(&mut self){unsafe{let _=UnregisterClassW(PCWSTR(self.name.as_ptr()),Some(self.instance));}}}
+ unsafe extern "system" fn geometry_fixture_proc(hwnd:HWND,message:u32,wparam:windows::Win32::Foundation::WPARAM,lparam:LPARAM)->windows::Win32::Foundation::LRESULT{
+  if message==WM_GETMINMAXINFO{let limits=&mut *(lparam.0 as *mut MINMAXINFO);limits.ptMaxTrackSize.x=4096;limits.ptMaxTrackSize.y=4096;return windows::Win32::Foundation::LRESULT(0)}
+  DefWindowProcW(hwnd,message,wparam,lparam)
+ }
 }
