@@ -34,6 +34,7 @@ export function AutomationPanel({runner,catalog}:AutomationPanelProps){
   {runner.mode==='runtime-error'&&<p className="automation-error" role="status">{runner.error??'Automation runtime is unavailable.'}</p>}
   {!runner.captureQueueAvailable&&runner.state.rules.some(rule=>rule.trigger.kind==='onCapture')&&<p className="automation-error" role="status">Capture rules are saved, but this app build has no pending QuickCapture event queue. They will not run until a real capture source is connected.</p>}
   {runner.pendingCaptures.length>0&&<div className="automation-pending" role="status">{runner.pendingCaptures.length} pending capture event(s) awaiting a matching rule or acknowledgement.</div>}
+  {runner.ignoredCaptures>0&&<div className="automation-pending" role="status">{runner.ignoredCaptures} capture event(s) are terminally ignored because they had no matching rule, were idea captures, or came from an unrecognized legacy link origin.</div>}
   {runner.error&&runner.mode!=='runtime-error'&&<p className="automation-error" role="status">{runner.error}</p>}
   {runner.lastTickAt&&<small className="automation-last-tick">Last native/preview tick: {new Date(runner.lastTickAt).toLocaleString()}</small>}
   <form className="automation-create-form" onSubmit={event=>void submit(event)}>

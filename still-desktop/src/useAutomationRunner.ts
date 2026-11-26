@@ -24,7 +24,7 @@ export interface UseAutomationRunnerOptions {
 }
 const initialSnapshot=(storage:AutomationStorage):AutomationRunnerSnapshot=>{
  const loaded=loadAutomationState(storage);
- return{mode:'starting',state:loaded.ok?loaded.state:{version:2,rules:[],receipts:[]},runtimeStatus:null,cursor:{runtimeId:null,sequence:0},pendingCaptures:[],lastTickAt:null,error:loaded.ok?null:loaded.message,captureQueueAvailable:false};
+ return{mode:'starting',state:loaded.ok?loaded.state:{version:2,rules:[],receipts:[]},runtimeStatus:null,cursor:{runtimeId:null,sequence:0},pendingCaptures:[],ignoredCaptures:0,lastTickAt:null,error:loaded.ok?null:loaded.message,captureQueueAvailable:false};
 };
 
 /** Mount this hook once at the app root, independently from whether AutomationPanel is open. */
@@ -76,6 +76,6 @@ export function useAutomationRunner(options:UseAutomationRunnerOptions):Automati
   catch(error){const message=`Could not save layout mode: ${error instanceof Error?error.message:String(error)}`;setMutationError(message);setSnapshot(value=>({...value,error:message}))}
  },[refresh]);
  const runDueNow=useCallback(async()=>{try{await controller.current?.runDueNow()}catch(error){const message=`Could not run due automations: ${error instanceof Error?error.message:String(error)}`;setMutationError(message);setSnapshot(value=>({...value,error:message}))}},[]);
- const hideToTray=useCallback(async()=>{try{await(latest.current.runtime??automationRuntime).hideToTray();return{ok:true as const}}catch(error){return{ok:false as const,message:error instanceof Error?error.message:String(error)}}},[]);
+ const hideToTray=useCallback(async()=>{try{await(latest.current.runtime??automationRuntime).hideToTray();await controller.current?.refreshRuntimeStatus();return{ok:true as const}}catch(error){return{ok:false as const,message:error instanceof Error?error.message:String(error)}}},[]);
  return{...snapshot,error:mutationError??snapshot.error,createFromText,setEnabled,setLayoutMode,deleteRule,runDueNow,hideToTray};
 }

@@ -30,3 +30,10 @@
 - Operation adapter can retrieve the exact pointer with `automationCaptureInbox.get(eventId)` (structured result) or domain `getCaptureEvent(storage,eventId)`. Runner sends `context.captureEventId` and `occurrenceKey: capture-event:<eventId>`; map only this saved pointer through the normal shared operation service.
 - Store key is `still.automation-capture-inbox.v1`; maximum 2,000 retained events. ACKed records remain for receipt/audit lookup. At capacity, the saved resource remains saved but is not queued; caller must surface the explicit queue-full message.
 - App-level runner mounting and QuickCapture callback integration remain owned by root/Library integration. Native tray acceptance remains pending.
+
+## Follow-up review fixes
+- Link captures now persist the Library's tagged `origin` object (`group` with `workspaceId/groupId`, or `browser` with `workspaceId/widgetId`); runner events carry the exact `sourceWorkspaceId`. Legacy free-form `linkOrigin` records are retained as `legacy-unknown` and quarantined as ignored, so they can never be automatically dispatched.
+- Unmatched captures and idea captures become a visible `ignored` terminal state without inventing operation receipts. The journal prunes only terminal history when it needs capacity; pending entries are never discarded, and a queue containing only pending entries fails explicitly.
+- Each native tick refreshes runtime status; tray hiding also refreshes it.
+- Added tests for legacy quarantine, ignored semantics, terminal-only pruning, idea/unmatched captures, and per-tick runtime status refresh.
+- Follow-up checks: focused inbox/runner suite — 13 tests passed; `pnpm check` — passed; `pnpm build` — passed with the existing large-chunk advisory; `git diff --check` — passed.

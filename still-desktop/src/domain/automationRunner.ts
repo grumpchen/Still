@@ -5,10 +5,12 @@ export interface PendingCapture extends AutomationCaptureEvent {}
 export interface AutomationCaptureQueue {
   listPending():Promise<PendingCapture[]>;
   acknowledge(eventId:string,receipts:AutomationReceipt[]):Promise<void|boolean>;
+  ignore?(eventId:string,reason:string):Promise<void|boolean>;
+  listIgnored?():Promise<PendingCapture[]>;
   subscribe?(callback:(eventId:string)=>void):()=>void;
 }
 export type AutomationRunnerMode='starting'|'native-tray-runtime'|'web-preview-page-open'|'runtime-error';
-export interface AutomationRunnerSnapshot {mode:AutomationRunnerMode;state:AutomationState;runtimeStatus:AutomationRuntimeStatus|null;cursor:AutomationCursor;pendingCaptures:PendingCapture[];lastTickAt:string|null;error:string|null;captureQueueAvailable:boolean}
+export interface AutomationRunnerSnapshot {mode:AutomationRunnerMode;state:AutomationState;runtimeStatus:AutomationRuntimeStatus|null;cursor:AutomationCursor;pendingCaptures:PendingCapture[];ignoredCaptures:number;lastTickAt:string|null;error:string|null;captureQueueAvailable:boolean}
 export interface AutomationRunnerControllerOptions {
   storage:AutomationStorage;
   runtime:AutomationRuntimePort;
@@ -36,7 +38,7 @@ export class AutomationRunnerController {
  private cursor:AutomationCursor;
  constructor(private readonly options:AutomationRunnerControllerOptions){
   const loaded=loadAutomationState(options.storage);this.cursor=readCursor(options.storage);
-  this.snapshot={mode:'starting',state:loaded.ok?loaded.state:{version:2,rules:[],receipts:[]},runtimeStatus:null,cursor:this.cursor,pendingCaptures:[],lastTickAt:null,error:loaded.ok?null:loaded.message,captureQueueAvailable:!!options.getCaptureQueue?.()};
+  this.snapshot={mode:'starting',state:loaded.ok?loaded.state:{version:2,rules:[],receipts:[]},runtimeStatus:null,cursor:this.cursor,pendingCaptures:[],ignoredCaptures:0,lastTickAt:null,error:loaded.ok?null:loaded.message,captureQueueAvailable:!!options.getCaptureQueue?.()};
  }
  getSnapshot(){return this.snapshot}
  private publish(patch:Partial<AutomationRunnerSnapshot>){this.snapshot={...this.snapshot,...patch};this.options.onSnapshot(this.snapshot)}
@@ -78,28 +80,31 @@ export class AutomationRunnerController {
   await this.processTick(tick);
  }
  private async processTick(tick:AutomationTick):Promise<boolean>{
+  let runtimeStatusError:string|null=null;
+  try{const runtimeStatus=await this.options.runtime.runtimeStatus();if(this.alive)this.publish({runtimeStatus,mode:'native-tray-runtime'})}catch(error){runtimeStatusError=`Native runtime status refresh failed: ${this.errorText(error)}`}
   const okay=await this.runPass(new Date(tick.scheduledAtUnixMs));
-  if(!okay)return false;
+  if(!okay){if(runtimeStatusError)this.publish({error:runtimeStatusError});return false}
   this.cursor={runtimeId:tick.runtimeId,sequence:tick.sequence};
   try{writeCursor(this.options.storage,this.cursor)}catch(error){this.publish({error:`Tick ran but its cursor could not be saved: ${this.errorText(error)}`});return false}
-  this.publish({cursor:this.cursor,lastTickAt:new Date(tick.scheduledAtUnixMs).toISOString()});return true;
+  this.publish({cursor:this.cursor,lastTickAt:new Date(tick.scheduledAtUnixMs).toISOString(),...(runtimeStatusError?{error:runtimeStatusError}:{})});return true;
  }
  async runDueNow():Promise<void>{await this.enqueue(async()=>{await this.runPass(this.now())})}
+ async refreshRuntimeStatus():Promise<AutomationRuntimeStatus|null>{if(!this.options.runtime.native)return null;const status=await this.options.runtime.runtimeStatus();this.publish({runtimeStatus:status,mode:'native-tray-runtime'});return status}
  refresh():void{this.reloadState()}
  private async runPass(now:Date):Promise<boolean>{
   const service=this.options.getService(),scheduled=await evaluateAutomationRules({storage:this.options.storage,service,now});
   if(!scheduled.ok){this.reloadState();this.publish({error:scheduled.error});return false}
-  let state=scheduled.state,error:string|null=null,pending:PendingCapture[]=this.snapshot.pendingCaptures;
+  let state=scheduled.state,error:string|null=null,pending:PendingCapture[]=this.snapshot.pendingCaptures,ignoredCount=this.snapshot.ignoredCaptures;
   const queue=this.options.getCaptureQueue?.();
   if(queue){
-   try{pending=await queue.listPending();for(const event of pending){const latest=loadAutomationState(this.options.storage);if(!latest.ok){error=latest.message;break}state=latest.state;const relevant=state.rules.filter(rule=>matchesCapture(event,rule));if(!relevant.length)continue;
+   try{pending=await queue.listPending();for(const event of [...pending]){const latest=loadAutomationState(this.options.storage);if(!latest.ok){error=latest.message;break}state=latest.state;const relevant=state.rules.filter(rule=>matchesCapture(event,rule));if(!relevant.length){if(queue.ignore){try{const ignored=await queue.ignore(event.eventId,event.resourceKind==='idea'?'Idea captures are saved for history, but no idea automation is supported yet.':`No enabled capture rule matched “${event.name}”.`);if(ignored===false)throw new Error('The event journal did not confirm the ignored state.');pending=pending.filter(item=>item.eventId!==event.eventId)}catch(reason){error=`Capture ${event.eventId} could not be marked ignored: ${this.errorText(reason)}`}}continue}
      const outcome=await evaluateAutomationRules({storage:this.options.storage,service:this.options.getService(),now,pendingCapture:event});if(!outcome.ok){error=outcome.error;break}state=outcome.state;
      const receiptKey=`capture-event:${event.eventId}`,receipts=relevant.map(rule=>state.receipts.find(item=>item.ruleId===rule.id&&item.occurrenceKey===receiptKey)).filter((item):item is AutomationReceipt=>!!item);
      if(receipts.length===relevant.length&&receipts.every(receipt=>receipt.status==='succeeded')){try{const acknowledged=await queue.acknowledge(event.eventId,receipts);if(acknowledged===false)throw new Error('The event journal did not confirm acknowledgement.');pending=pending.filter(item=>item.eventId!==event.eventId)}catch(reason){error=`Capture ${event.eventId} succeeded but could not be acknowledged: ${this.errorText(reason)}`}}
-    }}catch(reason){error=`Could not read pending QuickCapture events: ${this.errorText(reason)}`}
+    }if(queue.listIgnored)ignoredCount=(await queue.listIgnored()).length}catch(reason){error=`Could not read pending QuickCapture events: ${this.errorText(reason)}`}
   }
   const latest=loadAutomationState(this.options.storage);if(latest.ok)state=latest.state;else error=latest.message;
   const currentPending=queue?pending:this.snapshot.pendingCaptures;
-  this.publish({state,pendingCaptures:currentPending,captureQueueAvailable:!!queue,error});return !error;
+  this.publish({state,pendingCaptures:currentPending,ignoredCaptures:ignoredCount,captureQueueAvailable:!!queue,error});return !error;
  }
 }
