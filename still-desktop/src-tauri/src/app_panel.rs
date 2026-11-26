@@ -333,7 +333,7 @@ fn restore(entry:&mut Entry){unsafe{
  let mut placement=entry.original_placement;if !entry.original_visible{placement.showCmd=SW_HIDE.0 as u32;}
  let _=SetWindowPlacement(hwnd,&placement);let _=ShowWindow(hwnd,if entry.original_visible{SW_SHOWNA}else{SW_HIDE});
 }}
-fn request_normal_close(hwnd:HWND)->bool{unsafe{IsWindow(Some(hwnd)).as_bool()&&PostMessageW(Some(hwnd),WM_CLOSE,windows::Win32::Foundation::WPARAM(0),LPARAM(0)).as_bool()}}
+fn request_normal_close(hwnd:HWND)->bool{unsafe{IsWindow(Some(hwnd)).as_bool()&&PostMessageW(Some(hwnd),WM_CLOSE,windows::Win32::Foundation::WPARAM(0),LPARAM(0)).is_ok()}}
 fn apply_shutdown_action(hwnd:HWND,action:ShutdownAction){unsafe{
  if !IsWindow(Some(hwnd)).as_bool(){return}
  match action{
@@ -529,7 +529,7 @@ pub fn install(app:&AppHandle)->Result<(),String>{
  unsafe{for (a,b) in [(EVENT_SYSTEM_FOREGROUND,EVENT_SYSTEM_FOREGROUND),(EVENT_OBJECT_DESTROY,EVENT_OBJECT_LOCATIONCHANGE)]{if SetWinEventHook(a,b,None,Some(event),0,0,WINEVENT_OUTOFCONTEXT).0.is_null(){return Err("Unable to synchronize application panels".into())}}}Ok(())
 }
 #[derive(Clone,Copy,Debug,Default,Serialize)]#[serde(rename_all="camelCase")]pub struct AppPanelReleaseResult{pub managed_window:bool,pub close_requested:bool}
-fn release(app:&AppHandle,id:&str,close_app:bool)->AppPanelReleaseResult{let Ok(mut s)=app.state::<AppPanelState>().0.lock()else{return AppPanelReleaseResult::default()};*s.generation.entry(id.into()).or_default()+=1;s.pending.remove(id);let Some(mut entry)=s.items.remove(id)else{return AppPanelReleaseResult::default()};let managed_window=valid_window(&entry);let hwnd=handle(entry.hwnd);clear_collection_marker(&mut entry);restore(&mut entry);let close_requested=close_app&&managed_window&&request_normal_close(hwnd);AppPanelReleaseResult{managed_window,close_requested}}
+fn release(app:&AppHandle,id:&str,close_app:bool)->AppPanelReleaseResult{let state=app.state::<AppPanelState>();let Ok(mut s)=state.0.lock()else{return AppPanelReleaseResult::default()};*s.generation.entry(id.into()).or_default()+=1;s.pending.remove(id);let Some(mut entry)=s.items.remove(id)else{return AppPanelReleaseResult::default()};let managed_window=valid_window(&entry);let hwnd=handle(entry.hwnd);clear_collection_marker(&mut entry);restore(&mut entry);let close_requested=close_app&&managed_window&&request_normal_close(hwnd);AppPanelReleaseResult{managed_window,close_requested}}
 pub fn shutdown(app:&AppHandle){let state=app.state::<AppPanelState>();if let Ok(mut s)=state.0.lock(){s.closed=true;s.pending.clear();let action=shutdown_action(s.shutdown_behavior);for (_,mut entry) in s.items.drain(){clear_collection_marker(&mut entry);let hwnd=handle(entry.hwnd);restore(&mut entry);apply_shutdown_action(hwnd,action);}};}
 
 #[tauri::command]
