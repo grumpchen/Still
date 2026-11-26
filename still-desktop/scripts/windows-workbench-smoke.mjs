@@ -4,7 +4,6 @@ import {createReadStream} from 'node:fs';
 import {mkdir,rm,writeFile,mkdtemp} from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {fileURLToPath} from 'node:url';
 import {spawn} from 'node:child_process';
 import {createServer} from 'node:net';
 import {promisify} from 'node:util';
@@ -17,6 +16,7 @@ const MAX_STARTUP_MS=45_000;
 const POLL_MS=400;
 const TICK_WAIT_MAX_MS=30_000;
 const BROWSER_WIDGET_ID='smoke-browser';
+const MAX_CAPTURED_PROCESS_LOG=6_000;
 
 function parseArgs(argv){
  const args={};
@@ -33,7 +33,15 @@ function parseArgs(argv){
  return{exe:path.resolve(args.exe),artifactDir:path.resolve(args.artifactdir),port:args.port};
 }
 function delay(ms){return new Promise(resolve=>setTimeout(resolve,ms))}
-function errorText(error){return error instanceof Error?`${error.name}: ${error.message}\n${error.stack??''}`:String(error)}
+function redactDiagnostic(value){return String(value).replace(/\b((?:api[_-]?key|access[_-]?token|refresh[_-]?token|password|authorization)\b\s*[:=]\s*)[^\s,;]+/gi,'$1[REDACTED]').replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi,'Bearer [REDACTED]')}
+function errorText(error,depth=0){
+ if(!(error instanceof Error))return redactDiagnostic(error);
+ const details=[`${error.name}: ${error.message}`];if(error.code)details.push(`code=${error.code}`);if(error.cause&&depth<3)details.push(`caused by ${errorText(error.cause,depth+1)}`);
+ if(Array.isArray(error.errors)&&depth<2)details.push(`aggregate=[${error.errors.slice(0,4).map(item=>errorText(item,depth+1)).join(' | ')}]`);
+ if(depth===0&&error.stack)details.push(error.stack);
+ return redactDiagnostic(details.join('\n'));
+}
+function appendLogTail(previous,chunk){return redactDiagnostic(previous+chunk.toString()).slice(-MAX_CAPTURED_PROCESS_LOG)}
 async function sha256File(file){const hash=createHash('sha256');for await(const chunk of createReadStream(file))hash.update(chunk);return hash.digest('hex')}
 async function fetchJson(url,timeoutMs=2_500){
  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
@@ -56,6 +64,11 @@ async function killProcessTree(child){
  }
  if(child.exitCode===null)try{child.kill('SIGKILL')}catch{}
  if(child.exitCode===null)await Promise.race([new Promise(resolve=>child.once('exit',resolve)),delay(5_000)]);
+}
+async function getWindowsProcessTree(rootPid,port){
+ const script=`$rootPid=${Number(rootPid)}; $port=${Number(port)}; $all=@(Get-CimInstance Win32_Process); $ids=New-Object 'System.Collections.Generic.HashSet[long]'; $null=$ids.Add([long]$rootPid); $changed=$true; while($changed){$changed=$false; foreach($p in $all){if($ids.Contains([long]$p.ParentProcessId) -and $ids.Add([long]$p.ProcessId)){$changed=$true}}}; $rows=@(foreach($p in $all){if($ids.Contains([long]$p.ProcessId)){$gp=Get-Process -Id $p.ProcessId -ErrorAction SilentlyContinue; $handle='0x0'; $title=''; if($gp){$handle='0x{0:X}' -f $gp.MainWindowHandle.ToInt64(); $title=$gp.MainWindowTitle}; $cmd=[string]$p.CommandLine; [pscustomobject]@{pid=[long]$p.ProcessId;parentPid=[long]$p.ParentProcessId;name=[string]$p.Name;executablePath=[string]$p.ExecutablePath;mainWindowHandle=$handle;mainWindowTitle=$title;hasRemoteDebuggingPort=($cmd -match ('--remote-debugging-port(?:=|\\s+)' + $port));hasUserDataDirArgument=($cmd -match '--user-data-dir(?:=|\\s+)');startedAt=$p.CreationDate}}}); ConvertTo-Json -InputObject $rows -Depth 3 -Compress`;
+ const {stdout}=await execFileAsync('powershell.exe',['-NoProfile','-NonInteractive','-Command',script],{timeout:8_000,maxBuffer:200_000,windowsHide:true});
+ return JSON.parse(stdout||'[]');
 }
 function addCheck(checks,name,status,details){checks.push({name,status,...details})}
 
@@ -84,13 +97,15 @@ async function main(){
   });
 
   smokeProfile=await mkdtemp(path.join(tmpdir(),'still-workbench-smoke-'));
-  const localAppData=path.join(smokeProfile,'LocalAppData'),roamingAppData=path.join(smokeProfile,'RoamingAppData');
-  await mkdir(localAppData,{recursive:true});await mkdir(roamingAppData,{recursive:true});
-  const env={...process.env,WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:`--remote-debugging-port=${options.port}`,WEBVIEW2_USER_DATA_FOLDER:path.join(smokeProfile,'WebView2'),LOCALAPPDATA:localAppData,APPDATA:roamingAppData};
+  const webviewProfile=path.join(smokeProfile,'WebView2');await mkdir(webviewProfile,{recursive:true});
+  // The hosted runner itself is ephemeral. Leave Windows' real APPDATA/LOCALAPPDATA
+  // untouched so WebView2 runtime discovery sees the normal installed runtime.
+  const env={...process.env,WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:`--remote-debugging-port=${options.port}`,WEBVIEW2_USER_DATA_FOLDER:webviewProfile};
+  report.process.appDataOverridesApplied=false;report.process.webview2UserDataFolderIsolated=true;report.process.requestedRemoteDebuggingPort=options.port;
   appProcess=spawn(options.exe,[],{cwd:path.dirname(options.exe),env,windowsHide:true,stdio:['ignore','pipe','pipe']});
   report.process.pid=appProcess.pid??null;
-  appProcess.stdout?.on('data',chunk=>{report.process.stdoutTail=(report.process.stdoutTail+chunk.toString()).slice(-24_000)});
-  appProcess.stderr?.on('data',chunk=>{report.process.stderrTail=(report.process.stderrTail+chunk.toString()).slice(-24_000)});
+  appProcess.stdout?.on('data',chunk=>{report.process.stdoutTail=appendLogTail(report.process.stdoutTail,chunk)});
+  appProcess.stderr?.on('data',chunk=>{report.process.stderrTail=appendLogTail(report.process.stderrTail,chunk)});
   appProcess.on('error',error=>{report.process.spawnError=errorText(error)});
 
   await check('webview2-cdp-start',async()=>{
@@ -180,6 +195,10 @@ async function main(){
   });
  }catch(error){
   failed=true;failure={check:currentCheck,error:errorText(error)};
+  if(appProcess?.pid&&process.platform==='win32'){
+   try{report.process.windows=await getWindowsProcessTree(appProcess.pid,options.port)}
+   catch(diagnosticError){report.process.windowsDiagnosticError=errorText(diagnosticError)}
+  }
   if(!checks.some(item=>item.name===currentCheck&&item.status==='failed'))addCheck(checks,currentCheck,'failed',{error:errorText(error)});
   console.error(`Windows workbench smoke failed at ${currentCheck}:\n${errorText(error)}`);
  }finally{
@@ -191,6 +210,7 @@ async function main(){
   report.finishedAt=new Date().toISOString();report.result=failed?'failed':'passed';report.failure=failure;
   await mkdir(options.artifactDir,{recursive:true});await writeFile(reportPath,JSON.stringify(report,null,2)+'\n','utf8');
   console.log(`Smoke report: ${reportPath}`);if(report.artifacts.screenshot)console.log(`Screenshot: ${report.artifacts.screenshot}`);
+  console.log('Windows smoke diagnostic summary:\n'+JSON.stringify({result:report.result,failure:report.failure,cdp:{port:report.cdp.port,lastProbeError:report.cdp.lastProbeError,lastConnectError:report.cdp.lastConnectError},process:{pid:report.process.pid,exitCode:report.process.exitCode,spawnError:report.process.spawnError,windows:report.process.windows,windowsDiagnosticError:report.process.windowsDiagnosticError,stdoutTail:report.process.stdoutTail.slice(-1800),stderrTail:report.process.stderrTail.slice(-1800)}},null,2));
  }
  if(failed)process.exitCode=1;
 }
