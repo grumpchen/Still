@@ -1,4 +1,4 @@
-import {useState} from 'react';
+import {useEffect,useState} from 'react';
 import type {RuleCatalog} from './domain/automationRules.ts';
 import type {AutomationRunnerApi} from './useAutomationRunner.ts';
 import './automationPanel.css';
@@ -18,17 +18,18 @@ function actionLabel(action:AutomationRunnerApi['state']['rules'][number]['actio
  return`${action.mode?`${action.mode==='append'?'Append':'Replace'} · `:''}${action.mode?'Prepare':'Choose append or replace'} ${workspace?.name??action.workspaceId} with ${layout?.name??action.layoutId}`;
 }
 function statusLabel(status:string):string{return status.replaceAll('_',' ')}
-export interface AutomationPanelProps {runner:AutomationRunnerApi;catalog:RuleCatalog}
+export interface AutomationPanelProps {runner:AutomationRunnerApi;catalog:RuleCatalog;initialDraft?:string;requireLayoutMode?:boolean}
 /** This view is optional; the app-root runner hook keeps working while this panel is closed. */
-export function AutomationPanel({runner,catalog}:AutomationPanelProps){
+export function AutomationPanel({runner,catalog,initialDraft='',requireLayoutMode=false}:AutomationPanelProps){
  const [draft,setDraft]=useState(''),[message,setMessage]=useState<string|null>(null),[busy,setBusy]=useState(false),[modeChoicePending,setModeChoicePending]=useState(false),[createLayoutMode,setCreateLayoutMode]=useState<'append'|'replace'|''>(''),[legacyModes,setLegacyModes]=useState<Record<string,'append'|'replace'|''>>({});
+ useEffect(()=>{if(initialDraft){setDraft(initialDraft);setModeChoicePending(requireLayoutMode)}},[initialDraft,requireLayoutMode]);
  const latestByRule=new Map<string,AutomationRunnerApi['state']['receipts'][number]>();
  for(const receipt of [...runner.state.receipts].sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)))if(!latestByRule.has(receipt.ruleId))latestByRule.set(receipt.ruleId,receipt);
  const submit=async(event:React.FormEvent)=>{event.preventDefault();setBusy(true);setMessage(null);try{const result=await runner.createFromText(draft,createLayoutMode||undefined);if(result.kind==='rule'){setDraft('');setModeChoicePending(false);setCreateLayoutMode('');setMessage('Automation saved.')}else{if(result.kind==='clarification'&&result.code==='layout-mode-required')setModeChoicePending(true);setMessage(result.message)}}catch(error){setMessage(error instanceof Error?error.message:String(error))}finally{setBusy(false)}};
  const runDue=async()=>{setBusy(true);setMessage(null);try{await runner.runDueNow();setMessage('Due automation check finished.')}catch(error){setMessage(error instanceof Error?error.message:String(error))}finally{setBusy(false)}};
  return <section className="automation-panel" aria-label="Automation rules">
   <header className="automation-panel-header"><div><p className="eyebrow">Automation</p><h2>Rules</h2></div><button type="button" onClick={()=>void runDue()} disabled={busy}>Run due now</button></header>
-  {runner.mode==='native-tray-runtime'&&<p className="automation-runtime-status">Desktop runtime is listening for native tray ticks{runner.runtimeStatus?.hiddenToTray?' while Still is hidden in the tray':''}.</p>}
+  {runner.mode==='native-tray-runtime'&&<p className="automation-runtime-status">Rules keep running in the system tray{runner.runtimeStatus?.hiddenToTray?' while Still is hidden in the tray':''}.</p>}
   {runner.mode==='web-preview-page-open'&&<p className="automation-runtime-status">Web preview only runs rules while this page remains open. Native tray scheduling is available in the desktop app.</p>}
   {runner.mode==='starting'&&<p className="automation-runtime-status">Starting automation runtime…</p>}
   {runner.mode==='runtime-error'&&<p className="automation-error" role="status">{runner.error??'Automation runtime is unavailable.'}</p>}
@@ -49,7 +50,7 @@ export function AutomationPanel({runner,catalog}:AutomationPanelProps){
    {runner.state.rules.length===0?<p className="automation-empty">No automation rules yet.</p>:runner.state.rules.map(rule=>{
     const receipt=latestByRule.get(rule.id);
     return <article className="automation-rule" key={rule.id}>
-     <div className="automation-rule-main"><strong>{actionLabel(rule.action,catalog)}</strong><span>{triggerLabel(rule.trigger)}</span>{receipt&&<small className={`automation-receipt automation-receipt-${receipt.status}`}><b>{statusLabel(receipt.status)}</b>{receipt.message?` · ${receipt.message}`:''}{receipt.operationReceiptId?` · receipt ${receipt.operationReceiptId}`:''} · {new Date(receipt.updatedAt).toLocaleString()}</small>}</div>
+     <div className="automation-rule-main"><strong>{actionLabel(rule.action,catalog)}</strong><span>{triggerLabel(rule.trigger)}</span>{receipt&&<small className={`automation-receipt automation-receipt-${receipt.status}`}><b>{statusLabel(receipt.status)}</b>{receipt.message?` · ${receipt.message}`:''} · {new Date(receipt.updatedAt).toLocaleString()}</small>}</div>
      <div className="automation-rule-actions">{rule.requiresModeChoice&&<label>Layout mode<select aria-label={`Layout mode for ${rule.id}`} value={legacyModes[rule.id]??''} onChange={event=>setLegacyModes(value=>({...value,[rule.id]:event.target.value as 'append'|'replace'|''}))}><option value="">Choose</option><option value="append">Append</option><option value="replace">Replace</option></select><button type="button" disabled={!legacyModes[rule.id]} onClick={()=>{const mode=legacyModes[rule.id];if(mode){runner.setLayoutMode(rule.id,mode);setLegacyModes(value=>({...value,[rule.id]:''}))}}}>Save mode</button></label>}<label><input type="checkbox" checked={rule.enabled} disabled={rule.requiresModeChoice} onChange={event=>runner.setEnabled(rule.id,event.target.checked)}/> Enabled</label><button type="button" onClick={()=>runner.deleteRule(rule.id)}>Delete</button></div>
     </article>
    })}
