@@ -28,7 +28,7 @@ export function folderEntries(items:Iterable<{path:string;size:number}>,location
 export const localFiles={
   native:isTauri(),
   choose:(id:string)=>invoke<FolderListing|null>('files_choose',{id}),
-  inbox:(id:string)=>invoke<StillInbox>('files_still_inbox',{id}),
+  async inbox(id:string):Promise<StillInbox>{if(!this.native)throw new Error('The Downloads Inbox is available in the Still desktop app. In browser preview, manage saved PDF shortcuts and links from Library.');return invoke<StillInbox>('files_still_inbox',{id})},
   select(id:string,files:File[]):FolderListing{
     if(!files.length)throw new Error('This folder contains no selectable files.');
     const first=files[0].webkitRelativePath||files[0].name;const rootName=first.includes('/')?first.split('/')[0]:'Selected files';
