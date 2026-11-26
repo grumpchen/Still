@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {createInitialState,createWidget,parseState} from '../src/domain/workspaces.ts';
+import {createInitialState,createWidget,parseState,createWorkspace,transferWidgetInstance} from '../src/domain/workspaces.ts';
+import {moveWithRetainedNativePanel} from '../src/domain/nativeWidgetLifecycle.ts';
 import {parseGlass} from '../src/domain/appearance.ts';
 
 const app=readFileSync(new URL('../src/App.tsx',import.meta.url),'utf8');
@@ -40,12 +41,25 @@ test('click-through preferences are optional General settings with transparent-b
 });
 
 test('moving a widget between workspaces follows it when enabled and can be disabled in General settings',()=>{
- assert.match(general,/t\('followWidget'\)/);
- assert.match(app,/activeId:s\.followWidgetToWorkspace\?destinationId:s\.activeId/);
  const state=createInitialState();state.followWidgetToWorkspace=false;
  assert.equal(parseState(JSON.stringify(state)).followWidgetToWorkspace,false);
  delete state.followWidgetToWorkspace;
  assert.equal(parseState(JSON.stringify(state)).followWidgetToWorkspace,true,'existing saves follow moved widgets by default');
+});
+
+test('a cross-workspace move preserves the widget instance and only follows when the saved preference is enabled',async()=>{
+ const source=createWorkspace('Source',['apps']),destination=createWorkspace('Destination',[]),widget=source.widgets[0];
+ const calls=[],panel={suspendForCollection:async id=>{calls.push(['suspend',id]);return true},cancelCollection:async id=>calls.push(['resume',id])};
+ for(const follow of [true,false]){
+  const moved=await moveWithRetainedNativePanel(widget.id,true,panel,()=>transferWidgetInstance(source,destination,widget.id,1200,800));
+  assert.ok(moved);assert.equal(moved.source.widgets.some(item=>item.id===widget.id),false);assert.equal(moved.destination.widgets[0].id,widget.id);
+  const activeId=follow?moved.destination.id:source.id;
+  assert.equal(activeId,follow?destination.id:source.id);
+ }
+ assert.deepEqual(calls,[['suspend',widget.id],['suspend',widget.id]]);
+ assert.match(general,/t\('followWidget'\)/);
+ const transfer=app.slice(app.indexOf('async function transferWidgetSafely'),app.indexOf('function transferWidget('));
+ assert.match(transfer,/followWidgetToWorkspace\s*\?\s*destinationId\s*:\s*current\.activeId/,'the persisted preference controls which workspace remains active after the real transfer helper succeeds');
 });
 
 test('app behavior settings persist and invalid shutdown values safely fall back',()=>{
