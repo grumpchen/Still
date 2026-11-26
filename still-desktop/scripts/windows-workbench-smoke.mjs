@@ -223,7 +223,7 @@ async function main(){
    await assistant.locator('.assistant-heading button').last().click();
    const rule=await pollUntil('AI-created one-time rule persistence',async()=>await page.evaluate(({text,layoutId,targetId})=>{
     const state=JSON.parse(localStorage.getItem('still.automation-rules.v2')||'null');return state?.rules?.find(item=>item.sourceText===text&&item.action?.layoutId===layoutId&&item.action?.workspaceId===targetId)??null;
-   },{text:ruleText.slice('Save a rule: '.length),layoutId:savedLayout.id,targetId:target.id}),10_000);
+   },{text:ruleText,layoutId:savedLayout.id,targetId:target.id}),10_000);
    if(rule.trigger.kind!=='once'||rule.action.kind!=='prepareWorkspaceLayout'||rule.action.mode!=='replace')throw new Error(`The UI saved an unexpected rule shape: ${JSON.stringify(rule)}`);
    const beforeHide=await page.evaluate(({ruleId,targetId,beforeWidgetIds})=>{
     const automation=JSON.parse(localStorage.getItem('still.automation-rules.v2')||'null'),app=JSON.parse(localStorage.getItem('still-workspace-v2')||'null');
