@@ -35,6 +35,12 @@ test('scheduled layout grammar resolves workspace and saved layout or requests c
   assert.equal(english.kind, 'rule');
   assert.deepEqual(english.rule.trigger,{kind:'daily',time:'09:00',timeZone:'America/Los_Angeles'});
   assert.deepEqual(english.rule.action,{kind:'prepareWorkspaceLayout',workspaceId:'course-ws',layoutId:'lab-layout'});
+  const crossWorkspaceLayout = parseAutomationRule('Every day at 09:00 prepare Biology workspace using Board layout', {catalog:{...catalog,courses:[catalog.courses[0]]},timeZone:'UTC',id:'cross'});
+  assert.equal(crossWorkspaceLayout.kind,'rule');
+  assert.equal(crossWorkspaceLayout.rule.action.workspaceId,'course-ws');
+  assert.equal(crossWorkspaceLayout.rule.action.layoutId,'math-layout'); // Saved in Math, applied to Biology.
+  assert.equal(parseAutomationRule('Every day at 25:99 prepare Biology workspace using Lab setup layout', {catalog,timeZone:'UTC'}).kind,'clarification');
+  assert.equal(parseAutomationRule('Every Monday at 25:99 prepare Biology workspace using Lab setup layout', {catalog,timeZone:'UTC'}).kind,'clarification');
   assert.equal(parseAutomationRule('Every day at 09:00 prepare Missing using Lab setup', {catalog,timeZone:'UTC'}).kind, 'clarification');
   assert.equal(parseAutomationRule('每天 09:00 为Biology工作区使用Lab setup布局', {catalog:{...catalog,courses:[catalog.courses[0]]},timeZone:'UTC'}).kind, 'rule');
 });
@@ -70,6 +76,18 @@ test('once/daily/weekly schedules fire only due local occurrences and not twice 
   assert.equal(dueAutomationOccurrences({...state,receipts:[succeeded]},now).some(x=>x.rule.id==='daily'),false);
 });
 
+test('completed one-time rule stays terminal after receipt pruning', async () => {
+  const storage=new MemoryStorage(),at='2026-11-26T12:00:00.000Z';
+  const once=rule('once',{kind:'once',at},{kind:'prepareWorkspaceLayout',workspaceId:'course-ws',layoutId:'lab-layout'});
+  saveAutomationState(storage,{version:1,rules:[once],receipts:[]});
+  const result=await evaluateAutomationRules({storage,service:{execute:async()=>({status:'succeeded'})},now:new Date('2026-11-26T13:00:00.000Z')});
+  assert.equal(result.results[0].status,'succeeded');
+  const after=loadAutomationState(storage).state;
+  assert.deepEqual(after.rules[0].onceTerminal,{at,status:'succeeded'});
+  saveAutomationState(storage,{...after,receipts:[]});
+  assert.equal(dueAutomationOccurrences(loadAutomationState(storage).state,new Date('2026-11-27T13:00:00.000Z')).length,0);
+});
+
 test('capture event identity deduplicates after restart; known safe failures retry while unknown outcomes do not', async () => {
   const storage = new MemoryStorage();
   const action={kind:'fileResourcesToCourse',courseId:'biology-course',workspaceId:'course-ws',resourceKinds:['link'],queryPattern:'lecture'};
@@ -91,9 +109,26 @@ test('capture event identity deduplicates after restart; known safe failures ret
 });
 
 test('concurrent scheduler ticks use the persisted running receipt as a local claim', async () => {
-  const storage=new MemoryStorage();const r=rule('daily',{kind:'daily',time:'09:00',timeZone:'UTC'},{kind:'prepareWorkspaceLayout',workspaceId:'course-ws',layoutId:'lab-layout'});saveAutomationState(storage,{version:1,rules:[r],receipts:[]});let calls=0,release;
-  const service={execute:async()=>{calls++;await new Promise(resolve=>release=resolve);return{status:'succeeded'}}};
+  const storage=new MemoryStorage();const r=rule('daily',{kind:'daily',time:'09:00',timeZone:'UTC'},{kind:'prepareWorkspaceLayout',workspaceId:'course-ws',layoutId:'lab-layout'});saveAutomationState(storage,{version:1,rules:[r],receipts:[]});let calls=0,release,start;const started=new Promise(resolve=>start=resolve);
+  const service={execute:async()=>{calls++;start();await new Promise(resolve=>release=resolve);return{status:'succeeded'}}};
   const tick1=evaluateAutomationRules({storage,service,now:new Date('2026-11-26T10:00:00Z')});
-  const tick2=await evaluateAutomationRules({storage,service,now:new Date('2026-11-26T10:00:01Z')});
-  assert.equal(tick2.results.length,0);assert.equal(calls,1);release();await tick1;
+  await started;
+  const tick2=evaluateAutomationRules({storage,service,now:new Date('2026-11-26T10:00:01Z')});
+  release();const [first,second]=await Promise.all([tick1,tick2]);
+  assert.equal(first.results[0].status,'succeeded');assert.equal(second.results.length,0);assert.equal(calls,1);
+});
+
+test('state edits made while an operation is awaiting are merged and disabled later rules are skipped', async () => {
+  const storage=new MemoryStorage(),action={kind:'prepareWorkspaceLayout',workspaceId:'course-ws',layoutId:'lab-layout'};
+  const first=rule('first',{kind:'daily',time:'09:00',timeZone:'UTC'},action),second=rule('second',{kind:'daily',time:'09:00',timeZone:'UTC'},action),added=rule('added',{kind:'once',at:'2026-12-01T00:00:00.000Z'},action);
+  saveAutomationState(storage,{version:1,rules:[first,second],receipts:[]});let release,start;const started=new Promise(resolve=>start=resolve),calls=[];
+  const run=evaluateAutomationRules({storage,now:new Date('2026-11-26T10:00:00Z'),service:{execute:async(a,c)=>{calls.push(c.ruleId);if(c.ruleId==='first'){start();await new Promise(resolve=>release=resolve)}return{status:'succeeded'}}}});
+  await started;
+  const edited=loadAutomationState(storage).state;
+  saveAutomationState(storage,{...edited,rules:[...edited.rules.map(x=>x.id==='second'?{...x,enabled:false,updatedAt:'2026-11-26T10:01:00.000Z'}:x),added]});
+  release();const result=await run;
+  assert.deepEqual(calls,['first']);
+  assert.ok(result.state.rules.some(x=>x.id==='added'));
+  assert.equal(result.state.rules.find(x=>x.id==='second').enabled,false);
+  assert.deepEqual(result.state.receipts.map(x=>x.ruleId),['first']);
 });

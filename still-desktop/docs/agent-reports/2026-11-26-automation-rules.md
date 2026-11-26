@@ -22,3 +22,10 @@
 - `fileResourcesToCourse` requires `resourceKinds`, a non-empty `queryPattern`, exact `courseId` and its `workspaceId`, and allows an optional exact `sourceWorkspaceId`. The service must enforce that selector and only process the referenced capture event. Provider calls must be validated through `validateAutomationRuleDraft` / `createAutomationRule` before saving.
 - Capture evaluation takes `pendingCaptureEventId`, a durable business event identity (e.g. resource ID plus creation identity), and should be called while processing a pending QuickCapture journal. The 15-second native tick is only a wake-up/replay cue and must never be used as the capture event ID.
 - For crash safety, the shared operation service must deduplicate durable `idempotencyKey`s and return its real operation receipt. The domain deliberately will not auto-retry a persisted `running` outcome after process restart; it records `outcome_unknown` and requires reconciliation. A failed result may retry only when the adapter certifies no mutation has happened and sets `retryable: true`.
+
+## Review follow-up (commit pending)
+- Layout catalog workspace IDs now describe layout provenance only; applying a saved layout to another target workspace is allowed.
+- Evaluations serialize per storage instance in this JS runtime, reload before each action, verify that the live rule remains enabled and unchanged, and merge each final receipt into freshly loaded state after the awaited operation. This avoids stale whole-state writes over edits and concurrent evaluator runs.
+- A one-time rule records a terminal watermark directly on its rule after success, clarification, or unknown outcome, so receipt pruning cannot make the one-time action due again.
+- Parser constructors validate the normalized trigger before returning a rule, so impossible daily/weekly times return clarification.
+- Follow-up checks: 9 focused tests and `pnpm check` pass.
