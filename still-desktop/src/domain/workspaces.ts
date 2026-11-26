@@ -6,6 +6,7 @@ import {widgetCatalog,widgetTypes, type WidgetType} from './widgetCatalog.ts';
 import {placement, nextPlacement,constrainPlacement,type Placement} from './layout.ts';
 import {parseWebShortcuts, type WebShortcut} from './webShortcuts.ts';
 import {widgetPreset,parsePresets,fileKind,fileName,type FileKind,type WidgetPreset} from './presets.ts';
+import {detachNoteLibraryDocuments} from './noteDocuments.ts';
 import {type ScreenshotColorOverrides,type ScreenshotPluginMode} from './screenshotPlugin.ts';
 import {type ClockPluginColorOverrides,type ClockPluginMode} from './clockPlugin.ts';
 import {widgetTagColors,type WidgetTagColor} from './widgetTags.ts';
@@ -53,14 +54,16 @@ export interface WidgetInstance {
   placement:Placement; minimized:boolean; restorePlacement:Placement|null; groupCollapsed:boolean;groupExpandedPlacement:Placement|null;shortcuts:WebShortcut[]; schedule:ScheduleEntry[];calendarEvents:StudyCalendarEvent[]; groupId:string|null;
 }
 export type WorkspaceRole='dashboard'|'study'|'library'|'custom';
-export interface Workspace { id: string; name: string; widgets: WidgetInstance[]; groups:SavedGroup[]; layout: 'canvas';role:WorkspaceRole }
+export interface DashboardLayoutSnapshot {order:string[];sizes:Record<string,{width:number;height:number}>}
+export interface Workspace { id: string; name: string; widgets: WidgetInstance[]; groups:SavedGroup[]; layout: 'canvas';role:WorkspaceRole;dashboardLayout?:DashboardLayoutSnapshot }
+export interface GlobalWorkspaceLayout {id:string;name:string;createdAt:number;widgets:WidgetInstance[];groups:SavedGroup[];dashboardLayout?:DashboardLayoutSnapshot;settings:{theme:'light'|'dark';density:'comfortable'|'compact';background:'solid'|'dots'|'transparent';appearance:Appearance;glass:GlassSettings}}
 /** True when a Focus or Clock add-on timer in this workspace has reached zero. */
 export function workspaceHasFinishedTimer(workspace:Pick<Workspace,'widgets'>,now=Date.now()):boolean{
  return workspace.widgets.some(widget=>(widget.type==='focus'||widget.clockPluginEnabled)&&(widget.end===null?widget.remaining===0:widget.end<=now));
 }
 export type SidebarPlugin='stack'|'layout';
 export interface WorkspaceState {
-  version: 10; activeId: string; workspaces: Workspace[]; sidebarCollapsed:boolean;sidebarPlugins:SidebarPlugin[];presets:WidgetPreset[];locale:Locale;
+  version: 10; activeId: string; workspaces: Workspace[]; globalLayouts:GlobalWorkspaceLayout[]; sidebarCollapsed:boolean;sidebarPlugins:SidebarPlugin[];presets:WidgetPreset[];locale:Locale;
   theme: 'light' | 'dark'; density: 'comfortable' | 'compact'; background: 'solid' | 'dots' | 'transparent';
   shortcuts: WorkspaceShortcuts;
   appearance: Appearance; glass: GlassSettings;
@@ -197,6 +200,31 @@ export function transferWidgetInstance(source:Workspace,destination:Workspace,wi
  return{source:{...source,widgets:source.widgets.filter(item=>item.id!==widgetId)},destination:{...destination,widgets:[...destination.widgets,moved],groups}};
 }
 export function nextInstanceNumber(type:WidgetType,widgets:WidgetInstance[]):number {return Math.max(0,...widgets.filter(w=>w.type===type).map(w=>w.instanceNumber))+1}
+export function cloneGlobalWorkspaceLayout(layout:GlobalWorkspaceLayout,target:Workspace,mode:'append'|'replace',canvasWidth=20000,canvasHeight=20000):Workspace{
+ const widgetIds=new Map(layout.widgets.map(widget=>[widget.id,crypto.randomUUID()])),groupIds=new Map(layout.groups.map(group=>[group.id,crypto.randomUUID()])),noteIds=new Map(layout.widgets.flatMap(widget=>widget.noteDocuments.map(note=>[note.id,crypto.randomUUID()] as const)));
+ for(const group of layout.groups)for(const entry of group.widgets)if(entry.kind==='collected')widgetIds.set(entry.id,crypto.randomUUID());
+ const existing=mode==='append'?[...target.widgets]:[],offset=mode==='append'?24+target.widgets.length*18:0;
+ const copyWidget=(source:WidgetInstance):WidgetInstance=>{
+  const id=widgetIds.get(source.id)??crypto.randomUUID();widgetIds.set(source.id,id);
+  const noteDocuments=source.noteDocuments.map(note=>({...structuredClone(note),id:noteIds.get(note.id)??crypto.randomUUID(),sources:note.sources?.map(citation=>({...citation,widgetId:widgetIds.get(citation.widgetId)??citation.widgetId}))}));
+  const folderKey=source.type==='files'&&!source.folderKey&&source.folderName&&source.folderName!=='Still Downloads'?source.id:source.folderKey;
+  const remaining=source.end===null?source.remaining:Math.max(0,Math.ceil((source.end-Date.now())/1000));
+  const geometry=mode==='append'?{...source.placement,x:source.placement.x+offset,y:source.placement.y+offset}:source.placement;
+  const copy:WidgetInstance={...structuredClone(source),id,type:source.type,instanceNumber:nextInstanceNumber(source.type,existing),placement:constrainPlacement(source.type,geometry,canvasWidth,{},canvasHeight),groupId:source.groupId?groupIds.get(source.groupId)??null:null,folderKey,noteDocuments,activeNoteDocumentId:noteIds.get(source.activeNoteDocumentId)??noteDocuments[0]?.id??'',remaining,end:null,appPanelOpen:false,appWasCollected:false};existing.push(copy);
+  return copy;
+ };
+ const widgets=layout.widgets.map(copyWidget),groups=layout.groups.map(group=>({...structuredClone(group),id:groupIds.get(group.id)!,widgets:group.widgets.map(entry=>{
+   if(entry.kind!=='collected'||!entry.instance)return{...structuredClone(entry),id:crypto.randomUUID()};
+   const id=widgetIds.get(entry.id)!,instance=copyWidget(entry.instance);return{...structuredClone(entry),id,instance:{...instance,id}};
+  })}));
+ const mergedGroups=target.role==='dashboard'?[...target.groups,...groups]:mode==='replace'?groups:[...target.groups,...groups];
+ if(target.role==='dashboard'){
+  const prior=mode==='append'?(target.dashboardLayout?.order??[]):[],order=[...prior,...widgets.map(widget=>widget.id)],sizes=mode==='append'?{...(target.dashboardLayout?.sizes??{})}:{};
+  for(const widget of widgets)sizes[widget.id]={width:widget.placement.width,height:widget.placement.height};
+  return{...target,widgets:[...target.widgets,...widgets],groups:mergedGroups,dashboardLayout:{order,sizes}};
+ }
+ return{...target,widgets:mode==='replace'?widgets:[...target.widgets,...widgets],groups:mergedGroups};
+}
 const GROUP_ICON_LIMIT=384*1024,GROUP_ICON_BUDGET=1024*1024;
 export function checkedAppIconData(value:unknown):string|undefined {
  return typeof value==='string'&&value.length<=GROUP_ICON_LIMIT&&/^data:image\/png;base64,iVBORw0KGgo[A-Za-z0-9+/]*={0,2}$/.test(value)?value:undefined;
@@ -276,12 +304,40 @@ function persistentWidgetSnapshot(value:unknown):WidgetInstance {
  // snapshot keeps its safe app configuration but never auto-launches it later.
  return checked.type==='apps'?{...checked,appPanelOpen:false,appWasCollected:source.appPanelOpen===true||source.appWasCollected===true}:checked;
 }
+function persistentLayoutWidgetSnapshot(value:unknown):WidgetInstance{const checked=persistentWidgetSnapshot(value);return checked.type==='notes'?{...checked,noteDocuments:detachNoteLibraryDocuments(checked.noteDocuments),notesLibraryKey:null,notesLibraryName:undefined}:checked}
 function parseGroups(value:unknown):SavedGroup[]{
  if(!Array.isArray(value))return [];const ids=new Set<string>();
  return value.slice(0,200).flatMap(v=>{
   if(!v||typeof v.id!=='string'||!/^[a-zA-Z0-9-]{1,80}$/.test(v.id)||ids.has(v.id))return [];ids.add(v.id);
   return[{id:v.id,name:typeof v.name==='string'?v.name.trim().slice(0,60):'',shortcuts:parseWebShortcuts(v.shortcuts,[]),widgets:parseGroupEntries(v.widgets),expanded:v.expanded===true}];
  });
+}
+export const MAX_GLOBAL_LAYOUTS=24;
+export interface GlobalLayoutCapture {createdAt?:number;dashboardLayout?:DashboardLayoutSnapshot;widgetIds?:string[];widgets?:WidgetInstance[];placements?:Record<string,Placement>}
+export function createGlobalWorkspaceLayout(name:string,source:Workspace,state:Pick<WorkspaceState,'theme'|'density'|'background'|'appearance'|'glass'>,capture:GlobalLayoutCapture={}):GlobalWorkspaceLayout{
+ const clean=name.trim().replace(/\s+/g,' ').slice(0,60);if(!clean)throw new Error('Enter a layout name.');
+ const layout=capture.dashboardLayout??source.dashboardLayout,visibleIds=capture.widgetIds??(source.role==='dashboard'?layout?.order??source.widgets.filter(widget=>['calendar','focus','timetable','files'].includes(widget.type)).map(widget=>widget.id):undefined),captureWidgets=capture.widgets??source.widgets,sourceWidgets=visibleIds?visibleIds.map(id=>captureWidgets.find(widget=>widget.id===id)).filter((widget):widget is WidgetInstance=>!!widget):captureWidgets;
+ const widgets=sourceWidgets.map(widget=>{const saved=persistentLayoutWidgetSnapshot({...widget,placement:capture.placements?.[widget.id]??{...widget.placement,...(layout?.sizes[widget.id]??{})}});if(saved.end!==null){saved.remaining=Math.max(0,Math.ceil((saved.end-Date.now())/1000));saved.end=null}return saved});
+ const groups=source.groups.map(group=>({...structuredClone(group),widgets:group.widgets.map(entry=>{if(entry.kind!=='collected'||!entry.instance)return structuredClone(entry);return{...structuredClone(entry),instance:persistentLayoutWidgetSnapshot(entry.instance)}})}));
+ const dashboardLayout=source.role==='dashboard'?{order:visibleIds??widgets.map(widget=>widget.id),sizes:Object.fromEntries(widgets.map(widget=>[widget.id,{width:widget.placement.width,height:widget.placement.height}]))}:undefined;
+ return{id:crypto.randomUUID(),name:clean,createdAt:capture.createdAt??Date.now(),widgets,groups,...(dashboardLayout?{dashboardLayout}:{}),settings:{theme:state.theme,density:state.density,background:state.background,appearance:state.appearance,glass:structuredClone(state.glass)}};
+}
+function checkedDashboardLayout(value:unknown,widgets:WidgetInstance[]):DashboardLayoutSnapshot|undefined{
+ if(!value||typeof value!=='object'||Array.isArray(value))return undefined;const raw=value as Partial<DashboardLayoutSnapshot>,widgetIds=new Set(widgets.map(widget=>widget.id));if(!Array.isArray(raw.order))return undefined;
+ const order=[...new Set(raw.order.filter((id):id is string=>typeof id==='string'&&widgetIds.has(id)))].slice(0,100),sizes:DashboardLayoutSnapshot['sizes']={};
+ if(raw.sizes&&typeof raw.sizes==='object')for(const [id,value] of Object.entries(raw.sizes))if(widgetIds.has(id)&&value&&typeof value==='object'&&Number.isFinite(value.width)&&Number.isFinite(value.height)){const width=Math.max(220,Math.min(2000,Math.round(value.width))),height=Math.max(180,Math.min(1600,Math.round(value.height)));sizes[id]={width,height}}
+ return{order,sizes};
+}
+export function parseGlobalWorkspaceLayouts(value:unknown):GlobalWorkspaceLayout[]{
+ if(!Array.isArray(value))return[];const ids=new Set<string>(),result:GlobalWorkspaceLayout[]=[];
+ for(const raw of value.slice(0,200))try{
+  if(!raw||typeof raw!=='object'||Array.isArray(raw))continue;const item=raw as Partial<GlobalWorkspaceLayout>;
+  if(typeof item.id!=='string'||!/^[a-zA-Z0-9-]{1,80}$/.test(item.id)||ids.has(item.id)||typeof item.name!=='string'||!item.name.trim()||!Array.isArray(item.widgets)||item.widgets.length>100)continue;
+  const widgets:WidgetInstance[]=[],widgetIds=new Set<string>();for(const source of item.widgets){const widget=checkedWidget(source);if(widgetIds.has(widget.id))throw new Error('Duplicate layout widget.');widgetIds.add(widget.id);widgets.push(widget.type==='apps'?{...widget,appPanelOpen:false}:widget)}
+  const settings=item.settings;if(!settings||!['light','dark'].includes(settings.theme)||!['comfortable','compact'].includes(settings.density)||!['solid','dots','transparent'].includes(settings.background)||!['minimal','liquid-glass'].includes(settings.appearance))continue;
+  ids.add(item.id);result.push({id:item.id,name:item.name.trim().replace(/\s+/g,' ').slice(0,60),createdAt:typeof item.createdAt==='number'&&Number.isFinite(item.createdAt)?item.createdAt:0,widgets,groups:parseGroups(item.groups),...(checkedDashboardLayout(item.dashboardLayout,widgets)?{dashboardLayout:checkedDashboardLayout(item.dashboardLayout,widgets)}:{}),settings:{theme:settings.theme,density:settings.density,background:settings.background,appearance:settings.appearance,glass:parseGlass(settings.glass)}});
+ }catch{}
+ return result;
 }
 function migrateLegacyBrowserGroups(widgets:unknown[],existing:SavedGroup[]):SavedGroup[]{
  const groups=[...existing],ids=new Set(groups.map(group=>group.id));
@@ -343,7 +399,7 @@ export function saveGroupName(workspace:Workspace,id:string,value:string):Worksp
 }
 export function createInitialState(): WorkspaceState {
   const workspaces = [createWorkspace('Dashboard',['calendar','focus','notes','timetable'],'dashboard'),createWorkspace('Library',['files','notes'],'library'),createWorkspace('Study',['desmos','notes','focus'],'study'), createWorkspace('Design',['notes','ai','files']), createWorkspace('Daily',['notes','focus']), createWorkspace('Minimal',['desmos','notes'])];
-  return { version:10,activeId:workspaces[0].id,workspaces,sidebarCollapsed:false,sidebarPlugins:[],presets:[],locale:'en',theme:'light',density:'comfortable',background:'solid',shortcuts:defaultShortcuts(),appearance:'liquid-glass',glass:defaultGlass(),saveAppShortcutsOnAttach:true,appShutdownBehavior:'leaveOpen',closeAppOnWidgetClose:true,showAppAttachAction:false,showAppDetachAction:false,showAppSaveAction:false,showWidgetRelaunchAction:true,showWidgetExportPngAction:true,widgetRelaunchMode:'automatic',widgetRelaunchPluginStatus:'enabled',widgetRelaunchColors:{},screenshotPluginMode:'global',screenshotPluginColors:[],screenshotPluginColorOverrides:{},clockPluginMode:'global',clockPluginColors:[],clockPluginColorOverrides:{},passThroughTransparentBackground:false,enableWholeWindowClickThrough:false,canvasFrameRate:'display',followWidgetToWorkspace:true,autoOpenCourseEnvironments:true };
+  return { version:10,activeId:workspaces[0].id,workspaces,globalLayouts:[],sidebarCollapsed:false,sidebarPlugins:[],presets:[],locale:'en',theme:'light',density:'comfortable',background:'solid',shortcuts:defaultShortcuts(),appearance:'liquid-glass',glass:defaultGlass(),saveAppShortcutsOnAttach:true,appShutdownBehavior:'leaveOpen',closeAppOnWidgetClose:true,showAppAttachAction:false,showAppDetachAction:false,showAppSaveAction:false,showWidgetRelaunchAction:true,showWidgetExportPngAction:true,widgetRelaunchMode:'automatic',widgetRelaunchPluginStatus:'enabled',widgetRelaunchColors:{},screenshotPluginMode:'global',screenshotPluginColors:[],screenshotPluginColorOverrides:{},clockPluginMode:'global',clockPluginColors:[],clockPluginColorOverrides:{},passThroughTransparentBackground:false,enableWholeWindowClickThrough:false,canvasFrameRate:'display',followWidgetToWorkspace:true,autoOpenCourseEnvironments:true };
 }
 function parseSidebarPlugins(value:unknown):SidebarPlugin[]{
  if(!Array.isArray(value))return[];
@@ -443,7 +499,7 @@ export function parseState(source: unknown): WorkspaceState {
       }
     }
     const role:WorkspaceRole=workspace.role==='dashboard'||workspace.role==='study'||workspace.role==='library'?workspace.role:workspace.name==='Study'?'study':'custom';
-    return {id:workspace.id,name:workspaceName(workspace.name),widgets,groups,layout:'canvas' as const,role};
+    return {id:workspace.id,name:workspaceName(workspace.name),widgets,groups,layout:'canvas' as const,role,...(checkedDashboardLayout(workspace.dashboardLayout,widgets)?{dashboardLayout:checkedDashboardLayout(workspace.dashboardLayout,widgets)}:{})};
   });
   for(const workspace of workspaces)for(const widget of workspace.widgets)if(widget.type==='timetable')widget.schedule=widget.schedule.map(entry=>{if(!entry.workspaceId||ids.has(entry.workspaceId))return entry;const {workspaceId:_stale,...unlinked}=entry;return unlinked});
   let activeId=value.activeId;
@@ -452,7 +508,7 @@ export function parseState(source: unknown): WorkspaceState {
   const dashboard=workspaces.find(workspace=>workspace.role==='dashboard');
   if(dashboard)for(const type of ['calendar','focus','notes','timetable'] as WidgetType[]){const existing=dashboard.widgets.find(widget=>widget.type===type);if(existing){existing.minimized=false;existing.restorePlacement=null;continue}const widget=createWidget(type);widget.instanceNumber=nextInstanceNumber(type,dashboard.widgets);widget.placement=nextPlacement(type,dashboard.widgets);dashboard.widgets.push(widget);}
   if (!ids.has(activeId)) throw new Error('Missing active workspace');
-  return {version:10,activeId,workspaces,sidebarCollapsed:value.sidebarCollapsed===true,sidebarPlugins:parseSidebarPlugins(value.sidebarPlugins),presets:parsePresets(value.presets),locale:value.locale==='zh-CN'?'zh-CN':'en',theme:value.theme==='dark'?'dark':'light',density:value.density==='compact'?'compact':'comfortable',background:value.background==='dots'?'dots':value.background==='transparent'?'transparent':'solid',shortcuts:parseShortcuts(value.shortcuts),appearance:value.appearance==='minimal'?'minimal':'liquid-glass',glass:parseGlass(value.glass),saveAppShortcutsOnAttach:value.saveAppShortcutsOnAttach!==false,appShutdownBehavior:parseAppShutdownBehavior(value.appShutdownBehavior),closeAppOnWidgetClose:value.closeAppOnWidgetClose!==false,showAppAttachAction:value.showAppAttachAction===true,showAppDetachAction:value.showAppDetachAction===true,showAppSaveAction:value.showAppSaveAction===true,showWidgetRelaunchAction:value.showWidgetRelaunchAction!==false,showWidgetExportPngAction:value.showWidgetExportPngAction!==false,widgetRelaunchMode:parseWidgetRelaunchMode(value.widgetRelaunchMode),widgetRelaunchPluginStatus:parseWidgetRelaunchPluginStatus(value.widgetRelaunchPluginStatus),widgetRelaunchColors:parseWidgetRelaunchColors(value.widgetRelaunchColors),screenshotPluginMode:parseScreenshotPluginMode(value.screenshotPluginMode),screenshotPluginColors:parseScreenshotPluginColors(value.screenshotPluginColors),screenshotPluginColorOverrides:parseScreenshotPluginColorOverrides(value.screenshotPluginColorOverrides),clockPluginMode:parseClockPluginMode(value.clockPluginMode),clockPluginColors:parseClockPluginColors(value.clockPluginColors),clockPluginColorOverrides:parseClockPluginColorOverrides(value.clockPluginColorOverrides),passThroughTransparentBackground:value.passThroughTransparentBackground===true,enableWholeWindowClickThrough:value.enableWholeWindowClickThrough===true,canvasFrameRate:value.canvasFrameRate===30||value.canvasFrameRate===60?value.canvasFrameRate:'display',followWidgetToWorkspace:value.followWidgetToWorkspace!==false,autoOpenCourseEnvironments:value.autoOpenCourseEnvironments!==false};
+  return {version:10,activeId,workspaces,globalLayouts:parseGlobalWorkspaceLayouts(value.globalLayouts),sidebarCollapsed:value.sidebarCollapsed===true,sidebarPlugins:parseSidebarPlugins(value.sidebarPlugins),presets:parsePresets(value.presets),locale:value.locale==='zh-CN'?'zh-CN':'en',theme:value.theme==='dark'?'dark':'light',density:value.density==='compact'?'compact':'comfortable',background:value.background==='dots'?'dots':value.background==='transparent'?'transparent':'solid',shortcuts:parseShortcuts(value.shortcuts),appearance:value.appearance==='minimal'?'minimal':'liquid-glass',glass:parseGlass(value.glass),saveAppShortcutsOnAttach:value.saveAppShortcutsOnAttach!==false,appShutdownBehavior:parseAppShutdownBehavior(value.appShutdownBehavior),closeAppOnWidgetClose:value.closeAppOnWidgetClose!==false,showAppAttachAction:value.showAppAttachAction===true,showAppDetachAction:value.showAppDetachAction===true,showAppSaveAction:value.showAppSaveAction===true,showWidgetRelaunchAction:value.showWidgetRelaunchAction!==false,showWidgetExportPngAction:value.showWidgetExportPngAction!==false,widgetRelaunchMode:parseWidgetRelaunchMode(value.widgetRelaunchMode),widgetRelaunchPluginStatus:parseWidgetRelaunchPluginStatus(value.widgetRelaunchPluginStatus),widgetRelaunchColors:parseWidgetRelaunchColors(value.widgetRelaunchColors),screenshotPluginMode:parseScreenshotPluginMode(value.screenshotPluginMode),screenshotPluginColors:parseScreenshotPluginColors(value.screenshotPluginColors),screenshotPluginColorOverrides:parseScreenshotPluginColorOverrides(value.screenshotPluginColorOverrides),clockPluginMode:parseClockPluginMode(value.clockPluginMode),clockPluginColors:parseClockPluginColors(value.clockPluginColors),clockPluginColorOverrides:parseClockPluginColorOverrides(value.clockPluginColorOverrides),passThroughTransparentBackground:value.passThroughTransparentBackground===true,enableWholeWindowClickThrough:value.enableWholeWindowClickThrough===true,canvasFrameRate:value.canvasFrameRate===30||value.canvasFrameRate===60?value.canvasFrameRate:'display',followWidgetToWorkspace:value.followWidgetToWorkspace!==false,autoOpenCourseEnvironments:value.autoOpenCourseEnvironments!==false};
 }
 export function migratePreview(value: unknown): WorkspaceState {
   const legacy = value as {active:string;theme:string;density:string;background:string;workspaces:Record<string,Array<Record<string,unknown>>>};
