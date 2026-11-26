@@ -2,12 +2,13 @@
 
 ## Scope
 
-Extended `scripts/windows-workbench-smoke.mjs` to exercise one real scheduled layout automation in the same candidate release executable. The script creates a complete layout through the Dashboard UI, creates a due one-time rule through the Rules UI, hides Still with the native minimize-to-tray command, and waits for the native tick callback and persisted operation result.
+Extended `scripts/windows-workbench-smoke.mjs` to exercise one real scheduled layout automation in the same candidate release executable. The script creates a complete layout through the Dashboard UI, creates a future-due one-time rule by sending the user-facing “Save a rule: …” request through the Still AI panel, hides Still with the native minimize-to-tray command before the due time, and waits for the native tick callback and persisted operation result.
 
 ## Assertions
 
-- The saved rule is a one-time `prepareWorkspaceLayout` rule with `replace` mode.
-- While the main window is hidden, its succeeded receipt and terminal watermark are written.
+- The saved rule is a one-time `prepareWorkspaceLayout` rule with `replace` mode, created from the AI input flow and confirmed by Still AI’s saved message.
+- Before hiding, the rule has no receipt and the target widget IDs are unchanged. Its scheduled time is still in the future.
+- While the main window is hidden, its succeeded receipt (with `startedAt >= hiddenAt`) and terminal watermark are written.
 - The target workspace widget IDs change and its widget types match the saved layout.
 - After a later hidden tick, the target widget IDs remain unchanged and the rule still has exactly one receipt.
 
