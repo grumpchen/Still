@@ -735,7 +735,7 @@ mod tests {
         let direct=json!({"intent":"workspace_action","reply":"Deleting the file.","layout":[],"actions":[],"workbenchActions":[{"operation":"file.delete","widgetId":"files-1","path":"Course/old.pdf"}]});
         let parsed=validate_reply(serde_json::from_value(direct.clone()).unwrap(),"Gemini").unwrap();
         assert!(matches!(parsed.workbench_actions[0],WorkbenchAction::FileDelete{..}));
-        for mut invalid in [
+        for invalid in [
             {let mut value=direct.clone();value["intent"]=json!("chat");value},
             {let mut value=direct.clone();value["actions"]=json!([{"type":"remove_widget","ids":["notes-1"]}]);value},
             {let mut value=direct.clone();value["layout"]=json!([{"id":"notes-1","x":0,"y":0,"width":300,"height":250}]);value},
