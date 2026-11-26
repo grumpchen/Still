@@ -5,6 +5,7 @@ export interface PendingCapture extends AutomationCaptureEvent {}
 export interface AutomationCaptureQueue {
   listPending():Promise<PendingCapture[]>;
   acknowledge(eventId:string,receipts:AutomationReceipt[]):Promise<void|boolean>;
+  subscribe?(callback:(eventId:string)=>void):()=>void;
 }
 export type AutomationRunnerMode='starting'|'native-tray-runtime'|'web-preview-page-open'|'runtime-error';
 export interface AutomationRunnerSnapshot {mode:AutomationRunnerMode;state:AutomationState;runtimeStatus:AutomationRuntimeStatus|null;cursor:AutomationCursor;pendingCaptures:PendingCapture[];lastTickAt:string|null;error:string|null;captureQueueAvailable:boolean}
@@ -22,13 +23,14 @@ export interface AutomationRunnerControllerOptions {
 const CURSOR_KEY='still.automation-runtime-cursor.v1';
 function readCursor(storage:AutomationStorage):AutomationCursor{try{const value=JSON.parse(storage.getItem(CURSOR_KEY)??'null');if(value&&typeof value.runtimeId==='string'&&Number.isSafeInteger(value.sequence)&&value.sequence>=0)return{runtimeId:value.runtimeId,sequence:value.sequence}}catch{}return{runtimeId:null,sequence:0}}
 function writeCursor(storage:AutomationStorage,cursor:AutomationCursor):void{storage.setItem(CURSOR_KEY,JSON.stringify(cursor))}
-function matchesCapture(event:PendingCapture,rule:AutomationState['rules'][number]):boolean{return rule.enabled&&rule.trigger.kind==='onCapture'&&rule.action.kind==='fileResourcesToCourse'&&rule.action.resourceKinds.includes(event.resourceKind)&&event.name.toLocaleLowerCase().includes(rule.action.queryPattern.toLocaleLowerCase())&&(!rule.action.sourceWorkspaceId||rule.action.sourceWorkspaceId===event.sourceWorkspaceId)}
+function matchesCapture(event:PendingCapture,rule:AutomationState['rules'][number]):boolean{return rule.enabled&&rule.trigger.kind==='onCapture'&&rule.action.kind==='fileResourcesToCourse'&&event.resourceKind!=='idea'&&rule.action.resourceKinds.includes(event.resourceKind)&&event.name.toLocaleLowerCase().includes(rule.action.queryPattern.toLocaleLowerCase())&&(!rule.action.sourceWorkspaceId||rule.action.sourceWorkspaceId===event.sourceWorkspaceId)}
 
 /** Native ticks drive hidden/tray work. Browser timer is explicitly page-open preview only. */
 export class AutomationRunnerController {
  private alive=false;
  private snapshot:AutomationRunnerSnapshot;
  private unlisten:(()=>void)|null=null;
+ private unlistenCapture:(()=>void)|null=null;
  private previewTimer:unknown=null;
  private work:Promise<void>=Promise.resolve();
  private cursor:AutomationCursor;
@@ -41,6 +43,8 @@ export class AutomationRunnerController {
  private enqueue(task:()=>Promise<void>){this.work=this.work.then(task,task);return this.work}
  async start():Promise<void>{
   if(this.alive)return;this.alive=true;this.reloadState();
+  const captureQueue=this.options.getCaptureQueue?.();
+  try{this.unlistenCapture=captureQueue?.subscribe?.(()=>{void this.enqueue(async()=>{await this.runPass(this.now())})})??null}catch(error){this.publish({error:`Capture event listener unavailable: ${this.errorText(error)}`})}
   if(this.options.runtime.native){
    try{this.unlisten=await this.options.runtime.subscribeTicks(tick=>{void this.enqueue(()=>this.acceptTick(tick))});if(!this.alive){this.unlisten();this.unlisten=null;return}}
    catch(error){this.publish({mode:'runtime-error',error:this.errorText(error)});return}
@@ -53,7 +57,7 @@ export class AutomationRunnerController {
    this.previewTimer=set(()=>{void this.enqueue(async()=>{await this.runPass(this.now())})},this.options.previewTickMs??15000);
   }
  }
- stop(){this.alive=false;this.unlisten?.();this.unlisten=null;if(this.previewTimer!==null){const clear=this.options.clearPreviewInterval??(token=>window.clearInterval(token as number));clear(this.previewTimer);this.previewTimer=null}}
+ stop(){this.alive=false;this.unlisten?.();this.unlisten=null;this.unlistenCapture?.();this.unlistenCapture=null;if(this.previewTimer!==null){const clear=this.options.clearPreviewInterval??(token=>window.clearInterval(token as number));clear(this.previewTimer);this.previewTimer=null}}
  private now(){return this.options.now?.()??new Date()}
  private errorText(error:unknown){return error instanceof Error?error.message:String(error)}
  private reloadState(){const loaded=loadAutomationState(this.options.storage);if(!loaded.ok){this.publish({error:loaded.message});return false}this.publish({state:loaded.state,error:null});return true}
