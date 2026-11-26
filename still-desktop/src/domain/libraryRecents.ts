@@ -19,6 +19,11 @@ export function remapRecentLibraryFiles(widgetIds:Set<string>,source:string,dest
  try{localStorage.setItem(STORAGE_KEY,JSON.stringify(next))}catch{/* Native receipts remain the durable recovery record. */}
  return next;
 }
+export function forgetRecentLibraryFiles(widgetIds:Set<string>,source:string){
+ const next=readRecentLibraryFiles().filter(item=>!widgetIds.has(item.widgetId)||item.path!==source&&!item.path.startsWith(source+'/'));
+ try{localStorage.setItem(STORAGE_KEY,JSON.stringify(next))}catch{/* Recent history is optional when storage is unavailable. */}
+ return next;
+}
 
 export function rememberRecentLibraryFile(value:RecentLibraryFile):RecentLibraryFile[]{
  if(!validRecentFile(value))return readRecentLibraryFiles();

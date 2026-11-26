@@ -4,6 +4,8 @@ export interface FolderListing { rootName:string; location:string; entries:FileE
 export interface NativeFilePreview {mimeType:string;base64:string}
 export interface StillInbox {listing:FolderListing;path:string}
 export interface FileMoveResult {sourcePath:string;destinationPath:string}
+export interface ManagedFileResult {action:'rename'|'move'|'delete'|'editText';sourcePath:string;destinationPath:string}
+export type ManagedFileAction={type:'rename';name:string}|{type:'move';destinationFolder:string}|{type:'delete'}|{type:'editText';text:string;expectedText:string};
 export interface ExtractedPdfText {text:string;pagesRead:number;totalPages:number;truncated:boolean}
 export interface LibrarySearchHit {widgetId:string;entry:FileEntry}
 export interface LibrarySearchResponse {results:LibrarySearchHit[];unavailableWidgetIds:string[];truncated:boolean}
@@ -74,6 +76,10 @@ export const localFiles={
   async moveResource(id:string,sourcePath:string,destinationFolder:string):Promise<FileMoveResult>{
     if(!this.native)throw new Error('Filing resources is available in the Still desktop app.');
     return invoke<FileMoveResult>('files_move_resource',{id,sourcePath,destinationFolder});
+  },
+  async manageResource(id:string,sourcePath:string,action:ManagedFileAction):Promise<ManagedFileResult>{
+    if(!this.native)throw new Error('Changing files on disk is available in the Still desktop app.');
+    return invoke<ManagedFileResult>('files_manage_resource',{id,sourcePath,action});
   },
 };
 
