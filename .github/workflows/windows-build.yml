@@ -65,6 +65,18 @@ jobs:
           --skip app_panel::tests::real_window_fixture_tracks_bounds_clips_native_content_and_releases_without_closing
           --skip native_resize::tests::managed_resize_blocks_edge_hit_testing_but_allows_still_sizes_and_restores_on_release
 
+      - name: Native embedded window geometry fixture
+        if: ${{ !cancelled() }}
+        timeout-minutes: 2
+        working-directory: still-desktop/src-tauri
+        run: cargo test --bin still-desktop app_panel::tests::real_window_fixture_tracks_bounds_clips_native_content_and_releases_without_closing -- --exact --test-threads=1
+
+      - name: Native resize geometry fixture
+        if: ${{ !cancelled() }}
+        timeout-minutes: 2
+        working-directory: still-desktop/src-tauri
+        run: cargo test --bin still-desktop native_resize::tests::managed_resize_blocks_edge_hit_testing_but_allows_still_sizes_and_restores_on_release -- --exact --test-threads=1
+
       - name: Build Windows executable
         id: executable
         if: ${{ !cancelled() }}
