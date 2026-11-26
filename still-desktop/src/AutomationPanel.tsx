@@ -15,16 +15,16 @@ function actionLabel(action:AutomationRunnerApi['state']['rules'][number]['actio
   return`File ${action.resourceKinds.join(' and ')} matching “${action.queryPattern}” into ${course?.title??action.courseId} · ${workspace?.name??action.workspaceId}`;
  }
  const workspace=catalog.workspaces.find(item=>item.id===action.workspaceId),layout=catalog.layouts.find(item=>item.id===action.layoutId);
- return`Prepare ${workspace?.name??action.workspaceId} with ${layout?.name??action.layoutId}`;
+ return`${action.mode?`${action.mode==='append'?'Append':'Replace'} · `:''}${action.mode?'Prepare':'Choose append or replace'} ${workspace?.name??action.workspaceId} with ${layout?.name??action.layoutId}`;
 }
 function statusLabel(status:string):string{return status.replaceAll('_',' ')}
 export interface AutomationPanelProps {runner:AutomationRunnerApi;catalog:RuleCatalog}
 /** This view is optional; the app-root runner hook keeps working while this panel is closed. */
 export function AutomationPanel({runner,catalog}:AutomationPanelProps){
- const [draft,setDraft]=useState(''),[message,setMessage]=useState<string|null>(null),[busy,setBusy]=useState(false);
+ const [draft,setDraft]=useState(''),[message,setMessage]=useState<string|null>(null),[busy,setBusy]=useState(false),[modeChoicePending,setModeChoicePending]=useState(false),[createLayoutMode,setCreateLayoutMode]=useState<'append'|'replace'|''>(''),[legacyModes,setLegacyModes]=useState<Record<string,'append'|'replace'|''>>({});
  const latestByRule=new Map<string,AutomationRunnerApi['state']['receipts'][number]>();
  for(const receipt of [...runner.state.receipts].sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)))if(!latestByRule.has(receipt.ruleId))latestByRule.set(receipt.ruleId,receipt);
- const submit=async(event:React.FormEvent)=>{event.preventDefault();setBusy(true);setMessage(null);try{const result=await runner.createFromText(draft);if(result.kind==='rule'){setDraft('');setMessage('Automation saved.')}else setMessage(result.message)}catch(error){setMessage(error instanceof Error?error.message:String(error))}finally{setBusy(false)}};
+ const submit=async(event:React.FormEvent)=>{event.preventDefault();setBusy(true);setMessage(null);try{const result=await runner.createFromText(draft,createLayoutMode||undefined);if(result.kind==='rule'){setDraft('');setModeChoicePending(false);setCreateLayoutMode('');setMessage('Automation saved.')}else{if(result.kind==='clarification'&&result.code==='layout-mode-required')setModeChoicePending(true);setMessage(result.message)}}catch(error){setMessage(error instanceof Error?error.message:String(error))}finally{setBusy(false)}};
  const runDue=async()=>{setBusy(true);setMessage(null);try{await runner.runDueNow();setMessage('Due automation check finished.')}catch(error){setMessage(error instanceof Error?error.message:String(error))}finally{setBusy(false)}};
  return <section className="automation-panel" aria-label="Automation rules">
   <header className="automation-panel-header"><div><p className="eyebrow">Automation</p><h2>Rules</h2></div><button type="button" onClick={()=>void runDue()} disabled={busy}>Run due now</button></header>
@@ -38,8 +38,9 @@ export function AutomationPanel({runner,catalog}:AutomationPanelProps){
   {runner.lastTickAt&&<small className="automation-last-tick">Last native/preview tick: {new Date(runner.lastTickAt).toLocaleString()}</small>}
   <form className="automation-create-form" onSubmit={event=>void submit(event)}>
    <label htmlFor="automation-rule-text">Create a rule in one sentence</label>
-   <textarea id="automation-rule-text" rows={3} value={draft} onChange={event=>setDraft(event.target.value)} placeholder={'When I capture links matching “lecture”, file them to Biology course\nEvery day at 09:00 prepare Biology workspace using Lab setup layout'} />
-   <button type="submit" disabled={busy||!draft.trim()}>Save rule</button>
+   <textarea id="automation-rule-text" rows={3} value={draft} onChange={event=>{setDraft(event.target.value);setModeChoicePending(false);setCreateLayoutMode('')}} placeholder={'When I capture links matching “lecture”, file them to Biology course\nEvery day at 09:00 append Lab setup layout to Biology workspace'} />
+   {modeChoicePending&&<label>Layout application mode<select aria-label="Layout application mode" value={createLayoutMode} onChange={event=>setCreateLayoutMode(event.target.value as 'append'|'replace'|'')}><option value="">Choose append or replace</option><option value="append">Append · keep existing widgets</option><option value="replace">Replace · replace workspace layout</option></select></label>}
+   <button type="submit" disabled={busy||!draft.trim()||(modeChoicePending&&!createLayoutMode)}>{modeChoicePending?'Save with selected mode':'Save rule'}</button>
    {message&&<p className="automation-form-message" role="status">{message}</p>}
   </form>
   <div className="automation-rules-list">
@@ -48,7 +49,7 @@ export function AutomationPanel({runner,catalog}:AutomationPanelProps){
     const receipt=latestByRule.get(rule.id);
     return <article className="automation-rule" key={rule.id}>
      <div className="automation-rule-main"><strong>{actionLabel(rule.action,catalog)}</strong><span>{triggerLabel(rule.trigger)}</span>{receipt&&<small className={`automation-receipt automation-receipt-${receipt.status}`}><b>{statusLabel(receipt.status)}</b>{receipt.message?` · ${receipt.message}`:''}{receipt.operationReceiptId?` · receipt ${receipt.operationReceiptId}`:''} · {new Date(receipt.updatedAt).toLocaleString()}</small>}</div>
-     <div className="automation-rule-actions"><label><input type="checkbox" checked={rule.enabled} onChange={event=>runner.setEnabled(rule.id,event.target.checked)}/> Enabled</label><button type="button" onClick={()=>runner.deleteRule(rule.id)}>Delete</button></div>
+     <div className="automation-rule-actions">{rule.requiresModeChoice&&<label>Layout mode<select aria-label={`Layout mode for ${rule.id}`} value={legacyModes[rule.id]??''} onChange={event=>setLegacyModes(value=>({...value,[rule.id]:event.target.value as 'append'|'replace'|''}))}><option value="">Choose</option><option value="append">Append</option><option value="replace">Replace</option></select><button type="button" disabled={!legacyModes[rule.id]} onClick={()=>{const mode=legacyModes[rule.id];if(mode){runner.setLayoutMode(rule.id,mode);setLegacyModes(value=>({...value,[rule.id]:''}))}}}>Save mode</button></label>}<label><input type="checkbox" checked={rule.enabled} disabled={rule.requiresModeChoice} onChange={event=>runner.setEnabled(rule.id,event.target.checked)}/> Enabled</label><button type="button" onClick={()=>runner.deleteRule(rule.id)}>Delete</button></div>
     </article>
    })}
   </div>

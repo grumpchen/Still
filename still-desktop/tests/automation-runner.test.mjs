@@ -6,7 +6,7 @@ import { emptyAutomationState, saveAutomationState } from '../src/domain/automat
 
 class MemoryStorage { values=new Map();getItem(key){return this.values.get(key)??null}setItem(key,value){this.values.set(key,value)} }
 const catalog={workspaces:[{id:'w',name:'Biology'}],courses:[],layouts:[{id:'layout',name:'Lab',workspaceId:'w'}]};
-const layoutRule={version:1,id:'daily',enabled:true,createdAt:'2026-01-01T00:00:00.000Z',updatedAt:'2026-01-01T00:00:00.000Z',sourceText:'daily lab',trigger:{kind:'daily',time:'09:00',timeZone:'UTC'},action:{kind:'prepareWorkspaceLayout',workspaceId:'w',layoutId:'layout'}};
+const layoutRule={version:2,id:'daily',enabled:true,createdAt:'2026-01-01T00:00:00.000Z',updatedAt:'2026-01-01T00:00:00.000Z',sourceText:'daily lab',trigger:{kind:'daily',time:'09:00',timeZone:'UTC'},action:{kind:'prepareWorkspaceLayout',workspaceId:'w',layoutId:'layout',mode:'append'}};
 const status=(runtimeId,latestSequence)=>({runtimeId,tickIntervalMs:15000,replayCapacity:256,latestSequence,lastTickScheduledAtUnixMs:null,hiddenToTray:true,trayAvailable:true,trayError:null,mainWindowVisible:false,mainWindowMinimized:true});
 const tick=(runtimeId,sequence,iso)=>({runtimeId,sequence,scheduledAtUnixMs:Date.parse(iso)});
 
@@ -34,7 +34,7 @@ test('new runtime IDs request replay from sequence zero after restart', async()=
 });
 
 test('capture queue uses stable business event IDs and failed ACK stays visible without repeating success', async()=>{
- const storage=new MemoryStorage(),captureRule={version:1,id:'capture',enabled:true,createdAt:'2026-01-01T00:00:00.000Z',updatedAt:'2026-01-01T00:00:00.000Z',sourceText:'capture lecture',trigger:{kind:'onCapture'},action:{kind:'fileResourcesToCourse',courseId:'course',workspaceId:'w',resourceKinds:['link'],queryPattern:'lecture'}};
+ const storage=new MemoryStorage(),captureRule={version:2,id:'capture',enabled:true,createdAt:'2026-01-01T00:00:00.000Z',updatedAt:'2026-01-01T00:00:00.000Z',sourceText:'capture lecture',trigger:{kind:'onCapture'},action:{kind:'fileResourcesToCourse',courseId:'course',workspaceId:'w',resourceKinds:['link'],queryPattern:'lecture'}};
  saveAutomationState(storage,{...emptyAutomationState(),rules:[captureRule]});let ackAttempts=0,calls=0;
  const event={eventId:'capture-42@created-at',capturedAt:'2026-11-26T10:00:00Z',resourceKind:'link',name:'lecture video'};
  const queue={listPending:async()=>[event],acknowledge:async()=>{ackAttempts++;if(ackAttempts===1)throw new Error('journal lock')}};

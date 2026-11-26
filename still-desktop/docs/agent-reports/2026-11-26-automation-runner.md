@@ -31,3 +31,10 @@
 - Pass a stable `AutomationStorage`, latest catalog/service getters, and a real capture journal adapter if available. The current app's QuickCapture path has no pending event list or ACK; absent injection is shown as unavailable, and pending events are never invented from 15-second tray ticks.
 - A source queue should expose stable `eventId`, `capturedAt`, `resourceKind`, `name`, and optional `sourceWorkspaceId`, plus `listPending`/`acknowledge`. The service adapter receives the same event ID as `context.captureEventId` and must honor operation idempotency.
 - The native contract matches the tray runtime worker's reported payloads. Native tray acceptance and complete operation-service wiring remain pending; no end-to-end automation claim is made.
+
+## Layout mode follow-up
+- Scheduled layout actions now require `mode: 'append'|'replace'`, matching the shared `layout.apply { layoutId, targetWorkspaceId, mode }` contract; the rule adapter maps its `workspaceId` to `targetWorkspaceId`.
+- English and Chinese literal grammars accept an explicit append/replace operation. A layout sentence without a mode returns a mode clarification with exact target IDs; the panel retains the original sentence and saves it after the user chooses once.
+- Persistence is upgraded to envelope/rule version 2. The reader falls back to the v1 storage key, migrates legacy no-mode layout rules disabled, and marks them as requiring a choice. Choosing a mode restores the prior enabled intent and writes the migrated record to v2; previously-disabled rules remain disabled.
+- No default replace is introduced. Validation now includes legacy migration, mode choice, preserved sentence, no-mode clarification, and application of a layout saved in another workspace.
+- Follow-up checks: 17 focused tests, `pnpm check`, and `pnpm build` passed (Vite large-chunk advisory only).
