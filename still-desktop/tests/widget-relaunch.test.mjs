@@ -190,7 +190,7 @@ test('Files uses the selected AI provider to match PDF keywords to the user pref
 });
 
 test('Notes library opens Markdown tabs beside local notes and writes edits to the selected file',async()=>{
- const widget=createWidget('notes'),app=await setup([widget],{responses:{notes_library_choose:'Study',notes_library_list:[{name:'kinetics.md',path:'Chemistry/kinetics.md',size:12},{name:'lecture.pdf',path:'lecture.pdf',size:12}],notes_library_read:'Initial note',files_preview:{mimeType:'application/pdf',base64:'JVBERi0xLjQK'}}});
+ const widget=createWidget('notes'),appText={value:'Initial note'};const app=await setup([widget],{responses:{notes_library_choose:'Study',notes_library_list:[{name:'kinetics.md',path:'Chemistry/kinetics.md',size:12},{name:'lecture.pdf',path:'lecture.pdf',size:12}],notes_library_read:()=>appText.value,notes_library_write:args=>{appText.value=args.text;return null},files_preview:{mimeType:'application/pdf',base64:'JVBERi0xLjQK'}}});
  try{
   const localId=widget.noteDocuments[0].id;
   await act(async()=>app.window.document.querySelector('.note-library-toggle').click());
@@ -203,11 +203,21 @@ test('Notes library opens Markdown tabs beside local notes and writes edits to t
   await act(async()=>folder.click());
   const file=[...app.window.document.querySelectorAll('.note-library-file')][0];assert.equal(file.querySelector('.note-library-file-name').textContent,'kinetics.md');
   await act(async()=>file.click());
-  assert.equal(app.window.document.querySelector('.file-preview-text').textContent,'Initial note','Markdown is previewed inside the Notes library');
-  await act(async()=>app.window.document.querySelector('.note-library-preview-head button').click());
+  assert.equal(app.window.document.querySelector('.note-library-editor').value,'Initial note','Markdown remains editable in the explorer preview');
+  const open=app.window.document.querySelector('.note-library-preview-head button');assert.equal(open.textContent,'Open note');
+  await act(async()=>open.click());
   assert.equal(app.window.document.querySelector('[aria-label="Note text"]').value,'Initial note');
   assert.equal(app.window.document.querySelectorAll('[role="tab"]').length,2);
+  const editor=app.window.document.querySelector('[aria-label="Note text"]');await act(async()=>{Object.getOwnPropertyDescriptor(app.window.HTMLTextAreaElement.prototype,'value').set.call(editor,'Edited in Notes');editor[Object.keys(editor).find(key=>key.startsWith('__reactProps$'))].onChange({target:editor,currentTarget:editor})});await act(async()=>editor[Object.keys(editor).find(key=>key.startsWith('__reactProps$'))].onBlur({target:editor,currentTarget:editor}));
+  await act(async()=>{await new Promise(resolve=>setTimeout(resolve,0))});
+  assert.equal(appText.value,'Edited in Notes','editing the opened tab writes the Markdown source');
   assert.equal(app.currentState.workspaces[0].widgets[0].noteDocuments.find(note=>note.id===localId).text,widget.noteDocuments[0].text);
+  await act(async()=>app.window.document.querySelector('.note-library-toggle').click());
+  const folderAgain=[...app.window.document.querySelectorAll('.note-library-file')].find(button=>button.textContent.includes('Chemistry'));await act(async()=>folderAgain.click());
+  const fileAgain=app.window.document.querySelector('.note-library-file');await act(async()=>fileAgain.click());
+  const openAgain=app.window.document.querySelector('.note-library-preview-head button');await act(async()=>openAgain.click());
+  assert.equal(app.window.document.querySelectorAll('[role="tab"]').length,2,'opening an already-open source reuses its tab');
+  assert.equal(app.window.document.querySelector('[aria-label="Note text"]').value,'Edited in Notes','reopening refreshes from the source file');
  }finally{await app.cleanup()}
 });
 
