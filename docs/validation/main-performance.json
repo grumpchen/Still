@@ -1,0 +1,109 @@
+{
+  "commit": "4121e8a70d358ee17288b33028ed176ab7bed9de",
+  "environment": "Linux Chromium 156 headless, software GPU, 1440x1000",
+  "method": "Production build; six reloads; navigation until Dashboard visible; DOM click Study then Dashboard, wait two animation frames; wall clock includes browser automation. Static comparison uses the same initial state with appearance=minimal. Not a Windows responsiveness measurement.",
+  "runs": {
+    "default": {
+      "samples": [
+        {
+          "startup": 1270.4191270000001,
+          "switches": [
+            2379.545054,
+            3029.4978889999993
+          ]
+        },
+        {
+          "startup": 2288.534143,
+          "switches": [
+            2076.6915960000006,
+            2799.6475950000004
+          ]
+        },
+        {
+          "startup": 1440.62342,
+          "switches": [
+            3505.698676,
+            1891.4897079999973
+          ]
+        },
+        {
+          "startup": 1209.8668309999994,
+          "switches": [
+            3205.0375639999984,
+            2167.9881730000016
+          ]
+        },
+        {
+          "startup": 927.516563000001,
+          "switches": [
+            2676.6838930000013,
+            3562.547566000001
+          ]
+        },
+        {
+          "startup": 1067.900032000005,
+          "switches": [
+            3444.390225999996,
+            3737.274710000005
+          ]
+        }
+      ],
+      "medianMs": {
+        "startup": 1240.1429789999997,
+        "study": 2940.8607285,
+        "dashboard": 2914.572742
+      }
+    },
+    "minimal": {
+      "samples": [
+        {
+          "startup": 315.41476399999993,
+          "switches": [
+            158.116259,
+            62.59458200000006
+          ]
+        },
+        {
+          "startup": 93.91670299999998,
+          "switches": [
+            105.96329400000013,
+            66.69297200000005
+          ]
+        },
+        {
+          "startup": 74.33275800000001,
+          "switches": [
+            92.52832699999999,
+            66.57213000000002
+          ]
+        },
+        {
+          "startup": 71.11343699999998,
+          "switches": [
+            62.30403200000001,
+            66.25530499999991
+          ]
+        },
+        {
+          "startup": 73.44655499999999,
+          "switches": [
+            78.18170400000008,
+            65.78325900000004
+          ]
+        },
+        {
+          "startup": 91.07162799999992,
+          "switches": [
+            79.93548299999998,
+            81.88667700000042
+          ]
+        }
+      ],
+      "medianMs": {
+        "startup": 82.70219299999997,
+        "study": 86.23190499999998,
+        "dashboard": 66.41371749999996
+      }
+    }
+  }
+}
