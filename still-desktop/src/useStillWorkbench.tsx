@@ -7,6 +7,7 @@ import {configureCollectionOperationHost} from './platform/collectionOperations.
 import {automationCaptureInbox} from './platform/automationCaptureInbox.ts';
 import {localFiles} from './platform/files.ts';
 import {useAutomationRunner,type AutomationRunnerApi} from './useAutomationRunner.ts';
+import {boundedWorkbenchContext} from './domain/workbenchContext.ts';
 
 const storage={getItem:(key:string)=>localStorage.getItem(key),setItem:(key:string,value:string)=>localStorage.setItem(key,value)};
 export interface StillWorkbenchHost {getState:()=>WorkspaceState;commitState:(state:WorkspaceState)=>void;layoutHandlers:WorkbenchLayoutHandlers;onRuleModeRequired?:(text:string)=>void}
@@ -49,5 +50,5 @@ export function useStillWorkbench(host:StillWorkbenchHost){
   if(result.kind==='clarification'&&result.code==='layout-mode-required')latest.current.onRuleModeRequired?.(ruleRequestText(prompt));
   return{handled:true,message:result.message};
  };
- return{runner,catalog:getCatalog(),service,executeWorkbench,directWorkbenchRequest,canHandleDirectWorkbenchRequest:isDirectRuleRequest,workbenchContext:()=>({...service.snapshot(),recentResults:lastResults.current.filter(item=>item.operation==='resource.find'||item.operation==='layout.find'||item.operation==='layout.list').map(({operation,data})=>({operation,data}))})};
+ return{runner,catalog:getCatalog(),service,executeWorkbench,directWorkbenchRequest,canHandleDirectWorkbenchRequest:isDirectRuleRequest,workbenchContext:()=>boundedWorkbenchContext(service.snapshot(),lastResults.current)};
 }
