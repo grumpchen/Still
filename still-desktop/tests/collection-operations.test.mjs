@@ -49,3 +49,14 @@ test('file annotations update the source Files widget and never leak to another 
  assert.deepEqual(result.state.workspaces.find(item=>item.id===b.id).widgets.find(item=>item.id===other.id).fileNotes,{});
  assert.throws(()=>applyCollectionAction(state,{type:'file.annotation',widgetId:source.id,path:'../escape.txt',text:'x'}));
 });
+
+test('file shortcut rename, move and delete change course metadata while keeping its opaque source reference',()=>{
+ const state=createInitialState(),a=createWorkspace('Course A',['files']),b=createWorkspace('Course B',[]),file=a.widgets.find(item=>item.type==='files');file.fileKey='document-source-1';file.fileName='reading.pdf';state.workspaces.push(a,b);const activeId=state.activeId;
+ const renamed=applyCollectionAction(state,{type:'file.renameReference',widgetId:file.id,name:'chapter one'});
+ assert.equal(renamed.state.workspaces.find(item=>item.id===a.id).widgets.find(item=>item.id===file.id).fileName,'chapter one');
+ const moved=applyCollectionAction(renamed.state,{type:'file.moveReference',widgetId:file.id,destinationWorkspaceId:b.id});
+ assert.equal(moved.state.activeId,activeId);assert.equal(moved.state.workspaces.find(item=>item.id===a.id).widgets.some(item=>item.id===file.id),false);
+ const destination=moved.state.workspaces.find(item=>item.id===b.id).widgets.find(item=>item.id===file.id);assert.equal(destination.fileKey,'document-source-1');assert.equal(destination.fileName,'chapter one');
+ const removed=applyCollectionAction(moved.state,{type:'file.deleteReference',widgetId:file.id});assert.equal(removed.state.workspaces.find(item=>item.id===b.id).widgets.some(item=>item.id===file.id),false);assert.equal(file.fileKey,'document-source-1');
+ assert.throws(()=>applyCollectionAction(state,{type:'file.moveReference',widgetId:file.id,destinationWorkspaceId:state.workspaces[0].id}));
+});
