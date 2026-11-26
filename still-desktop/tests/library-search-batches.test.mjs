@@ -41,3 +41,12 @@ test('native Library search bounds the number of batches and marks omitted roots
  const result=await localFiles.searchLibrary(ids,'match');
  assert.equal(calls.length,maxRoots/40);assert.ok(calls.every(call=>call.args.ids.length<=40));assert.equal(result.truncated,true);assert.equal(result.results.length,0);
 }));
+
+test('browser Library search scans the allowed roots before reporting omitted roots',async()=>withNativeFiles(async(localFiles,maxRoots)=>{
+ localFiles.native=false;
+ localFiles.select('browser-root-0',[new File(['no match'],'other.txt')]);
+ localFiles.select('browser-root-398',[new File(['match'],'needle.pdf')]);
+ const ids=Array.from({length:maxRoots+1},(_,index)=>`browser-root-${index}`),result=await localFiles.searchLibrary(ids,'needle');
+ assert.deepEqual(result.results.map(item=>item.widgetId),['browser-root-398'],'the 399th root is still scanned inside the 400-root bound');
+ assert.equal(result.results[0].entry.name,'needle.pdf');assert.equal(result.truncated,true,'the 401st root is omitted so the aggregate remains marked partial');
+}));

@@ -62,9 +62,9 @@ export const localFiles={
   async list(id:string,location:string):Promise<FolderListing>{return this.native?invoke('files_list',{id,location}):this.browserList(id,location)},
   async searchLibrary(ids:string[],query:string):Promise<LibrarySearchResponse>{
     if(this.native)return searchNativeLibrary(ids,query);
-    const results:LibrarySearchHit[]=[],unavailableWidgetIds:string[]=[],term=query.trim().toLowerCase(),unique=[...new Set(ids)];let truncated=unique.length>MAX_LIBRARY_SEARCH_ROOTS,scanned=0;
-    for(const id of unique.slice(0,MAX_LIBRARY_SEARCH_ROOTS)){const folder=selected.get(id);if(!folder){unavailableWidgetIds.push(id);continue}for(const [path,file] of folder.files){if(scanned>=MAX_BROWSER_LIBRARY_SEARCH_ENTRIES||results.length>=MAX_LIBRARY_SEARCH_RESULTS){truncated=true;break}scanned++;if(file.name.toLowerCase().includes(term))results.push({widgetId:id,entry:{name:file.name,path,directory:false,size:file.size,blocked:programFile(file.name)}})}if(truncated)break}
-    return{results,unavailableWidgetIds,truncated};
+    const results:LibrarySearchHit[]=[],unavailableWidgetIds:string[]=[],term=query.trim().toLowerCase(),unique=[...new Set(ids)],rootOverflow=unique.length>MAX_LIBRARY_SEARCH_ROOTS;let scanTruncated=false,scanned=0;
+    for(const id of unique.slice(0,MAX_LIBRARY_SEARCH_ROOTS)){const folder=selected.get(id);if(!folder){unavailableWidgetIds.push(id);continue}for(const [path,file] of folder.files){if(scanned>=MAX_BROWSER_LIBRARY_SEARCH_ENTRIES||results.length>=MAX_LIBRARY_SEARCH_RESULTS){scanTruncated=true;break}scanned++;if(file.name.toLowerCase().includes(term))results.push({widgetId:id,entry:{name:file.name,path,directory:false,size:file.size,blocked:programFile(file.name)}})}if(scanTruncated)break}
+    return{results,unavailableWidgetIds,truncated:rootOverflow||scanTruncated};
   },
   async search(id:string,query:string):Promise<FileEntry[]>{
     if(this.native)return invoke<FileEntry[]>('files_search',{id,query});
