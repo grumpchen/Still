@@ -86,7 +86,7 @@ async function main(){
   smokeProfile=await mkdtemp(path.join(tmpdir(),'still-workbench-smoke-'));
   const localAppData=path.join(smokeProfile,'LocalAppData'),roamingAppData=path.join(smokeProfile,'RoamingAppData');
   await mkdir(localAppData,{recursive:true});await mkdir(roamingAppData,{recursive:true});
-  const env={...process.env,WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:`--remote-debugging-port=${options.port}`,LOCALAPPDATA:localAppData,APPDATA:roamingAppData};
+  const env={...process.env,WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:`--remote-debugging-port=${options.port}`,WEBVIEW2_USER_DATA_FOLDER:path.join(smokeProfile,'WebView2'),LOCALAPPDATA:localAppData,APPDATA:roamingAppData};
   appProcess=spawn(options.exe,[],{cwd:path.dirname(options.exe),env,windowsHide:true,stdio:['ignore','pipe','pipe']});
   report.process.pid=appProcess.pid??null;
   appProcess.stdout?.on('data',chunk=>{report.process.stdoutTail=(report.process.stdoutTail+chunk.toString()).slice(-24_000)});
@@ -108,6 +108,7 @@ async function main(){
     const match=pages.find(candidate=>candidate.url().includes('design-preview.html'));
     return match??null;
    },10_000);
+   await page.locator('.dashboard-home').waitFor({state:'visible',timeout:15_000});
    await page.screenshot({path:screenshotPath,fullPage:false,animations:'disabled'});
    report.artifacts.screenshot=screenshotPath;
    return{browser:report.cdp.browser,pageUrl:page.url(),pageTitle:await page.title(),screenshot:screenshotPath};
@@ -124,7 +125,7 @@ async function main(){
    });
    const activeDashboard=state.dashboardId?state.activeId===state.dashboardId:/dashboard/i.test(state.activeWorkspace);
    if(!activeDashboard||!state.dashboardElement||!state.dashboardSurfaceVisible)throw new Error(`Dashboard was not the active rendered workspace. Observed app state: ${JSON.stringify(state)}`);
-   const fullscreen=await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('plugin:window|is_fullscreen',{label:'main'}));
+   const fullscreen=await pollUntil('native fullscreen startup',async()=>await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('plugin:window|is_fullscreen',{label:'main'})),10_000);
    if(fullscreen!==true)throw new Error(`Dashboard startup did not result in a fullscreen native window. is_fullscreen=${JSON.stringify(fullscreen)}`);
    return{...state,fullscreen,screenshot:screenshotPath};
   });
@@ -160,7 +161,7 @@ async function main(){
   await check('hidden-window-native-tick-delivery',async()=>{
    listenerId=await page.evaluate(async()=>{
     window.__stillSmokeTicks=[];
-    const callback=window.__TAURI_INTERNALS__.transformCallback(tick=>window.__stillSmokeTicks.push(tick));
+    const callback=window.__TAURI_INTERNALS__.transformCallback(event=>window.__stillSmokeTicks.push(event.payload));
     const eventId=await window.__TAURI_INTERNALS__.invoke('plugin:event|listen',{event:'still:automation-tick',target:{kind:'Any'},handler:callback});
     window.__stillSmokeTickEventId=eventId;return eventId;
    });

@@ -11,6 +11,7 @@ on:
       - still-desktop/package.json
       - still-desktop/pnpm-lock.yaml
       - still-desktop/tests/**
+      - still-desktop/scripts/**
       - .github/workflows/windows-build.yml
   workflow_dispatch:
 
@@ -75,6 +76,21 @@ jobs:
           $candidate = 'still-desktop/src-tauri/target/release/still-desktop.exe'
           $hash = (Get-FileHash $candidate -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  still-desktop.exe" | Set-Content "$candidate.sha256"
+
+      - name: Native Windows workbench smoke
+        if: ${{ !cancelled() && steps.executable.conclusion == 'success' }}
+        timeout-minutes: 5
+        working-directory: still-desktop
+        run: node scripts/windows-workbench-smoke.mjs --exe src-tauri/target/release/still-desktop.exe --artifact-dir ../artifacts/windows-smoke
+
+      - name: Upload native smoke evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: still-native-smoke-${{ github.sha }}
+          path: artifacts/windows-smoke
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Upload Windows executable
         if: ${{ !cancelled() }}
