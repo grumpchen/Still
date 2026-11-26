@@ -27,6 +27,7 @@ test('selecting text in Files offers workspace notes and saves the selection', a
       localStorage.setItem('still-first-run-tutorial-v1', 'done');
     }, { state });
     await page.goto('/design-preview.html');
+    await page.getByRole('button',{name:'Resume Design',exact:true}).click();
 
     const files = page.locator(`[data-widget-id="${fileId}"]`);
     const notes = page.locator(`[data-widget-id="${notesId}"]`);
@@ -37,7 +38,7 @@ test('selecting text in Files offers workspace notes and saves the selection', a
 
     const documentText = files.locator('.file-preview-text');
     await expect(documentText).toContainText('Interim report is due September 30, 2025.');
-    await files.getByRole('button', { name: 'Find related notes' }).click();
+    await files.locator('.folder-file-preview .files-study-actions').first().getByRole('button', { name: 'Find related notes' }).click();
     await expect(files.getByRole('region', { name: 'Related notes' })).toContainText('Research notes');
     await documentText.evaluate(element => {
       const range = document.createRange();
