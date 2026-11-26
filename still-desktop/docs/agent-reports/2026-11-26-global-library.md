@@ -8,6 +8,9 @@
 - Added standalone QuickCapture with explicit course selection each time, course-local Notes capture, Saved links collection, and opaque dropped-document references for PDFs.
 - Added shared typed collection operation requests and an async dispatcher for manual, assistant, and automation callers. It provides durable local receipt/idempotency journaling and awaits the host commit callback.
 - Added scoped native file rename, move, delete, and text edit actions. Operations validate the selected grant and reject traversal, symlinks, and collisions; delete refuses non-empty folders. The UI explains that deleting a file is a disk action, while removing saved-link/file-shortcut metadata leaves the website or disk file intact.
+- Added metadata-only file shortcut rename/move/remove through the shared dispatcher. Moving a shortcut between study/custom workspaces preserves its widget ID, opaque source grant, and active workspace; it never changes the disk file.
+- Stabilized QuickCapture attempts with one capture ID per opening. Ideas/links use it as their idempotency key; PDF saving passes it to the host callback; after save commit the component awaits `onCaptureSaved(captureId, resource)` before closing, so the host can append the persistent capture journal and let the user retry queueing with the same saved receipt.
+- Library also aggregates current `browser` widgets and legacy standalone Group widgets' saved links. Native PDF capture opens one native chooser; browser preview uses the HTML file picker. Course choices exclude Dashboard and Library.
 - Registered the new `files_manage_resource` Tauri command and capability. The old library-organisation facade was unavailable in the app command registry, so its proposal UI is disabled and replaced with a natural Still AI entry point; the old native organisation endpoint was not restored.
 
 ## Files
@@ -19,6 +22,7 @@
 ## Checks
 - `pnpm check`: passed.
 - `node_modules/.bin/tsx --test tests/collection-operations.test.mjs tests/library-references.test.mjs`: passed, 6/6.
+- Follow-up after review: `pnpm check` passed; focused collection/reference tests passed, 7/7.
 - `git diff --check`: passed.
 - `pnpm test`: failed with 38 failures of 505 tests in the recorded run; failures span appearance/settings, relaunch controls, library organisation, workspace dock/layout, and other UI assertions. Vite also reported port contention. Focused collection tests above passed.
 - Rust tests and native live acceptance: not run; `cargo`/`rustc` are unavailable in this environment. The browser E2E fixture was added but not run because the configured desktop browser binary is unavailable.
@@ -26,7 +30,8 @@
 ## Handoff
 - Host integration: call `configureCollectionOperationHost({getState, commitState})` at app startup. `commitState(next)` should persist first, update the synchronous capture/latest-state refs, then call React `setState`; resolve only after persistence succeeds. Then `executeCollectionOperation(action, {source, idempotencyKey})` can serve manual, assistant, and automation callers. Keys accept opaque non-control text up to 500 characters. `outcome_unknown` means inspect the receipt/resource before retrying.
 - QuickCapture integration: render `QuickCapture` with `open`, `workspaces`, `onClose`, `onSaved`, and `onSavePdf(workspaceId, droppedResource): Promise<{widgetId,name}>`. `open` rising-edge clears course selection. The PDF callback should create a Files widget from the opaque `DroppedResource` reference, scoped to the selected workspace; do not serialize a disk path.
-- Successful `link.create` results include `resource:{kind:'link',origin:{kind:'group',workspaceId,groupId},linkId}`. Successful `note.quickCapture` results include `resource:{kind:'note',workspaceId,widgetId,documentId}`. Link move can omit `destinationGroupId` to reuse or atomically create the destination course's Saved links Group.
+- Successful `link.create` results include `resource:{kind:'link',origin:{kind:'group',workspaceId,groupId},linkId,name,url}`. Successful `note.quickCapture` results include `resource:{kind:'note',workspaceId,widgetId,documentId,name}`; PDF callback returns `{widgetId,name}` and produces a `file` resource with `workspaceId` and opaque `sourceId`. Link move can omit `destinationGroupId` to reuse or atomically create the destination course's Saved links Group.
+- Metadata-only file shortcut requests are `file.renameReference {widgetId,name}`, `file.moveReference {widgetId,destinationWorkspaceId}`, and `file.deleteReference {widgetId}`. All use the same dispatcher and preserve the distinction between a Still shortcut and the file on disk.
 - Link mutations identify Group links with `{kind:'group', workspaceId, groupId}` and Browser shortcut links with `{kind:'browser', workspaceId, widgetId}`, plus `linkId`. Browser shortcuts are stored on the Group widget shortcut list, independently of Group-library entries.
 - Source file operations use the source widget id and opaque `sourcePath` plus action-specific destination/name/content. `file.delete` physically removes the granted file; `link.delete` and removing a file shortcut only remove workspace metadata.
 - No persistent QuickCapture event journal was added. Automation should inject capture-event source and must not synthesize events on each tick.
