@@ -7,7 +7,7 @@ export type AutomationTrigger =
   | { kind: 'once'; at: string }
   | { kind: 'daily'; time: string; timeZone: string }
   | { kind: 'weekly'; weekdays: number[]; time: string; timeZone: string };
-export interface AutomationRule { version: 1; id: string; enabled: boolean; createdAt: string; updatedAt: string; sourceText: string; trigger: AutomationTrigger; action: AutomationAction }
+export interface AutomationRule { version: 1; id: string; enabled: boolean; createdAt: string; updatedAt: string; sourceText: string; trigger: AutomationTrigger; action: AutomationAction; onceTerminal?: { at:string; status:'succeeded'|'needs_clarification'|'outcome_unknown' } }
 export interface RuleCatalog { workspaces: Array<{id:string;name:string}>; courses: Array<{id:string;title:string;workspaceId?:string}>; layouts: Array<{id:string;name:string;workspaceId?:string}> }
 export type RuleParseResult = {kind:'rule';rule:AutomationRule}|{kind:'clarification';message:string;choices?:Array<{id:string;label:string}>}|{kind:'unsupported';message:string};
 export interface AutomationRuleDraft { sourceText:string; trigger:AutomationTrigger; action:AutomationAction }
@@ -22,6 +22,7 @@ export interface AutomationOperationService {execute(action:AutomationAction,con
 export const AUTOMATION_STORAGE_KEY='still.automation-rules.v1';
 const MAX_RULES=500,MAX_RECEIPTS=5000,ID_RE=/^[A-Za-z0-9_-]{1,120}$/,TIME_RE=/^(?:[01]\d|2[0-3]):[0-5]\d$/;
 const activeByStorage=new WeakMap<object,Set<string>>();
+const evaluationTails=new WeakMap<object,Promise<void>>();
 function activeSet(storage:AutomationStorage):Set<string>{let set=activeByStorage.get(storage as object);if(!set){set=new Set();activeByStorage.set(storage as object,set)}return set}
 const obj=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 const date=(v:unknown):v is string=>typeof v==='string'&&Number.isFinite(Date.parse(v));
@@ -45,7 +46,9 @@ function actionOf(v:unknown,catalog?:RuleCatalog):AutomationAction|null{
  }
  if(v.kind==='prepareWorkspaceLayout'&&typeof v.workspaceId==='string'&&ID_RE.test(v.workspaceId)&&typeof v.layoutId==='string'&&ID_RE.test(v.layoutId)){
   const w=catalog?.workspaces.find(x=>x.id===v.workspaceId),l=catalog?.layouts.find(x=>x.id===v.layoutId);
-  if(catalog&&(!w||!l||(l.workspaceId&&l.workspaceId!==v.workspaceId)))return null;
+  // A saved layout can be copied from a different workspace; workspaceId on
+  // the catalog entry describes its source, while the action names its target.
+  if(catalog&&(!w||!l))return null;
   return{kind:v.kind,workspaceId:v.workspaceId,layoutId:v.layoutId};
  }
  return null;
@@ -54,7 +57,8 @@ function ruleOf(v:unknown,catalog?:RuleCatalog):AutomationRule|null{
  if(!obj(v)||v.version!==1||typeof v.id!=='string'||!ID_RE.test(v.id)||typeof v.enabled!=='boolean'||!date(v.createdAt)||!date(v.updatedAt)||typeof v.sourceText!=='string'||v.sourceText.length>2000)return null;
  const trigger=triggerOf(v.trigger),action=actionOf(v.action,catalog);
  if(!trigger||!action||((trigger.kind==='onCapture')!==(action.kind==='fileResourcesToCourse')))return null;
- return{version:1,id:v.id,enabled:v.enabled,createdAt:new Date(v.createdAt).toISOString(),updatedAt:new Date(v.updatedAt).toISOString(),sourceText:v.sourceText,trigger,action};
+ if(v.onceTerminal!==undefined&&(!obj(v.onceTerminal)||!date(v.onceTerminal.at)||!['succeeded','needs_clarification','outcome_unknown'].includes(String(v.onceTerminal.status))||trigger.kind!=='once'||new Date(v.onceTerminal.at).toISOString()!==trigger.at))return null;
+ return{version:1,id:v.id,enabled:v.enabled,createdAt:new Date(v.createdAt).toISOString(),updatedAt:new Date(v.updatedAt).toISOString(),sourceText:v.sourceText,trigger,action,...(obj(v.onceTerminal)?{onceTerminal:{at:new Date(String(v.onceTerminal.at)).toISOString(),status:v.onceTerminal.status as 'succeeded'|'needs_clarification'|'outcome_unknown'}}:{})};
 }
 function receiptOf(v:unknown):AutomationReceipt|null{
  if(!obj(v)||v.version!==1||typeof v.ruleId!=='string'||!ID_RE.test(v.ruleId)||typeof v.occurrenceKey!=='string'||v.occurrenceKey.length>240||!date(v.scheduledAt)||!['running','succeeded','failed','needs_clarification','outcome_unknown'].includes(String(v.status))||!Number.isInteger(v.attempts)||Number(v.attempts)<1||!date(v.startedAt)||!date(v.updatedAt))return null;
@@ -75,7 +79,7 @@ function pick<T extends{id:string;name?:string;title?:string}>(needle:string,ite
 export function parseAutomationRule(text:string,options:RuleParseOptions):RuleParseResult{
  const sourceText=text.trim();if(!sourceText||sourceText.length>2000)return{kind:'unsupported',message:'Write one supported automation request (up to 2,000 characters).'};
  const now=options.now??new Date(),zone=options.timeZone??'UTC';if(!validZone(zone))return{kind:'clarification',message:'Choose a valid time zone before creating a scheduled rule.'};
- const make=(trigger:AutomationTrigger,action:AutomationAction):RuleParseResult=>({kind:'rule',rule:{version:1,id:options.id??crypto.randomUUID(),enabled:true,createdAt:now.toISOString(),updatedAt:now.toISOString(),sourceText,trigger,action}});
+ const make=(trigger:AutomationTrigger,action:AutomationAction):RuleParseResult=>{const checkedTrigger=triggerOf(trigger),checkedAction=actionOf(action,options.catalog);if(!checkedTrigger)return{kind:'clarification',message:'The requested schedule time or weekday is invalid. Use a real 24-hour time such as 09:30.'};if(!checkedAction)return{kind:'clarification',message:'The selected workspace, course, or saved layout is no longer available.'};return{kind:'rule',rule:{version:1,id:options.id??crypto.randomUUID(),enabled:true,createdAt:now.toISOString(),updatedAt:now.toISOString(),sourceText,trigger:checkedTrigger,action:checkedAction}}};
  const filingEn=sourceText.match(/^when\s+i\s+capture\s+(links?|files?|resources?)\s+matching\s+["“](.+?)["”][,，]?\s*file\s+(?:them\s+)?(?:to|into)\s+(.+?)(?:\s+course(?:\s+workspace)?)?[。.]?$/i);
  const filingZh=sourceText.match(/^(?:新增|添加)(链接|资料)(?:名称)?(?:匹配|包含)["“](.+?)["”](?:时|后)[，,]?\s*(?:整理|归档)(?:到|进)(.+?)(?:课程)?(?:工作区)?[。.]?$/);
  if(filingEn||filingZh){
@@ -93,7 +97,7 @@ export function parseAutomationRule(text:string,options:RuleParseOptions):RulePa
  const daily=!trigger&&sourceText.match(/^(?:every\s+day\s+at\s+(\d\d:\d\d)|每天\s*(\d\d:\d\d))\s*(.+)$/i);if(daily){trigger={kind:'daily',time:daily[1]??daily[2],timeZone:zone};rest=daily[3]}
  const dayMap:Record<string,number>={sunday:0,sun:0,monday:1,mon:1,tuesday:2,tue:2,wednesday:3,wed:3,thursday:4,thu:4,friday:5,fri:5,saturday:6,sat:6,'周日':0,'星期日':0,'周一':1,'星期一':1,'周二':2,'星期二':2,'周三':3,'星期三':3,'周四':4,'星期四':4,'周五':5,'星期五':5,'周六':6,'星期六':6};
  const weekly=!trigger&&sourceText.match(/^(?:every\s+(sunday|sun|monday|mon|tuesday|tue|wednesday|wed|thursday|thu|friday|fri|saturday|sat)\s+at\s+(\d\d:\d\d)|每(?:周|星期)(日|一|二|三|四|五|六)\s*(\d\d:\d\d))\s*(.+)$/i);if(weekly){const d=weekly[1]?.toLowerCase()??`周${weekly[3]}`;trigger={kind:'weekly',weekdays:[dayMap[d]],time:weekly[2]??weekly[4],timeZone:zone};rest=weekly[5]}
- if(trigger){const task=rest.match(/^(?:prepare|open|arrange)\s+(?:the\s+)?(.+?)\s+(?:workspace\s+)?(?:with|using|layout)\s+(.+?)(?:\s+layout)?$/i)??rest.match(/^(?:为|准备|打开)?\s*(.+?)(?:工作区)?(?:使用|套用)(.+?)(?:布局)?$/);if(!task)return{kind:'unsupported',message:'Supported scheduled layout form: “Every day at 09:00 prepare <workspace> using <layout>” or “每天 09:00 为<工作区>使用<布局>布局”.'};const w=pick(task[1].trim(),options.catalog.workspaces,'workspace');if(!w.item)return w.result!;const ls=options.catalog.layouts.filter(x=>!x.workspaceId||x.workspaceId===w.item!.id),l=pick(task[2].trim(),ls,'saved layout');if(!l.item)return l.result!;return make(trigger,{kind:'prepareWorkspaceLayout',workspaceId:w.item.id,layoutId:l.item.id})}
+ if(trigger){const task=rest.match(/^(?:prepare|open|arrange)\s+(?:the\s+)?(.+?)\s+(?:workspace\s+)?(?:with|using|layout)\s+(.+?)(?:\s+layout)?$/i)??rest.match(/^(?:为|准备|打开)?\s*(.+?)(?:工作区)?(?:使用|套用)(.+?)(?:布局)?$/);if(!task)return{kind:'unsupported',message:'Supported scheduled layout form: “Every day at 09:00 prepare <workspace> using <layout>” or “每天 09:00 为<工作区>使用<布局>布局”.'};const w=pick(task[1].trim(),options.catalog.workspaces,'workspace');if(!w.item)return w.result!;const l=pick(task[2].trim(),options.catalog.layouts,'saved layout');if(!l.item)return l.result!;return make(trigger,{kind:'prepareWorkspaceLayout',workspaceId:w.item.id,layoutId:l.item.id})}
  return{kind:'unsupported',message:'Supported filing form: “When I capture links matching "<text>", file them to <course> course” / “新增链接匹配“<文本>”时，整理到<课程>课程”. Supported layout form: prepare a named workspace with a saved layout once, daily, or weekly at an explicit time.'}
 }
 export function validateAutomationRuleDraft(draft:AutomationRuleDraft,catalog:RuleCatalog):{ok:true;trigger:AutomationTrigger;action:AutomationAction}|{ok:false;message:string}{const trigger=triggerOf(draft.trigger),action=actionOf(draft.action,catalog);if(!trigger)return{ok:false,message:'Trigger is invalid or unsupported.'};if(!action)return{ok:false,message:'Action references a missing or mismatched object; resolve exact current IDs.'};if((trigger.kind==='onCapture')!==(action.kind==='fileResourcesToCourse'))return{ok:false,message:'Resource filing requires the resource-added trigger; layout preparation requires a time trigger.'};return{ok:true,trigger,action}}
@@ -101,15 +105,72 @@ export function createAutomationRule(draft:AutomationRuleDraft,catalog:RuleCatal
 function localParts(d:Date,z:string):{date:string;time:string;weekday:number}{const p=new Intl.DateTimeFormat('en-US',{timeZone:z,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23',weekday:'short'}).formatToParts(d),get=(x:string)=>p.find(y=>y.type===x)?.value??'',days:Record<string,number>={Sun:0,Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6};return{date:`${get('year')}-${get('month')}-${get('day')}`,time:`${get('hour')}:${get('minute')}`,weekday:days[get('weekday')]}}
 export interface DueOccurrence{rule:AutomationRule;occurrenceKey:string;scheduledAt:string}
 /** One occurrence per rule/local day; successful and clarification receipts are terminal. */
-export function dueAutomationOccurrences(state:AutomationState,now=new Date()):DueOccurrence[]{const out:DueOccurrence[]=[];for(const rule of state.rules){if(!rule.enabled||rule.trigger.kind==='onCapture')continue;const t=rule.trigger;let key:string,at:string;if(t.kind==='once'){at=t.at;if(Date.parse(at)>now.getTime())continue;key=`once:${at}`}else{const p=localParts(now,t.timeZone);if(p.time<t.time||(t.kind==='weekly'&&!t.weekdays.includes(p.weekday)))continue;key=`${t.kind}:${p.date}:${t.timeZone}:${t.time}`;at=now.toISOString()}const receipt=state.receipts.find(x=>x.ruleId===rule.id&&x.occurrenceKey===key);if(receipt&&(receipt.status==='succeeded'||receipt.status==='needs_clarification'||receipt.status==='outcome_unknown'||receipt.status==='running'||(receipt.status==='failed'&&!receipt.retryable)))continue;out.push({rule,occurrenceKey:key,scheduledAt:at})}return out}
+export function dueAutomationOccurrences(state:AutomationState,now=new Date()):DueOccurrence[]{const out:DueOccurrence[]=[];for(const rule of state.rules){if(!rule.enabled||rule.trigger.kind==='onCapture')continue;const t=rule.trigger;let key:string,at:string;if(t.kind==='once'){at=t.at;if(Date.parse(at)>now.getTime()||rule.onceTerminal?.at===t.at)continue;key=`once:${at}`}else{const p=localParts(now,t.timeZone);if(p.time<t.time||(t.kind==='weekly'&&!t.weekdays.includes(p.weekday)))continue;key=`${t.kind}:${p.date}:${t.timeZone}:${t.time}`;at=now.toISOString()}const receipt=state.receipts.find(x=>x.ruleId===rule.id&&x.occurrenceKey===key);if(receipt&&(receipt.status==='succeeded'||receipt.status==='needs_clarification'||receipt.status==='outcome_unknown'||receipt.status==='running'||(receipt.status==='failed'&&!receipt.retryable)))continue;out.push({rule,occurrenceKey:key,scheduledAt:at})}return out}
 function putReceipt(s:AutomationState,r:AutomationReceipt):AutomationState{return{...s,receipts:[...s.receipts.filter(x=>x.ruleId!==r.ruleId||x.occurrenceKey!==r.occurrenceKey),r].slice(-MAX_RECEIPTS)}}
 export interface EvaluateOptions{storage:AutomationStorage;service:AutomationOperationService;now?:Date;key?:string;pendingCaptureEventId?:string}
 /** Persists a running claim before every call and reuses an idempotency key on recovery/retry. */
-export async function evaluateAutomationRules(o:EvaluateOptions):Promise<{ok:true;state:AutomationState;results:AutomationReceipt[]}|{ok:false;error:string}>{const loaded=loadAutomationState(o.storage,o.key);if(!loaded.ok)return{ok:false,error:loaded.message};const now=o.now??new Date();let state=loaded.state;const results:AutomationReceipt[]=[];
- // A durable running claim surviving restart is an ambiguous outcome, not a safe retry.
- // A claim still held by this process belongs to a concurrent tick and remains running.
- const active=activeSet(o.storage);
- for(const prior of state.receipts.filter(x=>x.status==='running')){const activeKey=`${prior.ruleId}/${prior.occurrenceKey}`;if(active.has(activeKey))continue;const unknown:AutomationReceipt={...prior,status:'outcome_unknown',updatedAt:now.toISOString(),message:'The previous attempt ended before its outcome was recorded. Check the operation service receipt before retrying.'};state=putReceipt(state,unknown);results.push(unknown)}
- let due=dueAutomationOccurrences(state,now);if(o.pendingCaptureEventId)for(const rule of state.rules)if(rule.enabled&&rule.trigger.kind==='onCapture'){const key=`capture-event:${o.pendingCaptureEventId}`,old=state.receipts.find(x=>x.ruleId===rule.id&&x.occurrenceKey===key);if(old?.status!=='succeeded'&&old?.status!=='needs_clarification'&&old?.status!=='outcome_unknown'&&old?.status!=='running'&&!(old?.status==='failed'&&!old.retryable)&&!due.some(x=>x.rule.id===rule.id&&x.occurrenceKey===key))due.push({rule,occurrenceKey:key,scheduledAt:now.toISOString()})}
- for(const occ of due){const activeKey=`${occ.rule.id}/${occ.occurrenceKey}`;if(active.has(activeKey))continue;const old=state.receipts.find(x=>x.ruleId===occ.rule.id&&x.occurrenceKey===occ.occurrenceKey),running:AutomationReceipt={version:1,ruleId:occ.rule.id,occurrenceKey:occ.occurrenceKey,scheduledAt:occ.scheduledAt,status:'running',attempts:(old?.attempts??0)+1,startedAt:old?.startedAt??now.toISOString(),updatedAt:now.toISOString()};state=putReceipt(state,running);try{saveAutomationState(o.storage,state,o.key)}catch(e){return{ok:false,error:`Could not persist in-flight receipt: ${e instanceof Error?e.message:String(e)}`}}active.add(activeKey);let result:AutomationOperationResult;try{result=await o.service.execute(occ.rule.action,{ruleId:occ.rule.id,occurrenceKey:occ.occurrenceKey,scheduledAt:occ.scheduledAt,attempt:running.attempts,idempotencyKey:`${occ.rule.id}/${occ.occurrenceKey}`})}catch(e){result={status:'outcome_unknown',message:e instanceof Error?e.message:String(e)}}finally{active.delete(activeKey)}const receipt:AutomationReceipt={...running,status:result.status,updatedAt:(o.now??now).toISOString(),...(result.message?{message:result.message.slice(0,1000)}:{}),...(result.status==='failed'?{retryable:result.retryable===true}:{}),...(result.status==='succeeded'&&result.receiptId?{operationReceiptId:result.receiptId}:{})};state=putReceipt(state,receipt);try{saveAutomationState(o.storage,state,o.key)}catch(e){return{ok:false,error:`Operation returned ${result.status}, but receipt could not be persisted: ${e instanceof Error?e.message:String(e)}`}}results.push(receipt)}
- try{saveAutomationState(o.storage,state,o.key)}catch(e){return{ok:false,error:`Could not persist rule receipts: ${e instanceof Error?e.message:String(e)}`}}return{ok:true,state,results}}
+async function evaluateAutomationRulesNow(o:EvaluateOptions):Promise<{ok:true;state:AutomationState;results:AutomationReceipt[]}|{ok:false;error:string}>{
+ const loaded=loadAutomationState(o.storage,o.key);
+ if(!loaded.ok)return{ok:false,error:loaded.message};
+ const now=o.now??new Date(),results:AutomationReceipt[]=[],active=activeSet(o.storage);
+ let state=loaded.state;
+ // A running receipt left after process restart is ambiguous, never re-execute it.
+ for(const prior of state.receipts.filter(x=>x.status==='running')){
+  if(active.has(`${prior.ruleId}/${prior.occurrenceKey}`))continue;
+  const unknown:AutomationReceipt={...prior,status:'outcome_unknown',updatedAt:now.toISOString(),message:'The previous attempt ended before its outcome was recorded. Check the operation service receipt before retrying.'};
+  state=putReceipt(state,unknown);
+  const rule=state.rules.find(x=>x.id===prior.ruleId);
+  if(rule&&rule.trigger.kind==='once'){const at=rule.trigger.at;state={...state,rules:state.rules.map(x=>x.id===rule.id?{...x,onceTerminal:{at,status:'outcome_unknown'}}:x)}}
+  results.push(unknown);
+ }
+ let due=dueAutomationOccurrences(state,now);
+ if(o.pendingCaptureEventId)for(const rule of state.rules)if(rule.enabled&&rule.trigger.kind==='onCapture'){
+  const occurrenceKey=`capture-event:${o.pendingCaptureEventId}`,old=state.receipts.find(x=>x.ruleId===rule.id&&x.occurrenceKey===occurrenceKey);
+  if(!old||old.status==='failed'&&old.retryable)due.push({rule,occurrenceKey,scheduledAt:now.toISOString()});
+ }
+ for(const candidate of due){
+  // Reload before each action. An external UI edit during an earlier await may
+  // have disabled or replaced this rule; don't execute an obsolete snapshot.
+  const latest=loadAutomationState(o.storage,o.key);
+  if(!latest.ok)return{ok:false,error:latest.message};
+  state=latest.state;
+  const currentRule=state.rules.find(x=>x.id===candidate.rule.id);
+  if(!currentRule?.enabled||JSON.stringify(currentRule.action)!==JSON.stringify(candidate.rule.action)||JSON.stringify(currentRule.trigger)!==JSON.stringify(candidate.rule.trigger))continue;
+  const prior=state.receipts.find(x=>x.ruleId===currentRule.id&&x.occurrenceKey===candidate.occurrenceKey);
+  if(prior&&(prior.status==='succeeded'||prior.status==='needs_clarification'||prior.status==='outcome_unknown'||prior.status==='running'||prior.status==='failed'&&!prior.retryable))continue;
+  const activeKey=`${currentRule.id}/${candidate.occurrenceKey}`;
+  if(active.has(activeKey))continue;
+  const running:AutomationReceipt={version:1,ruleId:currentRule.id,occurrenceKey:candidate.occurrenceKey,scheduledAt:candidate.scheduledAt,status:'running',attempts:(prior?.attempts??0)+1,startedAt:prior?.startedAt??now.toISOString(),updatedAt:now.toISOString()};
+  state=putReceipt(state,running);
+  try{saveAutomationState(o.storage,state,o.key)}catch(e){return{ok:false,error:`Could not persist in-flight receipt: ${e instanceof Error?e.message:String(e)}`}}
+  active.add(activeKey);
+  let outcome:AutomationOperationResult;
+  try{outcome=await o.service.execute(currentRule.action,{ruleId:currentRule.id,occurrenceKey:candidate.occurrenceKey,scheduledAt:candidate.scheduledAt,attempt:running.attempts,idempotencyKey:`${currentRule.id}/${candidate.occurrenceKey}`})}
+  catch(e){outcome={status:'outcome_unknown',message:e instanceof Error?e.message:String(e)}}
+  finally{active.delete(activeKey)}
+  const receipt:AutomationReceipt={...running,status:outcome.status,updatedAt:(o.now??now).toISOString(),...(outcome.message?{message:outcome.message.slice(0,1000)}:{}),...(outcome.status==='failed'?{retryable:outcome.retryable===true}:{}),...(outcome.status==='succeeded'&&outcome.receiptId?{operationReceiptId:outcome.receiptId}:{})};
+  // Merge just this receipt into the latest persisted state. Never write the old
+  // pre-await snapshot over rule edits or receipts produced while the op ran.
+  const after=loadAutomationState(o.storage,o.key);
+  if(!after.ok)return{ok:false,error:`Operation returned ${outcome.status}, but latest state could not be read: ${after.message}`};
+  state=putReceipt(after.state,receipt);
+  if(currentRule.trigger.kind==='once'&&(outcome.status==='succeeded'||outcome.status==='needs_clarification'||outcome.status==='outcome_unknown')){const at=currentRule.trigger.at;state={...state,rules:state.rules.map(x=>x.id===currentRule.id?{...x,onceTerminal:{at,status:outcome.status as 'succeeded'|'needs_clarification'|'outcome_unknown'}}:x)}}
+  try{saveAutomationState(o.storage,state,o.key)}catch(e){return{ok:false,error:`Operation returned ${outcome.status}, but receipt could not be persisted: ${e instanceof Error?e.message:String(e)}`}}
+  results.push(receipt);
+ }
+ // Any recovery receipts and terminal once watermarks are saved as a merged state.
+ const latest=loadAutomationState(o.storage,o.key);
+ if(!latest.ok)return{ok:false,error:latest.message};
+ state={...latest.state,receipts:[...latest.state.receipts]};
+ for(const receipt of results)if(receipt.status==='outcome_unknown'&&!state.receipts.some(x=>x.ruleId===receipt.ruleId&&x.occurrenceKey===receipt.occurrenceKey&&x.status==='outcome_unknown'))state=putReceipt(state,receipt);
+ try{saveAutomationState(o.storage,state,o.key)}catch(e){return{ok:false,error:`Could not persist rule receipts: ${e instanceof Error?e.message:String(e)}`}}
+ return{ok:true,state,results};
+}
+
+/** Serialize evaluations per storage in this JS runtime to avoid stale concurrent tick writes. */
+export function evaluateAutomationRules(o:EvaluateOptions):Promise<{ok:true;state:AutomationState;results:AutomationReceipt[]}|{ok:false;error:string}>{
+ const storage=o.storage as object,previous=evaluationTails.get(storage)??Promise.resolve();
+ const run=previous.then(()=>evaluateAutomationRulesNow(o),()=>evaluateAutomationRulesNow(o));
+ evaluationTails.set(storage,run.then(()=>undefined,()=>undefined));
+ return run;
+}
