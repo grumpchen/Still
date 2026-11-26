@@ -39,6 +39,7 @@ fn ensure_view(app:AppHandle,id:String,url:url::Url)->Result<(),String>{
  let window=app.get_window("main").ok_or("Still window is unavailable")?;
  let app_for_navigation=app.clone();let event_id=id.clone();
  let builder=WebviewBuilder::new(label.clone(),WebviewUrl::External(url.clone()))
+  .additional_browser_args(&crate::automation_runtime::browser_webview_args())
   .on_navigation(move|target|{
    if target.scheme()!="https"||target.host_str().is_none()||!target.username().is_empty()||target.password().is_some(){return false}
    let payload=BrowserLocation{widget_id:event_id.clone(),url:target.as_str().to_string()};
