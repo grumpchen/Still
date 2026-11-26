@@ -6,6 +6,7 @@ export const widgetCatalog = {
   focus: {name:'Focus', icon:'focus', description:'A timer for your next study session', width:360, height:430, minWidth:280, minHeight:330},
   files: {name:'Files', icon:'files', description:'Your local course files', width:400, height:380, minWidth:280, minHeight:240},
   apps: {name:'Apps', icon:'apps', description:'Real desktop apps inside movable panels', width:360, height:280, minWidth:280, minHeight:220},
+  browser: {name:'Browser', icon:'browser', description:'Saved websites and quick links', width:380, height:280, minWidth:260, minHeight:200},
   timetable: {name:'Timetable', icon:'study', description:'A weekly schedule you can edit', width:460, height:360, minWidth:280, minHeight:220},
   calendar: {name:'Calendar', icon:'calendar', description:'Plan classes, assignments, exams, and study sessions', width:560, height:480, minWidth:320, minHeight:300},
   ai: {name:'Assistant', icon:'ai', description:'Gemini chat · read selected widgets · propose workspace layouts', width:380, height:300, minWidth:260, minHeight:220},

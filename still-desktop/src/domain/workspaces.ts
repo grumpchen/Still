@@ -16,6 +16,7 @@ import {checkedNoteDocuments,createNoteDocument,noteDocument,type NoteDocument} 
 import {checkedCalendarEvents,type StudyCalendarEvent} from './studyCalendar.ts';
 import {checkedWidgetTaskStatus,type WidgetTaskStatus} from './widgetTaskStatus.ts';
 import {checkedDeepTutorUrl,DEFAULT_DEEP_TUTOR_URL} from './deepTutor.ts';
+import {normalizeUrl,GOOGLE_URL} from './browser.ts';
 import {type Locale} from '../localization.tsx';
 export {widgetTypes, type WidgetType} from './widgetCatalog.ts';
 export {widgetTagColors,type WidgetTagColor} from './widgetTags.ts';
@@ -32,6 +33,7 @@ export function deleteSavedGroup(workspace:Workspace,id:string):Workspace{
 }
 export interface WidgetInstance {
   id: string; type: WidgetType; span: 1 | 2 | 3; instanceNumber:number; title:string;
+  browserUrl:string;
   tagColor:WidgetTagColor|null;
   taskStatus:WidgetTaskStatus|null;
   relaunchOverride:WidgetRelaunchOverride;
@@ -77,7 +79,7 @@ export function createWidget(type: WidgetType): WidgetInstance {
   const id=crypto.randomUUID(),initialText='A clear space, a clear mind.\n\nStart with one important thing.\nLeave room for a new idea.',initialNote=createNoteDocument();initialNote.text=initialText;
   return { id, type, instanceNumber:1, title:'', tagColor:null,taskStatus:null, relaunchOverride:'follow',pluginControls:type==='tagStatus'?['widget-relaunch.tag-colors']:[], span: type === 'ai' ? 2 : 1,
     clockPluginEnabled:false,pinPluginEnabled:false,pinned:false,lockPluginEnabled:false,locked:false,noteFont:'sans',noteFontSize:14,noteDocuments:type==='notes'?[initialNote]:[],activeNoteDocumentId:type==='notes'?initialNote.id:'',notesLibraryKey:null,fileNotes:{},fileReadingStatus:{},text: type === 'notes' ? initialText : '',
-    remaining: 1500, end: null, placement:placement(type,null), shortcuts:[], schedule:[],groupId:null,folderKey:null,fileKey:null,appKey:null,appPanelOpen:false,appReuseExisting:false,deepTutorUrl:DEFAULT_DEEP_TUTOR_URL,
+    remaining: 1500, end: null, placement:placement(type,null), shortcuts:[], schedule:[],groupId:null,folderKey:null,fileKey:null,appKey:null,appPanelOpen:false,appReuseExisting:false,deepTutorUrl:DEFAULT_DEEP_TUTOR_URL,browserUrl:GOOGLE_URL,
     minimized:false,restorePlacement:null,groupCollapsed:false,groupExpandedPlacement:null,calendarEvents:[] };
 }
 const MINIMIZED_WIDTH=136,MINIMIZED_HEIGHT=42;
@@ -265,7 +267,7 @@ function parseGroupEntries(value:unknown):GroupWidgetEntry[]{
   const item=groupWidgetEntry({id:typeof v.id==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(v.id)&&!ids.has(v.id)?v.id:undefined,type:v.type,name:v.name,icon:typeof v.icon==='string'?v.icon:undefined,iconData:typeof v.iconData==='string'?v.iconData:undefined});ids.add(item.id);return[item];
  }catch{return []}});
 }
-const PERSISTED_WIDGET_FIELDS:(keyof WidgetInstance)[]=['id','type','span','instanceNumber','title','tagColor','taskStatus','relaunchOverride','pluginControls','clockPluginEnabled','pinPluginEnabled','pinned','lockPluginEnabled','locked','noteFont','noteFontSize','noteDocuments','activeNoteDocumentId','notesLibraryKey','notesLibraryName','fileNotes','fileReadingStatus','deepTutorUrl','text','remaining','end','folderName','folderKey','fileKey','fileName','fileKind','appKey','appName','appIconData','appPanelOpen','appWasCollected','appReuseExisting','appMinWidth','appMinHeight','placement','minimized','restorePlacement','shortcuts','schedule','calendarEvents','groupId'];
+const PERSISTED_WIDGET_FIELDS:(keyof WidgetInstance)[]=['id','type','span','instanceNumber','title','tagColor','taskStatus','relaunchOverride','pluginControls','clockPluginEnabled','pinPluginEnabled','pinned','lockPluginEnabled','locked','noteFont','noteFontSize','noteDocuments','activeNoteDocumentId','notesLibraryKey','notesLibraryName','fileNotes','fileReadingStatus','deepTutorUrl','browserUrl','text','remaining','end','folderName','folderKey','fileKey','fileName','fileKind','appKey','appName','appIconData','appPanelOpen','appWasCollected','appReuseExisting','appMinWidth','appMinHeight','placement','minimized','restorePlacement','shortcuts','schedule','calendarEvents','groupId'];
 function persistentWidgetSnapshot(value:unknown):WidgetInstance {
  if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('Invalid collected widget.');
  const source=value as Record<string,unknown>,filtered=Object.fromEntries(PERSISTED_WIDGET_FIELDS.filter(key=>key in source).map(key=>[key,source[key]]));
@@ -391,7 +393,7 @@ function checkedWidget(value: unknown): WidgetInstance {
     title:item.type==='notes'?activeNote.title:typeof item.title==='string'?item.title.trim().slice(0,60):'',
     text:item.type==='notes'?activeNote.text:item.type==='aiCommand'&&typeof item.text==='string'?item.text.slice(0,8000):typeof item.text==='string'?item.text:defaults.text,
     tagColor:widgetTagColors.includes(item.tagColor as WidgetTagColor)?item.tagColor as WidgetTagColor:null,
-    taskStatus:checkedWidgetTaskStatus(item.taskStatus),deepTutorUrl:(()=>{try{return checkedDeepTutorUrl(item.deepTutorUrl??defaults.deepTutorUrl)}catch{return defaults.deepTutorUrl}})(),
+    taskStatus:checkedWidgetTaskStatus(item.taskStatus),deepTutorUrl:(()=>{try{return checkedDeepTutorUrl(item.deepTutorUrl??defaults.deepTutorUrl)}catch{return defaults.deepTutorUrl}})(),browserUrl:item.type==='browser'&&typeof item.browserUrl==='string'?(()=>{try{return normalizeUrl(item.browserUrl)}catch{return defaults.browserUrl}})():defaults.browserUrl,
     relaunchOverride:item.relaunchOverride==='automatic'||item.relaunchOverride==='manual'?item.relaunchOverride:'follow',
     pluginControls:Array.isArray(item.pluginControls)?[...new Set(item.pluginControls.filter((control):control is string=>typeof control==='string'&&/^[a-z0-9.-]{1,80}$/.test(control)))].slice(0,20):defaults.pluginControls,
     clockPluginEnabled:item.clockPluginEnabled===true,
@@ -427,9 +429,9 @@ export function parseState(source: unknown): WorkspaceState {
     if (!workspace || typeof workspace.id!=='string' || ids.has(workspace.id) || !Array.isArray(workspace.widgets)) throw new Error('Invalid workspace');
     ids.add(workspace.id);
     const widgets:WidgetInstance[]=[];
-    for(const raw of workspace.widgets){if(raw&&typeof raw==='object'&&!widgetTypes.includes((raw as {type?:unknown}).type as WidgetType))continue;const widget=checkedWidget(raw);if(!(raw as WidgetInstance).placement)widget.placement=nextPlacement(widget.type,widgets);if(!(raw as WidgetInstance).instanceNumber || widgets.some(w=>w.type===widget.type&&w.instanceNumber===widget.instanceNumber))widget.instanceNumber=nextInstanceNumber(widget.type,widgets);widgets.push(widget)}
+    for(const raw of workspace.widgets){if(raw&&typeof raw==='object'&&(raw as {type?:unknown}).type==='browser'&&value.version<10)continue;if(raw&&typeof raw==='object'&&!widgetTypes.includes((raw as {type?:unknown}).type as WidgetType))continue;const widget=checkedWidget(raw);if(!(raw as WidgetInstance).placement)widget.placement=nextPlacement(widget.type,widgets);if(!(raw as WidgetInstance).instanceNumber || widgets.some(w=>w.type===widget.type&&w.instanceNumber===widget.instanceNumber))widget.instanceNumber=nextInstanceNumber(widget.type,widgets);widgets.push(widget)}
     for (const widget of widgets) { if (widgetIds.has(widget.id)) throw new Error('Duplicate widget instance'); widgetIds.add(widget.id); }
-    const groups=migrateLegacyBrowserGroups(workspace.widgets,parseGroups(workspace.groups)),collectedIds=new Set(widgets.map(item=>item.id));let iconBytes=0;
+    const groups=migrateLegacyBrowserGroups(value.version<10?workspace.widgets:[],parseGroups(workspace.groups)),collectedIds=new Set(widgets.map(item=>item.id));let iconBytes=0;
     for(const group of groups){
       group.widgets=group.widgets.filter(item=>{if(item.kind!=='collected')return true;if(collectedIds.has(item.id))return false;collectedIds.add(item.id);return true});
       group.widgets=group.widgets.map(item=>{const iconData=groupEntryIconData(item);if(!iconData)return item;if(iconBytes+iconData.length>GROUP_ICON_BUDGET){if(item.kind==='collected'&&item.instance){const {appIconData:_ignored,...instance}=item.instance;return{...item,instance}}const {iconData:_ignored,...fallback}=item;return fallback}iconBytes+=iconData.length;return item});
