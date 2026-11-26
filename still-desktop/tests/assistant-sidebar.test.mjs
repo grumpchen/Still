@@ -56,13 +56,10 @@ test('AI assistant offers Gemini, OpenAI, OpenCode Go, and DeepSeek providers',(
 test('clear all-widget actions are resolved locally before any model request',()=>{
  assert.match(panel,/resolveDirectAssistantActions\(input,workspace,selectedIds,trayItems,workspaces\)/);
  assert.ok(panel.indexOf('if(localActions){')<panel.indexOf('geminiAssistant.send('),'deterministic workspace actions must not depend on model output');
- assert.match(panel,/!directActions&&!confirmationRequest&&!directTimerRequest&&\(!configured\|\|!currentModels\.includes\(model\)\|\|!geminiAssistant\.available\)/,'local actions remain available without AI credentials');
+ assert.match(panel,/directWorkbenchAvailable&&!directActions&&!confirmationRequest&&!directTimerRequest/,'direct workbench rules and local actions remain available without AI credentials');
  assert.match(panel,/result\.layout\.length&&assistantLayoutRequested\(prompt\)/,'only explicit layout requests may show a layout proposal');
- assert.match(panel,/needsConfirmation==='delete_workspace'\?t\('assistantDeleteWorkspaceConfirm'\)/);
- assert.match(panel,/confirmation==='delete_workspace'\?'confirmDeleteWorkspaceTitle'/);
- assert.match(panel,/confirmation==='delete_widgets'\?'confirmDeleteWidgetsTitle'/);
- assert.match(panel,/t\('assistantRemoveWidgetsConfirm'\)/);
- assert.match(panel,/deleteWidgets\(owner\.id,commandRemoval\?\.widgetId\)/);
+ assert.match(panel,/needsConfirmation==='clear_tray'\?await clearTray\(owner\.id\):needsConfirmation==='delete_workspace'\?await deleteWorkspace\(owner\.id\):await deleteWidgets\(owner\.id,commandSource\?\.widgetId\)/,'explicit bulk operations use app callbacks and preserve the running command');
+ assert.doesNotMatch(panel,/setConfirmation\('remove_widgets'\)/,'explicit widget removal does not add a second confirmation');
  assert.match(panel,/settleAssistantConfirmation\(current,receipt\)/,'confirmation result replaces the pending reply instead of breaking chat turn order');
  assert.match(app,/clearTray=\{clearAssistantTray\}/);
  assert.match(app,/deleteWidgets=\{deleteAssistantWidgets\}/);
@@ -76,8 +73,8 @@ test('local widget actions always record a nonempty receipt and repair old blank
  assert.match(panel,/safeAssistantReceipt\(await act\(/,'empty future action replies cannot enter chat history');
  assert.match(panel,/prepareAssistantHistory\(messages\)/,'older blank replies are repaired before the next provider request');
 });
-test('removing named widgets requires confirmation and applies only the selected IDs',()=>{
- assert.match(panel,/setConfirmation\('remove_widgets'\)/);
+test('removing named widgets applies only the selected IDs after intent validation',()=>{
+ assert.doesNotMatch(panel,/setConfirmation\('remove_widgets'\)/);
  assert.match(app,/action\.type==='remove_widget'/);
  assert.match(app,/removedIds\.includes\(widget\.id\)/);
  assert.match(app,/Undo change restores the widget/);

@@ -4,7 +4,7 @@ import {assistantEditTargetsUnchanged,assistantWidgetPluginClarification,assista
 import {assistantResizeClarification,validateAssistantLayoutIntent} from '../src/domain/assistant.ts';
 import {createWidget,createWorkspace} from '../src/domain/workspaces.ts';
 import {widgetTypes} from '../src/domain/widgetCatalog.ts';
-import {assistantActionRequest,assistantCreationClarification,assistantEditClarification,assistantMoveClarification,assistantNoteDocumentClarification,assistantNoteStyleClarification,assistantNoteTagClarification,assistantShortcutClarification,assistantTimerControlClarification,assistantReplyNeedsClarification,assistantLayoutRequested,assistantRequestLimitError,assistantTrayItems,unsupportedAssistantRequest,extractAssistantTimerSeconds,resolveAssistantSetting,assistantWorkspaceClarification,resolveDirectAssistantActions,resolveAcceptedNotesOffer,addFocusForAssistantTimer,settleAssistantConfirmation,assistantKeyError,assistantWorkspaceContext,preferredModel,widgetContext,layoutContext,layoutFingerprint,parseAssistantReply,validateAssistantActionIntent,validateAssistantActions,applyAssistantWidgetActions,updateAssistantShortcut,validateLayout,applyLayoutPlan,prepareAssistantHistory,assistantAddedWidgetReceipt,safeAssistantReceipt,MAX_ASSISTANT_BATCH,MAX_ASSISTANT_WIDGETS} from '../src/domain/assistant.ts';
+import {assistantActionRequest,assistantCreationClarification,assistantEditClarification,assistantMoveClarification,assistantNoteDocumentClarification,assistantNoteStyleClarification,assistantNoteTagClarification,assistantRemovalClarification,assistantShortcutClarification,assistantTimerControlClarification,assistantReplyNeedsClarification,assistantLayoutRequested,assistantRequestLimitError,assistantTrayItems,unsupportedAssistantRequest,extractAssistantTimerSeconds,resolveAssistantSetting,assistantWorkspaceClarification,resolveDirectAssistantActions,resolveAcceptedNotesOffer,addFocusForAssistantTimer,settleAssistantConfirmation,assistantKeyError,assistantWorkspaceContext,preferredModel,widgetContext,layoutContext,layoutFingerprint,parseAssistantReply,validateAssistantActionIntent,validateAssistantActions,applyAssistantWidgetActions,updateAssistantShortcut,validateLayout,applyLayoutPlan,prepareAssistantHistory,assistantAddedWidgetReceipt,safeAssistantReceipt,MAX_ASSISTANT_BATCH,MAX_ASSISTANT_WIDGETS} from '../src/domain/assistant.ts';
 
 function fixture(){
   const workspace=createWorkspace('Study',[]),note=createWidget('notes'),timer=createWidget('focus');
@@ -670,6 +670,14 @@ test('explicit all-widget tray requests resolve to real workspace IDs without re
   ]);
   assert.equal(resolveDirectAssistantActions('How do I save all widgets to the tray?',workspace,[]),null);
   assert.equal(resolveDirectAssistantActions('save a widget to the tray',workspace,[]),null,'ambiguous requests still go through chat');
+});
+
+test('widget deletion needs a unique target unless the user explicitly says all',()=>{
+ const {workspace}=fixture(),second=createWidget('notes');workspace.widgets.push(second);
+ assert.match(assistantRemovalClarification('remove notes',workspace,[]),/Which widget should I remove/);
+ assert.equal(assistantRemovalClarification('remove notes',workspace,[second.id]),null,'an exact selected widget is sufficient');
+ assert.equal(assistantRemovalClarification('remove all notes widgets',workspace,[]),null,'an explicit type-wide request resolves all matching widgets');
+ assert.equal(assistantRemovalClarification('how do I remove a note widget?',workspace,[]),null,'questions remain informational');
 });
 test('the assistant only shows a layout proposal when layout was requested',()=>{
   assert.equal(assistantLayoutRequested('delete all items in widget tray'),false);
