@@ -1,15 +1,12 @@
 import type {AutomationAction,AutomationOperationContext,AutomationOperationResult,AutomationOperationService,AutomationStorage,RuleCatalog} from '../domain/automationRules.ts';
 import {parseWorkbenchActions,validateWorkbenchActionBatch,type LinkOrigin,type WorkbenchAction} from '../domain/workbenchActions.ts';
 import type {CollectionOperationRequest,CollectionOperationResult} from '../domain/collectionOperations.ts';
+import type {CaptureInboxEvent} from '../domain/captureInbox.ts';
 import type {GlobalWorkspaceLayout,WorkspaceState} from '../domain/workspaces.ts';
 import {executeCollectionOperation as sharedCollectionOperation} from './collectionOperations.ts';
 import {localFiles,type LibrarySearchResponse} from './files.ts';
 
-export interface WorkbenchCaptureEvent {
- eventId:string;capturedAt:string;kind:'file'|'link'|'idea';name:string;status?:'pending'|'acknowledged';
- sourceWorkspaceId?:string;widgetId?:string;resourceId?:string;documentId?:string;
- origin?:LinkOrigin|string;linkId?:string;url?:string;
-}
+export type WorkbenchCaptureEvent=CaptureInboxEvent;
 export type WorkbenchLayoutHandlers={
  save:(name:string,sourceWorkspaceId:string)=>string|Promise<string>;
  apply:(layoutId:string,targetWorkspaceId:string,mode:'append'|'replace')=>string|Promise<string>;prepare?:(layoutId:string,targetWorkspaceId:string,mode:'append'|'replace')=>string|Promise<string>;
@@ -38,6 +35,9 @@ function collectionRequest(action:Exclude<WorkbenchAction,{operation:`layout.${s
   case'link.move':return{type:'link.move',origin:action.origin,linkId:action.linkId,destinationWorkspaceId:action.destinationWorkspaceId,...(action.destinationGroupId?{destinationGroupId:action.destinationGroupId}:{})};
   case'link.delete':return{type:'link.delete',origin:action.origin,linkId:action.linkId};
   case'file.annotation':return{type:'file.annotation',widgetId:action.widgetId,path:action.path,text:action.text};
+  case'file.moveReference':return{type:'file.moveReference',widgetId:action.widgetId,destinationWorkspaceId:action.destinationWorkspaceId};
+  case'file.renameReference':return{type:'file.renameReference',widgetId:action.widgetId,name:action.name};
+  case'file.deleteReference':return{type:'file.deleteReference',widgetId:action.widgetId};
   case'file.rename':return{type:'file.rename',widgetId:action.widgetId,path:action.path,name:action.name};
   case'file.move':return{type:'file.move',widgetId:action.widgetId,path:action.path,destinationFolder:action.destinationFolder};
   case'file.delete':return{type:'file.delete',widgetId:action.widgetId,path:action.path};
@@ -60,7 +60,7 @@ export function createWorkbenchService(options:WorkbenchServiceOptions){
  const getLayouts=()=>options.getLayouts?.()??options.getState().globalLayouts;
  function snapshot():WorkbenchSnapshot{
   const state=options.getState();
-  return{workspaces:state.workspaces.map(workspace=>({id:workspace.id,name:workspace.name,role:workspace.role,files:workspace.widgets.filter(widget=>widget.type==='files').map(widget=>({widgetId:widget.id,name:widget.fileName??widget.folderName??widget.title??'Files',kind:widget.fileKey?'document':'folder',connected:!!(widget.fileKey||widget.folderKey)})),links:[...workspace.groups.flatMap(group=>group.shortcuts.map(link=>({id:link.id,name:link.name,url:link.url,origin:{kind:'group' as const,workspaceId:workspace.id,groupId:group.id}}))),...workspace.widgets.filter(widget=>widget.type==='group').flatMap(widget=>widget.shortcuts.map(link=>({id:link.id,name:link.name,url:link.url,origin:{kind:'browser' as const,workspaceId:workspace.id,widgetId:widget.id}})))]})),layouts:getLayouts().map(layout=>({id:layout.id,name:layout.name,createdAt:layout.createdAt,widgetCount:layout.widgets.length,groupCount:layout.groups.length}))};
+  return{workspaces:state.workspaces.map(workspace=>({id:workspace.id,name:workspace.name,role:workspace.role,files:workspace.widgets.filter(widget=>widget.type==='files').map(widget=>({widgetId:widget.id,name:widget.fileName||widget.folderName||widget.title||'Files',kind:widget.fileKey?'document':'folder',connected:!!(widget.fileKey||widget.folderKey||widget.folderName)})),links:[...workspace.groups.flatMap(group=>group.shortcuts.map(link=>({id:link.id,name:link.name,url:link.url,origin:{kind:'group' as const,workspaceId:workspace.id,groupId:group.id}}))),...workspace.widgets.filter(widget=>widget.type==='browser'||widget.type==='group'&&!workspace.groups.some(group=>group.id===(widget.groupId??widget.id))).flatMap(widget=>widget.shortcuts.map(link=>({id:link.id,name:link.name,url:link.url,origin:{kind:'browser' as const,workspaceId:workspace.id,widgetId:widget.id}})))]})),layouts:getLayouts().map(layout=>({id:layout.id,name:layout.name,createdAt:layout.createdAt,widgetCount:layout.widgets.length,groupCount:layout.groups.length}))};
  }
  async function executeWorkbenchActions(raw:WorkbenchAction[]):Promise<WorkbenchReceipt[]>{
   const actions=parseWorkbenchActions(raw);validateWorkbenchActionBatch(actions);const receipts:WorkbenchReceipt[]=[];
@@ -73,10 +73,10 @@ export function createWorkbenchService(options:WorkbenchServiceOptions){
    const term=action.query.toLocaleLowerCase(),found=getLayouts().filter(layout=>layout.name.toLocaleLowerCase().includes(term));return{operation:action.operation,status:'succeeded',summary:`Found ${found.length} matching layouts.`,data:found.map(({id,name,createdAt,widgets,groups})=>({id,name,createdAt,widgetCount:widgets.length,groupCount:groups.length}))};
   }
   if(action.operation==='resource.find'){
-   const state=options.getState(),term=action.query.toLocaleLowerCase(),fileWidgets=state.workspaces.flatMap(workspace=>workspace.widgets.filter(widget=>widget.type==='files').map(widget=>({workspace,widget}))),folderIds=fileWidgets.filter(({widget})=>widget.type==='files'&&!!widget.folderKey).map(({widget})=>widget.id);
-   const result=await search(folderIds,action.query),results:Array<Record<string,unknown>>=[...result.results.map(hit=>({kind:'file',widgetId:hit.widgetId,path:hit.entry.path,name:hit.entry.name,directory:hit.entry.directory,size:hit.entry.size,blocked:hit.entry.blocked,...(()=>{const owner=fileWidgets.find(item=>item.widget.id===hit.widgetId);return owner?{sourceWorkspaceId:owner.workspace.id,workspaceName:owner.workspace.name,widgetName:owner.widget.title||owner.widget.fileName||owner.widget.folderName||'Files'}:{}})()}))];
+   const state=options.getState(),term=action.query.toLocaleLowerCase(),fileWidgets=state.workspaces.flatMap(workspace=>workspace.widgets.filter(widget=>widget.type==='files').map(widget=>({workspace,widget}))),folderIds=fileWidgets.filter(({widget})=>widget.type==='files'&&!widget.fileKey&&!!(widget.folderName||widget.folderKey)).map(({widget})=>widget.id);
+   const result=folderIds.length?await search(folderIds,action.query):{results:[],unavailableWidgetIds:[],truncated:false},results:Array<Record<string,unknown>>=[...result.results.map(hit=>({kind:'file',widgetId:hit.widgetId,path:hit.entry.path,name:hit.entry.name,directory:hit.entry.directory,size:hit.entry.size,blocked:hit.entry.blocked,...(()=>{const owner=fileWidgets.find(item=>item.widget.id===hit.widgetId);return owner?{sourceWorkspaceId:owner.workspace.id,workspaceName:owner.workspace.name,widgetName:owner.widget.title||owner.widget.fileName||owner.widget.folderName||'Files'}:{}})()}))];
    for(const {workspace,widget} of fileWidgets)if(widget.type==='files'&&widget.fileKey&&widget.fileName?.toLocaleLowerCase().includes(term))results.push({kind:'file',widgetId:widget.id,resourceId:widget.fileKey,name:widget.fileName,path:widget.fileName,directory:false,size:0,blocked:false,sourceWorkspaceId:workspace.id,workspaceName:workspace.name,widgetName:widget.title||widget.fileName});
-   for(const workspace of state.workspaces){for(const group of workspace.groups)for(const link of group.shortcuts)if(`${link.name} ${link.url}`.toLocaleLowerCase().includes(term))results.push({kind:'link',linkId:link.id,name:link.name,url:link.url,origin:{kind:'group',workspaceId:workspace.id,groupId:group.id},sourceWorkspaceId:workspace.id,workspaceName:workspace.name});for(const widget of workspace.widgets)if(widget.type==='group')for(const link of widget.shortcuts)if(`${link.name} ${link.url}`.toLocaleLowerCase().includes(term))results.push({kind:'link',linkId:link.id,name:link.name,url:link.url,origin:{kind:'browser',workspaceId:workspace.id,widgetId:widget.id},sourceWorkspaceId:workspace.id,workspaceName:workspace.name})}
+   for(const workspace of state.workspaces){for(const group of workspace.groups)for(const link of group.shortcuts)if(`${link.name} ${link.url}`.toLocaleLowerCase().includes(term))results.push({kind:'link',linkId:link.id,name:link.name,url:link.url,origin:{kind:'group',workspaceId:workspace.id,groupId:group.id},sourceWorkspaceId:workspace.id,workspaceName:workspace.name});for(const widget of workspace.widgets)if(widget.type==='browser'||widget.type==='group'&&!workspace.groups.some(group=>group.id===(widget.groupId??widget.id)))for(const link of widget.shortcuts)if(`${link.name} ${link.url}`.toLocaleLowerCase().includes(term))results.push({kind:'link',linkId:link.id,name:link.name,url:link.url,origin:{kind:'browser',workspaceId:workspace.id,widgetId:widget.id},sourceWorkspaceId:workspace.id,workspaceName:workspace.name})}
    const unavailable=result.unavailableWidgetIds.map(widgetId=>({widgetId,...(()=>{const owner=fileWidgets.find(item=>item.widget.id===widgetId);return owner?{sourceWorkspaceId:owner.workspace.id,workspaceName:owner.workspace.name,widgetName:owner.widget.title||owner.widget.folderName||'Files'}:{}})()}));
    return{operation:action.operation,status:'succeeded',summary:`Found ${results.length} resources${result.truncated?' before reaching the file search limit':''}.${unavailable.length?` ${unavailable.length} folder connection(s) were unavailable.`:''}`,data:{results,unavailable,truncated:result.truncated}};
   }
@@ -117,21 +117,22 @@ export function createWorkbenchService(options:WorkbenchServiceOptions){
   if(!context.captureEventId)return{status:'needs_clarification',message:'The capture event is missing; no older resources were searched or moved.'};
   let lookup:Awaited<ReturnType<NonNullable<WorkbenchServiceOptions['getCaptureEvent']>>>;try{lookup=await options.getCaptureEvent(context.captureEventId)}catch{return{status:'needs_clarification',message:'The exact capture could not be checked; no resource was moved.'}}
   if(lookup&&typeof lookup==='object'&&'ok'in lookup){if(!lookup.ok)return{status:'needs_clarification',message:lookup.message};lookup=lookup.value}
-  const event=lookup as WorkbenchCaptureEvent|null;if(!event||event.status&&event.status!=='pending')return{status:'needs_clarification',message:'The exact captured resource is no longer pending.'};
-  if(event.kind==='idea'||!action.resourceKinds.includes(event.kind)||!event.name.toLocaleLowerCase().includes(action.queryPattern.toLocaleLowerCase())||(action.sourceWorkspaceId&&action.sourceWorkspaceId!==event.sourceWorkspaceId))return{status:'needs_clarification',message:'The exact capture no longer matches this rule; no resource was moved.'};
+  const event=lookup as WorkbenchCaptureEvent|null;if(!event||event.status!=='pending')return{status:'needs_clarification',message:'The exact captured resource is no longer pending.'};
+  const capturedWorkspaceId=event.kind==='link'?event.origin.workspaceId:event.sourceWorkspaceId;
+  if(event.kind==='idea'||!action.resourceKinds.includes(event.kind)||!event.name.toLocaleLowerCase().includes(action.queryPattern.toLocaleLowerCase())||(action.sourceWorkspaceId&&action.sourceWorkspaceId!==capturedWorkspaceId))return{status:'needs_clarification',message:'The exact capture no longer matches this rule; no resource was moved.'};
   const state=options.getState(),destination=state.workspaces.find(workspace=>workspace.id===action.workspaceId),course=options.getCourses?.().find(item=>item.id===action.courseId&&item.workspaceId===action.workspaceId);
   if(!destination||!course)return{status:'needs_clarification',message:'The destination course or workspace is no longer available.'};
   let request:CollectionOperationRequest;
   if(event.kind==='link'){
-   if(!event.origin||typeof event.origin==='string'||!event.linkId)return{status:'needs_clarification',message:'The exact captured link has no supported tagged source.'};
-   const origin=event.origin,sourceWorkspaceId=event.sourceWorkspaceId??origin.workspaceId;if(sourceWorkspaceId!==origin.workspaceId)return{status:'needs_clarification',message:'The exact captured link source workspace changed.'};const sourceWorkspace=state.workspaces.find(workspace=>workspace.id===sourceWorkspaceId);const link=origin.kind==='group'?sourceWorkspace?.groups.find(group=>group.id===origin.groupId)?.shortcuts.find(item=>item.id===event.linkId):sourceWorkspace?.widgets.find(widget=>widget.id===origin.widgetId&&widget.type==='group')?.shortcuts.find(item=>item.id===event.linkId);
-   if(!link||link.name!==event.name)return{status:'needs_clarification',message:'The captured link changed or no longer exists.'};
+   if(!event.linkId||event.origin.kind==='legacy-unknown')return{status:'needs_clarification',message:'The exact captured link has no supported tagged source.'};
+   const origin=event.origin,sourceWorkspaceId=origin.workspaceId;const sourceWorkspace=state.workspaces.find(workspace=>workspace.id===sourceWorkspaceId);const link=origin.kind==='group'?sourceWorkspace?.groups.find(group=>group.id===origin.groupId)?.shortcuts.find(item=>item.id===event.linkId):sourceWorkspace?.widgets.find(widget=>widget.id===origin.widgetId&&(widget.type==='browser'||widget.type==='group'&&!sourceWorkspace?.groups.some(group=>group.id===(widget.groupId??widget.id))))?.shortcuts.find(item=>item.id===event.linkId);
+   if(!link||link.name!==event.name||(event.url!==undefined&&link.url!==event.url))return{status:'needs_clarification',message:'The captured link changed or no longer exists.'};
    request={type:'link.move',origin,linkId:event.linkId,destinationWorkspaceId:action.workspaceId};
   }else{
    if(!event.widgetId||!event.sourceWorkspaceId||!event.resourceId)return{status:'needs_clarification',message:'The captured file reference no longer has a complete source locator.'};
    const source=state.workspaces.find(workspace=>workspace.id===event.sourceWorkspaceId)?.widgets.find(widget=>widget.id===event.widgetId);
    if(!source||source.type!=='files'||!source.fileKey||source.fileName!==event.name||source.fileKey!==event.resourceId)return{status:'needs_clarification',message:'The captured item is not an available PDF file reference. Folder references are not moved by this rule.'};
-   request={type:'file.moveReference',widgetId:source.id,destinationWorkspaceId:action.workspaceId} as unknown as CollectionOperationRequest;
+   request={type:'file.moveReference',widgetId:source.id,destinationWorkspaceId:action.workspaceId};
   }
   const outcome=await collection(request,{source:'automation',idempotencyKey:context.idempotencyKey});return operationReceipt(outcome);
  }
