@@ -9,7 +9,26 @@ export type ManagedFileAction={type:'rename';name:string}|{type:'move';destinati
 export interface ExtractedPdfText {text:string;pagesRead:number;totalPages:number;truncated:boolean}
 export interface LibrarySearchHit {widgetId:string;entry:FileEntry}
 export interface LibrarySearchResponse {results:LibrarySearchHit[];unavailableWidgetIds:string[];truncated:boolean}
+/** Bound total work across ten native 40-folder requests or one browser scan. */
+export const MAX_LIBRARY_SEARCH_ROOTS=400;
+export const MAX_LIBRARY_SEARCH_RESULTS=500;
+const MAX_BROWSER_LIBRARY_SEARCH_ENTRIES=10_000;
 const selected=new Map<string,{rootName:string; files:Map<string,File>}>();
+async function searchNativeLibrary(ids:string[],query:string):Promise<LibrarySearchResponse>{
+ const unique=[...new Set(ids)],roots=unique.slice(0,MAX_LIBRARY_SEARCH_ROOTS),unavailable=new Set<string>(),results:LibrarySearchHit[]=[];
+ let truncated=unique.length>roots.length;
+ for(let offset=0;offset<roots.length;offset+=40){
+  const response=await invoke<LibrarySearchResponse>('files_library_search',{ids:roots.slice(offset,offset+40),query});
+  for(const id of response.unavailableWidgetIds)unavailable.add(id);
+  const room=MAX_LIBRARY_SEARCH_RESULTS-results.length,accepted=response.results.slice(0,room);
+  results.push(...accepted);
+  const capped=response.results.length>accepted.length,hasLaterBatch=offset+40<roots.length;
+  if(response.truncated||capped){truncated=true;break}
+  if(results.length>=MAX_LIBRARY_SEARCH_RESULTS){if(hasLaterBatch)truncated=true;break}
+ }
+ results.sort((a,b)=>a.entry.path.toLocaleLowerCase().localeCompare(b.entry.path.toLocaleLowerCase())||a.widgetId.localeCompare(b.widgetId));
+ return{results,unavailableWidgetIds:[...unavailable],truncated};
+}
 export function programFile(name:string):boolean { return /\.(exe|com|bat|cmd|msi|ps1|psm1|vbs|vbe|js|jse|wsf|wsh|scr|lnk|url|reg|hta|sh|app|desktop)$/i.test(name) }
 export async function openBrowserFile(file:File):Promise<void>{
  if(programFile(file.name))throw new Error('Choose a document, image or media file to open.');
@@ -42,9 +61,9 @@ export const localFiles={
   },
   async list(id:string,location:string):Promise<FolderListing>{return this.native?invoke('files_list',{id,location}):this.browserList(id,location)},
   async searchLibrary(ids:string[],query:string):Promise<LibrarySearchResponse>{
-    if(this.native)return invoke<LibrarySearchResponse>('files_library_search',{ids,query});
-    const results:LibrarySearchHit[]=[],unavailableWidgetIds:string[]=[],term=query.trim().toLowerCase();let truncated=false,scanned=0;
-    for(const id of ids){const folder=selected.get(id);if(!folder){unavailableWidgetIds.push(id);continue}for(const [path,file] of folder.files){if(scanned>=10000||results.length>=500){truncated=true;break}scanned++;if(file.name.toLowerCase().includes(term))results.push({widgetId:id,entry:{name:file.name,path,directory:false,size:file.size,blocked:programFile(file.name)}})}if(truncated)break}
+    if(this.native)return searchNativeLibrary(ids,query);
+    const results:LibrarySearchHit[]=[],unavailableWidgetIds:string[]=[],term=query.trim().toLowerCase(),unique=[...new Set(ids)];let truncated=unique.length>MAX_LIBRARY_SEARCH_ROOTS,scanned=0;
+    for(const id of unique.slice(0,MAX_LIBRARY_SEARCH_ROOTS)){const folder=selected.get(id);if(!folder){unavailableWidgetIds.push(id);continue}for(const [path,file] of folder.files){if(scanned>=MAX_BROWSER_LIBRARY_SEARCH_ENTRIES||results.length>=MAX_LIBRARY_SEARCH_RESULTS){truncated=true;break}scanned++;if(file.name.toLowerCase().includes(term))results.push({widgetId:id,entry:{name:file.name,path,directory:false,size:file.size,blocked:programFile(file.name)}})}if(truncated)break}
     return{results,unavailableWidgetIds,truncated};
   },
   async search(id:string,query:string):Promise<FileEntry[]>{
