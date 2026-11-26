@@ -1,0 +1,54 @@
+{
+  "commit": "7052c77",
+  "environment": "Linux Chromium 156 headless software GPU, 1440x1000",
+  "method": "Same production build navigation/DOM-click/double-animation-frame harness as main-performance.json; default initial state; six runs, no external test browser concurrently. Not Windows responsiveness.",
+  "samples": [
+    {
+      "startup": 377.50136899999995,
+      "switches": [
+        134.413682,
+        66.37010099999998
+      ]
+    },
+    {
+      "startup": 80.23869600000012,
+      "switches": [
+        89.91765400000008,
+        61.94259499999998
+      ]
+    },
+    {
+      "startup": 70.43381599999998,
+      "switches": [
+        89.59059400000001,
+        72.51203400000009
+      ]
+    },
+    {
+      "startup": 88.85756900000001,
+      "switches": [
+        80.38864200000012,
+        69.7157279999999
+      ]
+    },
+    {
+      "startup": 103.63682500000004,
+      "switches": [
+        158.03865799999994,
+        68.51790900000015
+      ]
+    },
+    {
+      "startup": 67.46133899999995,
+      "switches": [
+        137.76861199999985,
+        75.89227200000005
+      ]
+    }
+  ],
+  "medianMs": {
+    "startup": 84.54813250000007,
+    "study": 112.16566800000004,
+    "dashboard": 69.11681850000002
+  }
+}
