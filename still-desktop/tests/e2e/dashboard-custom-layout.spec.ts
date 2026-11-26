@@ -2,10 +2,12 @@ import {expect,test} from '@playwright/test';
 import {createInitialState} from '../../src/domain/workspaces.ts';
 
 test('Dashboard starts full page, edits Browser modules transactionally, and resumes last workspace',async({page})=>{
- const state=createInitialState(),study=state.workspaces.find(item=>item.role==='study')!;
- await page.addInitScript(({saved,resumeId})=>{if(!sessionStorage.getItem('dashboard-test-seeded')){localStorage.setItem('still-first-run-tutorial-v1','done');localStorage.setItem('still-workspace-v2',saved);localStorage.setItem('still-last-workspace-v1',resumeId);sessionStorage.setItem('dashboard-test-seeded','yes')}}, {saved:JSON.stringify(state),resumeId:study.id});
+ const state=createInitialState(),study=state.workspaces.find(item=>item.role==='study')!,dashboard=state.workspaces.find(item=>item.role==='dashboard')!;state.activeId=study.id;
+ const today=new Date(),date=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`,weekday=(today.getDay()+6)%7;
+ dashboard.widgets.find(item=>item.type==='calendar')!.calendarEvents=[{id:'today-event',date,title:'Exam review',time:'10:00',category:'exam'}];dashboard.widgets.find(item=>item.type==='timetable')!.schedule=[{id:'today-class',day:weekday,time:'09:00',title:'Chemistry',location:'Lab',workspaceId:study.id}];
+ await page.addInitScript(({saved})=>{if(!sessionStorage.getItem('dashboard-test-seeded')){localStorage.setItem('still-first-run-tutorial-v1','done');localStorage.setItem('still-workspace-v2',saved);sessionStorage.setItem('dashboard-test-seeded','yes')}}, {saved:JSON.stringify(state)});
  await page.setViewportSize({width:1440,height:1000});await page.goto('/design-preview.html');
- const home=page.locator('.dashboard-home');await expect(home).toBeVisible();await expect(page.locator('.app')).toHaveClass(/sidebar-hidden/);await expect(home.locator('.dashboard-today')).toBeVisible();
+ const home=page.locator('.dashboard-home');await expect(home).toBeVisible();await expect(page.locator('.app')).toHaveClass(/sidebar-hidden/);await expect(home.locator('.dashboard-today')).toContainText('Exam review');await expect(home.locator('.dashboard-today')).toContainText('Chemistry');
  await expect(home.getByRole('button',{name:'Resume Study'})).toBeVisible();
  await home.getByRole('button',{name:'Edit Layout'}).click();await home.getByLabel('Add module').selectOption('browser');await home.getByRole('button',{name:'Add module'}).click();
  const browser=home.locator('.dashboard-browser-module');await expect(browser).toBeVisible();await browser.getByRole('button',{name:'Add web shortcut'}).click();await browser.getByLabel('Shortcut name').fill('Course');await browser.getByLabel('Shortcut URL').fill('https://example.com');await browser.getByRole('button',{name:'Save shortcut'}).click();
