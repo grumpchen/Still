@@ -95,16 +95,16 @@ test('capture event identity deduplicates after restart; known safe failures ret
   saveAutomationState(storage,{version:1,rules:[r],receipts:[]});
   const calls=[];
   const service={execute:async(a,c)=>{calls.push(c.idempotencyKey);return{status:'succeeded',receiptId:'op-1'}}};
-  const first=await evaluateAutomationRules({storage,service,pendingCaptureEventId:'resource-9@2026-11-26T17:00:00Z',now:new Date('2026-11-26T17:00:01Z')});
-  const restarted=await evaluateAutomationRules({storage,service,pendingCaptureEventId:'resource-9@2026-11-26T17:00:00Z',now:new Date('2026-11-26T17:05:00Z')});
+  const first=await evaluateAutomationRules({storage,service,pendingCapture:{eventId:'resource-9@2026-11-26T17:00:00Z',capturedAt:'2026-11-26T17:00:00Z',resourceKind:'link',name:'lecture notes'},now:new Date('2026-11-26T17:00:01Z')});
+  const restarted=await evaluateAutomationRules({storage,service,pendingCapture:{eventId:'resource-9@2026-11-26T17:00:00Z',capturedAt:'2026-11-26T17:00:00Z',resourceKind:'link',name:'lecture notes'},now:new Date('2026-11-26T17:05:00Z')});
   assert.equal(first.results[0].status,'succeeded');assert.equal(restarted.results.length,0);assert.equal(calls.length,1);
   const failStorage=new MemoryStorage();saveAutomationState(failStorage,{version:1,rules:[r],receipts:[]});let n=0;
-  await evaluateAutomationRules({storage:failStorage,pendingCaptureEventId:'event-retry',service:{execute:async()=>{n++;return{status:'failed',message:'precondition not met',retryable:true}}}});
-  await evaluateAutomationRules({storage:failStorage,pendingCaptureEventId:'event-retry',service:{execute:async()=>{n++;return{status:'succeeded'}}}});
+  await evaluateAutomationRules({storage:failStorage,pendingCapture:{eventId:'event-retry',capturedAt:'2026-11-26T00:00:00Z',resourceKind:'link',name:'lecture link'},service:{execute:async()=>{n++;return{status:'failed',message:'precondition not met',retryable:true}}}});
+  await evaluateAutomationRules({storage:failStorage,pendingCapture:{eventId:'event-retry',capturedAt:'2026-11-26T00:00:00Z',resourceKind:'link',name:'lecture link'},service:{execute:async()=>{n++;return{status:'succeeded'}}}});
   assert.equal(n,2);assert.equal(loadAutomationState(failStorage).state.receipts[0].attempts,2);
   const unknownStorage=new MemoryStorage();saveAutomationState(unknownStorage,{version:1,rules:[r],receipts:[]});
-  await evaluateAutomationRules({storage:unknownStorage,pendingCaptureEventId:'event-unknown',service:{execute:async()=>{throw new Error('connection lost')}}});
-  const retry=await evaluateAutomationRules({storage:unknownStorage,pendingCaptureEventId:'event-unknown',service:{execute:async()=>{throw new Error('must not be called')}}});
+  await evaluateAutomationRules({storage:unknownStorage,pendingCapture:{eventId:'event-unknown',capturedAt:'2026-11-26T00:00:00Z',resourceKind:'link',name:'lecture link'},service:{execute:async()=>{throw new Error('connection lost')}}});
+  const retry=await evaluateAutomationRules({storage:unknownStorage,pendingCapture:{eventId:'event-unknown',capturedAt:'2026-11-26T00:00:00Z',resourceKind:'link',name:'lecture link'},service:{execute:async()=>{throw new Error('must not be called')}}});
   assert.equal(retry.results.length,0);assert.equal(loadAutomationState(unknownStorage).state.receipts[0].status,'outcome_unknown');
 });
 

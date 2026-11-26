@@ -15,7 +15,8 @@ export interface AutomationReceipt { version:1;ruleId:string;occurrenceKey:strin
 export interface AutomationState {version:1;rules:AutomationRule[];receipts:AutomationReceipt[]}
 export interface AutomationStorage {getItem(key:string):string|null;setItem(key:string,value:string):void}
 export type AutomationLoadResult={ok:true;state:AutomationState}|{ok:false;error:'corrupt'|'unsupported-version';message:string}
-export interface AutomationOperationContext {ruleId:string;occurrenceKey:string;scheduledAt:string;attempt:number;idempotencyKey:string}
+export interface AutomationOperationContext {ruleId:string;occurrenceKey:string;scheduledAt:string;attempt:number;idempotencyKey:string;captureEventId?:string}
+export interface AutomationCaptureEvent {eventId:string;capturedAt:string;resourceKind:'file'|'link';name:string;sourceWorkspaceId?:string}
 export type AutomationOperationResult={status:'succeeded';receiptId?:string;message?:string;changed?:boolean}|{status:'failed';message:string;retryable?:boolean}|{status:'needs_clarification';message:string}|{status:'outcome_unknown';message:string}
 /** Implementations must delegate to the same validated app operation service and deduplicate idempotencyKey durably. */
 export interface AutomationOperationService {execute(action:AutomationAction,context:AutomationOperationContext):Promise<AutomationOperationResult>}
@@ -101,13 +102,13 @@ export function parseAutomationRule(text:string,options:RuleParseOptions):RulePa
  return{kind:'unsupported',message:'Supported filing form: “When I capture links matching "<text>", file them to <course> course” / “新增链接匹配“<文本>”时，整理到<课程>课程”. Supported layout form: prepare a named workspace with a saved layout once, daily, or weekly at an explicit time.'}
 }
 export function validateAutomationRuleDraft(draft:AutomationRuleDraft,catalog:RuleCatalog):{ok:true;trigger:AutomationTrigger;action:AutomationAction}|{ok:false;message:string}{const trigger=triggerOf(draft.trigger),action=actionOf(draft.action,catalog);if(!trigger)return{ok:false,message:'Trigger is invalid or unsupported.'};if(!action)return{ok:false,message:'Action references a missing or mismatched object; resolve exact current IDs.'};if((trigger.kind==='onCapture')!==(action.kind==='fileResourcesToCourse'))return{ok:false,message:'Resource filing requires the resource-added trigger; layout preparation requires a time trigger.'};return{ok:true,trigger,action}}
-export function createAutomationRule(draft:AutomationRuleDraft,catalog:RuleCatalog,now=new Date(),id=crypto.randomUUID()):{ok:true;rule:AutomationRule}|{ok:false;message:string}{const v=validateAutomationRuleDraft(draft,catalog);if(!v.ok)return v;if(!draft.sourceText.trim()||draft.sourceText.length>2000||!ID_RE.test(id))return{ok:false,message:'Rule text or ID is invalid.'};const rule=ruleOf({version:1,id,enabled:true,createdAt:now.toISOString(),updatedAt:now.toISOString(),sourceText:draft.sourceText.trim(),trigger:v.trigger,action:v.action},catalog);return rule?{ok:true,rule}:{ok:false,message:'Rule failed final validation.'}}
+export function createAutomationRule(draft:AutomationRuleDraft,catalog:RuleCatalog,now=new Date(),id:string=crypto.randomUUID()):{ok:true;rule:AutomationRule}|{ok:false;message:string}{const v=validateAutomationRuleDraft(draft,catalog);if(!v.ok)return v;if(!draft.sourceText.trim()||draft.sourceText.length>2000||!ID_RE.test(id))return{ok:false,message:'Rule text or ID is invalid.'};const rule=ruleOf({version:1,id,enabled:true,createdAt:now.toISOString(),updatedAt:now.toISOString(),sourceText:draft.sourceText.trim(),trigger:v.trigger,action:v.action},catalog);return rule?{ok:true,rule}:{ok:false,message:'Rule failed final validation.'}}
 function localParts(d:Date,z:string):{date:string;time:string;weekday:number}{const p=new Intl.DateTimeFormat('en-US',{timeZone:z,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23',weekday:'short'}).formatToParts(d),get=(x:string)=>p.find(y=>y.type===x)?.value??'',days:Record<string,number>={Sun:0,Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6};return{date:`${get('year')}-${get('month')}-${get('day')}`,time:`${get('hour')}:${get('minute')}`,weekday:days[get('weekday')]}}
 export interface DueOccurrence{rule:AutomationRule;occurrenceKey:string;scheduledAt:string}
 /** One occurrence per rule/local day; successful and clarification receipts are terminal. */
 export function dueAutomationOccurrences(state:AutomationState,now=new Date()):DueOccurrence[]{const out:DueOccurrence[]=[];for(const rule of state.rules){if(!rule.enabled||rule.trigger.kind==='onCapture')continue;const t=rule.trigger;let key:string,at:string;if(t.kind==='once'){at=t.at;if(Date.parse(at)>now.getTime()||rule.onceTerminal?.at===t.at)continue;key=`once:${at}`}else{const p=localParts(now,t.timeZone);if(p.time<t.time||(t.kind==='weekly'&&!t.weekdays.includes(p.weekday)))continue;key=`${t.kind}:${p.date}:${t.timeZone}:${t.time}`;at=now.toISOString()}const receipt=state.receipts.find(x=>x.ruleId===rule.id&&x.occurrenceKey===key);if(receipt&&(receipt.status==='succeeded'||receipt.status==='needs_clarification'||receipt.status==='outcome_unknown'||receipt.status==='running'||(receipt.status==='failed'&&!receipt.retryable)))continue;out.push({rule,occurrenceKey:key,scheduledAt:at})}return out}
 function putReceipt(s:AutomationState,r:AutomationReceipt):AutomationState{return{...s,receipts:[...s.receipts.filter(x=>x.ruleId!==r.ruleId||x.occurrenceKey!==r.occurrenceKey),r].slice(-MAX_RECEIPTS)}}
-export interface EvaluateOptions{storage:AutomationStorage;service:AutomationOperationService;now?:Date;key?:string;pendingCaptureEventId?:string}
+export interface EvaluateOptions{storage:AutomationStorage;service:AutomationOperationService;now?:Date;key?:string;pendingCapture?:AutomationCaptureEvent}
 /** Persists a running claim before every call and reuses an idempotency key on recovery/retry. */
 async function evaluateAutomationRulesNow(o:EvaluateOptions):Promise<{ok:true;state:AutomationState;results:AutomationReceipt[]}|{ok:false;error:string}>{
  const loaded=loadAutomationState(o.storage,o.key);
@@ -124,8 +125,8 @@ async function evaluateAutomationRulesNow(o:EvaluateOptions):Promise<{ok:true;st
   results.push(unknown);
  }
  let due=dueAutomationOccurrences(state,now);
- if(o.pendingCaptureEventId)for(const rule of state.rules)if(rule.enabled&&rule.trigger.kind==='onCapture'){
-  const occurrenceKey=`capture-event:${o.pendingCaptureEventId}`,old=state.receipts.find(x=>x.ruleId===rule.id&&x.occurrenceKey===occurrenceKey);
+ if(o.pendingCapture)for(const rule of state.rules)if(rule.enabled&&rule.trigger.kind==='onCapture'&&rule.action.kind==='fileResourcesToCourse'&&rule.action.resourceKinds.includes(o.pendingCapture.resourceKind)&&o.pendingCapture.name.toLocaleLowerCase().includes(rule.action.queryPattern.toLocaleLowerCase())&&(!rule.action.sourceWorkspaceId||rule.action.sourceWorkspaceId===o.pendingCapture.sourceWorkspaceId)){
+  const occurrenceKey=`capture-event:${o.pendingCapture.eventId}`,old=state.receipts.find(x=>x.ruleId===rule.id&&x.occurrenceKey===occurrenceKey);
   if(!old||old.status==='failed'&&old.retryable)due.push({rule,occurrenceKey,scheduledAt:now.toISOString()});
  }
  for(const candidate of due){
@@ -136,6 +137,7 @@ async function evaluateAutomationRulesNow(o:EvaluateOptions):Promise<{ok:true;st
   state=latest.state;
   const currentRule=state.rules.find(x=>x.id===candidate.rule.id);
   if(!currentRule?.enabled||JSON.stringify(currentRule.action)!==JSON.stringify(candidate.rule.action)||JSON.stringify(currentRule.trigger)!==JSON.stringify(candidate.rule.trigger))continue;
+  if(currentRule.trigger.kind==='onCapture'&&(!o.pendingCapture||currentRule.action.kind!=='fileResourcesToCourse'||!currentRule.action.resourceKinds.includes(o.pendingCapture.resourceKind)||!o.pendingCapture.name.toLocaleLowerCase().includes(currentRule.action.queryPattern.toLocaleLowerCase())||(currentRule.action.sourceWorkspaceId&&currentRule.action.sourceWorkspaceId!==o.pendingCapture.sourceWorkspaceId)))continue;
   const prior=state.receipts.find(x=>x.ruleId===currentRule.id&&x.occurrenceKey===candidate.occurrenceKey);
   if(prior&&(prior.status==='succeeded'||prior.status==='needs_clarification'||prior.status==='outcome_unknown'||prior.status==='running'||prior.status==='failed'&&!prior.retryable))continue;
   const activeKey=`${currentRule.id}/${candidate.occurrenceKey}`;
@@ -145,7 +147,7 @@ async function evaluateAutomationRulesNow(o:EvaluateOptions):Promise<{ok:true;st
   try{saveAutomationState(o.storage,state,o.key)}catch(e){return{ok:false,error:`Could not persist in-flight receipt: ${e instanceof Error?e.message:String(e)}`}}
   active.add(activeKey);
   let outcome:AutomationOperationResult;
-  try{outcome=await o.service.execute(currentRule.action,{ruleId:currentRule.id,occurrenceKey:candidate.occurrenceKey,scheduledAt:candidate.scheduledAt,attempt:running.attempts,idempotencyKey:`${currentRule.id}/${candidate.occurrenceKey}`})}
+  try{outcome=await o.service.execute(currentRule.action,{ruleId:currentRule.id,occurrenceKey:candidate.occurrenceKey,scheduledAt:candidate.scheduledAt,attempt:running.attempts,idempotencyKey:`${currentRule.id}/${candidate.occurrenceKey}`,...(currentRule.trigger.kind==='onCapture'&&o.pendingCapture?{captureEventId:o.pendingCapture.eventId}:{})})}
   catch(e){outcome={status:'outcome_unknown',message:e instanceof Error?e.message:String(e)}}
   finally{active.delete(activeKey)}
   const receipt:AutomationReceipt={...running,status:outcome.status,updatedAt:(o.now??now).toISOString(),...(outcome.message?{message:outcome.message.slice(0,1000)}:{}),...(outcome.status==='failed'?{retryable:outcome.retryable===true}:{}),...(outcome.status==='succeeded'&&outcome.receiptId?{operationReceiptId:outcome.receiptId}:{})};
