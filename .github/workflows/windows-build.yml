@@ -63,15 +63,26 @@ jobs:
           --skip native_resize::tests::managed_resize_blocks_edge_hit_testing_but_allows_still_sizes_and_restores_on_release
 
       - name: Build Windows executable
+        id: executable
         if: ${{ !cancelled() }}
         working-directory: still-desktop
         run: pnpm tauri build --no-bundle
+
+      - name: Hash candidate executable
+        if: ${{ !cancelled() && steps.executable.conclusion == 'success' }}
+        shell: pwsh
+        run: |
+          $candidate = 'still-desktop/src-tauri/target/release/still-desktop.exe'
+          $hash = (Get-FileHash $candidate -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  still-desktop.exe" | Set-Content "$candidate.sha256"
 
       - name: Upload Windows executable
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: still-workbench-${{ github.sha }}-windows-x64
-          path: still-desktop/src-tauri/target/release/still-desktop.exe
+          path: |
+            still-desktop/src-tauri/target/release/still-desktop.exe
+            still-desktop/src-tauri/target/release/still-desktop.exe.sha256
           if-no-files-found: error
           retention-days: 14

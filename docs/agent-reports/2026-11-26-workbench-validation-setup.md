@@ -24,3 +24,5 @@
 - Do not count baseline failures as passing checks. Compare candidate failures with recorded names.
 - Additional unchanged-main browser baseline: `dashboard-edit-layout`, `dashboard-layouts`, `workspace-smoke` passed (3/3) in Linux Chromium; no native desktop claims.
 - Added Rust dependency caching for repeated candidate Windows builds.
+- Baseline Windows Actions run `45822271751`: TypeScript passed; frontend 464/502 passed (same 38 failures as Linux); Rust 130 passed with 2 desktop-geometry fixtures filtered; release executable built and uploaded successfully. Overall run correctly remains failed due to frontend checks.
+- Candidate executable artifacts now include a SHA-256 sidecar for matching any later remote Windows acceptance to the exact tested binary.
