@@ -7,6 +7,7 @@ import {constrainPlacement,nextPlacement,type Placement} from './layout.ts';
 import {widgetTagColors} from './widgetTags.ts';
 import {checkedStudyCalendarDrafts,type StudyCalendarEventDraft} from './studyCalendar.ts';
 import {shortcutError,shortcutsError,type Shortcut,type WorkspaceShortcuts} from './shortcuts.ts';
+import {parseWorkbenchActions,validateWorkbenchActionBatch,type WorkbenchAction} from './workbenchActions.ts';
 
 export type AssistantProvider = 'gemini' | 'openai' | 'opencode' | 'deepseek' | 'chatgpt';
 export type ChatMessage = {role:'user'|'model'; text:string};
@@ -58,7 +59,7 @@ export function resolveNamedNotesCreation(prompt:string):{title:string;topic:str
   if(!title||title.length>60||topic.length>12000)return null;
   return {title,topic};
 }
-export type AssistantReply = {intent?:AssistantResponseIntent;reply:string; layout:LayoutItem[]; actions:AssistantAction[];fileProposals?:AssistantFileProposal[];calendarProposals?:StudyCalendarEventDraft[];libraryProposal?:AssistantLibraryProposal};
+export type AssistantReply = {intent?:AssistantResponseIntent;reply:string; layout:LayoutItem[]; actions:AssistantAction[];workbenchActions?:WorkbenchAction[];fileProposals?:AssistantFileProposal[];calendarProposals?:StudyCalendarEventDraft[];libraryProposal?:AssistantLibraryProposal};
 export type LayoutPlan = {workspaceId:string; fingerprint:string; width:number; height:number; items:LayoutItem[]};
 export const DEFAULT_MODEL = 'gemini-2.5-flash';
 export const DEFAULT_MODELS:Record<AssistantProvider,string> = {gemini:DEFAULT_MODEL,openai:'gpt-4o-mini',opencode:'mimo-v2.6-flash',deepseek:'deepseek-chat',chatgpt:''};
@@ -212,6 +213,8 @@ export function parseAssistantReply(value:unknown):AssistantReply {
     validateAssistantActionFields(action);
     return {type:action.type,ids:[...action.ids],...(action.type==='set_timer'?{seconds:action.seconds}:{}),...(action.type==='control_timer'?{operation:action.operation}:{}),...(action.noteFont!==undefined?{noteFont:action.noteFont}:{}),...(action.noteFontSize!==undefined?{noteFontSize:action.noteFontSize}:{}),...(action.noteDocumentId!==undefined?{noteDocumentId:action.noteDocumentId}:{}),...(action.noteTags!==undefined?{noteTags:[...action.noteTags]}:{}),...(action.title!==undefined?{title:action.title.trim()}:{}),...(action.text!==undefined?{text:action.text}:{}),...(action.schedule!==undefined?{schedule:action.schedule.map(entry=>({...entry,title:entry.title.trim(),location:entry.location.trim()}))}:{}),...(action.tagColor!==undefined?{tagColor:action.tagColor}:{}),...(action.pluginControls!==undefined?{pluginControls:[...action.pluginControls]}:{}),...(action.plugin!==undefined?{plugin:action.plugin}:{}),...(action.enabled!==undefined?{enabled:action.enabled}:{}),...(action.locked!==undefined?{locked:action.locked}:{}),...(action.settingValue!==undefined?{settingValue:action.settingValue}:{}),...(action.shortcut!==undefined?{shortcut:{...action.shortcut}}:{}),...(action.workspaceId!==undefined?{workspaceId:action.workspaceId}:{})};
   });
+  const workbenchActions=parseWorkbenchActions((value as Partial<AssistantReply>).workbenchActions);
+  validateWorkbenchActionBatch(workbenchActions);
   const rawLibrary=(value as Partial<AssistantReply>).libraryProposal;
   const libraryProposal=rawLibrary===undefined?undefined:checkedAssistantLibraryProposal(rawLibrary);
   const rawFileProposals=(value as Partial<AssistantReply>).fileProposals??[];
@@ -224,6 +227,7 @@ export function parseAssistantReply(value:unknown):AssistantReply {
   });
   let calendarProposals:StudyCalendarEventDraft[]=[];
   try{calendarProposals=checkedStudyCalendarDrafts((value as Partial<AssistantReply>).calendarProposals??[])}catch(error){throw new Error(error instanceof Error?error.message:'The AI returned invalid calendar events. Nothing was added.')}
+  if(workbenchActions.length&&(intent!=='workspace_action'||items.length||actions.length||fileProposals.length||calendarProposals.length||libraryProposal))throw new Error('The AI mixed Still actions with another response mode. Nothing was changed. Try again.');
   if(libraryProposal&&(items.length||actions.length||fileProposals.length||calendarProposals.length))throw new Error('The AI mixed Library proposals with other changes. Nothing was changed.');
   if(fileProposals.length&&(items.length||actions.length||calendarProposals.length))throw new Error('The AI mixed a file filing proposal with workspace changes. Nothing was moved. Try again.');
   if(calendarProposals.length&&(items.length||actions.length))throw new Error('The AI mixed calendar event proposals with workspace changes. Nothing was changed. Try again.');
@@ -233,13 +237,13 @@ export function parseAssistantReply(value:unknown):AssistantReply {
   const safeIntent:AssistantResponseIntent|undefined=conflictingLegacyProposal?'clarification':intent;
   const safeLayout=safeIntent==='chat'||safeIntent==='clarification'||safeIntent==='workspace_action'?[]:items;
   const safeActions=safeIntent==='chat'||safeIntent==='clarification'||safeIntent==='layout'?[]:actions;
-  if(!reply.trim()&&!safeActions.length&&!safeLayout.length&&!calendarProposals.length&&!libraryProposal)throw new Error('The AI returned no reply. Try again.');
+  if(!reply.trim()&&!safeActions.length&&!safeLayout.length&&!workbenchActions.length&&!calendarProposals.length&&!libraryProposal)throw new Error('The AI returned no reply. Try again.');
   const normalizedReply=conflictingLegacyProposal
     ?'I received conflicting workspace suggestions, so I did not change anything. What would you like me to do?'
-    :reply.trim()?reply:libraryProposal?'Review the proposed Library changes before applying them.':safeActions.length?'Workspace actions requested.':calendarProposals.length?'Review the proposed calendar events before adding them.':'Workspace layout proposal.';
+    :reply.trim()?reply:libraryProposal?'Review the proposed Library changes before applying them.':workbenchActions.length?'Still will report the outcome of the requested change.':safeActions.length?'Workspace actions requested.':calendarProposals.length?'Review the proposed calendar events before adding them.':'Workspace layout proposal.';
    const safeFileProposals=safeIntent==='clarification'?[]:fileProposals;
    const safeCalendarProposals=safeIntent==='clarification'?[]:calendarProposals;
-   return {...(safeIntent?{intent:safeIntent}:{}),...(libraryProposal&&safeIntent!=='clarification'?{libraryProposal}:{}),reply:normalizedReply,layout:safeLayout,actions:safeActions,...(safeFileProposals.length?{fileProposals:safeFileProposals}:{}),...(safeCalendarProposals.length?{calendarProposals:safeCalendarProposals}:{})};
+   return {...(safeIntent?{intent:safeIntent}:{}),...(libraryProposal&&safeIntent!=='clarification'?{libraryProposal}:{}),reply:normalizedReply,layout:safeLayout,actions:safeActions,...(workbenchActions.length?{workbenchActions}:{}),...(safeFileProposals.length?{fileProposals:safeFileProposals}:{}),...(safeCalendarProposals.length?{calendarProposals:safeCalendarProposals}:{})};
 }
 /** Structural validation only: snapshot binding and native authorization remain mandatory at review/apply. */
 export function checkedAssistantLibraryProposal(value:unknown):AssistantLibraryProposal{
