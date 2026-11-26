@@ -14,7 +14,8 @@ test('Dashboard omits Notes and sidebar calendar shortcut without deleting saved
  await expect(page.locator('.dashboard-notes-module')).toHaveCount(0);
  await expect(page.locator('.sidebar-study-tools').getByRole('button',{name:'Add to calendar'})).toHaveCount(0);
  await expect(page.locator('.dashboard-hero-actions').getByRole('button',{name:'Add to calendar'})).toBeVisible();
- for(const name of ['calendar','focus','timetable','library'])await expect(page.locator(`.dashboard-${name}-module`)).toBeVisible();
+ for(const name of ['calendar','focus','timetable'])await expect(page.locator(`.dashboard-${name}-module`)).toBeVisible();
+ const libraryButton=page.locator('.dashboard-hero-actions').getByRole('button',{name:'Library',exact:true});await expect(libraryButton).toBeVisible();await libraryButton.click();await expect(page.locator('.library-home')).toBeVisible();
  const savedNotes=await page.evaluate(id=>{
   const saved=JSON.parse(localStorage.getItem('still-workspace-v2')!);
   return saved.workspaces.flatMap((workspace:{widgets:{id:string}[]})=>workspace.widgets).find((widget:{id:string})=>widget.id===id);
