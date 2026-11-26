@@ -5,6 +5,7 @@
 
 ## Done
 - Added a Windows system tray with Show Still and Quit Still actions. Ordinary window close still follows the existing shutdown path; an explicit `window_minimize_to_tray` command hides the window and marks tray state only after hide succeeds.
+- The native commands authorize the calling Webview. Minimize-to-tray returns an error and leaves the window visible when tray setup failed; after hiding, it refreshes native panels so attached applications follow the hidden parent.
 - Added a native 15-second automation heartbeat, `still:automation-tick`, and an in-process 256-tick replay ring. `runtimeId` scopes sequence cursors across process restarts; replay requests for a different runtime start at sequence 0. Rule receipts remain the frontend rule layer's responsibility.
 - Added runtime status for heartbeat cursor, replay capacity, tray availability/error, explicit tray-hidden state, and main-window visible/minimized state.
 - Before WebView2 startup, append Chromium background timer and renderer scheduling flags through `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`, preserving any existing arguments. Microsoft documents this environment variable as the WebView2 mechanism for browser flags. Event delivery while a hidden renderer is active still needs Windows CI/live verification.
@@ -24,6 +25,7 @@
 - `git diff --check` passed.
 - Parsed `capabilities/main.json` as JSON successfully.
 - Rust tests and Windows build not run: `cargo` is not installed in this environment. No native GUI acceptance was performed.
+- `node --test tests/native-command-permissions.test.mjs` passed after adding the commands to the generated command manifest.
 
 ## Handoff
 - Frontend invokes use camelCase arguments: `automation_ticks_since({ runtimeId, sequence })`; `null` runtimeId replays from the oldest retained tick. The result returns `runtimeId`, `requestedAfterSequence`, `oldestAvailableSequence`, `latestSequence`, and `ticks`. Subscribe to `still:automation-tick` and use replay after visibility/resume to cover missed event delivery.

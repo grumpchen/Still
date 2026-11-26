@@ -113,6 +113,11 @@ impl AutomationRuntime {
         state.tray_error = error;
     }
 
+    fn ensure_tray_available(&self) -> Result<(), String> {
+        let state = self.0.lock().map_err(|_| "Automation runtime state is unavailable".to_string())?;
+        if state.tray_available { Ok(()) } else { Err(state.tray_error.clone().unwrap_or_else(|| "System tray is unavailable".into())) }
+    }
+
     fn status(&self, main_window_visible: Option<bool>, main_window_minimized: Option<bool>) -> AutomationRuntimeStatus {
         let state = self.0.lock().expect("automation runtime mutex poisoned");
         AutomationRuntimeStatus {
@@ -168,7 +173,7 @@ fn install_tray(app: &AppHandle) -> tauri::Result<()> {
     let menu = Menu::with_items(app, &[&show, &quit])?;
     let mut builder = TrayIconBuilder::new().menu(&menu).show_menu_on_left_click(true);
     if let Some(icon) = app.default_window_icon() { builder = builder.icon(icon.clone()); }
-    builder
+    let builder = builder
         .on_menu_event(|app, event| match tray_action_for_id(event.id().as_ref()) {
             Some(TrayAction::Show) => {
                 if let Some(runtime) = app.try_state::<AutomationRuntime>() { runtime.set_hidden_to_tray(false); }
@@ -211,12 +216,14 @@ pub fn configure_webview2_background_timers() {
 }
 
 #[tauri::command]
-pub fn automation_ticks_since(runtime_id: Option<String>, sequence: u64, runtime: State<'_, AutomationRuntime>) -> TickBatch {
-    runtime.ticks_since(runtime_id.as_deref(), sequence)
+pub fn automation_ticks_since(webview: tauri::Webview, runtime_id: Option<String>, sequence: u64, runtime: State<'_, AutomationRuntime>) -> Result<TickBatch, String> {
+    crate::security::authorize(&webview)?;
+    Ok(runtime.ticks_since(runtime_id.as_deref(), sequence))
 }
 
 #[tauri::command]
-pub fn automation_runtime_status(app: AppHandle, runtime: State<'_, AutomationRuntime>) -> Result<AutomationRuntimeStatus, String> {
+pub fn automation_runtime_status(app: AppHandle, webview: tauri::Webview, runtime: State<'_, AutomationRuntime>) -> Result<AutomationRuntimeStatus, String> {
+    crate::security::authorize(&webview)?;
     let window = app.get_webview_window("main");
     let visible = window.as_ref().map(|window| window.is_visible()).transpose().map_err(|error| error.to_string())?;
     let minimized = window.as_ref().map(|window| window.is_minimized()).transpose().map_err(|error| error.to_string())?;
@@ -224,9 +231,13 @@ pub fn automation_runtime_status(app: AppHandle, runtime: State<'_, AutomationRu
 }
 
 #[tauri::command]
-pub fn window_minimize_to_tray(window: tauri::WebviewWindow, runtime: State<'_, AutomationRuntime>) -> Result<(), String> {
+pub fn window_minimize_to_tray(app: AppHandle, webview: tauri::Webview, window: tauri::WebviewWindow, runtime: State<'_, AutomationRuntime>) -> Result<(), String> {
+    crate::security::authorize(&webview)?;
+    runtime.ensure_tray_available()?;
     window.hide().map_err(|error| error.to_string())?;
     runtime.set_hidden_to_tray(true);
+    #[cfg(windows)] crate::native_panels::refresh_all(&app);
+    #[cfg(not(windows))] let _ = app;
     Ok(())
 }
 
@@ -273,7 +284,7 @@ mod tests {
     fn replay_ring_is_bounded_and_reports_gap() {
         let runtime = AutomationRuntime::default();
         for index in 1..=(REPLAY_CAPACITY as u64 + 2) { runtime.record_tick(index); }
-        let batch = runtime.ticks_since(0);
+        let batch = runtime.ticks_since(None, 0);
         assert_eq!(batch.oldest_available_sequence, Some(3));
         assert_eq!(batch.latest_sequence, REPLAY_CAPACITY as u64 + 2);
         assert_eq!(batch.ticks.len(), REPLAY_CAPACITY);
@@ -289,6 +300,16 @@ mod tests {
         assert_eq!(hidden.main_window_visible, Some(false));
         runtime.set_hidden_to_tray(false);
         assert!(!runtime.status(Some(true), Some(false)).hidden_to_tray);
+    }
+
+    #[test]
+    fn unavailable_tray_rejects_hide_and_reports_setup_error() {
+        let runtime = AutomationRuntime::default();
+        assert_eq!(runtime.ensure_tray_available(), Err("Tray has not been initialized".into()));
+        runtime.set_tray_status(false, Some("tray startup error".into()));
+        assert_eq!(runtime.ensure_tray_available(), Err("tray startup error".into()));
+        runtime.set_tray_status(true, None);
+        assert_eq!(runtime.ensure_tray_available(), Ok(()));
     }
 
     #[test]

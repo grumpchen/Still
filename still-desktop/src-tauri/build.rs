@@ -3,6 +3,7 @@ fn main() {
         tauri_build::Attributes::new().app_manifest(
             tauri_build::AppManifest::new().commands(&[
                 "assistant_configured", "assistant_models", "assistant_set_key", "assistant_chat", "assistant_agent_turn", "assistant_key_setup",
+                "automation_ticks_since", "automation_runtime_status", "window_minimize_to_tray",
                 "chatgpt_plan_status", "chatgpt_plan_connect", "chatgpt_plan_disconnect", "chatgpt_plan_models", "chatgpt_plan_agent_turn",
                 "chrome_open", "widget_capture", "widget_export",
                 "files_choose", "files_still_inbox", "files_list", "files_search", "files_open", "files_reuse", "files_preview", "files_extract_pdf_text", "files_library_search", "files_move_resource",
