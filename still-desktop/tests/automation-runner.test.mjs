@@ -21,11 +21,11 @@ test('platform runtime adapter calls exact native commands and filters malformed
 });
 
 test('native status replay and tick events drive the runner with no panel mounted or web timer', async()=>{
- const storage=new MemoryStorage();saveAutomationState(storage,{...emptyAutomationState(),rules:[layoutRule]});let listener,intervalCalls=0,calls=0;
- const runtime={native:true,runtimeStatus:async()=>status('runtime-a',2),ticksSince:async cursor=>({runtimeId:'runtime-a',requestedAfterSequence:cursor.sequence,oldestAvailableSequence:1,latestSequence:2,ticks:[tick('runtime-a',1,'2026-11-26T10:00:00Z'),tick('runtime-a',2,'2026-11-27T10:00:00Z')]}),subscribeTicks:async callback=>{listener=callback;return()=>{listener=null}},hideToTray:async()=>{}};
+ const storage=new MemoryStorage();saveAutomationState(storage,{...emptyAutomationState(),rules:[layoutRule]});let listener,intervalCalls=0,calls=0,statusCalls=0;
+ const runtime={native:true,runtimeStatus:async()=>{statusCalls++;return status('runtime-a',2)},ticksSince:async cursor=>({runtimeId:'runtime-a',requestedAfterSequence:cursor.sequence,oldestAvailableSequence:1,latestSequence:2,ticks:[tick('runtime-a',1,'2026-11-26T10:00:00Z'),tick('runtime-a',2,'2026-11-27T10:00:00Z')]}),subscribeTicks:async callback=>{listener=callback;return()=>{listener=null}},hideToTray:async()=>{}};
  let snapshot;const runner=new AutomationRunnerController({storage,runtime,getService:()=>({execute:async()=>{calls++;return{status:'succeeded'}}}),setPreviewInterval:()=>{intervalCalls++;return 1},clearPreviewInterval:()=>{},onSnapshot:value=>snapshot=value});
- await runner.start();assert.equal(snapshot.cursor.sequence,2);assert.equal(snapshot.cursor.runtimeId,'runtime-a');assert.equal(calls,2);assert.equal(intervalCalls,0);assert.equal(snapshot.mode,'native-tray-runtime');
- listener(tick('runtime-a',3,'2026-11-28T10:00:00Z'));await new Promise(resolve=>setTimeout(resolve,0));assert.equal(snapshot.cursor.sequence,3);assert.equal(calls,3);runner.stop();
+ await runner.start();assert.equal(snapshot.cursor.sequence,2);assert.equal(snapshot.cursor.runtimeId,'runtime-a');assert.equal(calls,2);assert.equal(intervalCalls,0);assert.equal(snapshot.mode,'native-tray-runtime');assert.equal(statusCalls,3);
+ listener(tick('runtime-a',3,'2026-11-28T10:00:00Z'));await new Promise(resolve=>setTimeout(resolve,0));assert.equal(snapshot.cursor.sequence,3);assert.equal(calls,3);assert.equal(statusCalls,4);runner.stop();
 });
 
 test('new runtime IDs request replay from sequence zero after restart', async()=>{
@@ -54,4 +54,11 @@ test('persisted capture notification wakes native runner and executes only the r
  await new Promise(resolve=>setTimeout(resolve,20));
  assert.equal(calls.length,1);assert.equal(calls[0].context.captureEventId,'capture-stable-id');assert.equal(calls[0].context.occurrenceKey,'capture-event:capture-stable-id');assert.equal(calls[0].action.queryPattern,'lecture');
  assert.equal(queue.pending().value.length,0);assert.equal(queue.get('capture-stable-id').value.status,'acknowledged');runner.stop();
+});
+
+
+test('unmatched and idea capture events become visibly ignored without fake operation receipts',async()=>{
+ const storage=new MemoryStorage(),target=new EventTarget(),queue=createAutomationCaptureInbox(storage,target),captureRule={version:2,id:'capture-links',enabled:true,createdAt:'2026-01-01T00:00:00.000Z',updatedAt:'2026-01-01T00:00:00.000Z',sourceText:'links lecture',trigger:{kind:'onCapture'},action:{kind:'fileResourcesToCourse',courseId:'course',workspaceId:'w',resourceKinds:['link'],queryPattern:'lecture'}};saveAutomationState(storage,{version:2,rules:[captureRule],receipts:[]});let serviceCalls=0;
+ const runner=new AutomationRunnerController({storage,runtime:{native:false,runtimeStatus:async()=>status('web',0),ticksSince:async()=>({runtimeId:'web',requestedAfterSequence:0,oldestAvailableSequence:null,latestSequence:0,ticks:[]}),subscribeTicks:async()=>()=>{},hideToTray:async()=>{}},getCaptureQueue:()=>queue,getService:()=>({execute:async()=>{serviceCalls++;return{status:'succeeded'}}}),setPreviewInterval:()=>1,clearPreviewInterval:()=>{},onSnapshot:()=>{}});await runner.start();queue.recordSavedCapture('idea-capture',{kind:'note',workspaceId:'w',widgetId:'notes',documentId:'doc',name:'My thought'});await new Promise(resolve=>setTimeout(resolve,20));
+ assert.equal(serviceCalls,0);assert.equal(queue.get('idea-capture').value.status,'ignored');assert.equal(runner.getSnapshot().ignoredCaptures,1);assert.equal(runner.getSnapshot().pendingCaptures.length,0);assert.equal(runner.getSnapshot().state.receipts.length,0);runner.stop();
 });
