@@ -5,7 +5,7 @@
 use serde::Serialize;
 use std::collections::HashSet;
 use std::sync::{Mutex, OnceLock};
-use tauri::{AppHandle, Emitter, Manager, State, Webview, WebviewUrl};
+use tauri::{AppHandle, Emitter, Manager, Webview, WebviewUrl};
 use tauri::webview::WebviewBuilder;
 use tauri::{LogicalPosition, LogicalSize};
 
@@ -21,7 +21,7 @@ impl Bounds {
   Ok(self)
  }
 }
-#[derive(Serialize)]#[serde(rename_all="camelCase")]struct BrowserLocation{widget_id:String,url:String}
+#[derive(Clone,Serialize)]#[serde(rename_all="camelCase")]struct BrowserLocation{widget_id:String,url:String}
 fn label(widget_id:&str)->Result<String,String>{
  if widget_id.len()<1||widget_id.len()>80||!widget_id.bytes().all(|b|b.is_ascii_alphanumeric()||b==b'-'){return Err("Invalid Browser widget id".into())}
  Ok(format!("still_browser_{widget_id}"))
@@ -36,9 +36,7 @@ static CREATE_LOCK:OnceLock<Mutex<()>>=OnceLock::new();
 fn ensure_view(app:AppHandle,id:String,url:url::Url)->Result<(),String>{
  let label=label(&id)?;
  if app.get_webview(&label).is_some(){return Ok(())}
- let lock=CREATE_LOCK.get_or_init(||Mutex::new(()));let _guard=lock.lock().map_err(|_|"Browser creation lock failed")?;
- if app.get_webview(&label).is_some(){return Ok(())}
- let window=app.get_webview_window("main").ok_or("Still window is unavailable")?;
+ let window=app.get_window("main").ok_or("Still window is unavailable")?;
  let app_for_navigation=app.clone();let event_id=id.clone();
  let builder=WebviewBuilder::new(label.clone(),WebviewUrl::External(url.clone()))
   .on_navigation(move|target|{
@@ -47,22 +45,25 @@ fn ensure_view(app:AppHandle,id:String,url:url::Url)->Result<(),String>{
    let _=app_for_navigation.emit_to("main","still-browser-url",payload);
    true
   })
-  .on_new_window(|_|false);
+  .on_new_window(|_,_|tauri::webview::NewWindowResponse::Deny);
  // Tauri's add_child is synchronous and deadlocks when invoked on the webview/UI
  // thread. Callers execute this helper on a blocking worker via spawn_blocking.
  let view=window.add_child(builder,LogicalPosition::new(0.0,0.0),LogicalSize::new(2.0,2.0)).map_err(|e|e.to_string())?;
- view.hide().map_err(|e|e.to_string())?;
  let state=app.state::<BrowserPanelState>();state.labels.lock().map_err(|_|"Browser lifecycle state unavailable")?.insert(label);
+ view.hide().map_err(|e|e.to_string())?;
  Ok(())
 }
 fn panel(app:&AppHandle,id:&str)->Result<Webview,String>{let name=label(id)?;app.get_webview(&name).ok_or_else(||"Embedded Browser is not open".into())}
 #[tauri::command]
-pub async fn browser_panel_present(app:AppHandle,webview:Webview,state:State<'_,BrowserPanelState>,widget_id:String,url:String,bounds:Bounds,visible:bool)->Result<(),String>{
- crate::security::authorize(&webview)?;let bounds=bounds.validate()?;let url=secure_url(&url)?;let id=widget_id.clone();let app_copy=app.clone();
- tauri::async_runtime::spawn_blocking(move||ensure_view(app_copy,id,url)).await.map_err(|e|e.to_string())??;
- let view=panel(&app,&widget_id)?;view.set_position(LogicalPosition::new(bounds.x,bounds.y)).map_err(|e|e.to_string())?;view.set_size(LogicalSize::new(bounds.width,bounds.height)).map_err(|e|e.to_string())?;
- if visible{view.show().map_err(|e|e.to_string())?}else{view.hide().map_err(|e|e.to_string())?}
- let _=&state;Ok(())
+pub async fn browser_panel_present(app:AppHandle,webview:Webview,widget_id:String,url:String,bounds:Bounds,visible:bool)->Result<(),String>{
+ crate::security::authorize(&webview)?;let id=widget_id.clone();let app_copy=app.clone();
+ if !visible {if let Some(view)=app.get_webview(&label(&widget_id)?){view.hide().map_err(|e|e.to_string())?}return Ok(())}
+ let bounds=bounds.validate()?;let url=secure_url(&url)?;
+ tauri::async_runtime::spawn_blocking(move||{
+  let lock=CREATE_LOCK.get_or_init(||Mutex::new(()));let _guard=lock.lock().map_err(|_|"Browser lifecycle lock failed")?;
+  ensure_view(app_copy.clone(),id.clone(),url)?;
+  let view=panel(&app_copy,&id)?;view.set_position(LogicalPosition::new(bounds.x,bounds.y)).map_err(|e|e.to_string())?;view.set_size(LogicalSize::new(bounds.width,bounds.height)).map_err(|e|e.to_string())?;view.show().map_err(|e|e.to_string())
+ }).await.map_err(|e|e.to_string())?
 }
 #[tauri::command]
 pub fn browser_panel_navigate(app:AppHandle,webview:Webview,widget_id:String,url:String)->Result<(),String>{
@@ -75,12 +76,16 @@ pub fn browser_panel_go_forward(app:AppHandle,webview:Webview,widget_id:String)-
 #[tauri::command]
 pub fn browser_panel_reload(app:AppHandle,webview:Webview,widget_id:String)->Result<(),String>{crate::security::authorize(&webview)?;panel(&app,&widget_id)?.reload().map_err(|e|e.to_string())}
 #[tauri::command]
-pub fn browser_panel_close(app:AppHandle,webview:Webview,state:State<'_,BrowserPanelState>,widget_id:String)->Result<(),String>{
- crate::security::authorize(&webview)?;let name=label(&widget_id)?;if let Some(view)=app.get_webview(&name){view.close().map_err(|e|e.to_string())?}
- if let Ok(mut labels)=state.labels.lock(){labels.remove(&name);}Ok(())
+pub async fn browser_panel_close(app:AppHandle,webview:Webview,widget_id:String)->Result<(),String>{
+ crate::security::authorize(&webview)?;let name=label(&widget_id)?;let worker_app=app.clone();
+ tauri::async_runtime::spawn_blocking(move||{
+  let lock=CREATE_LOCK.get_or_init(||Mutex::new(()));let _guard=lock.lock().map_err(|_|"Browser lifecycle lock failed")?;
+  if let Some(view)=worker_app.get_webview(&name){view.close().map_err(|e|e.to_string())?}
+  if let Ok(mut labels)=worker_app.state::<BrowserPanelState>().labels.lock(){labels.remove(&name);}Ok(())
+ }).await.map_err(|e|e.to_string())?
 }
 pub fn shutdown(app:&AppHandle){
- let Ok(state)=app.try_state::<BrowserPanelState>() else{return};let Ok(mut labels)=state.labels.lock() else{return};
+ let Some(state)=app.try_state::<BrowserPanelState>() else{return};let Ok(mut labels)=state.labels.lock() else{return};
  for name in labels.drain(){if let Some(view)=app.get_webview(&name){let _=view.close();}}
 }
 
