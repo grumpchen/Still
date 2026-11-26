@@ -76,7 +76,7 @@ async function main(){
  const reportPath=path.join(options.artifactDir,'windows-workbench-smoke.json');
  const screenshotPath=path.join(options.artifactDir,'still-main-before-hide.png');
  const report={schemaVersion:1,startedAt:new Date().toISOString(),runner:{platform:process.platform,githubActions:process.env.GITHUB_ACTIONS??null,ci:process.env.CI??null},candidate:{path:options.exe,sha256:null},cdp:{port:options.port,url:`http://127.0.0.1:${options.port}`},checks:[],artifacts:{report:reportPath,screenshot:null},process:{pid:null,stdoutTail:'',stderrTail:''}};
- let appProcess=null,browser=null,page=null,listenerId=null,browserPanelCreated=false,failed=false,currentCheck='preflight',failure=null;
+ let appProcess=null,browser=null,page=null,listenerId=null,browserPanelCreated=false,smokeAutomationFixture=null,failed=false,currentCheck='preflight',failure=null;
  const checks=report.checks;
  const check=async(name,fn)=>{currentCheck=name;try{const details=await fn();addCheck(checks,name,'passed',{details:details??null});return details}catch(error){addCheck(checks,name,'failed',{error:errorText(error)});throw error}};
  try{
@@ -171,6 +171,41 @@ async function main(){
    return{presentTarget:{id:firstTarget.id,url:firstTarget.url},navigatedTarget:{id:navigatedTarget.id,url:navigatedTarget.url},closed:true};
   });
 
+  await check('create-tray-layout-rule-through-ui',async()=>{
+   await page.evaluate(()=>localStorage.setItem('still-first-run-tutorial-v1','done'));
+   const startupDialog=page.locator('dialog[open]');
+   if(await startupDialog.count())await startupDialog.getByRole('button',{name:'Close dialog'}).click();
+   const suffix=Date.now().toString(36),layoutName=`Smoke ${suffix}`;
+   await page.locator('.dashboard-hero-actions').getByRole('button',{name:'Layouts',exact:true}).click();
+   const layoutDialog=page.getByRole('dialog',{name:'Layouts'});
+   await layoutDialog.getByLabel('Global layout name').fill(layoutName);
+   await layoutDialog.getByLabel('Source workspace').selectOption({label:'Design'});
+   await layoutDialog.getByRole('button',{name:'Save complete layout'}).click();
+   const savedLayout=await pollUntil('smoke layout persistence',async()=>await page.evaluate(name=>{
+    const state=JSON.parse(localStorage.getItem('still-workspace-v2')||'null');return state?.globalLayouts?.find(layout=>layout.name===name)??null;
+   },layoutName),10_000);
+   if(!savedLayout.widgets.length)throw new Error('The saved fixture layout has no widgets, so it cannot prove a layout change.');
+   const appState=await page.evaluate(()=>JSON.parse(localStorage.getItem('still-workspace-v2')||'null'));
+   if(!appState?.workspaces||!Array.isArray(appState.globalLayouts))throw new Error('The candidate app did not persist its workspace state after the UI saved a layout.');
+   const target=appState.workspaces.find(workspace=>workspace.name==='Study');
+   if(!target)throw new Error(`Smoke fixture requires the default Study workspace; found ${appState.workspaces.map(workspace=>workspace.name).join(', ')}`);
+   const targetWidgetIds=target.widgets.map(widget=>widget.id).sort();
+   await layoutDialog.locator('.dashboard-layout-close').click();
+
+   await page.getByRole('button',{name:'Rules',exact:true}).click();
+   const ruleDialog=page.getByRole('dialog',{name:/Rules/});
+   const dueAt=new Date(Date.now()-30_000).toISOString().replace(/\.\d{3}Z$/,'Z');
+   const ruleText=`At ${dueAt} replace Study workspace with ${layoutName} layout`;
+   await ruleDialog.getByLabel('Create a rule in one sentence').fill(ruleText);
+   await ruleDialog.getByRole('button',{name:'Save rule',exact:true}).click();
+   const rule=await pollUntil('one-time rule persistence',async()=>await page.evaluate(text=>{
+    const state=JSON.parse(localStorage.getItem('still.automation-rules.v2')||'null');return state?.rules?.find(item=>item.sourceText===text)??null;
+   },ruleText),10_000);
+   if(rule.trigger.kind!=='once'||rule.action.kind!=='prepareWorkspaceLayout'||rule.action.mode!=='replace')throw new Error(`The UI saved an unexpected rule shape: ${JSON.stringify(rule)}`);
+   smokeAutomationFixture={ruleId:rule.id,targetId:target.id,layoutId:savedLayout.id,layoutName,ruleText,beforeWidgetIds:targetWidgetIds,expectedTypes:savedLayout.widgets.map(widget=>widget.type).sort()};
+   return{ruleId:rule.id,trigger:rule.trigger,action:rule.action,targetName:target.name,beforeWidgetIds:targetWidgetIds,savedLayout:{id:savedLayout.id,name:savedLayout.name,widgetTypes:smokeAutomationFixture.expectedTypes}};
+  });
+
   await check('hidden-window-native-tick-delivery',async()=>{
    listenerId=await page.evaluate(async()=>{
     window.__stillSmokeTicks=[];
@@ -189,7 +224,27 @@ async function main(){
    const delivered=await page.evaluate(sequence=>window.__stillSmokeTicks.filter(tick=>tick.sequence>sequence),before.latestSequence);
    if(after.latestSequence<=before.latestSequence)throw new Error(`Native tick sequence did not increase: before=${before.latestSequence}, after=${after.latestSequence}`);
    if(!delivered.length)throw new Error(`Native status advanced to ${after.latestSequence}, but hidden-page callback had no newer tick.`);
-   return{before:{latestSequence:before.latestSequence,visible:before.mainWindowVisible},hidden:{hiddenToTray:hidden.hiddenToTray,visible:hidden.mainWindowVisible},after:{latestSequence:after.latestSequence,visible:after.mainWindowVisible},hiddenPageDelivered:delivered};
+   if(!smokeAutomationFixture)throw new Error('The one-time layout rule fixture was not created.');
+   const firstTickSequence=Math.min(...delivered.map(tick=>tick.sequence));
+   const applied=await pollUntil('once-rule receipt and workspace change while hidden',async()=>await page.evaluate(({ruleId,targetId,layoutId,beforeWidgetIds,expectedTypes})=>{
+    const rules=JSON.parse(localStorage.getItem('still.automation-rules.v2')||'null'),app=JSON.parse(localStorage.getItem('still-workspace-v2')||'null');
+    const rule=rules?.rules?.find(item=>item.id===ruleId),receipt=rules?.receipts?.find(item=>item.ruleId===ruleId&&item.status==='succeeded');
+    const target=app?.workspaces?.find(item=>item.id===targetId),layout=app?.globalLayouts?.find(item=>item.id===layoutId);
+    if(!rule||!receipt||!target||!layout)return null;
+    const widgetIds=target.widgets.map(widget=>widget.id).sort(),widgetTypes=target.widgets.map(widget=>widget.type).sort();
+    if(JSON.stringify(widgetIds)===JSON.stringify(beforeWidgetIds)||JSON.stringify(widgetTypes)!==JSON.stringify(expectedTypes))return null;
+    return{rule,receipt,workspace:{id:target.id,name:target.name,widgetIds,widgetTypes},layout:{id:layout.id,name:layout.name,widgetTypes:layout.widgets.map(widget=>widget.type).sort()}};
+   },smokeAutomationFixture),20_000);
+   if(applied.rule.onceTerminal?.status!=='succeeded')throw new Error(`The one-time rule did not record a successful terminal result: ${JSON.stringify(applied.rule.onceTerminal)}`);
+   const firstAppliedSequence=after.latestSequence;
+   await page.waitForFunction(sequence=>window.__stillSmokeTicks?.some(tick=>tick.sequence>sequence),firstAppliedSequence,{timeout:Math.min(TICK_WAIT_MAX_MS,Math.max(20_000,(before.tickIntervalMs??15_000)+8_000)),polling:500});
+   const dedupe=await page.evaluate(({ruleId,targetId,beforeWidgetIds,expectedTypes})=>{
+    const rules=JSON.parse(localStorage.getItem('still.automation-rules.v2')||'null'),app=JSON.parse(localStorage.getItem('still-workspace-v2')||'null');
+    const rule=rules?.rules?.find(item=>item.id===ruleId),receipts=rules?.receipts?.filter(item=>item.ruleId===ruleId)??[],target=app?.workspaces?.find(item=>item.id===targetId);
+    return{rule,receiptCount:receipts.length,receipts,widgetIds:target?.widgets?.map(widget=>widget.id).sort()??[],widgetTypes:target?.widgets?.map(widget=>widget.type).sort()??[],beforeWidgetIds,expectedTypes};
+   },smokeAutomationFixture);
+   if(dedupe.rule?.onceTerminal?.status!=='succeeded'||dedupe.receiptCount!==1||JSON.stringify(dedupe.widgetTypes)!==JSON.stringify(dedupe.expectedTypes)||JSON.stringify(dedupe.widgetIds)===JSON.stringify(dedupe.beforeWidgetIds)||JSON.stringify(dedupe.widgetIds)!==JSON.stringify(applied.workspace.widgetIds))throw new Error(`The completed once rule changed again or duplicated its receipt on a later hidden tick: ${JSON.stringify(dedupe)}`);
+   return{before:{latestSequence:before.latestSequence,visible:before.mainWindowVisible},hidden:{hiddenToTray:hidden.hiddenToTray,visible:hidden.mainWindowVisible},after:{latestSequence:after.latestSequence,visible:after.mainWindowVisible},hiddenPageDelivered:delivered,ruleExecution:{ruleId:smokeAutomationFixture.ruleId,receipt:applied.receipt,workspaceBeforeWidgetIds:smokeAutomationFixture.beforeWidgetIds,workspaceAfterWidgetIds:applied.workspace.widgetIds,layoutWidgetTypes:applied.layout.widgetTypes,workspaceWidgetTypes:applied.workspace.widgetTypes},dedupeAfterLaterTick:{receiptCount:dedupe.receiptCount,widgetIdsUnchanged:true,terminalStatus:dedupe.rule.onceTerminal.status}};
   });
  }catch(error){
   failed=true;failure={check:currentCheck,error:errorText(error)};
