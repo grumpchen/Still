@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { AUTOMATION_STORAGE_KEY, createAutomationRule, dueAutomationOccurrences, emptyAutomationState, evaluateAutomationRules, loadAutomationState, parseAutomationRule, saveAutomationState, validateAutomationRuleDraft } from '../src/domain/automationRules.ts';
+import { AUTOMATION_STORAGE_KEY, LEGACY_AUTOMATION_STORAGE_KEY, createAutomationRule, dueAutomationOccurrences, emptyAutomationState, evaluateAutomationRules, loadAutomationState, parseAutomationRule, saveAutomationState, validateAutomationRuleDraft } from '../src/domain/automationRules.ts';
 
 class MemoryStorage {
   values = new Map();
@@ -12,7 +12,7 @@ const catalog = {
   courses: [{id:'biology-course',title:'Biology',workspaceId:'course-ws'}, {id:'biology-2',title:'Biology',workspaceId:'math-ws'}],
   layouts: [{id:'lab-layout',name:'Lab setup',workspaceId:'course-ws'}, {id:'math-layout',name:'Board',workspaceId:'math-ws'}],
 };
-const rule = (id, trigger, action) => ({version:1,id,enabled:true,createdAt:'2026-01-01T00:00:00.000Z',updatedAt:'2026-01-01T00:00:00.000Z',sourceText:'test rule',trigger,action});
+const rule = (id, trigger, action) => ({version:2,id,enabled:true,createdAt:'2026-01-01T00:00:00.000Z',updatedAt:'2026-01-01T00:00:00.000Z',sourceText:'test rule',trigger,action:action.kind==='prepareWorkspaceLayout'&&action.mode===undefined?{...action,mode:'append'}:action});
 
 test('literal filing grammars require a match pattern and resolve one exact course', () => {
   const parsed = parseAutomationRule('When I capture links matching "lecture", file them to Biology course', {catalog, id:'r1'});
@@ -31,18 +31,21 @@ test('literal filing grammars require a match pattern and resolve one exact cour
 });
 
 test('scheduled layout grammar resolves workspace and saved layout or requests clarification', () => {
-  const english = parseAutomationRule('Every day at 09:00 prepare Biology workspace using Lab setup layout', {catalog:{...catalog,courses:[catalog.courses[0]]},timeZone:'America/Los_Angeles',id:'sched'});
+  const english = parseAutomationRule('Every day at 09:00 prepare Biology workspace using Lab setup layout with append', {catalog:{...catalog,courses:[catalog.courses[0]]},timeZone:'America/Los_Angeles',id:'sched'});
   assert.equal(english.kind, 'rule');
   assert.deepEqual(english.rule.trigger,{kind:'daily',time:'09:00',timeZone:'America/Los_Angeles'});
-  assert.deepEqual(english.rule.action,{kind:'prepareWorkspaceLayout',workspaceId:'course-ws',layoutId:'lab-layout'});
-  const crossWorkspaceLayout = parseAutomationRule('Every day at 09:00 prepare Biology workspace using Board layout', {catalog:{...catalog,courses:[catalog.courses[0]]},timeZone:'UTC',id:'cross'});
+  assert.deepEqual(english.rule.action,{kind:'prepareWorkspaceLayout',workspaceId:'course-ws',layoutId:'lab-layout',mode:'append'});
+  const imperative=parseAutomationRule('Every day at 09:00 append Lab setup layout to Biology workspace',{catalog:{...catalog,courses:[catalog.courses[0]]},timeZone:'UTC'});assert.equal(imperative.kind,'rule');assert.equal(imperative.rule.action.mode,'append');
+  const crossWorkspaceLayout = parseAutomationRule('Every day at 09:00 prepare Biology workspace using Board layout with replace', {catalog:{...catalog,courses:[catalog.courses[0]]},timeZone:'UTC',id:'cross'});
   assert.equal(crossWorkspaceLayout.kind,'rule');
   assert.equal(crossWorkspaceLayout.rule.action.workspaceId,'course-ws');
   assert.equal(crossWorkspaceLayout.rule.action.layoutId,'math-layout'); // Saved in Math, applied to Biology.
-  assert.equal(parseAutomationRule('Every day at 25:99 prepare Biology workspace using Lab setup layout', {catalog,timeZone:'UTC'}).kind,'clarification');
-  assert.equal(parseAutomationRule('Every Monday at 25:99 prepare Biology workspace using Lab setup layout', {catalog,timeZone:'UTC'}).kind,'clarification');
-  assert.equal(parseAutomationRule('Every day at 09:00 prepare Missing using Lab setup', {catalog,timeZone:'UTC'}).kind, 'clarification');
-  assert.equal(parseAutomationRule('每天 09:00 为Biology工作区使用Lab setup布局', {catalog:{...catalog,courses:[catalog.courses[0]]},timeZone:'UTC'}).kind, 'rule');
+  assert.equal(crossWorkspaceLayout.rule.action.mode,'replace');
+  assert.equal(parseAutomationRule('Every day at 25:99 prepare Biology workspace using Lab setup layout with append', {catalog,timeZone:'UTC'}).kind,'clarification');
+  assert.equal(parseAutomationRule('Every Monday at 25:99 prepare Biology workspace using Lab setup layout with append', {catalog,timeZone:'UTC'}).kind,'clarification');
+  assert.equal(parseAutomationRule('Every day at 09:00 prepare Missing using Lab setup with append', {catalog,timeZone:'UTC'}).kind, 'clarification');
+  const needsMode=parseAutomationRule('Every day at 09:00 prepare Biology workspace using Lab setup layout', {catalog,timeZone:'UTC'});assert.equal(needsMode.kind,'clarification');assert.equal(needsMode.code,'layout-mode-required');assert.deepEqual(needsMode.choices.map(choice=>choice.id),['append','replace']);
+  assert.equal(parseAutomationRule('每天 09:00 追加Lab setup布局到Biology工作区', {catalog:{...catalog,courses:[catalog.courses[0]]},timeZone:'UTC'}).kind, 'rule');
 });
 
 test('structured/provider drafts reject stale IDs, mismatched course workspaces and missing selectors', () => {
@@ -65,12 +68,18 @@ test('versioned persistence preserves corrupt and unsupported future data withou
   assert.equal(loadAutomationState(storage).ok,true);
 });
 
+test('legacy v1 layout rules migrate disabled until append or replace is explicitly selected',()=>{
+ const storage=new MemoryStorage(),legacy={version:1,rules:[{version:1,id:'old',enabled:true,createdAt:'2026-01-01T00:00:00.000Z',updatedAt:'2026-01-01T00:00:00.000Z',sourceText:'old layout rule',trigger:{kind:'once',at:'2026-11-26T12:00:00.000Z'},action:{kind:'prepareWorkspaceLayout',workspaceId:'course-ws',layoutId:'lab-layout'}}],receipts:[]};
+ storage.setItem(LEGACY_AUTOMATION_STORAGE_KEY,JSON.stringify(legacy));const migrated=loadAutomationState(storage);assert.equal(migrated.ok,true);assert.equal(migrated.state.version,2);assert.equal(migrated.state.rules[0].version,2);assert.equal(migrated.state.rules[0].enabled,false);assert.equal(migrated.state.rules[0].requiresModeChoice,true);assert.equal(migrated.state.rules[0].resumeAfterModeChoice,true);assert.equal(migrated.state.rules[0].action.mode,undefined);assert.equal(dueAutomationOccurrences(migrated.state,new Date('2026-11-27T00:00:00Z')).length,0);
+ saveAutomationState(storage,migrated.state);assert.equal(loadAutomationState(storage).state.rules[0].requiresModeChoice,true);
+});
+
 test('once/daily/weekly schedules fire only due local occurrences and not twice after a success receipt', () => {
   const once = rule('once',{kind:'once',at:'2026-11-26T12:00:00.000Z'},{kind:'prepareWorkspaceLayout',workspaceId:'course-ws',layoutId:'lab-layout'});
   const daily = rule('daily',{kind:'daily',time:'09:00',timeZone:'America/Los_Angeles'},{kind:'prepareWorkspaceLayout',workspaceId:'course-ws',layoutId:'lab-layout'});
   const weekly = rule('weekly',{kind:'weekly',weekdays:[4],time:'09:00',timeZone:'America/Los_Angeles'},{kind:'prepareWorkspaceLayout',workspaceId:'course-ws',layoutId:'lab-layout'});
   const now = new Date('2026-11-26T18:00:00.000Z');
-  const state = {version:1,rules:[once,daily,weekly],receipts:[]};
+  const state = {version:2,rules:[once,daily,weekly],receipts:[]};
   assert.equal(dueAutomationOccurrences(state,now).length,3); // Thu 10:00 PST, all due.
   const succeeded={version:1,ruleId:'daily',occurrenceKey:'daily:2026-11-26:America/Los_Angeles:09:00',scheduledAt:now.toISOString(),status:'succeeded',attempts:1,startedAt:now.toISOString(),updatedAt:now.toISOString()};
   assert.equal(dueAutomationOccurrences({...state,receipts:[succeeded]},now).some(x=>x.rule.id==='daily'),false);
@@ -79,7 +88,7 @@ test('once/daily/weekly schedules fire only due local occurrences and not twice 
 test('completed one-time rule stays terminal after receipt pruning', async () => {
   const storage=new MemoryStorage(),at='2026-11-26T12:00:00.000Z';
   const once=rule('once',{kind:'once',at},{kind:'prepareWorkspaceLayout',workspaceId:'course-ws',layoutId:'lab-layout'});
-  saveAutomationState(storage,{version:1,rules:[once],receipts:[]});
+  saveAutomationState(storage,{version:2,rules:[once],receipts:[]});
   const result=await evaluateAutomationRules({storage,service:{execute:async()=>({status:'succeeded'})},now:new Date('2026-11-26T13:00:00.000Z')});
   assert.equal(result.results[0].status,'succeeded');
   const after=loadAutomationState(storage).state;
@@ -92,24 +101,24 @@ test('capture event identity deduplicates after restart; known safe failures ret
   const storage = new MemoryStorage();
   const action={kind:'fileResourcesToCourse',courseId:'biology-course',workspaceId:'course-ws',resourceKinds:['link'],queryPattern:'lecture'};
   const r=rule('capture',{kind:'onCapture'},action);
-  saveAutomationState(storage,{version:1,rules:[r],receipts:[]});
+  saveAutomationState(storage,{version:2,rules:[r],receipts:[]});
   const calls=[];
   const service={execute:async(a,c)=>{calls.push(c.idempotencyKey);return{status:'succeeded',receiptId:'op-1'}}};
   const first=await evaluateAutomationRules({storage,service,pendingCapture:{eventId:'resource-9@2026-11-26T17:00:00Z',capturedAt:'2026-11-26T17:00:00Z',resourceKind:'link',name:'lecture notes'},now:new Date('2026-11-26T17:00:01Z')});
   const restarted=await evaluateAutomationRules({storage,service,pendingCapture:{eventId:'resource-9@2026-11-26T17:00:00Z',capturedAt:'2026-11-26T17:00:00Z',resourceKind:'link',name:'lecture notes'},now:new Date('2026-11-26T17:05:00Z')});
   assert.equal(first.results[0].status,'succeeded');assert.equal(restarted.results.length,0);assert.equal(calls.length,1);
-  const failStorage=new MemoryStorage();saveAutomationState(failStorage,{version:1,rules:[r],receipts:[]});let n=0;
+  const failStorage=new MemoryStorage();saveAutomationState(failStorage,{version:2,rules:[r],receipts:[]});let n=0;
   await evaluateAutomationRules({storage:failStorage,pendingCapture:{eventId:'event-retry',capturedAt:'2026-11-26T00:00:00Z',resourceKind:'link',name:'lecture link'},service:{execute:async()=>{n++;return{status:'failed',message:'precondition not met',retryable:true}}}});
   await evaluateAutomationRules({storage:failStorage,pendingCapture:{eventId:'event-retry',capturedAt:'2026-11-26T00:00:00Z',resourceKind:'link',name:'lecture link'},service:{execute:async()=>{n++;return{status:'succeeded'}}}});
   assert.equal(n,2);assert.equal(loadAutomationState(failStorage).state.receipts[0].attempts,2);
-  const unknownStorage=new MemoryStorage();saveAutomationState(unknownStorage,{version:1,rules:[r],receipts:[]});
+  const unknownStorage=new MemoryStorage();saveAutomationState(unknownStorage,{version:2,rules:[r],receipts:[]});
   await evaluateAutomationRules({storage:unknownStorage,pendingCapture:{eventId:'event-unknown',capturedAt:'2026-11-26T00:00:00Z',resourceKind:'link',name:'lecture link'},service:{execute:async()=>{throw new Error('connection lost')}}});
   const retry=await evaluateAutomationRules({storage:unknownStorage,pendingCapture:{eventId:'event-unknown',capturedAt:'2026-11-26T00:00:00Z',resourceKind:'link',name:'lecture link'},service:{execute:async()=>{throw new Error('must not be called')}}});
   assert.equal(retry.results.length,0);assert.equal(loadAutomationState(unknownStorage).state.receipts[0].status,'outcome_unknown');
 });
 
 test('concurrent scheduler ticks use the persisted running receipt as a local claim', async () => {
-  const storage=new MemoryStorage();const r=rule('daily',{kind:'daily',time:'09:00',timeZone:'UTC'},{kind:'prepareWorkspaceLayout',workspaceId:'course-ws',layoutId:'lab-layout'});saveAutomationState(storage,{version:1,rules:[r],receipts:[]});let calls=0,release,start;const started=new Promise(resolve=>start=resolve);
+  const storage=new MemoryStorage();const r=rule('daily',{kind:'daily',time:'09:00',timeZone:'UTC'},{kind:'prepareWorkspaceLayout',workspaceId:'course-ws',layoutId:'lab-layout'});saveAutomationState(storage,{version:2,rules:[r],receipts:[]});let calls=0,release,start;const started=new Promise(resolve=>start=resolve);
   const service={execute:async()=>{calls++;start();await new Promise(resolve=>release=resolve);return{status:'succeeded'}}};
   const tick1=evaluateAutomationRules({storage,service,now:new Date('2026-11-26T10:00:00Z')});
   await started;
@@ -121,7 +130,7 @@ test('concurrent scheduler ticks use the persisted running receipt as a local cl
 test('state edits made while an operation is awaiting are merged and disabled later rules are skipped', async () => {
   const storage=new MemoryStorage(),action={kind:'prepareWorkspaceLayout',workspaceId:'course-ws',layoutId:'lab-layout'};
   const first=rule('first',{kind:'daily',time:'09:00',timeZone:'UTC'},action),second=rule('second',{kind:'daily',time:'09:00',timeZone:'UTC'},action),added=rule('added',{kind:'once',at:'2026-12-01T00:00:00.000Z'},action);
-  saveAutomationState(storage,{version:1,rules:[first,second],receipts:[]});let release,start;const started=new Promise(resolve=>start=resolve),calls=[];
+  saveAutomationState(storage,{version:2,rules:[first,second],receipts:[]});let release,start;const started=new Promise(resolve=>start=resolve),calls=[];
   const run=evaluateAutomationRules({storage,now:new Date('2026-11-26T10:00:00Z'),service:{execute:async(a,c)=>{calls.push(c.ruleId);if(c.ruleId==='first'){start();await new Promise(resolve=>release=resolve)}return{status:'succeeded'}}}});
   await started;
   const edited=loadAutomationState(storage).state;

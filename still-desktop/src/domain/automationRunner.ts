@@ -34,7 +34,7 @@ export class AutomationRunnerController {
  private cursor:AutomationCursor;
  constructor(private readonly options:AutomationRunnerControllerOptions){
   const loaded=loadAutomationState(options.storage);this.cursor=readCursor(options.storage);
-  this.snapshot={mode:'starting',state:loaded.ok?loaded.state:{version:1,rules:[],receipts:[]},runtimeStatus:null,cursor:this.cursor,pendingCaptures:[],lastTickAt:null,error:loaded.ok?null:loaded.message,captureQueueAvailable:!!options.getCaptureQueue?.()};
+  this.snapshot={mode:'starting',state:loaded.ok?loaded.state:{version:2,rules:[],receipts:[]},runtimeStatus:null,cursor:this.cursor,pendingCaptures:[],lastTickAt:null,error:loaded.ok?null:loaded.message,captureQueueAvailable:!!options.getCaptureQueue?.()};
  }
  getSnapshot(){return this.snapshot}
  private publish(patch:Partial<AutomationRunnerSnapshot>){this.snapshot={...this.snapshot,...patch};this.options.onSnapshot(this.snapshot)}
