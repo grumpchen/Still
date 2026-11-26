@@ -3,12 +3,15 @@ name: Windows build
 on:
   push:
     branches:
-      - agent/codex/leo3-deepseek-combined
+      - agent/codex/still-workbench
+      - agent/luna/**
     paths:
       - still-desktop/src/**
       - still-desktop/src-tauri/**
       - still-desktop/package.json
       - still-desktop/pnpm-lock.yaml
+      - still-desktop/tests/**
+      - .github/workflows/windows-build.yml
   workflow_dispatch:
 
 permissions:
@@ -42,18 +45,28 @@ jobs:
         working-directory: still-desktop
         run: pnpm check
 
-      - name: Focused assistant and canvas tests
+      - name: Frontend regression tests
         working-directory: still-desktop
-        run: pnpm exec tsx --test --test-concurrency=1 tests/assistant-sidebar.test.mjs tests/assistant.test.mjs tests/canvas-add-tool-menu.test.mjs
+        run: pnpm test
+
+      - name: Rust regression tests
+        if: ${{ !cancelled() }}
+        working-directory: still-desktop/src-tauri
+        run: >-
+          cargo test --bin still-desktop --
+          --skip app_panel::tests::real_window_fixture_tracks_bounds_clips_native_content_and_releases_without_closing
+          --skip native_resize::tests::managed_resize_blocks_edge_hit_testing_but_allows_still_sizes_and_restores_on_release
 
       - name: Build Windows executable
+        if: ${{ !cancelled() }}
         working-directory: still-desktop
         run: pnpm tauri build --no-bundle
 
       - name: Upload Windows executable
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: still-v0.236-windows-x64
+          name: still-workbench-${{ github.sha }}-windows-x64
           path: still-desktop/src-tauri/target/release/still-desktop.exe
           if-no-files-found: error
           retention-days: 14
