@@ -728,6 +728,12 @@ export function unsupportedAssistantRequest(text:string):'clear_tray'|'delete_wi
   if(/\b(?:delete|remove)\b[\s\S]{0,40}\b(?:this|current|active|the)?\s*workspace\b/i.test(text))return 'delete_workspace';
   return null;
 }
+/** Require a uniquely resolved widget target before a clear remove/delete command can execute. */
+export function assistantRemovalClarification(text:string,workspace:Workspace,selectedWidgetIds:string[],savedTrayItems:AssistantTrayItem[]=[],workspaces:AssistantWorkspaceChoice[]=[]):string|null{
+  if(!assistantActionRequest(text,savedTrayItems,workspaces).includes('remove_widget'))return null;
+  if(resolveDirectAssistantActions(text,workspace,selectedWidgetIds,savedTrayItems,workspaces)?.some(action=>action.type==='remove_widget'))return null;
+  return 'Which widget should I remove? Name or select one widget, or say all if you mean every matching widget.';
+}
 /** Resolve unambiguous local commands without asking the language model to reconstruct workspace IDs. */
 export function resolveDirectAssistantActions(text:string,workspace:Workspace,selectedWidgetIds:string[],savedTrayItems:AssistantTrayItem[]=[],workspaces:AssistantWorkspaceChoice[]=[]):AssistantAction[]|null{
   if(isFilesWidgetOpenCommand(text))return [{type:'add_widget',ids:['files']}];

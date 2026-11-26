@@ -15,6 +15,19 @@ function setReactValue(node,value,elementType,caret){Object.getOwnPropertyDescri
 function setReactChecked(node,value){Object.getOwnPropertyDescriptor(node.ownerDocument.defaultView.HTMLInputElement.prototype,'checked').set.call(node,value);const props=node[Object.keys(node).find(key=>key.startsWith('__reactProps$'))];props?.onChange?.({target:node,currentTarget:node})}
 async function waitFor(predicate){const deadline=Date.now()+3000;while(Date.now()<deadline){if(predicate())return;await new Promise(resolve=>setTimeout(resolve,10))}assert.ok(predicate(),`Timed out waiting for assistant UI; visible error: ${globalThis.document?.querySelector('.assistant-error')?.textContent??'none'}`)}
 
+async function mountAssistantHarness({response,configured=true,props={}}={}){
+ const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true}),{window}=dom,old=new Map(),calls=[];let root;
+ for(const key of ['window','document','navigator','localStorage','HTMLElement','Element','Node','MutationObserver','requestAnimationFrame','cancelAnimationFrame','IS_REACT_ACT_ENVIRONMENT','isTauri'])old.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
+ for(const [key,value] of Object.entries({window,document:window.document,navigator:window.navigator,localStorage:window.localStorage,HTMLElement:window.HTMLElement,Element:window.Element,Node:window.Node,MutationObserver:window.MutationObserver,requestAnimationFrame:callback=>setTimeout(()=>callback(Date.now()),0),cancelAnimationFrame:clearTimeout,IS_REACT_ACT_ENVIRONMENT:true,isTauri:true}))setGlobal(key,value);
+ window.HTMLElement.prototype.scrollTo=function(){};window.HTMLTextAreaElement.prototype.focus=function(){};window.__TAURI_INTERNALS__={};window.localStorage.setItem('still-assistant-share-workspace-image','false');
+ mockIPC((command,args)=>{calls.push({command,args});if(command==='assistant_configured')return configured;if(command==='assistant_models')return configured?['gemini-2.5-flash']:[];if(command==='assistant_chat')return response??{intent:'chat',reply:'No changes.',layout:[],actions:[]};return null},{shouldMockEvents:true});
+ const {default:AssistantPanel}=await vite.ssrLoadModule('/src/AssistantPanel.tsx'),workspace=createWorkspace('Study',[]);root=createRoot(window.document.querySelector('#root'));
+ const callback=async()=>'';
+ await act(async()=>root.render(createElement(AssistantPanel,{workspace,workspaces:[{id:workspace.id,name:workspace.name}],canDeleteWorkspace:true,sidebarPlugins:[],trayItems:[],open:true,close(){},dimensions:()=>({width:900,height:700}),apply(){},undo(){},act:callback,clearTray:callback,deleteWidgets:callback,deleteWorkspace:callback,addCalendarEvents:callback,startTimer:callback,...props})));
+ const cleanup=async()=>{if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();for(const key of old.keys()){const descriptor=old.get(key);if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}};
+ return{window,workspace,calls,cleanup,send:async prompt=>{await act(async()=>setReactValue(window.document.querySelector('#ai-message'),prompt,'HTMLTextAreaElement'));await act(async()=>window.document.querySelector('.assistant-compose').requestSubmit())}};
+}
+
 test('the single chat can use workspace widgets; @ is optional quick selection and screenshot target',async()=>{
  const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true}),{window}=dom,old=new Map();
  for(const key of ['window','document','navigator','localStorage','innerWidth','innerHeight','HTMLElement','Element','Node','MutationObserver','requestAnimationFrame','cancelAnimationFrame','IS_REACT_ACT_ENVIRONMENT','isTauri','createImageBitmap'])old.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
@@ -265,10 +278,8 @@ test('widget add commands show replies and provider chat carries complete action
   await act(async()=>root.render(createElement(AssistantPanel,props)));
   await act(async()=>setReactValue(composer,'remove focus','HTMLTextAreaElement'));
   await act(async()=>window.document.querySelector('.assistant-compose').requestSubmit());
-  await waitFor(()=>window.document.querySelector('.assistant-confirmation'));
-  assert.equal(actions.filter(action=>action.type==='remove_widget').length,0,'the widget stays until removal is confirmed');
-  await act(async()=>window.document.querySelector('.assistant-confirmation button.primary').click());
   await waitFor(()=>actions.some(action=>action.type==='remove_widget'&&action.ids[0]===focus.id));
+  assert.equal(window.document.querySelector('.assistant-confirmation'),null,'an explicit remove executes without a second confirmation');
   const beforeIndirect=actions.length;
   await act(async()=>setReactValue(composer,'I need somewhere to take notes','HTMLTextAreaElement'));
   await act(async()=>window.document.querySelector('.assistant-compose').requestSubmit());
@@ -361,7 +372,7 @@ test('assistant previews a requested resize before applying it',async()=>{
  }
 });
 
-test('AI Command asks once before removing unlocked widgets and keeps itself available for reruns',async()=>{
+test('AI Command removes unlocked widgets directly and keeps itself available for reruns',async()=>{
  const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true}),{window}=dom,old=new Map();
  for(const key of ['window','document','navigator','localStorage','HTMLElement','Element','Node','Event','MutationObserver','requestAnimationFrame','cancelAnimationFrame','IS_REACT_ACT_ENVIRONMENT','isTauri'])old.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
  let root;const removals=[];
@@ -373,11 +384,7 @@ test('AI Command asks once before removing unlocked widgets and keeps itself ava
   const {default:AssistantPanel}=await vite.ssrLoadModule('/src/AssistantPanel.tsx');root=createRoot(window.document.querySelector('#root'));
   await act(async()=>root.render(createElement(AssistantPanel,{workspace,workspaces:[{id:workspace.id,name:workspace.name}],canDeleteWorkspace:true,sidebarPlugins:[],trayItems:[],open:true,close(){},dimensions:()=>({width:900,height:700}),apply(){},undo(){},deleteWidgets:async(workspaceId,preserveWidgetId)=>{removals.push({workspaceId,preserveWidgetId});return 'Removed the other widgets.'}})));
   const run=async()=>{await act(async()=>window.dispatchEvent(new window.CustomEvent('still-run-ai-command',{detail:{prompt:command.text,widgetId:command.id}})));await act(async()=>new Promise(resolve=>setTimeout(resolve,100)))};
-  await run();await waitFor(()=>window.document.querySelector('.assistant-confirmation'));
-  assert.match(window.document.querySelector('.assistant-confirmation').textContent,/future runs of this saved command will not ask again/i);
-  assert.equal(removals.length,0,'the first click waits for the user confirmation');
-  await act(async()=>window.document.querySelector('.assistant-confirmation button.primary').click());
-  await waitFor(()=>removals.length===1);
+  await run();await waitFor(()=>removals.length===1);
   assert.deepEqual(removals[0],{workspaceId:workspace.id,preserveWidgetId:command.id});
   assert.equal(window.document.querySelector('.assistant-confirmation'),null);
   await run();await waitFor(()=>removals.length===2);
@@ -387,4 +394,53 @@ test('AI Command asks once before removing unlocked widgets and keeps itself ava
   if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();
   for(const key of old.keys()){const descriptor=old.get(key);if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}
  }
+});
+
+test('standard workbench replies execute through the host and display only its receipt',async t=>{
+ for(const mode of ['success','failure','ambiguous'])await t.test(mode,async()=>{
+  let executions=0;const response={intent:'workspace_action',reply:'I deleted that layout successfully.',layout:[],actions:[],workbenchActions:[{operation:'layout.delete',layoutId:'layout-1'}]};
+  const harness=await mountAssistantHarness({response,props:{workbenchContext:()=>({layouts:[{id:'layout-1',name:'Study'}],files:[],links:[]}),executeWorkbench:async(actions,prompt)=>{executions++;assert.deepEqual(actions,response.workbenchActions);assert.equal(prompt,'Delete the Study layout');if(mode==='failure')throw new Error('The layout could not be deleted.');if(mode==='ambiguous')throw new Error('Which exact Study layout should I delete?');return 'Deleted Study layout. Receipt R-17.'}}});
+  try{
+   await waitFor(()=>harness.window.document.querySelector('#ai-model option[value="gemini::gemini-2.5-flash"]'));
+   await harness.send('Delete the Study layout');
+   await waitFor(()=>mode==='success'?harness.window.document.querySelector('.assistant-log')?.textContent.includes('Deleted Study layout. Receipt R-17.'):harness.window.document.querySelector('.assistant-error'));
+   const transcript=harness.window.document.querySelector('.assistant-log')?.textContent??'';
+   const serialized=JSON.parse(harness.calls.find(call=>call.command==='assistant_chat').args.request.context);
+   assert.deepEqual(serialized.workbench,{layouts:[{id:'layout-1',name:'Study'}],files:[],links:[]});
+   assert.equal(executions,1);
+   if(mode==='success'){assert.match(transcript,/Deleted Study layout\. Receipt R-17\./);assert.doesNotMatch(transcript,/I deleted that layout successfully/)}
+   else{assert.match(harness.window.document.querySelector('.assistant-error').textContent,mode==='ambiguous'?/Which exact Study layout/:/could not be deleted/);assert.doesNotMatch(transcript,/I deleted that layout successfully/)}
+  }finally{await harness.cleanup()}
+ });
+});
+
+test('a direct automation rule request saves without a configured provider',async()=>{
+ let directCalls=0;const harness=await mountAssistantHarness({configured:false,props:{canHandleDirectWorkbenchRequest:text=>text.startsWith('When I capture'),directWorkbenchRequest:async prompt=>{directCalls++;assert.equal(prompt,'When I capture links matching "lecture", file them to Chemistry course');return{handled:true,message:'Saved automation rule rule-7.'}}}});
+ try{
+  await harness.send('When I capture links matching "lecture", file them to Chemistry course');
+  await waitFor(()=>harness.window.document.querySelector('.assistant-log')?.textContent.includes('Saved automation rule rule-7.'));
+  assert.equal(directCalls,1);assert.equal(harness.calls.some(call=>call.command==='assistant_chat'),false);
+ }finally{await harness.cleanup()}
+});
+
+test('unsupported rule-like questions still go to the configured provider',async()=>{
+ let directCalls=0;const harness=await mountAssistantHarness({configured:true,props:{canHandleDirectWorkbenchRequest:text=>/^when i capture /i.test(text),directWorkbenchRequest:async()=>{directCalls++;return{handled:false}}}});
+ try{
+  await waitFor(()=>harness.window.document.querySelector('#ai-model option[value="gemini::gemini-2.5-flash"]'));
+  await harness.send('How do automation rules work?');
+  await waitFor(()=>harness.calls.some(call=>call.command==='assistant_chat'));
+  assert.equal(directCalls,0);assert.match(harness.calls.find(call=>call.command==='assistant_chat').args.request.messages.at(-1).text,/How do automation rules work/);
+ }finally{await harness.cleanup()}
+});
+
+test('explicit bulk removal and clearing invoke host callbacks without a confirmation dialog',async()=>{
+ const calls=[];const harness=await mountAssistantHarness({configured:false,props:{clearTray:async id=>{calls.push(['tray',id]);return'Tray cleared.'},deleteWidgets:async(id,preserve)=>{calls.push(['widgets',id,preserve]);return'Widgets removed.'},deleteWorkspace:async id=>{calls.push(['workspace',id]);return'Workspace deleted.'}}});
+ try{
+  for(const [prompt,expected] of [['Clear the entire widget tray','tray'],['Delete all widgets on this workspace','widgets'],['Delete the current workspace','workspace']]){
+   await harness.send(prompt);await waitFor(()=>calls.some(call=>call[0]===expected));
+   assert.equal(harness.window.document.querySelector('.assistant-confirmation'),null);
+  }
+  assert.deepEqual(calls.map(call=>call[0]),['tray','widgets','workspace']);
+  assert.equal(harness.calls.some(call=>call.command==='assistant_chat'),false);
+ }finally{await harness.cleanup()}
 });
