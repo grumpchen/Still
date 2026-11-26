@@ -24,7 +24,7 @@ test('exact modifier matching preserves typing, IME composition, AltGr and other
 });
 test('custom bindings persist; older or invalid bindings migrate without losing workspaces or notes',()=>{
   const state=createInitialState();state.workspaces.push(createWorkspace('My custom space',['notes']));
-  setNoteText(state.workspaces[0].widgets.find(w=>w.type==='notes'),'keep my lecture notes');
+  setNoteText(state.workspaces.find(workspace=>workspace.role==='study').widgets.find(w=>w.type==='notes'),'keep my lecture notes');
   state.shortcuts={...defaultShortcuts(),up:{key:'ArrowUp',ctrl:true,alt:false,shift:true},down:{key:'ArrowDown',ctrl:true,alt:false,shift:true},clickThrough:{key:'O',ctrl:true,alt:false,shift:true}};
   let restored=parseState(JSON.stringify(state));assert.deepEqual(restored.shortcuts,state.shortcuts);
   assert.equal(shortcutDirection(key('ArrowDown',{ctrlKey:true,shiftKey:true}),restored.shortcuts),'down');
@@ -32,7 +32,7 @@ test('custom bindings persist; older or invalid bindings migrate without losing 
   delete state.shortcuts;restored=parseState(JSON.stringify(state));assert.deepEqual(restored.shortcuts,defaultShortcuts());
   state.shortcuts={up:{key:'X',ctrl:false,alt:false,shift:false},down:{key:'S',ctrl:false,alt:true,shift:false}};
   restored=parseState(JSON.stringify(state));assert.deepEqual(restored.shortcuts,defaultShortcuts());
-  assert.equal(restored.workspaces.length,5);assert.equal(restored.workspaces[0].widgets.find(w=>w.type==='notes').text,'keep my lecture notes');
+  assert.equal(restored.workspaces.length,state.workspaces.length);assert.equal(restored.workspaces.find(workspace=>workspace.role==='study').widgets.find(w=>w.type==='notes').text,'keep my lecture notes');
 });
 test('right-click minimize modifier choices persist with the rest of keyboard shortcuts',()=>{
  const state=createInitialState();assert.deepEqual(state.shortcuts.minimizeModifiers,{ctrl:true,alt:false,shift:true});

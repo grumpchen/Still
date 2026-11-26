@@ -22,12 +22,13 @@ test('Apps displays the catalog before icons finish and loads icons only when vi
   appPanel.installedIcon=()=>{calls++;return new Promise(resolve=>{finishIcon=resolve})};
   root=createRoot(dom.window.document.getElementById('root'));
   await act(async()=>{root.render(createElement(WorkspaceDock,{trayRef:createRef(),shortcuts:null,status:null,expanded:true,onExpandedChange(){},onOpenInstalledApp(){},onEditShortcuts(){},onRemoveDrop:false}));await new Promise(resolve=>setImmediate(resolve))});
-  assert.ok(dom.window.document.querySelector('[aria-label="Open Example App in Still"]'));
+  const appButton=()=>dom.window.document.querySelector('.dock-app[aria-label="Open in Still: Example App"]');
+  assert.ok(appButton(),'installed app uses the current localized accessible label');
   assert.equal(calls,0,'offscreen icons do not block the catalog');
   await act(async()=>{for(const observer of observers)observer.callback([{isIntersecting:true}]);await new Promise(resolve=>setImmediate(resolve))});
-  assert.equal(calls,1);assert.ok(dom.window.document.querySelector('[aria-label="Open Example App in Still"]'),'app remains usable while icon loads');
+  assert.equal(calls,1);assert.ok(appButton(),'app remains usable while its icon loads');
   await act(async()=>{finishIcon([137,80,78,71,13,10,26,10,1]);await new Promise(resolve=>setImmediate(resolve))});
-  assert.ok(dom.window.document.querySelector('[aria-label="Open Example App in Still"] img'));
+  assert.ok(appButton().querySelector('img'));
  }finally{
   if(root)await act(async()=>root.unmount());if(appPanel&&original)Object.assign(appPanel,original);await vite.close();dom.window.close();
   for(const [name,descriptor] of old){if(descriptor)Object.defineProperty(globalThis,name,descriptor);else delete globalThis[name]}

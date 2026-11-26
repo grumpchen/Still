@@ -32,28 +32,28 @@ test('Quiet Minimal keeps the tray visible while offering transparent and opaque
  const styles=readFileSync(new URL('../src/styles.css',import.meta.url),'utf8');
  assert.match(styles,/html\.native-transparent body:not\(\.liquid-glass\):not\(\.transparent-background\) \.canvas-app\{background:var\(--canvas\)\}/);
  assert.match(styles,/body\.transparent-background \.canvas-app[^}]*background:transparent/);
- assert.match(styles,/html\.native-transparent \.liquid-glass::after\{display:none\}/);
- assert.doesNotMatch(styles,/html\.native-transparent \.liquid-glass::before[^}]*display:none/);
+ assert.match(styles,/\.liquid-glass\.transparent-background \.liquid-chrome-backdrop\{display:none\}/,'transparent canvas mode hides the rendered liquid backdrop');
+ assert.match(styles,/body\.transparent-background \.canvas-viewport\{background:transparent\}/,'transparent canvas mode keeps the workspace surface clear');
  assert.match(css,/\.widget-tray\{[^}]*background:var\(--surface\)[^}]*box-shadow/);
 });
 
 test('Group card close removes the floating card immediately and preserves the saved Group',()=>{
  const app=readFileSync(new URL('../src/App.tsx',import.meta.url),'utf8');
  const canvas=readFileSync(new URL('../src/WorkspaceCanvas.tsx',import.meta.url),'utf8');
- assert.match(canvas,/aria-label=\{'Remove '\+title\}/);
+ assert.match(canvas,/aria-label=\{t\('removeWidgetTitle'\)\.replace\('\{title\}',title\)\}/);
  assert.match(canvas,/onClick=\{e=>\{e\.stopPropagation\(\);remove\(w\.id\)\}\}>×<\/button>/);
  const removal=app.slice(app.indexOf('function removeWidget('),app.indexOf('function addWidget('));
  assert.match(removal,/kind:'widget' as const/);
  assert.match(removal,/performRemoval\(target\)/);
  assert.doesNotMatch(removal,/setPendingRemoval|setModal\('delete'\)/);
- assert.match(app,/Remove this Group card from the workspace\? Its collected widgets remain in the saved Group/);
+ assert.match(app,/removeGroupCardNote/);
  assert.match(app,/target\.kind==='widget'\?deleteCanvasWidget/);
 });
 
 test('saved Widget, App and Group buttons expose Rename and Delete context actions',()=>{
  assert.match(presets,/onContextMenu/);
  assert.match(groups,/onContextMenu/);
- assert.match(contextMenu,/role="menu"/);assert.match(contextMenu,/Rename/);assert.match(contextMenu,/Delete/);
+ assert.match(contextMenu,/role="menu"/);assert.match(contextMenu,/t\('rename'\)/);assert.match(contextMenu,/t\('deleteItem'\)/);
  assert.match(contextMenu,/Escape/);assert.match(contextMenu,/pointerdown/);
  assert.match(contextMenu,/removeEventListener\('pointerdown'/);assert.match(contextMenu,/removeEventListener\('keydown'/);
 });
@@ -64,8 +64,8 @@ test('saved entry rename and deletion stay in the saved collection and Edit dial
  assert.match(app,/modal==='renameSaved'/);
  const actions=readFileSync(new URL('../src/domain/trayActions.ts',import.meta.url),'utf8');
  assert.match(actions,/renameSavedPreset/);assert.match(actions,/removeSavedPreset/);
- assert.match(editor,/Rename shortcut/);assert.match(editor,/Rename group/);
- assert.match(editor,/Remove shortcut/);assert.match(editor,/Remove group/);
+ assert.match(editor,/p\.renamePreset/);assert.match(editor,/p\.renameGroup/);
+ assert.match(editor,/p\.removePreset/);assert.match(editor,/p\.removeGroup/);
  assert.match(app,/latestState=useRef\(state\)/);
  assert.match(app,/persistTimer\.current=setTimeout\(\(\)=>\{persistTimer\.current=null;persistNow\.current\(\)\},250\)/);
  assert.match(app,/localStorage\.setItem\(KEY,JSON\.stringify\(snapshot\)\)/);
@@ -76,24 +76,25 @@ test('expanded Group entries stay inline, with management actions retained in Ed
  assert.match(groups,/groups\.map\(group=>[\s\S]*tray-group-button[\s\S]*tray-group-inline-contents[\s\S]*aria-hidden=\{!group\.expanded\}[\s\S]*inert=\{!group\.expanded\}/);
  assert.match(groups,/data-group-drop-target="existing"/);
  assert.doesNotMatch(groups,/tray-group-inline-title|tray-group-add|Remove group|Open group/);
- for(const action of ['Edit','Add widget','Add link','Remove group','Attach open app'])assert.ok(editor.includes(action),action);
- assert.match(editor,/widgetTypes\.filter\(t=>t!=='group'&&t!=='ai'\)\.map\(type=>[\s\S]*widgetRegistry\[type\]\.name/,'saved widget options come from the widget registry');
+ for(const action of ['p.editGroup','p.removeGroup','p.openGroup'])assert.ok(editor.includes(action),action);
+ assert.match(editor,/\{t\('addWidget'\)\}/);assert.match(editor,/\{t\('addLink'\)\}/);
+ assert.match(editor,/widgetTypes\.filter\(type=>type!=='ai'\)\.map\(type=>[\s\S]*widgetRegistry\[type\]\.icon/,'available widget options are rendered from the current widget registry');
 });
 
 test('saved shortcuts use app logos, accessible titles and a single label without entry management clutter',()=>{
- assert.match(presets,/preset-app-icon/);assert.match(presets,/aria-label=\{'Open '\+accessibleName\}/);
+ assert.match(presets,/preset-app-icon/);assert.match(presets,/aria-label=\{t\('openSavedShortcut'\)\.replace\('\{name\}',accessibleName\)\}/);
  assert.match(presets,/title=\{accessibleName\}/);assert.match(presets,/!app&&<span>\{displayName\}<\/span>/);
  assert.match(presets,/function label\(preset:WidgetPreset\):string\s*\{\s*return preset\.name/);
  assert.doesNotMatch(presets,/className="preset-action"|className="preset-kind"|apps-tray-add/);
- assert.match(editor,/Remove shortcut/);
+ assert.match(editor,/removeSavedShortcut/);
 });
 
 test('Group drop collection and saved-app launch guard retain existing pipelines',()=>{
  const app=readFileSync(new URL('../src/App.tsx',import.meta.url),'utf8');
  assert.match(app,/collectWidgetIntoGroup/);assert.match(app,/restoreCollectedWidget/);
- assert.match(app,/savedAppInUse\(s,preset\)/);assert.match(app,/checkedAppIconData\(preset\.iconData\)/);
+ assert.match(app,/savedAppInUse\(before,preset\)/);assert.match(app,/checkedAppIconData\(preset\.iconData\)/);
  assert.match(canvas,/action==='save'&&original\)\{writeCardPlacement\(g\.id,original\.placement\);if\(g\.type==='apps'\)appPanel\.finishDrag\(g\.id\);void saveWidgetToTray\(original\)/);
- assert.match(canvas,/appPanel\.prepare\(attachment\)/);
+ assert.match(app,/appPanel\.prepare\(attachment\)/);
  assert.match(app,/modal==='delete'&&pendingRemoval/);
 });
 
@@ -106,7 +107,7 @@ test('minimize buttons affect live workspace widgets only and compact buttons st
 });
 
 test('workspace overview is descriptive and cannot intercept workspace interaction',()=>{
- assert.match(canvas,/canvas-overview/);assert.match(canvas,/Workspace overview map/);assert.match(css,/\.canvas-overview\{[^}]*pointer-events:none/);
+ assert.match(canvas,/canvas-overview/);assert.match(canvas,/aria-label=\{t\('workspaceOverviewMap'\)\}/);assert.match(css,/\.canvas-overview\{[^}]*pointer-events:none/);
  assert.doesNotMatch(canvas,/scrollOffset\.x\+Math\.max/);
  assert.match(canvas,/overviewViewportRef|updateOverview/);
 });

@@ -77,11 +77,12 @@ test('resizing a Notes widget keeps its top-left corner anchored',async()=>{
   await act(async()=>{handle.dispatchEvent(app.pointer('pointermove',original.x+original.width+40,original.y+original.height+50));await new Promise(resolve=>setTimeout(resolve,10))});
   assert.equal(card.style.left,original.x+'px','resizing must not change the widget left edge');
   assert.equal(card.style.top,original.y+'px','resizing must not change the widget top edge');
-  assert.equal(card.style.transformOrigin,'top left','the preview scales outward from the fixed top-left corner');
+  assert.equal(card.style.width,original.width+40+'px','the live preview applies the requested width without moving its left edge');
+  assert.equal(card.style.height,original.height+50+'px','the live preview applies the requested height without moving its top edge');
   await act(async()=>handle.dispatchEvent(app.pointer('pointerup',original.x+original.width+40,original.y+original.height+50)));
   assert.equal(app.currentState.widgets[0].placement.x,original.x);
   assert.equal(app.currentState.widgets[0].placement.y,original.y);
-  assert.equal(card.style.transformOrigin,'','the temporary resize origin is cleared after committing');
+  assert.equal(card.style.transform,'','the committed card uses its new geometry without a preview transform');
  }finally{await app.cleanup()}
 });
 

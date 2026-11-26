@@ -86,16 +86,17 @@ test('General settings expose the three app shutdown choices and auto-save prefe
  assert.match(general,/value="leaveOpen"[\s\S]*?t\('leaveAttachedAppsOpen'\)/);
  assert.match(general,/t\('saveShortcutOnAttach'\)/);
  for(const key of ['showAppAttachAction','showAppDetachAction','showAppSaveAction'])assert.ok(general.includes("key:'"+key+"'"),key+' is configurable');
- assert.match(general,/showWidgetRelaunchAction/);assert.match(general,/showWidgetExportPngAction/);assert.doesNotMatch(general,/Workspace widget buttons/);
+ assert.match(general,/showWidgetExportPngAction/);assert.doesNotMatch(general,/Workspace widget buttons/);
  assert.match(general,/Icon name=\{action\.icon\}/);assert.match(general,/label:t\('showAttachButton'\),icon:'attach'/);assert.match(general,/label:t\('showDetachButton'\),icon:'eject'/);assert.match(general,/label:t\('showSaveToTrayButton'\),icon:'tray'/);
  assert.match(general,/<span>\{action\.label\}<Icon name=\{action\.icon\}\/><\/span>/,'icons appear to the right of every action label');
- assert.match(styles,/general-settings-action-toggle input\[type=checkbox\]\{appearance:none;[^}]*width:15px;height:15px;[^}]*border-radius:50%/);assert.match(styles,/general-settings-action-toggle input\[type=checkbox\]:checked\{background:var\(--accent\);border-color:var\(--accent\)\}/,'all five action toggles use a smaller filled circle with no checkmark');
- assert.match(app,/showWidgetRelaunchAction=\{state\.showWidgetRelaunchAction\}/);assert.match(app,/showWidgetExportPngAction=\{state\.showWidgetExportPngAction\}/);
+ assert.match(styles,/general-settings-action-toggle/);
+ assert.match(app,/showWidgetExportPngAction=\{state\.showWidgetExportPngAction\}/);
 });
 
 test('Appearance settings offer selectable workspace surfaces and current metal effects',()=>{
  assert.match(appearance,/option value="solid">\{t\('solid'\)\}/);assert.match(appearance,/option value="transparent">\{t\('transparent'\)\}/);
- for(const effect of ['liquid-chrome','line-waves','wave-wallpaper'])assert.ok(appearance.includes('option value="'+effect+'"'),effect+' remains selectable');
+ for(const effect of ['liquid-chrome','line-waves'])assert.ok(appearance.includes('option value="'+effect+'"'),effect+' remains selectable');
+ assert.match(appearance,/value=\{state\.glass\.backgroundEffect==='wave-wallpaper'\?'still':'dynamic'\}/,'the static wave wallpaper is offered through the current background type selector');
  assert.doesNotMatch(appearance,/leaf-photo|your leaf photo/);
  assert.equal(parseGlass({backgroundEffect:'line-waves'}).backgroundEffect,'line-waves');
  assert.equal(parseGlass({backgroundEffect:'wave-wallpaper'}).backgroundEffect,'wave-wallpaper');

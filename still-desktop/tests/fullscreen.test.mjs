@@ -7,10 +7,9 @@ const canvasCss=readFileSync(new URL('../src/canvas.css',import.meta.url),'utf8'
 
 test('whole-workspace fullscreen uses the native Still window and exposes an exit control',()=>{
  assert.match(app,/win\.setFullscreen\(next\)/);
- assert.match(app,/isTauri\(\)&&<button className="topbar-fullscreen"/);
- assert.match(app,/aria-label=\{fullscreen\?'Exit fullscreen':'Enter fullscreen'\}/);
+ assert.match(app,/isTauri\(\)&&<button title=\{fullscreen\?translate\(state\.locale,'fullscreenExit'\):translate\(state\.locale,'fullscreenEnter'\)\} aria-label=\{fullscreen\?translate\(state\.locale,'fullscreenExit'\):translate\(state\.locale,'fullscreenEnter'\)\}/);
  assert.match(app,/event\.key==='Escape'[\s\S]*toggleFullscreen\(\)/);
- assert.match(app,/win\.onResized/);
+ assert.match(app,/win\.onResized/);assert.match(app,/aria-label=\{fullscreen\?translate\(state\.locale,'fullscreenExit'\):translate\(state\.locale,'fullscreenEnter'\)\}/,'the sidebar fullscreen action reflects native fullscreen state');
  assert.match(capability,/core:window:allow-is-fullscreen/);assert.match(capability,/core:window:allow-set-fullscreen/);
 });
 
