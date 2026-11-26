@@ -68,7 +68,7 @@ function Modal({title,close,children}:{title:string;close:()=>void;children:Reac
   const ref=useRef<HTMLDialogElement>(null);
   const locale=useContext(LocaleContext);
   useEffect(()=>{ref.current?.showModal();return()=>ref.current?.close()},[]);
-  return <dialog ref={ref} onCancel={close}><div className="dialog-head"><h2>{title}</h2><button onClick={close} aria-label={translate(locale,'closeDialog')}>×</button></div>{children}</dialog>;
+  return <dialog ref={ref} aria-label={title} onCancel={close}><div className="dialog-head"><h2>{title}</h2><button onClick={close} aria-label={translate(locale,'closeDialog')}>×</button></div>{children}</dialog>;
 }
 type ModalType='gallery'|'settings'|'sidebarPlugins'|'shortcuts'|'tutorial'|'create'|'rename'|'renameSaved'|'commands'|'group'|'preset'|'apps'|'appsTray'|'trayEdit'|'delete'|'course-environments'|'saveLayout'|null;
 const COURSE_ENVIRONMENT_HISTORY_KEY='still.course-environment-history.v1';

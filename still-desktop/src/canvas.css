@@ -708,4 +708,5 @@ dialog:has(.tray-editor){max-height:85dvh;overflow:auto}
 .task-status-overview h2{margin:0 0 3px;font-size:13px}.task-status-overview p{margin:0;color:var(--muted);font-size:10px;line-height:1.4}
 .task-status-filters{display:flex;flex-wrap:wrap;gap:4px}.task-status-filters button{padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--surface);font-size:9px;line-height:1.2;white-space:nowrap}.task-status-filters button[aria-pressed=true]{border-color:var(--accent);background:var(--tint);color:var(--accent)}
 .canvas-empty.task-status-empty{pointer-events:auto;display:grid;gap:8px;place-items:center}.task-status-empty p{margin:0}.task-status-empty button{pointer-events:auto}
-.focus-mode-exit{position:fixed;top:12px;right:18px;z-index:10000}
+.focus-mode .focus-mode-exit{position:fixed;top:12px;right:18px;z-index:10000}
+.focus-mode .workbench-shortcuts,.focus-mode .topbar .sidebar-toggle{display:none}

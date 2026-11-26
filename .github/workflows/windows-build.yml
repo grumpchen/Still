@@ -37,11 +37,13 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: stable
+          cache: false
 
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: still-desktop/src-tauri -> target
           shared-key: still-workbench-windows
+          cache-on-failure: true
 
       - name: Install frontend dependencies
         working-directory: still-desktop
