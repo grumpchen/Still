@@ -1,0 +1,109 @@
+{
+  "commit": "f8ad35700891ae19ce27fb72f13757ac0e377adb",
+  "environment": "Linux Chromium 156 headless, software GPU, 1440x1000",
+  "method": "Final production build; same six-reload/DOM-click/two-animation-frame harness as main-performance.json. No other browser test was running. Default is a fresh profile; legacy reloads the unchanged main initial profile with explicit Liquid Glass. Browser automation wall clock, not native Windows startup or responsiveness.",
+  "runs": {
+    "default": {
+      "samples": [
+        {
+          "startup": 402.99560699999995,
+          "switches": [
+            193.9485770000001,
+            56.65101400000003
+          ]
+        },
+        {
+          "startup": 88.33210899999995,
+          "switches": [
+            177.33457700000008,
+            77.50814500000001
+          ]
+        },
+        {
+          "startup": 74.80909599999995,
+          "switches": [
+            160.79506100000003,
+            81.05131099999971
+          ]
+        },
+        {
+          "startup": 70.62912499999993,
+          "switches": [
+            190.0969530000002,
+            76.67774799999961
+          ]
+        },
+        {
+          "startup": 102.79903000000013,
+          "switches": [
+            176.22307899999987,
+            89.707762
+          ]
+        },
+        {
+          "startup": 87.8489099999997,
+          "switches": [
+            145.04034300000012,
+            77.39357000000018
+          ]
+        }
+      ],
+      "medianMs": {
+        "startup": 88.09050949999983,
+        "study": 176.77882799999998,
+        "dashboard": 77.4508575000001
+      }
+    },
+    "legacy": {
+      "samples": [
+        {
+          "startup": 600.894883,
+          "switches": [
+            436.65942800000016,
+            201.54702199999997
+          ]
+        },
+        {
+          "startup": 108.87910299999999,
+          "switches": [
+            807.897273,
+            200.01898800000026
+          ]
+        },
+        {
+          "startup": 450.9223790000001,
+          "switches": [
+            392.37577599999986,
+            141.06188199999997
+          ]
+        },
+        {
+          "startup": 268.7542089999997,
+          "switches": [
+            546.3142849999999,
+            254.0608199999997
+          ]
+        },
+        {
+          "startup": 396.6622130000005,
+          "switches": [
+            376.4158379999999,
+            174.74673600000006
+          ]
+        },
+        {
+          "startup": 248.15547999999944,
+          "switches": [
+            517.2957489999999,
+            183.55747599999995
+          ]
+        }
+      ],
+      "medianMs": {
+        "startup": 332.7082110000001,
+        "study": 476.9775885,
+        "dashboard": 191.7882320000001
+      }
+    }
+  }
+}
