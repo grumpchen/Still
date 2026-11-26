@@ -29,7 +29,7 @@ test('saved links create a course-local collection and support rename, URL edit,
 });
 
 test('browser saved link actions mutate only the specified widget shortcut list',()=>{
- const state=createInitialState(),course=createWorkspace('Course A',['group']),widget=course.widgets.find(item=>item.type==='group');widget.shortcuts=[{id:'web-1',name:'Lecture',url:'https://example.edu/lecture',icon:'L'}];state.workspaces.push(course);
+ const state=createInitialState(),course=createWorkspace('Course A',['group']),widget=course.widgets.find(item=>item.type==='group');widget.type='browser';widget.shortcuts=[{id:'web-1',name:'Lecture',url:'https://example.edu/lecture',icon:'L'}];state.workspaces.push(course);
  const origin={kind:'browser',workspaceId:course.id,widgetId:widget.id};
  const renamed=applyCollectionAction(state,{type:'link.rename',origin,linkId:'web-1',name:'Week 2'});
  const owner=renamed.state.workspaces.find(item=>item.id===course.id);
@@ -37,6 +37,8 @@ test('browser saved link actions mutate only the specified widget shortcut list'
  assert.deepEqual(owner.groups,course.groups);
  const deleted=applyCollectionAction(renamed.state,{type:'link.delete',origin,linkId:'web-1'});
  assert.equal(deleted.state.workspaces.find(item=>item.id===course.id).widgets.find(item=>item.id===widget.id).shortcuts.length,0);
+ const unrelated=createWorkspace('Course B',['notes']),note=unrelated.widgets.find(item=>item.type==='notes');note.shortcuts=[{id:'web-2',name:'Nope',url:'https://example.edu/nope',icon:'N'}];state.workspaces.push(unrelated);
+ assert.throws(()=>applyCollectionAction(state,{type:'link.delete',origin:{kind:'browser',workspaceId:unrelated.id,widgetId:note.id},linkId:'web-2'}));
 });
 
 test('file annotations update the source Files widget and never leak to another workspace root',()=>{

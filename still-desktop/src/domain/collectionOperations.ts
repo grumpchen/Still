@@ -19,15 +19,16 @@ export type CollectionOperationRequest=
  |{type:'file.editText';widgetId:string;path:string;text:string;expectedText:string}
  |{type:'note.quickCapture';workspaceId:string;notesWidgetId?:string;title:string;text:string};
 export type CollectionOperationContext={source:'manual'|'assistant'|'automation';idempotencyKey?:string};
-export type CollectionOperationResource={kind:'link';origin:CollectionLinkOrigin;linkId:string}|{kind:'note';workspaceId:string;widgetId:string;documentId:string};
+export type CollectionOperationResource={kind:'link';origin:CollectionLinkOrigin;linkId:string;name:string;url:string}|{kind:'note';workspaceId:string;widgetId:string;documentId:string;name:string}|{kind:'file';workspaceId:string;widgetId:string;name:string;sourceId:string};
 export type CollectionOperationResult={status:'succeeded'|'failed'|'needs_clarification'|'outcome_unknown';changed:boolean;summary:string;receiptId?:string;resource?:CollectionOperationResource};
 export interface CollectionActionResult {state:WorkspaceState;changed:boolean;summary:string;resource?:CollectionOperationResource}
 
 const validRelativePath=(path:string)=>!!path&&path.length<=1000&&!path.startsWith('/')&&!/^[a-z]:/i.test(path)&&!path.split(/[\\/]/).some(part=>!part||part==='.'||part==='..');
 function findGroup(state:WorkspaceState,workspaceId:string,groupId:string){const workspace=state.workspaces.find(item=>item.id===workspaceId);return{workspace,group:workspace?.groups.find(item=>item.id===groupId)}}
+function isBrowserShortcutWidget(workspace:WorkspaceState['workspaces'][number]|undefined,widgetId:string){const widget=workspace?.widgets.find(item=>item.id===widgetId);if(!workspace||!widget)return false;const kind=String(widget.type);return kind==='browser'||kind==='group'&&!workspace.groups.some(group=>group.id===(widget.groupId??widget.id))}
 function findLink(state:WorkspaceState,origin:CollectionLinkOrigin,linkId:string){
  const workspace=state.workspaces.find(item=>item.id===origin.workspaceId);if(origin.kind==='group'){const group=workspace?.groups.find(item=>item.id===origin.groupId);return{workspace,group,widget:undefined,link:group?.shortcuts.find(item=>item.id===linkId)}}
- const widget=workspace?.widgets.find(item=>item.id===origin.widgetId&&item.type==='group');return{workspace,group:undefined,widget,link:widget?.shortcuts.find(item=>item.id===linkId)};
+ const widget=workspace?.widgets.find(item=>item.id===origin.widgetId&&isBrowserShortcutWidget(workspace,item.id));return{workspace,group:undefined,widget,link:widget?.shortcuts.find(item=>item.id===linkId)};
 }
 function editOrigin(workspace:WorkspaceState['workspaces'][number],origin:CollectionLinkOrigin,linkId:string,change:(links:import('./webShortcuts.ts').WebShortcut[])=>import('./webShortcuts.ts').WebShortcut[]){
  return origin.kind==='group'?{...workspace,groups:workspace.groups.map(group=>group.id===origin.groupId?{...group,shortcuts:change(group.shortcuts)}:group)}:{...workspace,widgets:workspace.widgets.map(widget=>widget.id===origin.widgetId?{...widget,shortcuts:change(widget.shortcuts)}:widget)};
@@ -41,11 +42,11 @@ export function applyCollectionAction(state:WorkspaceState,action:CollectionOper
   const createdGroup:SavedGroup|undefined=targetGroup?undefined:{id:crypto.randomUUID(),name:state.locale==='zh-CN'?'收藏':'Saved links',shortcuts:[],widgets:[],expanded:false};
   const group=targetGroup??createdGroup!;
   const value=shortcut({name:action.name,url:action.url});
-  return{state:{...state,workspaces:state.workspaces.map(workspace=>workspace.id!==action.workspaceId?workspace:{...workspace,groups:targetGroup?workspace.groups.map(item=>item.id!==group.id?item:{...item,shortcuts:[...item.shortcuts,value]}):[...workspace.groups,{...group,shortcuts:[...group.shortcuts,value]}]})},changed:true,summary:`Saved ${value.name} in ${targetWorkspace.name} / ${group.name||'Group'}.`,resource:{kind:'link',origin:{kind:'group',workspaceId:action.workspaceId,groupId:group.id},linkId:value.id}};
+  return{state:{...state,workspaces:state.workspaces.map(workspace=>workspace.id!==action.workspaceId?workspace:{...workspace,groups:targetGroup?workspace.groups.map(item=>item.id!==group.id?item:{...item,shortcuts:[...item.shortcuts,value]}):[...workspace.groups,{...group,shortcuts:[...group.shortcuts,value]}]})},changed:true,summary:`Saved ${value.name} in ${targetWorkspace.name} / ${group.name||'Group'}.`,resource:{kind:'link',origin:{kind:'group',workspaceId:action.workspaceId,groupId:group.id},linkId:value.id,name:value.name,url:value.url}};
  }
  if(action.type==='link.rename'||action.type==='link.editUrl'||action.type==='link.move'||action.type==='link.delete'){
   const source=findLink(state,action.origin,action.linkId),link=source.link;
-  if(!source.workspace||!link||action.origin.kind==='group'&&!source.group||action.origin.kind==='browser'&&!source.widget)throw new Error('The saved link changed or is no longer available.');
+  if(!source.workspace||!link||action.origin.kind==='group'&&!source.group||action.origin.kind==='browser'&&(!source.widget||!isBrowserShortcutWidget(source.workspace,source.widget.id)))throw new Error('The saved link changed or is no longer available.');
   if(action.type==='link.rename'){
    const value=shortcut({...link,name:action.name});
    return{state:{...state,workspaces:state.workspaces.map(workspace=>workspace.id!==action.origin.workspaceId?workspace:editOrigin(workspace,action.origin,action.linkId,items=>items.map(item=>item.id===action.linkId?value:item)))},changed:value.name!==link.name,summary:`Renamed saved link to ${value.name}.`};
@@ -81,7 +82,7 @@ export function applyCollectionAction(state:WorkspaceState,action:CollectionOper
  if(action.notesWidgetId&&!notes)throw new Error('The selected Notes widget is no longer available.');
  if(notes&&notes.type==='notes'&&notes.noteDocuments.length>=NOTE_DOCUMENT_LIMIT)throw new Error('This Notes widget has reached its open note limit.');
  const document=createNoteDocument(title);document.text=action.text;
- if(!notes){notes=createWidget('notes');notes.placement=nextPlacement('notes',workspace.widgets);notes.noteDocuments=[document];notes.activeNoteDocumentId=document.id;notes.text=document.text;return{state:{...state,workspaces:state.workspaces.map(item=>item.id!==workspace.id?item:{...item,widgets:[...item.widgets,notes!]})},changed:true,summary:`Created Notes and saved “${title}” to ${workspace.name}.`,resource:{kind:'note',workspaceId:workspace.id,widgetId:notes.id,documentId:document.id}}}
+ if(!notes){notes=createWidget('notes');notes.placement=nextPlacement('notes',workspace.widgets);notes.noteDocuments=[document];notes.activeNoteDocumentId=document.id;notes.text=document.text;return{state:{...state,workspaces:state.workspaces.map(item=>item.id!==workspace.id?item:{...item,widgets:[...item.widgets,notes!]})},changed:true,summary:`Created Notes and saved “${title}” to ${workspace.name}.`,resource:{kind:'note',workspaceId:workspace.id,widgetId:notes.id,documentId:document.id,name:title}}}
  const noteDocuments=checkedNoteDocuments([...notes.noteDocuments,document],document);
- return{state:{...state,workspaces:state.workspaces.map(item=>item.id!==workspace.id?item:{...item,widgets:item.widgets.map(widget=>widget.id!==notes!.id?widget:{...widget,noteDocuments,activeNoteDocumentId:document.id,text:document.text})})},changed:true,summary:`Saved “${title}” to ${workspace.name}.`,resource:{kind:'note',workspaceId:workspace.id,widgetId:notes.id,documentId:document.id}};
+ return{state:{...state,workspaces:state.workspaces.map(item=>item.id!==workspace.id?item:{...item,widgets:item.widgets.map(widget=>widget.id!==notes!.id?widget:{...widget,noteDocuments,activeNoteDocumentId:document.id,text:document.text})})},changed:true,summary:`Saved “${title}” to ${workspace.name}.`,resource:{kind:'note',workspaceId:workspace.id,widgetId:notes.id,documentId:document.id,name:title}};
 }

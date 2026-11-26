@@ -1,35 +1,33 @@
 import {useEffect,useRef,useState} from 'react';
 import type {Workspace} from './domain/workspaces.ts';
 import {executeCollectionOperation} from './platform/collectionOperations.ts';
+import type {CollectionOperationResource} from './domain/collectionOperations.ts';
 import {localDocuments,previewFileDrop,type DroppedResource} from './platform/resourceDrop.ts';
 import {useLocale} from './localization.tsx';
 
-type Props={open:boolean;workspaces:Workspace[];onClose:()=>void;onSaved?:(message:string)=>void;onSavePdf:(workspaceId:string,file:DroppedResource)=>Promise<{widgetId:string;name:string}>};
+type Props={open:boolean;workspaces:Workspace[];onClose:()=>void;onSaved?:(message:string)=>void;onCaptureSaved?:(captureId:string,resource:CollectionOperationResource)=>void|Promise<void>;onSavePdf:(workspaceId:string,file:DroppedResource,captureId:string)=>Promise<{widgetId:string;name:string}>};
 type Mode='link'|'idea'|'pdf';
 const copy=(zh:boolean,en:string,cn:string)=>zh?cn:en;
 /** A reusable capture dialog. No destination is preselected: each capture is assigned to a course explicitly. */
-export default function QuickCapture({open,workspaces,onClose,onSaved,onSavePdf}:Props){
- const zh=useLocale()==='zh-CN',picker=useRef<HTMLInputElement>(null),[mode,setMode]=useState<Mode>('idea'),[workspaceId,setWorkspaceId]=useState(''),[targetId,setTargetId]=useState(''),[name,setName]=useState(''),[url,setUrl]=useState(''),[text,setText]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
- const courses=workspaces.filter(item=>item.role!=='library'),course=courses.find(item=>item.id===workspaceId);
- useEffect(()=>{if(open){setWorkspaceId('');setTargetId('');setName('');setUrl('');setText('');setError('');setMode('idea')}},[open]);
+export default function QuickCapture({open,workspaces,onClose,onSaved,onCaptureSaved,onSavePdf}:Props){
+ const zh=useLocale()==='zh-CN',picker=useRef<HTMLInputElement>(null),captureId=useRef(''),[mode,setMode]=useState<Mode>('idea'),[workspaceId,setWorkspaceId]=useState(''),[targetId,setTargetId]=useState(''),[name,setName]=useState(''),[url,setUrl]=useState(''),[text,setText]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
+ const courses=workspaces.filter(item=>item.role==='study'||item.role==='custom'),course=courses.find(item=>item.id===workspaceId);
+ useEffect(()=>{if(open){captureId.current=crypto.randomUUID();setWorkspaceId('');setTargetId('');setName('');setUrl('');setText('');setError('');setMode('idea')}},[open]);
  async function save(){setError('');if(!workspaceId){setError(copy(zh,'Choose a course first.','请先选择课程。'));return}setBusy(true);try{
   if(mode==='idea'){
-   const result=await executeCollectionOperation({type:'note.quickCapture',workspaceId,title:name||copy(zh,'Quick capture','快速收集'),text},{source:'manual'});if(result.status!=='succeeded')throw new Error(result.summary);onSaved?.(result.summary);
+   const result=await executeCollectionOperation({type:'note.quickCapture',workspaceId,title:name||copy(zh,'Quick capture','快速收集'),text},{source:'manual',idempotencyKey:`capture:${captureId.current}`});if(result.status!=='succeeded'||result.resource?.kind!=='note')throw new Error(result.summary);await onCaptureSaved?.(captureId.current,result.resource);onSaved?.(result.summary);
   }else if(mode==='link'){
-   const result=await executeCollectionOperation({type:'link.create',workspaceId,name,url},{source:'manual'});if(result.status!=='succeeded')throw new Error(result.summary);onSaved?.(result.summary);
+   const result=await executeCollectionOperation({type:'link.create',workspaceId,name,url},{source:'manual',idempotencyKey:`capture:${captureId.current}`});if(result.status!=='succeeded'||result.resource?.kind!=='link')throw new Error(result.summary);await onCaptureSaved?.(captureId.current,result.resource);onSaved?.(result.summary);
   }else{
-   if(!picker.current){throw new Error(copy(zh,'Choose a PDF file.','请选择 PDF 文件。'))}
-   picker.current.click();setBusy(false);return;
+   if(localDocuments.native){setBusy(true);try{const entry=await localDocuments.choose();if(!entry||entry.kind!=='pdf'||!entry.sourceId)throw new Error(copy(zh,'Choose a PDF document.','请选择 PDF 文档。'));await completePdf(entry)}catch(reason){setError(reason instanceof Error?reason.message:String(reason))}finally{setBusy(false)}return}
+   if(!picker.current)throw new Error(copy(zh,'Choose a PDF file.','请选择 PDF 文件。'));picker.current.click();setBusy(false);return;
   }
   onClose();
  }catch(reason){setError(reason instanceof Error?reason.message:String(reason))}finally{setBusy(false)}}
- async function acceptPdf(file:File){setError('');if(!workspaceId){setError(copy(zh,'Choose a course first.','请先选择课程。'));return}if(!file.name.toLowerCase().endsWith('.pdf')){setError(copy(zh,'Choose a PDF document.','请选择 PDF 文档。'));return}setBusy(true);try{
-  let entry:DroppedResource|null=null;
-  if(localDocuments.native)entry=await localDocuments.choose();
-  else{const result=previewFileDrop([file]);entry=result.entries[0]??null;if(result.errors.length)throw new Error(result.errors.join(' '))}
-  if(!entry||entry.kind!=='pdf'||!entry.sourceId)throw new Error(copy(zh,'Still could not select that PDF. Nothing was saved.','Still 无法选择此 PDF，未保存任何内容。'));
-  await onSavePdf(workspaceId,entry);onSaved?.(copy(zh,`Saved ${entry.name} to ${course?.name??'the selected course'}.`,`已将 ${entry.name} 保存到${course?.name??'所选课程'}。`));onClose();
- }catch(reason){setError(reason instanceof Error?reason.message:String(reason))}finally{setBusy(false)}}
+ async function completePdf(entry:DroppedResource){if(!workspaceId)throw new Error(copy(zh,'Choose a course first.','请先选择课程。'));if(entry.kind!=='pdf'||!entry.sourceId)throw new Error(copy(zh,'Still could not select that PDF. Nothing was saved.','Still 无法选择此 PDF，未保存任何内容。'));
+  const saved=await onSavePdf(workspaceId,entry,captureId.current),resource:CollectionOperationResource={kind:'file',workspaceId,widgetId:saved.widgetId,name:saved.name||entry.name,sourceId:entry.sourceId};await onCaptureSaved?.(captureId.current,resource);onSaved?.(copy(zh,`Saved ${entry.name} to ${course?.name??'the selected course'}.`,`已将 ${entry.name} 保存到${course?.name??'所选课程'}。`));onClose();
+ }
+ async function acceptPdf(file:File){setError('');if(!workspaceId){setError(copy(zh,'Choose a course first.','请先选择课程。'));return}if(!file.name.toLowerCase().endsWith('.pdf')){setError(copy(zh,'Choose a PDF document.','请选择 PDF 文档。'));return}setBusy(true);try{const result=previewFileDrop([file]);const entry=result.entries[0];if(result.errors.length)throw new Error(result.errors.join(' '));if(!entry)throw new Error(copy(zh,'Still could not select that PDF. Nothing was saved.','Still 无法选择此 PDF，未保存任何内容。'));await completePdf(entry)}catch(reason){setError(reason instanceof Error?reason.message:String(reason))}finally{setBusy(false)}}
  if(!open)return null;
  return <div className="quick-capture-backdrop" role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget)onClose()}}><section className="quick-capture-dialog" role="dialog" aria-modal="true" aria-labelledby="quick-capture-title">
   <header><div><span>{copy(zh,'CAPTURE','快速收集')}</span><h2 id="quick-capture-title">{copy(zh,'Save something for later','保存内容以便稍后查看')}</h2></div><button type="button" aria-label={copy(zh,'Close','关闭')} onClick={onClose}>×</button></header>
@@ -37,7 +35,7 @@ export default function QuickCapture({open,workspaces,onClose,onSaved,onSavePdf}
   <label>{copy(zh,'Course · choose for every capture','课程 · 每次收集都需选择')}<select aria-label={copy(zh,'Choose course','选择课程')} value={workspaceId} disabled={busy} onChange={event=>{setWorkspaceId(event.target.value);setTargetId('')}}><option value="">{copy(zh,'Choose a course…','选择课程…')}</option>{courses.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
   {mode==='idea'?<><label>{copy(zh,'Title','标题')}<input value={name} maxLength={60} onChange={event=>setName(event.target.value)} placeholder={copy(zh,'Quick capture','快速收集')}/></label><label>{copy(zh,'Idea','想法')}<textarea value={text} onChange={event=>setText(event.target.value)} maxLength={12000} placeholder={copy(zh,'Write a thought to keep…','写下想保存的想法…')}/></label><p className="quick-capture-disclosure">{copy(zh,'Still adds this as a note in the selected course, creating a Notes widget there if needed.','Still 会将想法保存到所选课程；如无 Notes 组件，会自动创建。')}</p></>:null}
   {mode==='link'?<><label>{copy(zh,'Link name','链接名称')}<input value={name} maxLength={60} onChange={event=>setName(event.target.value)} placeholder={copy(zh,'Name this link','为链接命名')}/></label><label>URL<input value={url} maxLength={2048} onChange={event=>setUrl(event.target.value)} placeholder="https://" inputMode="url"/></label><p className="quick-capture-disclosure">{copy(zh,'Still saves this link in the course’s Saved links Group, creating it if needed.','Still 会将链接保存到课程的“收藏”分组；如不存在，会自动创建。')}</p></>:null}
-  {mode==='pdf'?<p className="quick-capture-disclosure">{copy(zh,'Choose a PDF. Still saves an opaque local file reference in the selected course; it does not upload or copy the file.','选择 PDF。Still 会在所选课程保存本地文件的 opaque reference，不会上传或复制文件。')}</p>:null}
+  {mode==='pdf'?<p className="quick-capture-disclosure">{copy(zh,'Choose a PDF. Still saves a local file shortcut in the selected course; it does not upload or copy the file.','选择 PDF。Still 会在所选课程保存本地文件快捷方式，不会上传或复制文件。')}</p>:null}
   <input ref={picker} type="file" accept="application/pdf,.pdf" hidden onChange={event=>{const file=event.target.files?.[0];if(file)void acceptPdf(file);event.target.value=''}}/>
   {error&&<p role="alert" className="quick-capture-error">{error}</p>}<footer><button type="button" onClick={onClose} disabled={busy}>{copy(zh,'Cancel','取消')}</button><button type="button" className="primary" disabled={busy||mode==='idea'&&!text.trim()||mode==='link'&&(!name.trim()||!url.trim())} onClick={()=>void save()}>{busy?copy(zh,'Saving…','正在保存…'):mode==='pdf'?copy(zh,'Choose PDF','选择 PDF'):copy(zh,'Save','保存')}</button></footer>
  </section></div>;
