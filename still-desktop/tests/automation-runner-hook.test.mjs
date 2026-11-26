@@ -9,14 +9,14 @@ const catalog={workspaces:[{id:'w',name:'Biology'}],courses:[],layouts:[{id:'l',
 const quietRuntime={native:true,runtimeStatus:async()=>({runtimeId:'r',tickIntervalMs:15000,replayCapacity:256,latestSequence:0,lastTickScheduledAtUnixMs:null,hiddenToTray:true,trayAvailable:true,trayError:null,mainWindowVisible:false,mainWindowMinimized:true}),ticksSince:async cursor=>({runtimeId:'r',requestedAfterSequence:cursor.sequence,oldestAvailableSequence:null,latestSequence:0,ticks:[]}),subscribeTicks:async()=>()=>{},hideToTray:async()=>{}};
 
 test('root-mounted hook exposes createFromText and preserves storage on write failure',async()=>{
- const storage=new MemoryStorage();let api;function Probe(){api=useAutomationRunner({storage,getCatalog:()=>catalog,getService:()=>({execute:async()=>({status:'succeeded'})}),runtime:quietRuntime});return React.createElement('div')}
+ const storage=new MemoryStorage();let api;function Probe(){api=useAutomationRunner({storage,getCatalog:()=>catalog,getService:()=>({execute:async()=>({status:'succeeded'})}),runtime:quietRuntime,timeZone:'Pacific/Auckland'});return React.createElement('div')}
  const root=createRoot(document.createElement('div'));
  await React.act(async()=>{root.render(React.createElement(Probe))});
  await React.act(async()=>{});
  const text='Every day at 09:00 prepare Biology workspace using Lab layout';
  const needsMode=await React.act(async()=>api.createFromText(text));assert.equal(needsMode.kind,'clarification');assert.equal(needsMode.code,'layout-mode-required');
  const created=await React.act(async()=>api.createFromText(text,'replace'));
- assert.equal(created.kind,'rule');assert.equal(created.rule.action.layoutId,'l');assert.equal(created.rule.action.mode,'replace');assert.equal(created.rule.sourceText,text);assert.equal(loadAutomationState(storage).state.rules.length,1);
+ assert.equal(created.kind,'rule');assert.equal(created.rule.action.layoutId,'l');assert.equal(created.rule.action.mode,'replace');assert.equal(created.rule.trigger.timeZone,'Pacific/Auckland');assert.equal(created.rule.sourceText,text);assert.equal(loadAutomationState(storage).state.rules.length,1);
  const before=storage.getItem('still.automation-rules.v1');storage.setItem=()=>{throw new Error('disk full')};
  const failed=await React.act(async()=>api.createFromText('Every day at 10:00 prepare Biology workspace using Lab layout with append'));
  assert.equal(failed.kind,'error');assert.match(failed.message,/disk full/);assert.equal(storage.getItem('still.automation-rules.v1'),before);
@@ -41,4 +41,18 @@ test('choosing a legacy rule mode migrates once and restores only its previously
  await React.act(async()=>api.setLayoutMode('legacy-layout','append'));
  const migrated=loadAutomationState(storage).state.rules[0];assert.equal(migrated.action.mode,'append');assert.equal(migrated.requiresModeChoice,undefined);assert.equal(migrated.enabled,true);
  await React.act(async()=>root.unmount());
+});
+
+
+test('creating the same enabled rule twice returns the existing rule without a second ID',async()=>{
+ const storage=new MemoryStorage();let api;function Probe(){api=useAutomationRunner({storage,getCatalog:()=>catalog,getService:()=>({execute:async()=>({status:'succeeded'})}),runtime:quietRuntime,timeZone:'Pacific/Auckland'});return React.createElement('div')}
+ const root=createRoot(document.createElement('div'));await React.act(async()=>{root.render(React.createElement(Probe))});await React.act(async()=>{});const text='Every day at 09:00 prepare Biology workspace using Lab layout with append';
+ const first=await React.act(async()=>api.createFromText(text));const second=await React.act(async()=>api.createFromText(text));assert.equal(first.kind,'rule');assert.equal(second.kind,'rule');assert.equal(second.rule.id,first.rule.id);assert.equal(loadAutomationState(storage).state.rules.length,1);assert.equal(first.rule.trigger.timeZone,'Pacific/Auckland');
+ await React.act(async()=>root.unmount());
+});
+
+test('a terminal successful once rule deduplicates even after its receipt is pruned',async()=>{
+ const storage=new MemoryStorage();let api;const text='At 2026-11-27 09:00 prepare Biology workspace using Lab layout with append';function Probe(){api=useAutomationRunner({storage,getCatalog:()=>catalog,getService:()=>({execute:async()=>({status:'succeeded'})}),runtime:quietRuntime,timeZone:'Pacific/Auckland'});return React.createElement('div')}
+ const root=createRoot(document.createElement('div'));await React.act(async()=>{root.render(React.createElement(Probe))});await React.act(async()=>{});const first=await React.act(async()=>api.createFromText(text));assert.equal(first.kind,'rule');const completed={...first.rule,enabled:false,onceTerminal:{at:first.rule.trigger.at,status:'succeeded'}};saveAutomationState(storage,{version:2,rules:[completed],receipts:[]});
+ const repeated=await React.act(async()=>api.createFromText(text));assert.equal(repeated.kind,'rule');assert.equal(repeated.rule.id,first.rule.id);assert.equal(loadAutomationState(storage).state.rules.length,1);await React.act(async()=>root.unmount());
 });

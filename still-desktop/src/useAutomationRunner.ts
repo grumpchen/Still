@@ -21,6 +21,8 @@ export interface UseAutomationRunnerOptions {
  getService:()=>AutomationOperationService;
  getCaptureQueue?:()=>AutomationCaptureQueue|undefined;
  runtime?:AutomationRuntimePort;
+ /** Override the host's local zone in tests or managed deployments. */
+ timeZone?:string;
 }
 const initialSnapshot=(storage:AutomationStorage):AutomationRunnerSnapshot=>{
  const loaded=loadAutomationState(storage);
@@ -42,7 +44,7 @@ export function useAutomationRunner(options:UseAutomationRunnerOptions):Automati
  },[options.storage,options.runtime]);
  const refresh=useCallback(()=>{controller.current?.refresh();const loaded=loadAutomationState(latest.current.storage);if(loaded.ok)setSnapshot(value=>({...value,state:loaded.state,error:null}));else setSnapshot(value=>({...value,error:loaded.message}))},[]);
  const createFromText=useCallback(async(text:string,layoutMode?:'append'|'replace'):Promise<CreateFromTextResult>=>{
-  const catalog=latest.current.getCatalog(),parsed=parseAutomationRule(text,{catalog});
+  const catalog=latest.current.getCatalog(),timeZone=latest.current.timeZone??Intl.DateTimeFormat().resolvedOptions().timeZone??'UTC',parsed=parseAutomationRule(text,{catalog,timeZone});
   let draft:AutomationRuleDraft,id:string;
   if(parsed.kind==='rule'){
    if(parsed.rule.action.kind==='prepareWorkspaceLayout'&&!parsed.rule.action.mode)return{kind:'clarification',code:'layout-mode-required',message:'Choose append or replace before saving this layout rule.',choices:[{id:'append',label:'Append · keep current widgets'},{id:'replace',label:'Replace · replace workspace layout'}],pendingLayout:{trigger:parsed.rule.trigger,workspaceId:parsed.rule.action.workspaceId,layoutId:parsed.rule.action.layoutId}};
@@ -53,6 +55,12 @@ export function useAutomationRunner(options:UseAutomationRunnerOptions):Automati
   const current=loadAutomationState(latest.current.storage);if(!current.ok){setMutationError(current.message);return{kind:'error',message:current.message}}
   const created=createAutomationRule(draft,catalog,new Date(),id);
   if(!created.ok){setMutationError(created.message);return{kind:'clarification',message:created.message}}
+  // Repeated natural language requests must not mint another rule ID for the
+  // same behavior. In particular, a completed once rule remains a dedupe hit
+  // even if it has since been disabled or its success receipt was pruned.
+  const sameBehavior=(rule:AutomationRule)=>JSON.stringify(rule.trigger)===JSON.stringify(created.rule.trigger)&&JSON.stringify(rule.action)===JSON.stringify(created.rule.action);
+  const existing=current.state.rules.find(rule=>sameBehavior(rule)&&(rule.enabled||(rule.trigger.kind==='once'&&rule.onceTerminal?.status==='succeeded')));
+  if(existing){setMutationError(null);return{kind:'rule',rule:existing}}
   if(current.state.rules.some(rule=>rule.id===created.rule.id)){const message='A rule with this ID already exists. Try again.';setMutationError(message);return{kind:'error',message}}
   try{saveAutomationState(latest.current.storage,{...current.state,rules:[...current.state.rules,created.rule]});setMutationError(null);refresh();return{kind:'rule',rule:created.rule}}
   catch(error){const message=`Could not save automation rule: ${error instanceof Error?error.message:String(error)}`;setMutationError(message);setSnapshot(value=>({...value,error:message}));return{kind:'error',message}}
