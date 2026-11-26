@@ -9,8 +9,10 @@ const styles=readFileSync(new URL('../src/styles.css',import.meta.url),'utf8');
 test('Dashboard routes to a fixed study page with a distinct responsive layout',()=>{
  assert.match(app,/w\.role==='dashboard'\?<DashboardHome[\s\S]*?w\.role==='library'\?<LibraryHome[\s\S]*?<WorkspaceCanvas/,'the fixed Dashboard and Library use page components while normal workspaces use the canvas');
  assert.match(dashboard,/className="dashboard-home"[\s\S]*?className="dashboard-grid"/);
- for(const module of ['calendar','focus','timetable','library'])assert.match(dashboard,new RegExp(`dashboard-${module}-module`),`${module} has a fixed Dashboard section`);
- assert.doesNotMatch(dashboard,/WorkspaceCanvas|canvas-card|draggable=/,'Dashboard modules are not rendered as movable canvas cards');
+ assert.match(dashboard,/className=\{'dashboard-module dashboard-'\+widget\.type\+'-module'/,'Dashboard modules render from the selected widget instances');
+ assert.match(dashboard,/draggable=\{editing\}/,'Dashboard widgets move only while editing');
+ assert.match(dashboard,/widgetTypes\.filter\(type=>type!=='group'\)/,'the Dashboard editor can add supported widget types');
+ assert.match(dashboard,/widgetRegistry\[widget\.type\]\.component/,'Dashboard can render each supported widget component');
 
  const dashboardStyles=styles.slice(styles.indexOf('/* Dashboard is a fixed study page'));
  assert.match(dashboardStyles,/\.dashboard-grid\{grid-template-columns:[^}]*grid-template-areas:"calendar focus" "timetable library"/,'the Dashboard uses its own structured study layout');
