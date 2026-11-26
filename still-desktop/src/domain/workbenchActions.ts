@@ -18,6 +18,9 @@ export type WorkbenchAction =
  | {operation:'link.move';origin:LinkOrigin;linkId:string;destinationWorkspaceId:string;destinationGroupId?:string}
  | {operation:'link.delete';origin:LinkOrigin;linkId:string}
  | {operation:'file.annotation';widgetId:string;path:string;text:string}
+ | {operation:'file.moveReference';widgetId:string;destinationWorkspaceId:string}
+ | {operation:'file.renameReference';widgetId:string;name:string}
+ | {operation:'file.deleteReference';widgetId:string}
  | {operation:'file.rename';widgetId:string;path:string;name:string}
  | {operation:'file.move';widgetId:string;path:string;destinationFolder:string}
  | {operation:'file.delete';widgetId:string;path:string}
@@ -85,6 +88,9 @@ function parseOne(raw:unknown):WorkbenchAction{
   case 'link.move':fields(raw,['operation','origin','linkId','destinationWorkspaceId'],['destinationGroupId']);return{operation:raw.operation,origin:origin(raw.origin),linkId:id(raw.linkId),destinationWorkspaceId:id(raw.destinationWorkspaceId),...(raw.destinationGroupId!==undefined?{destinationGroupId:id(raw.destinationGroupId)}:{})};
   case 'link.delete':fields(raw,['operation','origin','linkId']);return{operation:raw.operation,origin:origin(raw.origin),linkId:id(raw.linkId)};
   case 'file.annotation':fields(raw,['operation','widgetId','path','text']);return{operation:raw.operation,widgetId:id(raw.widgetId),path:relativePath(raw.path),text:content(raw.text,4000,true)};
+  case 'file.moveReference':fields(raw,['operation','widgetId','destinationWorkspaceId']);return{operation:raw.operation,widgetId:id(raw.widgetId),destinationWorkspaceId:id(raw.destinationWorkspaceId)};
+  case 'file.renameReference':fields(raw,['operation','widgetId','name']);return{operation:raw.operation,widgetId:id(raw.widgetId),name:text(raw.name,1,60)};
+  case 'file.deleteReference':fields(raw,['operation','widgetId']);return{operation:raw.operation,widgetId:id(raw.widgetId)};
   case 'file.rename':fields(raw,['operation','widgetId','path','name']);return{operation:raw.operation,widgetId:id(raw.widgetId),path:relativePath(raw.path),name:fileName(raw.name)};
   case 'file.move':fields(raw,['operation','widgetId','path','destinationFolder']);return{operation:raw.operation,widgetId:id(raw.widgetId),path:relativePath(raw.path),destinationFolder:relativePath(raw.destinationFolder,true)};
   case 'file.delete':fields(raw,['operation','widgetId','path']);return{operation:raw.operation,widgetId:id(raw.widgetId),path:relativePath(raw.path)};

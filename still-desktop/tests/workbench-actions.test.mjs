@@ -16,6 +16,16 @@ test('workbench actions parse to the tagged canonical requests',()=>{
  assert.deepEqual(reply([link]).workbenchActions,[link]);
 });
 
+test('Files reference operations are distinct from physical disk actions',()=>{
+ const move=reply([{operation:'file.moveReference',widgetId:'files-card-1',destinationWorkspaceId:'workspace-2'}]).workbenchActions[0];
+ const rename=reply([{operation:'file.renameReference',widgetId:'files-card-2',name:'Reading list'}]).workbenchActions[0];
+ const remove=reply([{operation:'file.deleteReference',widgetId:'files-card-3'}]).workbenchActions[0];
+ assert.equal(move.destinationWorkspaceId,'workspace-2');
+ assert.equal(rename.name,'Reading list');
+ assert.equal(remove.widgetId,'files-card-3');
+ assert.throws(()=>reply([{operation:'file.deleteReference',widgetId:'files-card-3',path:'actual.pdf'}]));
+});
+
 test('query operations can batch while mutations remain singular',()=>{
  const actions=[{operation:'layout.list'},{operation:'layout.find',query:'Chemistry'},{operation:'resource.find',query:'lecture notes'}];
  assert.deepEqual(reply(actions).workbenchActions,actions);
