@@ -3,6 +3,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import './LineWaves.css';
+import {isSoftwareGraphicsRenderer} from './domain/graphicsPerformance.ts';
 
 const PIXEL_BUDGET = 2.4e6;
 const MAX_RIPPLES = 4;
@@ -293,7 +294,11 @@ const LineWaves = ({
     const shader = gl ? link(gl) : null;
     if (!gl || !shader) return;
 
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const debugRenderer = gl.getExtension('WEBGL_debug_renderer_info');
+    const rendererName = debugRenderer ? gl.getParameter(debugRenderer.UNMASKED_RENDERER_WEBGL) : '';
+    const softwareRenderer = isSoftwareGraphicsRenderer(rendererName);
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches || softwareRenderer;
+    const pixelBudget = softwareRenderer ? 700_000 : PIXEL_BUDGET;
     const vao = gl.createVertexArray();
     const size = { width: 1, height: 1, ratio: 1 };
     const pointer = { x: 0, y: 0, inside: false };
@@ -317,7 +322,7 @@ const LineWaves = ({
       const ratio = Math.min(
         window.devicePixelRatio || 1,
         s.maxRatio,
-        Math.sqrt(PIXEL_BUDGET / (cssWidth * cssHeight))
+        Math.sqrt(pixelBudget / (cssWidth * cssHeight))
       );
       const width = Math.max(1, Math.round(cssWidth * ratio));
       const height = Math.max(1, Math.round(cssHeight * ratio));
