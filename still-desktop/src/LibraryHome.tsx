@@ -26,9 +26,14 @@ interface LibraryHomeProps {
 
 interface LibrarySavedLink extends WebShortcut {workspaceId:string;workspaceName:string;groupName:string;origin?:CollectionLinkOrigin}
 type LibrarySection='files'|'links'|'search'|'inbox';
+function initialLibrarySection(workspace:Workspace,workspaces:Workspace[]):LibrarySection|'recent'{
+ if(localFiles.native)return workspace.widgets.some(widget=>widget.type==='files'&&widget.folderKey==='still-downloads-inbox')?'inbox':'files';
+ const hasPdfShortcut=workspaces.some(owner=>owner.widgets.some(widget=>widget.type==='files'&&!!widget.fileKey));return hasPdfShortcut?'files':'links';
+}
+function initialLibrarySelection(workspaces:Workspace[]):string{return localFiles.native?'':workspaces.flatMap(owner=>owner.widgets).find(widget=>widget.type==='files'&&!!widget.fileKey)?.id??''}
 
 export default function LibraryHome({workspace,workspaces,update,notify,workspaceActive,links,openLink,addFolder,addInbox,removeFolder}:LibraryHomeProps){
- const t=useT(),locale=useLocale(),[section,setSection]=useState<LibrarySection|'recent'>(()=>workspace.widgets.some(widget=>widget.type==='files'&&widget.folderKey==='still-downloads-inbox')?'inbox':'files'),[recent,setRecent]=useState<RecentLibraryFile[]>(readRecentLibraryFiles),[selectedFolderId,setSelectedFolderId]=useState(''),[searchQuery,setSearchQuery]=useState(''),[searchResults,setSearchResults]=useState<LibrarySearchResponse|null>(null),[searching,setSearching]=useState(false),[searchError,setSearchError]=useState(''),[selectedSourcesBusy,setSelectedSourcesBusy]=useState(false),[selectedSourceKeys,setSelectedSourceKeys]=useState<string[]>([]);
+ const t=useT(),locale=useLocale(),[section,setSection]=useState<LibrarySection|'recent'>(()=>initialLibrarySection(workspace,workspaces)),[recent,setRecent]=useState<RecentLibraryFile[]>(readRecentLibraryFiles),[selectedFolderId,setSelectedFolderId]=useState(()=>initialLibrarySelection(workspaces)),[searchQuery,setSearchQuery]=useState(''),[searchResults,setSearchResults]=useState<LibrarySearchResponse|null>(null),[searching,setSearching]=useState(false),[searchError,setSearchError]=useState(''),[selectedSourcesBusy,setSelectedSourcesBusy]=useState(false),[selectedSourceKeys,setSelectedSourceKeys]=useState<string[]>([]);
  const folderWidgets=workspaces.flatMap(owner=>owner.widgets.filter(widget=>widget.type==='files'&&!widget.fileKey));
  const fileReferenceWidgets=workspaces.flatMap(owner=>owner.widgets.filter(widget=>widget.type==='files'&&!!widget.fileKey));
  const browserLinks:LibrarySavedLink[]=workspaces.flatMap(owner=>owner.widgets.filter(widget=>{const kind=String(widget.type);return kind==='browser'||kind==='group'&&!owner.groups.some(group=>group.id===(widget.groupId??widget.id))}).flatMap(widget=>widget.shortcuts.map(link=>({...link,workspaceId:owner.id,workspaceName:owner.name,groupName:t('browserShortcuts'),origin:{kind:'browser' as const,workspaceId:owner.id,widgetId:widget.id}}))));
