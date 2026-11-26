@@ -37,6 +37,11 @@ jobs:
         with:
           toolchain: stable
 
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: still-desktop/src-tauri -> target
+          shared-key: still-workbench-windows
+
       - name: Install frontend dependencies
         working-directory: still-desktop
         run: pnpm install --frozen-lockfile

@@ -22,3 +22,5 @@
 ## Handoff
 - Linux cloud browser available; no interactive remote Windows environment identified. Windows native GUI acceptance remains separate from hosted Actions automation.
 - Do not count baseline failures as passing checks. Compare candidate failures with recorded names.
+- Additional unchanged-main browser baseline: `dashboard-edit-layout`, `dashboard-layouts`, `workspace-smoke` passed (3/3) in Linux Chromium; no native desktop claims.
+- Added Rust dependency caching for repeated candidate Windows builds.
