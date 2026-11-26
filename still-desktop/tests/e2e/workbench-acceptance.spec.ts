@@ -1,11 +1,12 @@
 import {readFileSync} from 'node:fs';
 import {expect,test,type Page} from '@playwright/test';
-import {createInitialState,createWorkspace} from '../../src/domain/workspaces.ts';
+import {createInitialState,createWorkspace,createGlobalWorkspaceLayout} from '../../src/domain/workspaces.ts';
 import {AUTOMATION_STORAGE_KEY} from '../../src/domain/automationRules.ts';
 
-async function fixture(page:Page){
+async function fixture(page:Page,withTemplate=false){
  const state=createInitialState(),physics=createWorkspace('Physics',['notes','files','focus']),chemistry=createWorkspace('Chemistry',['notes']);
  state.workspaces.push(physics,chemistry);
+ if(withTemplate){const notes=physics.widgets.find(w=>w.type==='notes')!;notes.noteDocuments[0].text='Prepared course material';notes.text=notes.noteDocuments[0].text;state.globalLayouts.push(createGlobalWorkspaceLayout('Ready set',physics,state))}
  await page.addInitScript(state=>{if(!sessionStorage.getItem('workbench-acceptance-seeded')){localStorage.setItem('still-workspace-v2',JSON.stringify(state));localStorage.setItem('still-first-run-tutorial-v1','done');sessionStorage.setItem('workbench-acceptance-seeded','1')}},state);
  await page.setViewportSize({width:1440,height:1000});await page.goto('/design-preview.html');
  return{state,physics,chemistry};
@@ -43,4 +44,17 @@ test('one sentence in Still AI saves a persistent rule and a real capture is fil
  await expect.poll(()=>page.evaluate(key=>JSON.parse(localStorage.getItem(key)!).receipts.some((r:any)=>r.status==='succeeded'),AUTOMATION_STORAGE_KEY)).toBe(true);
  await page.locator('.topbar').getByRole('button',{name:'Rules',exact:true}).click();let rules=page.getByRole('dialog',{name:'Rules',exact:true});await expect(rules).toContainText('succeeded');await rules.getByRole('button',{name:'Run due now',exact:true}).click();await rules.locator('.dialog-head button').click();
  await page.reload();await page.locator('.topbar').getByRole('button',{name:'Rules',exact:true}).click();rules=page.getByRole('dialog',{name:'Rules',exact:true});await rules.getByRole('button',{name:'Run due now',exact:true}).click();const s=await saved(page);expect(s.workspaces.find((w:any)=>w.id===physics.id).groups.flatMap((g:any)=>g.shortcuts).filter((l:any)=>l.name==='lecture notes')).toHaveLength(1);expect(s.workspaces.find((w:any)=>w.id===chemistry.id).groups.flatMap((g:any)=>g.shortcuts).filter((l:any)=>l.name==='lecture notes')).toHaveLength(0);
+});
+
+
+test('scheduled layout rule prepares a course automatically without changing the current workspace or firing twice',async({page})=>{
+ test.setTimeout(60000);const {state,physics,chemistry}=await fixture(page,true);const before=chemistry.widgets.length;
+ await page.locator('.dashboard-hero-actions').getByRole('button',{name:'Ask AI',exact:true}).click();const assistant=page.locator('#ai-sidebar');const at=new Date(Date.now()+1000).toISOString().slice(0,19)+'Z';await assistant.getByLabel('Message Still AI').fill(`Save a rule: at ${at} append Ready set layout to Chemistry workspace`);await assistant.getByRole('button',{name:'Send',exact:true}).click();await expect(assistant).toContainText('Saved the automation rule.');await assistant.locator('.assistant-heading button').last().click();
+ await expect.poll(async()=>{const s=await saved(page);return s.workspaces.find((w:any)=>w.id===chemistry.id).widgets.length},{timeout:22000}).toBe(before+physics.widgets.length);
+ expect((await saved(page)).activeId).toBe(state.workspaces.find(w=>w.role==='dashboard')!.id);
+ await page.locator('.topbar').getByRole('button',{name:'Rules',exact:true}).click();const rules=page.getByRole('dialog',{name:'Rules',exact:true});await expect(rules).toContainText('succeeded');await rules.getByRole('button',{name:'Run due now',exact:true}).click();await rules.locator('.dialog-head button').click();await page.reload();await expect.poll(async()=>{const s=await saved(page);return s.workspaces.find((w:any)=>w.id===chemistry.id).widgets.length}).toBe(before+physics.widgets.length);
+});
+
+test('AI layout rule with missing mode asks for append or replace before saving',async({page})=>{
+ const {chemistry}=await fixture(page,true);await page.locator('.dashboard-hero-actions').getByRole('button',{name:'Ask AI',exact:true}).click();const assistant=page.locator('#ai-sidebar');await assistant.getByLabel('Message Still AI').fill('Save a rule: Every day at 09:00 prepare Chemistry using Ready set layout');await assistant.getByRole('button',{name:'Send',exact:true}).click();const rules=page.getByRole('dialog',{name:'Rules',exact:true});await expect(rules.getByLabel('Layout application mode')).toBeVisible();expect(await page.evaluate(key=>JSON.parse(localStorage.getItem(key)||'{"rules":[]}').rules.length,AUTOMATION_STORAGE_KEY)).toBe(0);await rules.getByLabel('Layout application mode').selectOption('replace');await rules.getByRole('button',{name:'Save with selected mode',exact:true}).click();const stored=await page.evaluate(key=>JSON.parse(localStorage.getItem(key)!),AUTOMATION_STORAGE_KEY);expect(stored.rules).toHaveLength(1);expect(stored.rules[0].action).toMatchObject({kind:'prepareWorkspaceLayout',workspaceId:chemistry.id,mode:'replace'});
 });

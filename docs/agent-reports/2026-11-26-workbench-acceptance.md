@@ -24,3 +24,8 @@
 ## Handoff
 - The first acceptance attempt found an actual CSS hit-target overlap and a missing dialog name; both were fixed, rather than forcing clicks.
 - The Windows executable smoke is being rerun with process diagnostics after the first CDP endpoint startup timeout. No live tray success is claimed.
+
+## Full flow follow-up
+- Combined Linux Chromium run: all 11 targeted browser tests passed, covering recovery, Dashboard editing/focus mode, legacy preset upgrade, full templates, Library source edits, explicit course capture, actual rule filing, automatic scheduled preparation without switching the current workspace, persistence/deduplication, and missing-mode clarification before saving.
+- Independent old saved Liquid Chrome profile performance is retained in `docs/validation/legacy-profile-performance.json`; software-renderer fallback leaves the saved preference intact. These numbers are not a Windows responsiveness claim.
+- A later full frontend unit run exposed 4 stale source-shape assertions after the new native result/async flow contracts; they are being revised to preserve actual behavior checks. Windows caught concrete Rust type/trait/lifetime issues; those fixes have now been integrated and await CI.

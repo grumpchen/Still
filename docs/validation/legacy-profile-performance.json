@@ -1,0 +1,55 @@
+{
+  "profile": "Existing saved liquid-glass / liquid-chrome; preference retained",
+  "environment": "Linux Chromium 156 headless software GPU, 1440x1000",
+  "method": "Production six-run reload/Study/Dashboard double animation frame benchmark, same seeded saved state as baseline",
+  "samples": [
+    {
+      "startup": 749.536107,
+      "switches": [
+        311.7384689999999,
+        200.6810069999999
+      ]
+    },
+    {
+      "startup": 90.25727199999983,
+      "switches": [
+        725.7798990000001,
+        206.4753480000004
+      ]
+    },
+    {
+      "startup": 101.20425900000009,
+      "switches": [
+        509.0231170000002,
+        233.264541
+      ]
+    },
+    {
+      "startup": 367.96966699999984,
+      "switches": [
+        387.58158600000024,
+        183.30176400000073
+      ]
+    },
+    {
+      "startup": 487.43172500000037,
+      "switches": [
+        230.32528999999977,
+        226.27009799999996
+      ]
+    },
+    {
+      "startup": 381.57481000000007,
+      "switches": [
+        371.8990130000002,
+        213.0595629999998
+      ]
+    }
+  ],
+  "medianMs": {
+    "startup": 374.77223849999996,
+    "study": 379.7402995000002,
+    "dashboard": 209.7674555000001
+  },
+  "limitations": "Measures this cloud software renderer, not native Windows desktop responsiveness."
+}
