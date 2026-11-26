@@ -42,6 +42,27 @@ function errorText(error,depth=0){
 }
 function appendLogTail(previous,chunk){return redactDiagnostic(previous+chunk.toString()).slice(-MAX_CAPTURED_PROCESS_LOG)}
 async function sha256File(file){const hash=createHash('sha256');for await(const chunk of createReadStream(file))hash.update(chunk);return hash.digest('hex')}
+function boundedText(value,max=160){return typeof value==='string'?redactDiagnostic(value).slice(0,max):value}
+function boundedIds(value){return Array.isArray(value)?value.slice(0,20).map(id=>boundedText(String(id),100)):[]}
+function boundedWindows(value){return Array.isArray(value)?value.slice(0,20).map(({pid,parentPid,name,mainWindowHandle,mainWindowTitle,hasRemoteDebuggingPort,hasUserDataDirArgument})=>({pid,parentPid,name:boundedText(name),mainWindowHandle:boundedText(mainWindowHandle),mainWindowTitle:boundedText(mainWindowTitle),hasRemoteDebuggingPort,hasUserDataDirArgument})):[]}
+function summarizeSmokeCheck(check){
+ const details=check.details??{};
+ if(check.status!=='passed')return{name:check.name,status:check.status,error:boundedText(check.error??'check failed',1_200)};
+ switch(check.name){
+  case'candidate-executable':return{name:check.name,status:check.status,details:{sha256:details.sha256??null}};
+  case'cdp-port-free':return{name:check.name,status:check.status,details:{port:details.port,free:details.free}};
+  case'webview2-cdp-start':return{name:check.name,status:check.status,details:{browser:boundedText(details.browser),pageUrl:boundedText(details.pageUrl),pageTitle:boundedText(details.pageTitle)}};
+  case'dashboard-ui-and-fullscreen':return{name:check.name,status:check.status,details:{activeWorkspace:boundedText(details.activeWorkspace),dashboardElement:details.dashboardElement,dashboardSurfaceVisible:details.dashboardSurfaceVisible,fullscreen:details.fullscreen}};
+  case'native-runtime-status':return{name:check.name,status:check.status,details:{runtimeId:boundedText(details.runtimeId),latestSequence:details.latestSequence,tickIntervalMs:details.tickIntervalMs,trayAvailable:details.trayAvailable,trayError:boundedText(details.trayError),mainWindowVisible:details.mainWindowVisible,hiddenToTray:details.hiddenToTray}};
+  case'embedded-browser-create-navigate-close':return{name:check.name,status:check.status,details:{presentTarget:details.presentTarget?{id:boundedText(details.presentTarget.id),url:boundedText(details.presentTarget.url)}:null,navigatedTarget:details.navigatedTarget?{id:boundedText(details.navigatedTarget.id),url:boundedText(details.navigatedTarget.url)}:null,closed:details.closed}};
+  case'create-tray-layout-rule-through-ui':return{name:check.name,status:check.status,details:{ruleId:boundedText(details.ruleId),trigger:details.trigger,action:details.action,targetName:boundedText(details.targetName),beforeWidgetIds:boundedIds(details.beforeWidgetIds),savedLayout:details.savedLayout?{id:boundedText(details.savedLayout.id),name:boundedText(details.savedLayout.name),widgetTypes:boundedIds(details.savedLayout.widgetTypes)}:null,receiptCountBeforeHide:details.receiptCountBeforeHide,hiddenExecutionNotYetDue:details.hiddenExecutionNotYetDue,createdThrough:details.createdThrough}};
+  case'hidden-window-native-tick-delivery':{
+   const receipt=details.ruleExecution?.receipt??{};
+   return{name:check.name,status:check.status,details:{before:details.before,hidden:details.hidden,after:details.after,hiddenPageDelivered:boundedIds((details.hiddenPageDelivered??[]).map(tick=>`sequence:${tick.sequence}`)),ruleExecution:details.ruleExecution?{ruleId:boundedText(details.ruleExecution.ruleId),receipt:{ruleId:boundedText(receipt.ruleId),occurrenceKey:boundedText(receipt.occurrenceKey),status:receipt.status,attempts:receipt.attempts,startedAt:receipt.startedAt,updatedAt:receipt.updatedAt,operationReceiptId:boundedText(receipt.operationReceiptId),message:boundedText(receipt.message)},workspaceBeforeWidgetIds:boundedIds(details.ruleExecution.workspaceBeforeWidgetIds),workspaceAfterWidgetIds:boundedIds(details.ruleExecution.workspaceAfterWidgetIds),layoutWidgetTypes:boundedIds(details.ruleExecution.layoutWidgetTypes),workspaceWidgetTypes:boundedIds(details.ruleExecution.workspaceWidgetTypes),startedAfterHidden:details.ruleExecution.startedAfterHidden}:null,afterExecutionHidden:details.afterExecutionHidden,dedupeAfterLaterTick:details.dedupeAfterLaterTick}};
+  }
+  default:return{name:boundedText(check.name),status:check.status};
+ }
+}
 async function fetchJson(url,timeoutMs=2_500){
  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
  try{const response=await fetch(url,{signal:controller.signal});if(!response.ok)throw new Error(`${url} returned HTTP ${response.status}`);return await response.json()}
@@ -267,7 +288,7 @@ async function main(){
     return{rule,receiptCount:receipts.length,receipts,widgetIds:target?.widgets?.map(widget=>widget.id).sort()??[],widgetTypes:target?.widgets?.map(widget=>widget.type).sort()??[],beforeWidgetIds,expectedTypes};
    },smokeAutomationFixture);
    if(dedupe.rule?.onceTerminal?.status!=='succeeded'||dedupe.receiptCount!==1||JSON.stringify(dedupe.widgetTypes)!==JSON.stringify(dedupe.expectedTypes)||JSON.stringify(dedupe.widgetIds)===JSON.stringify(dedupe.beforeWidgetIds)||JSON.stringify(dedupe.widgetIds)!==JSON.stringify(applied.workspace.widgetIds))throw new Error(`The completed once rule changed again or duplicated its receipt on a later hidden tick: ${JSON.stringify(dedupe)}`);
-   return{before:{latestSequence:before.latestSequence,visible:before.mainWindowVisible},hidden:{hiddenToTray:hidden.hiddenToTray,hiddenAt,visible:hidden.mainWindowVisible},after:{latestSequence:after.latestSequence,visible:after.mainWindowVisible},hiddenPageDelivered:delivered,ruleExecution:{ruleId:smokeAutomationFixture.ruleId,receipt:applied.receipt,workspaceBeforeWidgetIds:smokeAutomationFixture.beforeWidgetIds,workspaceAfterWidgetIds:applied.workspace.widgetIds,layoutWidgetTypes:applied.layout.widgetTypes,workspaceWidgetTypes:applied.workspace.widgetTypes,startedAfterHidden:Date.parse(applied.receipt.startedAt)>=Date.parse(hiddenAt)},dedupeAfterLaterTick:{receiptCount:dedupe.receiptCount,widgetIdsUnchanged:true,terminalStatus:dedupe.rule.onceTerminal.status}};
+   return{before:{latestSequence:before.latestSequence,visible:before.mainWindowVisible},hidden:{hiddenToTray:hidden.hiddenToTray,hiddenAt,visible:hidden.mainWindowVisible},after:{latestSequence:after.latestSequence,visible:after.mainWindowVisible},hiddenPageDelivered:delivered,ruleExecution:{ruleId:smokeAutomationFixture.ruleId,receipt:applied.receipt,workspaceBeforeWidgetIds:smokeAutomationFixture.beforeWidgetIds,workspaceAfterWidgetIds:applied.workspace.widgetIds,layoutWidgetTypes:applied.layout.widgetTypes,workspaceWidgetTypes:applied.workspace.widgetTypes,startedAfterHidden:Date.parse(applied.receipt.startedAt)>=Date.parse(hiddenAt)},afterExecutionHidden:{latestSequence:appliedRuntimeStatus.latestSequence,hiddenToTray:appliedRuntimeStatus.hiddenToTray,mainWindowVisible:appliedRuntimeStatus.mainWindowVisible},dedupeAfterLaterTick:{receiptCount:dedupe.receiptCount,widgetIdsUnchanged:true,terminalStatus:dedupe.rule.onceTerminal.status}};
   });
  }catch(error){
   failed=true;failure={check:currentCheck,error:errorText(error)};
@@ -285,7 +306,7 @@ async function main(){
   report.finishedAt=new Date().toISOString();report.result=failed?'failed':'passed';report.failure=failure;
   await mkdir(options.artifactDir,{recursive:true});await writeFile(reportPath,JSON.stringify(report,null,2)+'\n','utf8');
   console.log(`Smoke report: ${reportPath}`);if(report.artifacts.screenshot)console.log(`Screenshot: ${report.artifacts.screenshot}`);
-  console.log('Windows smoke diagnostic summary:\n'+JSON.stringify({result:report.result,failure:report.failure,cdp:{port:report.cdp.port,lastProbeError:report.cdp.lastProbeError,lastConnectError:report.cdp.lastConnectError},process:{pid:report.process.pid,exitCode:report.process.exitCode,spawnError:report.process.spawnError,windows:report.process.windows,windowsDiagnosticError:report.process.windowsDiagnosticError,stdoutTail:report.process.stdoutTail.slice(-1800),stderrTail:report.process.stderrTail.slice(-1800)}},null,2));
+  console.log('Windows smoke diagnostic summary:\n'+JSON.stringify({result:report.result,candidateSha256:report.candidate.sha256,failure:report.failure?{check:boundedText(report.failure.check),error:boundedText(report.failure.error,1_200)}:null,checks:report.checks.map(summarizeSmokeCheck),cdp:{port:report.cdp.port,browser:boundedText(report.cdp.browser),lastProbeError:report.cdp.lastProbeError?boundedText(report.cdp.lastProbeError,600):null,lastConnectError:report.cdp.lastConnectError?boundedText(report.cdp.lastConnectError,600):null},process:{pid:report.process.pid,exitCode:report.process.exitCode,spawnError:report.process.spawnError?boundedText(report.process.spawnError,500):null,windows:boundedWindows(report.process.windows),windowsDiagnosticError:report.process.windowsDiagnosticError?boundedText(report.process.windowsDiagnosticError,500):null}},null,2));
  }
  if(failed)process.exitCode=1;
 }
