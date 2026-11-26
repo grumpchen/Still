@@ -76,7 +76,7 @@ pub(crate) struct FileMoveResult { source_path:String, destination_path:String }
 #[derive(Deserialize)]
 #[serde(tag="type",rename_all="camelCase")]
 pub(crate) enum ManagedFileAction { Rename{name:String},Move{destination_folder:String},Delete,EditText{text:String,expected_text:String} }
-#[derive(Serialize)]
+#[derive(Debug,Serialize)]
 #[serde(rename_all="camelCase")]
 pub(crate) struct ManagedFileResult { action:String,source_path:String,destination_path:String }
 #[derive(Serialize)]
