@@ -38,3 +38,9 @@
 - Persistence is upgraded to envelope/rule version 2. The reader falls back to the v1 storage key, migrates legacy no-mode layout rules disabled, and marks them as requiring a choice. Choosing a mode restores the prior enabled intent and writes the migrated record to v2; previously-disabled rules remain disabled.
 - No default replace is introduced. Validation now includes legacy migration, mode choice, preserved sentence, no-mode clarification, and application of a layout saved in another workspace.
 - Follow-up checks: 17 focused tests, `pnpm check`, and `pnpm build` passed (Vite large-chunk advisory only).
+
+## Local time and duplicate rule follow-up
+- `createFromText` now parses scheduled phrases in the host's resolved local time zone, with an injectable `timeZone` option for tests/managed hosts; parser errors remain explicit if the zone is invalid.
+- Repeating the same normalized trigger + action returns the existing enabled rule instead of creating a second rule ID. A completed one-time rule remains a dedupe hit using its durable `onceTerminal` marker even after receipt pruning.
+- Hook tests cover a non-UTC injected zone, duplicate creation, and completed once-rule deduplication after its receipt is absent.
+- Follow-up checks: hook suite — 5 tests passed; `pnpm check` and `git diff --check` passed.
