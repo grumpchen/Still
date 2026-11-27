@@ -46,6 +46,9 @@ export async function executeCollectionOperation(action:CollectionOperationReque
    if(action.type==='file.delete')forgetRecentLibraryFiles(new Set([action.widgetId]),sourcePath);else remapRecentLibraryFiles(new Set([action.widgetId]),sourcePath,destinationPath);
    window.dispatchEvent(new CustomEvent('still-files-resource-moved',{detail:{widgetId:action.widgetId,sourcePath,destinationPath,removedFolder:action.type==='file.delete'}}));
    }
+   if(action.type==='file.createText'){
+    window.dispatchEvent(new CustomEvent('still-files-resource-created',{detail:{widgetId:action.widgetId}}));
+   }
    const summary=action.type==='file.delete'?`Deleted ${sourcePath} from the connected folder.`:action.type==='file.editText'?`Saved changes to ${sourcePath}.`:action.type==='file.createText'?`Created ${receipt.destinationPath} in the connected folder.`:action.type==='file.rename'?`Renamed ${sourcePath} to ${receipt.destinationPath}.`:`Moved ${sourcePath} to ${receipt.destinationPath}.`;
    result={status:'succeeded',changed:true,summary,receiptId:key};
    try{writeJournal([...readJournal().filter(item=>item.key!==key),{key,state:'complete',result}])}catch{return{status:'outcome_unknown',changed:true,summary:'The file operation completed, but Still could not save its receipt. Check the Library before retrying.',receiptId:key}}

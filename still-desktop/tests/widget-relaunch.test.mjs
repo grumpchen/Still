@@ -240,11 +240,19 @@ test('Clock add-on button follows global and tag-color visibility settings',asyn
  try{assert.equal(override.window.document.querySelector('[data-widget-id="clock-red"] .widget-clock-control'),null);assert.ok(override.window.document.querySelector('[data-widget-id="clock-blue"] .widget-clock-control'))}finally{await override.cleanup()}
 });
 
-test('every workspace widget, including a minimized card, exposes Relaunch',async()=>{
+test('widget context menus replace the relaunch arrows',async()=>{
  const widgets=types.map((type,index)=>{const widget=createWidget(type);widget.id=`widget-${type}`;widget.title=type;return index===3?minimizeWidgetInstance(widget,1400,900):widget});
  const app=await setup(widgets);
  try{
-  for(const widget of widgets)assert.ok(app.window.document.querySelector(`[data-widget-id="${widget.id}"] [aria-label="Relaunch ${widget.title}"]`),`${widget.type} card has a Relaunch control`);
+  for(const widget of widgets){
+   const card=app.window.document.querySelector(`[data-widget-id="${widget.id}"]`);
+   assert.equal(card.querySelector('.widget-relaunch-control,.widget-minimized-relaunch'),null);
+   await act(async()=>card.dispatchEvent(new app.window.MouseEvent('contextmenu',{bubbles:true,cancelable:true,button:2})));
+   const menu=app.window.document.querySelector(`[role="menu"][aria-label="${widget.title}"]`);
+   assert.ok(menu,`${widget.type} has its own menu`);
+   assert.equal(app.window.document.querySelector('.add-tool-context-menu[aria-label="Add widget"]'),null);
+   assert.match(menu.textContent,widget.minimized?/Restore/:/Relaunch/);
+  }
  }finally{await app.cleanup()}
 });
 
@@ -273,7 +281,7 @@ test('Clock is added from a widget plus menu and opens its floating timer from t
  }finally{await app.cleanup()}
 });
 
-test('Relaunch and Export PNG controls can be hidden independently without removing manual startup recovery',async()=>{
+test('widget headers omit relaunch while Export PNG and manual startup recovery remain available',async()=>{
  const note=createWidget('notes');note.id='button-note';note.title='Button note';
  const minimized=minimizeWidgetInstance({...createWidget('focus'),id:'minimized-focus',title:'Minimized focus'},1400,900);
  const hidden=await setup([note,minimized],{showWidgetRelaunchAction:false,showWidgetExportPngAction:false,startupDeferredIds:new Set(['button-note'])});
@@ -285,8 +293,8 @@ test('Relaunch and Export PNG controls can be hidden independently without remov
  }finally{await hidden.cleanup()}
  const onlyExport=await setup([note],{showWidgetRelaunchAction:false,showWidgetExportPngAction:true});
  try{assert.ok(onlyExport.window.document.querySelector('[data-widget-id="button-note"] .widget-export-control'),'PNG export can remain visible while Relaunch is hidden')}finally{await onlyExport.cleanup()}
- const onlyRelaunch=await setup([note],{showWidgetRelaunchAction:true,showWidgetExportPngAction:false});
- try{assert.ok(onlyRelaunch.window.document.querySelector('[aria-label="Relaunch Button note"]'),'Relaunch can remain visible while PNG export is hidden');assert.equal(onlyRelaunch.window.document.querySelector('[data-widget-id="button-note"] .widget-export-control'),null)}finally{await onlyRelaunch.cleanup()}
+ const noArrow=await setup([note],{showWidgetRelaunchAction:true,showWidgetExportPngAction:false});
+ try{assert.equal(noArrow.window.document.querySelector('[aria-label="Relaunch Button note"]'),null);assert.equal(noArrow.window.document.querySelector('[data-widget-id="button-note"] .widget-export-control'),null)}finally{await noArrow.cleanup()}
 });
 
 test('Relaunch remounts an ordinary widget view while preserving its saved content',async()=>{
@@ -294,7 +302,9 @@ test('Relaunch remounts an ordinary widget view while preserving its saved conte
  const app=await setup([note]);
  try{
   const before=app.window.document.querySelector('.note');assert.ok(before);assert.equal(before.value,'Keep this saved text');
-  const relaunch=app.window.document.querySelector('[aria-label="Relaunch Quick note"]');assert.ok(relaunch);
+  const card=app.window.document.querySelector('[data-widget-id="saved-note"]');
+  await act(async()=>card.dispatchEvent(new app.window.MouseEvent('contextmenu',{bubbles:true,cancelable:true,button:2})));
+  const relaunch=[...app.window.document.querySelectorAll('[role="menuitem"]')].find(item=>item.textContent==='Relaunch Quick note');assert.ok(relaunch);
   await act(async()=>relaunch.dispatchEvent(new app.window.MouseEvent('click',{bubbles:true})));
   const after=app.window.document.querySelector('.note');assert.ok(after);assert.notEqual(after,before,'the widget view is remounted');
   assert.equal(after.value,'Keep this saved text','the saved widget model survives the restart');
@@ -413,7 +423,9 @@ test('Relaunch re-presents an Apps widget without detaching or launching a secon
  try{
   await act(async()=>{for(let attempt=0;attempt<40&&!app.calls.some(call=>call.command==='app_panel_present');attempt++)await new Promise(resolve=>setTimeout(resolve,10))});
   const opens=app.calls.filter(call=>call.command==='app_panel_open').length;assert.equal(opens,1,'the Apps card initially attaches its app once');
-  const relaunch=app.window.document.querySelector('[aria-label="Relaunch Test app"]');assert.ok(relaunch);
+  const card=app.window.document.querySelector('[data-widget-id="app-one"]');
+  await act(async()=>card.dispatchEvent(new app.window.MouseEvent('contextmenu',{bubbles:true,cancelable:true,button:2})));
+  const relaunch=[...app.window.document.querySelectorAll('[role="menuitem"]')].find(item=>item.textContent==='Relaunch Test app');assert.ok(relaunch);
   await act(async()=>relaunch.dispatchEvent(new app.window.MouseEvent('click',{bubbles:true})));
   await act(async()=>{for(let attempt=0;attempt<40&&app.calls.filter(call=>call.command==='app_panel_present').length<2;attempt++)await new Promise(resolve=>setTimeout(resolve,10))});
   assert.equal(app.calls.filter(call=>call.command==='app_panel_open').length,opens,'Relaunch must not launch a second app process');
@@ -423,13 +435,15 @@ test('Relaunch re-presents an Apps widget without detaching or launching a secon
  }finally{await app.cleanup()}
 });
 
-test('an Apps widget that cannot reopen turns its Relaunch control red',async()=>{
+test('an Apps widget that cannot reopen shows its actual error',async()=>{
  const widget=createWidget('apps');widget.id='unavailable-app';widget.title='Attached app';widget.appName='Attached app';
  const app=await setup([widget],{identity:null});
  try{
-  const relaunch=app.window.document.querySelector('[aria-label="Relaunch Attached app"]');assert.ok(relaunch);
+  const card=app.window.document.querySelector('[data-widget-id="unavailable-app"]');
+  await act(async()=>card.dispatchEvent(new app.window.MouseEvent('contextmenu',{bubbles:true,cancelable:true,button:2})));
+  const relaunch=[...app.window.document.querySelectorAll('[role="menuitem"]')].find(item=>item.textContent==='Relaunch Attached app');assert.ok(relaunch);
   await act(async()=>relaunch.dispatchEvent(new app.window.MouseEvent('click',{bubbles:true})));
-  const failed=app.window.document.querySelector('[aria-label="Relaunch Attached app"]');assert.equal(failed.getAttribute('aria-invalid'),'true','an unavailable app is visibly marked as a failed relaunch');
+  assert.ok(card.querySelector('[role="alert"]')?.textContent,'an unavailable app reports why it could not be reopened');
   assert.equal(app.calls.filter(call=>call.command==='app_panel_open').length,0,'an attached app without a saved launch source is never replaced by another process');
  }finally{await app.cleanup()}
 });

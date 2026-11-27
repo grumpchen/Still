@@ -318,6 +318,7 @@ export default function WorkspaceCanvas({workspaceId,canvasFrameRate='display',m
           if(minimizeGesture){
             event.preventDefault();
             event.stopPropagation();
+            closeWidgetMenu();
             if(!w.minimized)minimize(w);
             return;
           }
@@ -375,7 +376,8 @@ export default function WorkspaceCanvas({workspaceId,canvasFrameRate='display',m
       actions={menuWidget.minimized
         ? [{label:menuWidget.type==='aiCommand'?t('aiCommandEdit'):t('restoreWidget').replace('{title}',widgetMenu.title),run:()=>restore(menuWidget)},
           ...(menuWidget.type==='aiCommand'&&menuWidget.text.trim()?[{label:t('aiCommandRun'),run:()=>runAiCommand(menuWidget)}]:[])]
-        : [{label:t('minimizeWidget'),run:()=>minimize(menuWidget)}]}/>}
+        : [{label:t('minimizeWidget'),run:()=>minimize(menuWidget)},
+          {label:t('relaunchTitle').replace('{title}',widgetMenu.title),run:()=>relaunch(menuWidget)}]}/>}
     {addMenu&&<AddToolContextMenu target={addMenu} close={closeAddMenu} choose={type=>{const at=canvasPoint(addMenu.x,addMenu.y);closeAddMenu();type==='apps'?pickApp(undefined,at,extent):add(type,at,extent)}}/>}
   </div></TrayDragProvider>;
 }

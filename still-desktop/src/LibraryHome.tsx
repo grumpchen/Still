@@ -54,7 +54,12 @@ export default function LibraryHome({workspace,workspaces,update,notify,workspac
 
  useEffect(()=>{const opened=(event:Event)=>{const detail=(event as CustomEvent<{widgetId?:string}>).detail;if(detail?.widgetId&&folderIds.includes(detail.widgetId))setRecent(readRecentLibraryFiles())};window.addEventListener('still-library-file-opened',opened);return()=>window.removeEventListener('still-library-file-opened',opened)},[folderIds.join('|')]);
 
- useEffect(()=>{const changed=(event:Event)=>{const detail=(event as CustomEvent<{widgetId?:string}>).detail;if(!detail?.widgetId||!folderIds.includes(detail.widgetId))return;setSearchResults(null);setSelectedSourceKeys([]);setSearchError('');setRecent(readRecentLibraryFiles())};window.addEventListener('still-files-resource-moved',changed);return()=>window.removeEventListener('still-files-resource-moved',changed)},[folderIds.join('|')]);
+ useEffect(()=>{const changed=(event:Event)=>{const detail=(event as CustomEvent<{widgetId?:string}>).detail;if(!detail?.widgetId||!folderIds.includes(detail.widgetId))return;setSearchResults(null);setSelectedSourceKeys([]);setSearchError('');setRecent(readRecentLibraryFiles())};window.addEventListener('still-files-resource-moved',changed);
+ window.addEventListener('still-files-resource-created',changed);
+ return()=>{
+  window.removeEventListener('still-files-resource-moved',changed);
+  window.removeEventListener('still-files-resource-created',changed);
+ }},[folderIds.join('|')]);
 
  function openRecentFile(file:RecentLibraryFile){setSelectedFolderId(file.widgetId);setSection(file.widgetId===inbox?.id?'inbox':'files');requestAnimationFrame(()=>window.setTimeout(()=>window.dispatchEvent(new CustomEvent('still-open-library-recent-file',{detail:{widgetId:file.widgetId,path:file.path}})),0))}
  function openInbox(){if(!inbox)addInbox();setSelectedFolderId('');setSection('inbox')}
