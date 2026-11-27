@@ -1,4 +1,4 @@
-import {currentFileRequest,currentFilesView} from './platform/currentFilesView.ts';
+import {currentFileRequest,currentFilesView,isFilesLocationQuestion} from './platform/currentFilesView.ts';
 import {useEffect,useRef,useState} from 'react';
 import type {WorkspaceState} from './domain/workspaces.ts';
 import type {WorkbenchAction} from './domain/workbenchActions.ts';
@@ -45,9 +45,22 @@ export function useStillWorkbench(host:StillWorkbenchHost){
  const executeWorkbench=async(actions:WorkbenchAction[],_prompt:string)=>{const receipts=await service.executeWorkbenchActions(actions);lastResults.current=receipts;return receipts.map(describeReceipt).join('\n\n')};
  const pendingRename=useRef<{workspaceId:string;widgetId:string;path:string}|null>(null);
  const renameReplyName=(prompt:string)=>prompt.trim().match(/^(?:to\s+|改成|改为)?[“"']?([^\\/:*?"<>|\r\n]+\.[a-z0-9]{1,12})[”"']?$/i)?.[1];
- const canHandleDirectWorkbenchRequest=(prompt:string)=>isDirectRuleRequest(prompt)||!!currentFileRequest(prompt)||!!(pendingRename.current&&renameReplyName(prompt));
+ const canHandleDirectWorkbenchRequest=(prompt:string)=>isDirectRuleRequest(prompt)||isFilesLocationQuestion(prompt)||!!currentFileRequest(prompt)||!!(pendingRename.current&&renameReplyName(prompt));
 
  const directWorkbenchRequest=async(prompt:string,selectedIds:string[]=[])=>{
+  if(isFilesLocationQuestion(prompt)){
+   pendingRename.current=null;
+   const state=latest.current.getState();
+   const workspace=state.workspaces.find(item=>item.id===state.activeId);
+   const view=workspace&&currentFilesView(workspace,selectedIds);
+   const zh=state.locale==='zh-CN';
+   if(!view)return{handled:true,message:zh?'请点击要查看的 Files 组件，并打开一个文件夹。':'Click the Files widget you mean and open a folder first.'};
+   const folder=[view.folderName,view.folder].filter(Boolean).join(' / ');
+   const fileName=view.selectedFile?.split('/').at(-1);
+   return{handled:true,message:zh
+    ?`Files 当前打开的是「${folder}」。${fileName?` 正在预览「${fileName}」。`:''}`
+    :`Files is open to “${folder}”.${fileName?` You’re previewing “${fileName}”.`:''}`};
+  }
   const direct=currentFileRequest(prompt);
   const pending=pendingRename.current;
   pendingRename.current=null;

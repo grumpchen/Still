@@ -16,8 +16,7 @@ test('Dashboard routes to a fixed study page with a distinct responsive layout',
  assert.match(dashboard,/widgetRegistry\[widget\.type\]\.component/,'Dashboard can render each supported widget component');
 
  const dashboardStyles=styles.slice(styles.indexOf('/* Dashboard is a fixed study page'));
- assert.match(dashboardStyles,/\.dashboard-grid\{grid-template-columns:[^}]*grid-template-areas:"calendar focus" "timetable library"/,'the Dashboard uses its own structured study layout');
+ assert.match(styles,/\.dashboard-grid\{[^}]*display:flex;flex-wrap:wrap/,'both modes use the same responsive flow');
  assert.match(dashboardStyles,/\.dashboard-module\{[^}]*border:0;border-top:[^}]*border-radius:0;background:transparent;box-shadow:none/,'Dashboard sections use page styling instead of floating widget-card surfaces');
- assert.match(styles,/@media\(max-width:720px\)\{\.dashboard-grid\{grid-template-columns:minmax\(0,1fr\);grid-template-areas:"calendar" "focus" "timetable" "library"/,'the study page reflows into a single column on narrow windows');
- assert.ok(dashboardStyles.includes('@media(max-width:720px)')&&dashboardStyles.includes('.dashboard-grid{column-gap:0;row-gap:18px'),'the mobile page keeps consistent vertical spacing');
+ assert.match(dashboardStyles,/@media\(max-width:720px\)[^\n]*\.dashboard-module:nth-child\(n\)\{width:100%/,'auto-sized cards use a single column on narrow windows');
 });

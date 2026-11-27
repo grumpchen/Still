@@ -19,7 +19,7 @@ for(const theme of ['light','dark'] as const){
   await expect(dashboard.locator('.dashboard-eyebrow')).toHaveCSS('color','rgb(203, 209, 216)');
   const surfaces=await dashboard.evaluate(el=>{
    const style=getComputedStyle(el);
-   const button=getComputedStyle(el.querySelector('.dashboard-hero-actions button:not(.primary)')!);
+   const button=getComputedStyle(el.querySelector('.dashboard-hero-action-set:not([aria-hidden]) button:not(.primary)')!);
    const todayButton=getComputedStyle(el.querySelector('.dashboard-today>button')!);
    const sidebar=getComputedStyle(document.querySelector('.sidebar')!);
    return {scheme:style.colorScheme,background:style.backgroundColor,texture:style.backgroundImage,blur:style.backdropFilter,sidebarBlur:sidebar.backdropFilter,sidebarBackground:sidebar.backgroundColor,sidebarTexture:sidebar.backgroundImage,buttonColor:button.color,buttonBackground:button.backgroundColor,todayButtonColor:todayButton.color,todayButtonBackground:todayButton.backgroundColor};
@@ -33,8 +33,8 @@ for(const theme of ['light','dark'] as const){
   expect(surfaces.buttonBackground).not.toBe('rgba(0, 0, 0, 0)');
   expect(surfaces.todayButtonColor).toBe(theme==='dark'?'rgb(242, 246, 243)':'rgb(27, 42, 33)');
   expect(surfaces.todayButtonBackground).not.toBe('rgba(0, 0, 0, 0)');
-  await expect(dashboard.locator('.dashboard-hero-actions .primary')).toHaveCSS('color','rgb(255, 255, 255)');
-  await expect(dashboard.locator('.dashboard-hero-actions .primary')).toHaveCSS('background-image',/linear-gradient/);
+  await expect(dashboard.locator('.dashboard-hero-actions .primary:visible')).toHaveCSS('color','rgb(255, 255, 255)');
+  await expect(dashboard.locator('.dashboard-hero-actions .primary:visible')).toHaveCSS('background-image',/linear-gradient/);
   await expect(dashboard.locator('.study-calendar-grid > button:not(.is-selected)').first()).toHaveCSS('background-color','rgba(0, 0, 0, 0)');
   await page.screenshot({path:test.info().outputPath(`dashboard-${theme}-desktop.png`),fullPage:true,animations:'disabled'});
   await page.setViewportSize({width:800,height:900});

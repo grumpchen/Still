@@ -596,9 +596,36 @@ export function assistantCourseAutoOpenClarification(text:string,workspace:Works
 export function isFilesWidgetOpenCommand(text:string):boolean{
   return /^(?:(?:please|can you|could you|would you)\s+)*open\s+(?:(?:a|an)\s+(?:new\s+)?|new\s+)files(?:\s+(?:widget|card))?(?:\s+please)?[.!?]*$/i.test(text.trim());
 }
+function bulkRemovalExclusion(text:string):string|undefined{
+  const prompt=text.trim();
+  const match=prompt.match(/^(?:(?:please|(?:can|could|would|will) (?:you|u))\s+)*(?:delete|remove|clear|close|erase)\s+(?:all|every|each)\s+(?:the\s+)?(?:widgets?|cards?)(?:\s+(?:on|in|from)\s+(?:the\s+)?(?:current\s+)?(?:workspace|canvas))?(?:,\s*|\s+)(?:except(?:\s+for)?|but|other\s+than|apart\s+from)\b([\s\S]*)$/i);
+  if(match)return match[1].trim().replace(/[.!?]+$/, '').trim();
+  // Never pass an unsupported bulk exclusion to the ordinary named-target remover.
+  if(/^(?:(?:please|(?:can|could|would|will) (?:you|u))\s+)*(?:delete|remove|clear|close|erase)\s+(?:all|every|each)\b/i.test(prompt)&&/\b(?:except|but|other than|apart from)\b/i.test(prompt))return '';
+  return undefined;
+}
+export function isAssistantBulkExclusionRequest(text:string):boolean{
+  return bulkRemovalExclusion(text)!==undefined;
+}
+
+function resolveBulkRemovalExclusion(text:string,workspace:Workspace){
+  const exclusion=bulkRemovalExclusion(text);
+  if(exclusion===undefined)return undefined;
+  const normalize=(value:string)=>value.trim().replace(/^[“"']|[”"']$/g,'').trim().replace(/\s+/g,' ').toLocaleLowerCase();
+  const label=normalize(exclusion.replace(/^the\s+/i,''));
+  const typeLabel=label.replace(/\s+(?:widgets?|cards?)$/i,'');
+  const type=widgetTypes.find(type=>normalize(type)===typeLabel||normalize(widgetCatalog[type].name)===typeLabel);
+  const keep=workspace.widgets.filter(widget=>type?widget.type===type:normalize(widgetLabel(widget))===label);
+  // A type name preserves all instances; an ambiguous custom title needs clarification.
+  if(!keep.length||!type&&keep.length!==1)return null;
+  const keptIds=new Set(keep.map(widget=>widget.id));
+  return workspace.widgets.filter(widget=>!keptIds.has(widget.id)&&!(widget.lockPluginEnabled&&widget.locked)).map(widget=>widget.id);
+}
+
 export function assistantActionRequest(text:string,savedTrayItems:AssistantTrayItem[]=[],workspaces:AssistantWorkspaceChoice[]=[]):AssistantActionType[]{
   const prompt=text.trim();
   if(isQuestionOrExplanation(prompt))return [];
+  if(isAssistantBulkExclusionRequest(prompt))return ['remove_widget'];
   if(isFilesWidgetOpenCommand(prompt))return ['add_widget'];
   const requested:AssistantActionType[]=[];
   if(courseEnvironmentRequest(prompt))requested.push('set_course_environment');
@@ -721,7 +748,7 @@ export function assistantLayoutRequested(text:string):boolean{
   return assistantResizeRequested(text)||/\b(?:arrange|layout|rearrange|organize|organise|snap|tile|reposition)\b/i.test(text)||/\b(?:move|place|position)\b[\s\S]{0,100}\b(?:widget|widgets|card|cards|next to|above|below|left of|right of)\b/i.test(text);
 }
 export function unsupportedAssistantRequest(text:string):'clear_tray'|'delete_widgets'|'delete_workspace'|null{
-  if(isQuestionOrExplanation(text))return null;
+  if(isQuestionOrExplanation(text)||isAssistantBulkExclusionRequest(text))return null;
   if(/\b(?:delete|remove|clear|empty|erase|purge)\b[\s\S]{0,100}\b(?:all|every|entire|whole)\b[\s\S]{0,100}\b(?:widget\s+)?tray\b/i.test(text)||/\b(?:delete|remove|clear|empty|erase|purge)\b[\s\S]{0,100}\b(?:widget\s+)?tray\b[\s\S]{0,100}\b(?:all|every|entire|whole)\b/i.test(text))return 'clear_tray';
   const namesSpecificWidget=widgetTypes.some(type=>widgetNameMentioned(text,type));
   if((/\b(?:delete|remove|clear|close|erase)\b[\s\S]{0,100}\b(?:all|every|entire|whole)\b[\s\S]{0,100}\bwidgets?\b(?:[\s\S]{0,60}\b(?:on|in|from)\s+(?:the\s+)?(?:current\s+)?(?:workspace|canvas))?/i.test(text)&&!namesSpecificWidget)||(/\b(?:delete|remove|clear|close|erase)\b[\s\S]{0,100}\bwidgets?\b[\s\S]{0,60}\b(?:on|in|from)\s+(?:the\s+)?(?:current\s+)?(?:workspace|canvas)\b/i.test(text)&&!namesSpecificWidget)||/\b(?:delete|remove|clear|close|erase)\s+everything\b/i.test(text))return 'delete_widgets';
@@ -731,6 +758,9 @@ export function unsupportedAssistantRequest(text:string):'clear_tray'|'delete_wi
 /** Require a uniquely resolved widget target before a clear remove/delete command can execute. */
 export function assistantRemovalClarification(text:string,workspace:Workspace,selectedWidgetIds:string[],savedTrayItems:AssistantTrayItem[]=[],workspaces:AssistantWorkspaceChoice[]=[]):string|null{
   if(!assistantActionRequest(text,savedTrayItems,workspaces).includes('remove_widget'))return null;
+  const excludedRemoval=resolveBulkRemovalExclusion(text,workspace);
+  if(excludedRemoval===null)return 'Which widget should I keep? Use its full name or widget type. Nothing was removed.';
+  if(excludedRemoval?.length===0)return 'There are no other unlocked widgets to remove.';
   if(resolveDirectAssistantActions(text,workspace,selectedWidgetIds,savedTrayItems,workspaces)?.some(action=>action.type==='remove_widget'))return null;
   return 'Which widget should I remove? Name or select one widget, or say all if you mean every matching widget.';
 }
@@ -739,6 +769,8 @@ export function resolveDirectAssistantActions(text:string,workspace:Workspace,se
   if(isFilesWidgetOpenCommand(text))return [{type:'add_widget',ids:['files']}];
   const types=assistantActionRequest(text,savedTrayItems,workspaces);
   if(!types.length)return null;
+  const excludedRemoval=resolveBulkRemovalExclusion(text,workspace);
+  if(excludedRemoval!==undefined)return excludedRemoval?.length?[{type:'remove_widget',ids:excludedRemoval}]:null;
   if(types.includes('set_course_environment')){const action=resolveCourseEnvironment(text,workspace,selectedWidgetIds,workspaces);return types.length===1&&action?[action]:null}
   if(types.includes('set_course_auto_open')){const action=resolveCourseAutoOpen(text,workspace,selectedWidgetIds);return types.length===1&&action?[action]:null}
   if(types.includes('set_ui_visibility')){
@@ -1012,8 +1044,16 @@ export function validateAssistantActionIntent(prompt:string,workspace:Workspace,
   }
   if(expected.includes('remove_widget')){
     const removal=actions.find(action=>action.type==='remove_widget');
-    const namedTypes=widgetTypes.filter(type=>widgetNameMentioned(prompt,type));
-    if(!removal||namedTypes.length&&removal.ids.some(id=>!workspace.widgets.some(widget=>widget.id===id&&namedTypes.includes(widget.type))))throw new Error('No widgets were removed. Still AI selected a widget that does not match your request. Try again.');
+    const excludedRemoval=resolveBulkRemovalExclusion(prompt,workspace);
+    if(excludedRemoval!==undefined){
+      if(!removal||!excludedRemoval?.length||removal.ids.length!==excludedRemoval.length||!excludedRemoval.every(id=>removal.ids.includes(id))){
+        throw new Error('Nothing was removed. The proposed deletion did not preserve the widgets named in your request.');
+      }
+      return;
+    }else{
+      const namedTypes=widgetTypes.filter(type=>widgetNameMentioned(prompt,type));
+      if(!removal||namedTypes.length&&removal.ids.some(id=>!workspace.widgets.some(widget=>widget.id===id&&namedTypes.includes(widget.type))))throw new Error('No widgets were removed. Still AI selected a widget that does not match your request. Try again.');
+    }
   }
   if(expected.includes('rename_workspace')){
     const action=actions.find(item=>item.type==='rename_workspace');

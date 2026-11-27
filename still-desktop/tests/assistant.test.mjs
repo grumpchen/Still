@@ -767,3 +767,24 @@ test('model selection prefers the configured default only when the project expos
   assert.equal(preferredModel(['gpt-4.1-mini','gpt-4o-mini'],'openai'),'gpt-4o-mini');
   assert.equal(preferredModel(['gpt-4.1-mini'],'openai'),'gpt-4.1-mini');
 });
+
+test('bulk removal exceptions preserve the named type and validate the exact complement',()=>{
+ const workspace=createWorkspace('Design',[]);
+ const command=createWidget('aiCommand'),secondCommand=createWidget('aiCommand');
+ const notes=createWidget('notes'),focus=createWidget('focus'),locked=createWidget('files');
+ locked.lockPluginEnabled=true;
+ locked.locked=true;
+ workspace.widgets=[command,secondCommand,notes,focus,locked];
+ const prompt='delete all widget except ai command';
+ const actions=resolveDirectAssistantActions(prompt,workspace,[]);
+ assert.deepEqual(actions,[{type:'remove_widget',ids:[notes.id,focus.id]}]);
+ assert.doesNotThrow(()=>validateAssistantActionIntent(prompt,workspace,actions));
+ for(const ids of [[command.id],[notes.id],[notes.id,focus.id,command.id],[notes.id,focus.id,locked.id]]){
+  assert.throws(()=>validateAssistantActionIntent(prompt,workspace,[{type:'remove_widget',ids}]),/preserve/);
+ }
+ for(const ambiguous of ['delete all widgets except a mystery widget','delete all widgets except','delete all widgets in Design except ai command']){
+  assert.equal(resolveDirectAssistantActions(ambiguous,workspace,[]),null);
+  assert.match(assistantRemovalClarification(ambiguous,workspace,[]),/Which widget should I keep/);
+  assert.equal(unsupportedAssistantRequest(ambiguous),null);
+ }
+});

@@ -31,6 +31,13 @@ export function currentFilesView(workspace: Workspace, selectedIds: string[] = [
 
 const polite = /^(?:(?:please|(?:can|could|would) (?:you|u))\s+)+/i;
 
+export function isFilesLocationQuestion(input: string) {
+  const prompt = input.trim().replace(polite, '').replace(/[.!?。？！]+$/, '').replace(/\s+/g, ' ');
+  if(!/\bfiles\b|文件夹|目录|文件/i.test(prompt))return false;
+  return /^(?:(?:what|which) (?:page|folder|directory|file) (?:am i (?:on|in|viewing)|is (?:open|this))|where am i)(?: (?:in|on) (?:the )?files(?: widget)?)?$/i.test(prompt)
+    || /^(?:请问\s*)?(?:我)?(?:现在|当前)?(?:在|打开的是|正在查看)?\s*(?:Files\s*(?:组件)?(?:里|中|的)?\s*)?(?:哪个|哪一)(?:文件夹|目录|页面|页|文件)$/i.test(prompt);
+}
+
 export function currentFileRequest(input: string) {
   const prompt = input.trim().replace(polite, '').replace(/[。?？]$/, '').trim();
   const rename = prompt.match(/^(?:rename (?:this|the selected|the current) file|(?:把)?(?:这个|当前|选中的)文件(?:重命名|改名))(?:\s*(?:to\s+|为|成)\s*(.+))?$/i);
