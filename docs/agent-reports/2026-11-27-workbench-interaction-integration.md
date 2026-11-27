@@ -29,3 +29,4 @@
 - Windows run [45959822577](https://github.com/grumpchen/Still/actions/runs/45959822577) passed 150 Rust/real-window tests and release build. Smoke confirmed the two reported phrases create a real Markdown file inside the focused subfolder, prompt for the new name, rename on disk, and update the file list. Native Browser and hidden-to-tray rule execution/deduplication also passed.
 - Release asset SHA-256 `18cb86799b04a0fc2f211dcdeb95da5419765e5060d07503e2879a36dae76fcb`.
 - Direct terminal Release asset upload failed at uploads.github.com with HTTP 401 Bad credentials. The unsuccessful CLI attempt left no release; use the scoped Actions publish job for the same verified artifact.
+- Actions publish job 45960800956 succeeded. GitHub reports the uploaded executable digest exactly matches the candidate SHA-256. Published prerelease [v0.2372-workbench.2](https://github.com/grumpchen/Still/releases/tag/v0.2372-workbench.2).
