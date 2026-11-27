@@ -9,7 +9,7 @@ test('selected Notes widget remains the target when the app applies a close requ
  workspace.widgets=[first,second];state.workspaces.push(workspace);state.activeId=workspace.id;
  await page.addInitScript(data=>{localStorage.setItem('still-first-run-tutorial-v1','done');localStorage.setItem('still-workspace-v2',JSON.stringify(data))},state);
  await page.goto('/design-preview.html');
- await page.getByRole('button',{name:'Resume Study selection',exact:true}).click();
+ await page.getByRole('button',{name:'Show sidebar'}).click();await page.locator('.nav button').filter({hasText:'Study selection'}).click();
  await page.keyboard.press('Control+k');await page.getByRole('button',{name:'Open AI assistant',exact:true}).click();
  const message=page.locator('#ai-message');await message.fill('@Notes 2 close the current note');await message.press('Enter');
  await expect.poll(async()=>page.evaluate(({workspaceId,widgetId})=>{const state=JSON.parse(localStorage.getItem('still-workspace-v2')||'{}');return state.workspaces?.find((item:any)=>item.id===workspaceId)?.widgets.find((item:any)=>item.id===widgetId)?.noteDocuments.length},{workspaceId:workspace.id,widgetId:second.id})).toBe(1);
@@ -123,7 +123,7 @@ test('Still AI continues an ambiguous course request after a timetable selection
  first.instanceNumber=1;second.instanceNumber=2;first.schedule=[{id:'class-1',day:2,time:'09:00',title:'CHEM111',location:'A',workspaceId:destination.id,autoOpen:true}];second.schedule=[{...first.schedule[0],id:'class-2',location:'B'}];workspace.widgets=[first,second];
  state.workspaces.push(workspace,destination);state.activeId=workspace.id;state.autoOpenCourseEnvironments=false;
  await page.addInitScript(data=>{localStorage.setItem('still-first-run-tutorial-v1','done');localStorage.setItem('still-workspace-v2',JSON.stringify(data))},state);
- await page.goto('/design-preview.html');await page.getByRole('button',{name:'Resume Course selection',exact:true}).click();await page.keyboard.press('Control+k');await page.getByRole('button',{name:'Open AI assistant',exact:true}).click();
+ await page.goto('/design-preview.html');await page.getByRole('button',{name:'Show sidebar'}).click();await page.locator('.nav button').filter({hasText:'Course selection'}).click();await page.keyboard.press('Control+k');await page.getByRole('button',{name:'Open AI assistant',exact:true}).click();
  const message=page.locator('#ai-message');await message.fill('disable automatic opening for CHEM111');await message.press('Enter');
  await expect(page.locator('#ai-sidebar')).toContainText('Which linked course');
  await message.fill('Timetable 2');await message.press('Enter');
