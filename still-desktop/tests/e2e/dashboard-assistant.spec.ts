@@ -217,7 +217,7 @@ test('Still AI can move a widget between user workspaces without touching native
  await page.getByRole('button',{name:'Ask AI',exact:true}).click();const message=page.locator('#ai-message');
  await message.fill('create a workspace named Transfer Source with Notes');await message.press('Enter');await expect(page.getByRole('heading',{name:'Transfer Source'})).toBeVisible();
  if(await page.locator('#ai-sidebar').getAttribute('aria-hidden')==='true')await page.getByRole('button',{name:'Ask AI',exact:true}).click();
- await expect.poll(()=>page.evaluate(()=>{const saved=JSON.parse(localStorage.getItem('still-workspace-v2')!);return saved.workspaces.find((item:any)=>item.id===saved.activeId)?.name})).toBe('Transfer Source');
+ await expect.poll(()=>page.evaluate(()=>{const saved=JSON.parse(localStorage.getItem('still-workspace-v2')!);return saved?.workspaces.find((item:any)=>item.id===saved.activeId)?.name})).toBe('Transfer Source');
  const before=await page.evaluate(()=>JSON.parse(localStorage.getItem('still-workspace-v2')!));
  const source=before.workspaces.find((item:any)=>item.id===before.activeId),destination=before.workspaces.find((item:any)=>item.id!==source.id&&item.role!=='dashboard'&&item.role!=='library'),note=source.widgets.find((item:any)=>item.type==='notes');
  expect(source).toBeTruthy();expect(destination).toBeTruthy();expect(note).toBeTruthy();
