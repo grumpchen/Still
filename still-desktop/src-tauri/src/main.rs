@@ -6,6 +6,7 @@ mod dropped_files;
 mod shortcuts;
 mod app_capture;
 mod chrome;
+mod browser_panel;
 mod capture;
 mod assistant;
 mod assistant_protocol;
@@ -15,6 +16,7 @@ mod chatgpt_plan;
 mod chatgpt_responses;
 mod credential_store;
 mod startup;
+mod automation_runtime;
 #[cfg(windows)] mod app_panel;
 #[cfg(windows)] mod native_panels;
 #[cfg(windows)] mod native_resize;
@@ -22,6 +24,8 @@ mod startup;
 #[cfg(windows)] mod window_input;
 use tauri::Manager;
 fn main() {
+    let mut context = tauri::generate_context!();
+    #[cfg(windows)] automation_runtime::configure_webview2_context(&mut context);
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -29,9 +33,11 @@ fn main() {
             if let tauri::WindowEvent::DragDrop(event) = event { dropped_files::handle_event(window, event); }
         })
         .setup(|app| {
+            app.manage(browser_panel::BrowserPanelState::default());
             app.manage(assistant::AssistantState::from_environment());
             app.manage(files::FolderRoots::load(app.handle())); app.manage(shortcuts::ShortcutState::default());
             app.manage(dropped_files::DocumentGrants::load(app.handle()));
+            automation_runtime::install(app.handle())?;
             app.manage(dropped_files::AppGrants::load(app.handle()));
             #[cfg(windows)] {
                 app.manage(app_panel::AppPanelState::default());
@@ -40,7 +46,7 @@ fn main() {
                 app_panel::install(app.handle())?;
                 if let Some(window)=app.get_webview_window("main") {let handle=app.handle().clone();window.on_window_event(move |event|{
                     match event {tauri::WindowEvent::Moved(_)|tauri::WindowEvent::Resized(_)|tauri::WindowEvent::ScaleFactorChanged{..}|tauri::WindowEvent::Focused(_)=>{native_panels::refresh_all(&handle)},
-                    tauri::WindowEvent::CloseRequested{..}=>{app_capture::shutdown();app_panel::shutdown(&handle)},_=>{}}
+                    tauri::WindowEvent::CloseRequested{..}=>{browser_panel::shutdown(&handle);app_capture::shutdown();app_panel::shutdown(&handle)},_=>{}}
                 });}
                 if let Err(error)=app_capture::install(app.handle()) { eprintln!("Global app capture could not start: {error}"); }
             }
@@ -48,10 +54,11 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            automation_runtime::automation_ticks_since, automation_runtime::automation_runtime_status, automation_runtime::window_minimize_to_tray,
             assistant::assistant_configured, assistant::assistant_models, assistant::assistant_set_key, assistant::assistant_chat, assistant::assistant_agent_turn, assistant::assistant_key_setup,
             chatgpt_plan::chatgpt_plan_status, chatgpt_plan::chatgpt_plan_connect, chatgpt_plan::chatgpt_plan_disconnect, chatgpt_plan::chatgpt_plan_models, chatgpt_plan::chatgpt_plan_agent_turn,
-            chrome::chrome_open, capture::widget_capture, capture::widget_export,
-            files::files_choose,files::files_still_inbox, files::files_list,files::files_search,files::files_library_search, files::files_open,files::files_reuse,files::files_preview,files::files_extract_pdf_text,files::files_move_resource,
+            chrome::chrome_open, browser_panel::browser_panel_present,browser_panel::browser_panel_navigate,browser_panel::browser_panel_go_back,browser_panel::browser_panel_go_forward,browser_panel::browser_panel_reload,browser_panel::browser_panel_close, capture::widget_capture, capture::widget_export,
+            files::files_choose,files::files_still_inbox, files::files_list,files::files_search,files::files_library_search, files::files_open,files::files_reuse,files::files_preview,files::files_extract_pdf_text,files::files_move_resource,files::files_manage_resource,
             files::notes_library_choose,files::notes_library_list,files::notes_library_search,files::notes_library_read,files::notes_library_write,files::notes_library_create,
             dropped_files::document_open, dropped_files::document_choose,dropped_files::document_preview,
             dropped_files::app_open, dropped_files::app_choose,
@@ -63,6 +70,6 @@ fn main() {
             window_input::window_input_update_regions,window_input::window_input_configure_toggle,window_input::window_input_set_click_through,
             startup::startup_status,startup::startup_set,
         ])
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("Unable to start Still");
 }

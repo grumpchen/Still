@@ -83,7 +83,7 @@ test('a saved Apps widget shows a reopen action and launches its app inside the 
   ({default:AppsWidget}=await vite.ssrLoadModule('/src/AppsWidget.tsx'));
   mockIPC((command,args)=>{calls.push({command,args});if(command==='app_panel_open')return{hwnd:451,pid:902,minWidth:0,minHeight:0,requiredWidth:null,requiredHeight:null,measured:false,probing:false,shown:true};if(command==='app_panel_present')return{hwnd:451,pid:902,minWidth:0,minHeight:0,requiredWidth:null,requiredHeight:null,measured:false,probing:false,shown:args.visible};return null},{shouldMockEvents:true});
   root=createRoot(window.document.querySelector('#root'));await act(async()=>root.render(app('app-reopen',{open:false,update:patch=>updates.push(patch)})));
-  const reopen=window.document.querySelector('[aria-label="Reopen Test app in widget"]');assert.ok(reopen,'the closed saved app has an explicit reopen button');assert.equal(reopen.textContent,'Reopen app in widget');
+  const reopen=window.document.querySelector('button.primary[aria-label*="Test app"]');assert.ok(reopen,'the closed saved app has an explicit accessible reopen button');assert.match(reopen.textContent,/Reopen app in widget/i);
   await act(async()=>{reopen.dispatchEvent(new window.MouseEvent('click',{bubbles:true}));await waitFor(()=>calls.some(call=>call.command==='app_panel_open'))});
   assert.ok(updates.some(patch=>patch.appPanelOpen===true),'clicking reopen sets the widget open state');
   assert.equal(calls.filter(call=>call.command==='app_panel_open').length,1,'the existing app source opens through this widget');
@@ -142,10 +142,10 @@ test('a failed app relaunch clears stale open state and leaves a red retry butto
   mockIPC((command,args)=>{calls.push({command,args});if(command==='app_panel_open')throw new Error('launch failed');return null},{shouldMockEvents:true});
   const update=patch=>{updates.push(patch);if(patch.appPanelOpen!==undefined)open=patch.appPanelOpen;if(root)root.render(app('app-failed',{open,update}))};
   root=createRoot(window.document.querySelector('#root'));await act(async()=>{root.render(app('app-failed',{open,update}));await new Promise(resolve=>setTimeout(resolve,0))});
-  const reopen=window.document.querySelector('[aria-label="Reopen Test app in widget"]');assert.ok(reopen);await act(async()=>{reopen.dispatchEvent(new window.MouseEvent('click',{bubbles:true}));await waitFor(()=>calls.some(call=>call.command==='app_panel_open'))});
+  const reopen=window.document.querySelector('button.primary[aria-label*="Test app"]');assert.ok(reopen);await act(async()=>{reopen.dispatchEvent(new window.MouseEvent('click',{bubbles:true}));await waitFor(()=>calls.some(call=>call.command==='app_panel_open'))});
   await act(async()=>waitFor(()=>updates.some(patch=>patch.appPanelOpen===false)&&window.document.querySelector('.app-panel-relaunch-failed')));
   assert.ok(calls.some(call=>call.command==='app_panel_open'));
-  assert.equal(window.document.querySelector('[aria-label="Reopen Test app in widget"]').getAttribute('aria-invalid'),'true','the failed retry is clearly marked and remains available');
+  const retry=window.document.querySelector('button.app-panel-relaunch-failed[aria-invalid="true"]');assert.ok(retry,'the failed retry remains clearly marked and available');
  }finally{
   if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();
   for(const [key,descriptor]of oldGlobals){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}

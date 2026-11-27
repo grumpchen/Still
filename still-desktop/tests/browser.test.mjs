@@ -1,14 +1,16 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {createInitialState,migratePreview,parseState,widgetTypes} from '../src/domain/workspaces.ts';
+import {createInitialState,createWidget,migratePreview,parseState,widgetTypes} from '../src/domain/workspaces.ts';
 import {shortcut,parseWebShortcuts} from '../src/domain/webShortcuts.ts';
 import {widgetPreset,parsePresets} from '../src/domain/presets.ts';
 import {normalizeUrl} from '../src/domain/browser.ts';
 
-test('standalone Browser widget and saved presets are removed while Apps stays available',()=>{
+test('Browser is available as a workspace module while legacy Browser data still migrates safely',()=>{
   const state=createInitialState();
-  assert.equal(widgetTypes.includes('browser'),false);
+  assert.equal(widgetTypes.includes('browser'),true);
   assert.equal(state.workspaces.flatMap(workspace=>workspace.widgets).some(widget=>widget.type==='browser'),false);
+  const browser=createWidget('browser');browser.browserUrl='https://example.com/course';state.workspaces[0].widgets.push(browser);
+  const live=parseState(JSON.stringify(state));assert.equal(live.workspaces[0].widgets.find(widget=>widget.id===browser.id)?.browserUrl,'https://example.com/course');assert.equal(live.workspaces[0].groups.length,0,'current Browser instances are not reclassified as legacy Groups');
   const old={...state,version:6,workspaces:state.workspaces.map((workspace,index)=>index?workspace:{...workspace,widgets:[...workspace.widgets,{id:'old-browser',type:'browser',url:'https://example.com',placement:{x:0,y:0,width:600,height:460}}]}),presets:[{id:'old-browser-preset',type:'browser',name:'Old site',url:'https://example.com'}]};
   const restored=parseState(old);
   assert.equal(restored.workspaces[0].widgets.some(widget=>widget.id==='old-browser'),false);
@@ -40,8 +42,9 @@ test('original preview migration also preserves legacy Browser links',()=>{
   const restored=migratePreview({active:'Study',theme:'dark',density:'comfortable',background:'solid',workspaces:{Study:[
     {id:'old-browser',type:'browser',title:'Research',url:'https://example.com/current',bookmarks:[{name:'Paper',url:'https://example.com/paper'}]},
   ]}});
-  assert.equal(restored.workspaces[0].widgets.some(widget=>widget.type==='browser'),false);
-  assert.deepEqual(restored.workspaces[0].groups[0].shortcuts.map(({name,url})=>({name,url})),[
+  const study=restored.workspaces.find(workspace=>workspace.name==='Study');assert.ok(study);
+  assert.equal(study.widgets.some(widget=>widget.type==='browser'),false);
+  assert.deepEqual(study.groups[0].shortcuts.map(({name,url})=>({name,url})),[
     {name:'Paper',url:'https://example.com/paper'},
     {name:'Research',url:'https://example.com/current'},
   ]);

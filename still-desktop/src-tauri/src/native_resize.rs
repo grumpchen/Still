@@ -36,7 +36,10 @@ unsafe fn frame_changed(hwnd:HWND)->windows::core::Result<()>{
  use super::*;
  use windows::{core::PCWSTR,Win32::{Foundation::{HINSTANCE,LPARAM,LRESULT,RECT,WPARAM},System::LibraryLoader::GetModuleHandleW}};
  fn wide(value:&str)->Vec<u16>{value.encode_utf16().chain(Some(0)).collect()}
- unsafe extern "system" fn fixture_proc(hwnd:HWND,message:u32,wparam:WPARAM,lparam:LPARAM)->LRESULT{DefWindowProcW(hwnd,message,wparam,lparam)}
+ unsafe extern "system" fn fixture_proc(hwnd:HWND,message:u32,wparam:WPARAM,lparam:LPARAM)->LRESULT{
+  if message==WM_GETMINMAXINFO{let limits=&mut *(lparam.0 as *mut MINMAXINFO);limits.ptMaxTrackSize.x=4096;limits.ptMaxTrackSize.y=4096;return LRESULT(0)}
+  DefWindowProcW(hwnd,message,wparam,lparam)
+ }
  #[test]fn managed_resize_blocks_edge_hit_testing_but_allows_still_sizes_and_restores_on_release(){unsafe{
   let name=wide("StillManagedResizeFixture");let module=GetModuleHandleW(None).unwrap();let instance=HINSTANCE(module.0);
   let class=WNDCLASSW{lpfnWndProc:Some(fixture_proc),hInstance:instance,lpszClassName:PCWSTR(name.as_ptr()),..Default::default()};assert_ne!(RegisterClassW(&class),0);

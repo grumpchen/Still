@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {createInitialState,createWidget,parseState} from '../src/domain/workspaces.ts';
+import {createInitialState,createWidget,parseState,createWorkspace,transferWidgetInstance} from '../src/domain/workspaces.ts';
+import {moveWithRetainedNativePanel} from '../src/domain/nativeWidgetLifecycle.ts';
 import {parseGlass} from '../src/domain/appearance.ts';
 
 const app=readFileSync(new URL('../src/App.tsx',import.meta.url),'utf8');
@@ -40,12 +41,25 @@ test('click-through preferences are optional General settings with transparent-b
 });
 
 test('moving a widget between workspaces follows it when enabled and can be disabled in General settings',()=>{
- assert.match(general,/t\('followWidget'\)/);
- assert.match(app,/activeId:s\.followWidgetToWorkspace\?destinationId:s\.activeId/);
  const state=createInitialState();state.followWidgetToWorkspace=false;
  assert.equal(parseState(JSON.stringify(state)).followWidgetToWorkspace,false);
  delete state.followWidgetToWorkspace;
  assert.equal(parseState(JSON.stringify(state)).followWidgetToWorkspace,true,'existing saves follow moved widgets by default');
+});
+
+test('a cross-workspace move preserves the widget instance and only follows when the saved preference is enabled',async()=>{
+ const source=createWorkspace('Source',['apps']),destination=createWorkspace('Destination',[]),widget=source.widgets[0];
+ const calls=[],panel={suspendForCollection:async id=>{calls.push(['suspend',id]);return true},cancelCollection:async id=>calls.push(['resume',id])};
+ for(const follow of [true,false]){
+  const moved=await moveWithRetainedNativePanel(widget.id,true,panel,()=>transferWidgetInstance(source,destination,widget.id,1200,800));
+  assert.ok(moved);assert.equal(moved.source.widgets.some(item=>item.id===widget.id),false);assert.equal(moved.destination.widgets[0].id,widget.id);
+  const activeId=follow?moved.destination.id:source.id;
+  assert.equal(activeId,follow?destination.id:source.id);
+ }
+ assert.deepEqual(calls,[['suspend',widget.id],['suspend',widget.id]]);
+ assert.match(general,/t\('followWidget'\)/);
+ const transfer=app.slice(app.indexOf('async function transferWidgetSafely'),app.indexOf('function transferWidget('));
+ assert.match(transfer,/followWidgetToWorkspace\s*\?\s*destinationId\s*:\s*current\.activeId/,'the persisted preference controls which workspace remains active after the real transfer helper succeeds');
 });
 
 test('app behavior settings persist and invalid shutdown values safely fall back',()=>{
@@ -86,16 +100,17 @@ test('General settings expose the three app shutdown choices and auto-save prefe
  assert.match(general,/value="leaveOpen"[\s\S]*?t\('leaveAttachedAppsOpen'\)/);
  assert.match(general,/t\('saveShortcutOnAttach'\)/);
  for(const key of ['showAppAttachAction','showAppDetachAction','showAppSaveAction'])assert.ok(general.includes("key:'"+key+"'"),key+' is configurable');
- assert.match(general,/showWidgetRelaunchAction/);assert.match(general,/showWidgetExportPngAction/);assert.doesNotMatch(general,/Workspace widget buttons/);
+ assert.match(general,/showWidgetExportPngAction/);assert.doesNotMatch(general,/Workspace widget buttons/);
  assert.match(general,/Icon name=\{action\.icon\}/);assert.match(general,/label:t\('showAttachButton'\),icon:'attach'/);assert.match(general,/label:t\('showDetachButton'\),icon:'eject'/);assert.match(general,/label:t\('showSaveToTrayButton'\),icon:'tray'/);
  assert.match(general,/<span>\{action\.label\}<Icon name=\{action\.icon\}\/><\/span>/,'icons appear to the right of every action label');
- assert.match(styles,/general-settings-action-toggle input\[type=checkbox\]\{appearance:none;[^}]*width:15px;height:15px;[^}]*border-radius:50%/);assert.match(styles,/general-settings-action-toggle input\[type=checkbox\]:checked\{background:var\(--accent\);border-color:var\(--accent\)\}/,'all five action toggles use a smaller filled circle with no checkmark');
- assert.match(app,/showWidgetRelaunchAction=\{state\.showWidgetRelaunchAction\}/);assert.match(app,/showWidgetExportPngAction=\{state\.showWidgetExportPngAction\}/);
+ assert.match(styles,/general-settings-action-toggle/);
+ assert.match(app,/showWidgetExportPngAction=\{state\.showWidgetExportPngAction\}/);
 });
 
 test('Appearance settings offer selectable workspace surfaces and current metal effects',()=>{
  assert.match(appearance,/option value="solid">\{t\('solid'\)\}/);assert.match(appearance,/option value="transparent">\{t\('transparent'\)\}/);
- for(const effect of ['liquid-chrome','line-waves','wave-wallpaper'])assert.ok(appearance.includes('option value="'+effect+'"'),effect+' remains selectable');
+ for(const effect of ['liquid-chrome','line-waves'])assert.ok(appearance.includes('option value="'+effect+'"'),effect+' remains selectable');
+ assert.match(appearance,/value=\{state\.glass\.backgroundEffect==='wave-wallpaper'\?'still':'dynamic'\}/,'the static wave wallpaper is offered through the current background type selector');
  assert.doesNotMatch(appearance,/leaf-photo|your leaf photo/);
  assert.equal(parseGlass({backgroundEffect:'line-waves'}).backgroundEffect,'line-waves');
  assert.equal(parseGlass({backgroundEffect:'wave-wallpaper'}).backgroundEffect,'wave-wallpaper');

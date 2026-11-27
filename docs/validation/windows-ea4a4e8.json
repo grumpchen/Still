@@ -1,0 +1,58 @@
+{
+  "sourceCommit": "ea4a4e8a1d620b70ff527b68b715f4a4f82cefc7",
+  "run": "https://github.com/grumpchen/Still/actions/runs/45840882856",
+  "executableSha256": "5b9bf0b12eab40c9cacd66591566b6079f6fd5b2eaea45e012d85ca2e54d7c5a",
+  "frontend": {
+    "typescript": "passed",
+    "tests": 587,
+    "passed": 587
+  },
+  "rust": {
+    "passed": 147,
+    "filtered": 2
+  },
+  "geometryFixtures": {
+    "embeddedWindow": {
+      "status": "failed",
+      "expected": [
+        180,
+        230,
+        1200,
+        750
+      ],
+      "actual": [
+        180,
+        230,
+        1044,
+        750
+      ]
+    },
+    "resize": {
+      "status": "failed",
+      "expected": [
+        1280,
+        840
+      ],
+      "actual": [
+        1044,
+        788
+      ]
+    }
+  },
+  "releaseBuild": "passed",
+  "nativeSmoke": {
+    "status": "passed",
+    "checks": [
+      "Dashboard rendered and native fullscreen",
+      "native runtime status",
+      "embedded Browser create, navigate, close",
+      "minimize to tray, hidden status, native tick callback"
+    ]
+  },
+  "overall": "failed",
+  "artifactIds": {
+    "executable": 15128297083,
+    "smokeEvidence": 15127912903
+  },
+  "evidence": "GitHub Actions full logs and step conclusions. Artifact download from this cloud terminal returned Forbidden; JSON/screenshot remain uploaded in Actions. This run did not yet test actual rule execution while hidden. No physical tray menu or third-party App acceptance is claimed."
+}

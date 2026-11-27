@@ -1,0 +1,208 @@
+{
+  "sourceCommit": "f8ad35700891ae19ce27fb72f13757ac0e377adb",
+  "run": "https://github.com/grumpchen/Still/actions/runs/45844571306",
+  "overall": "success",
+  "typescript": "passed",
+  "frontendTests": {
+    "passed": 598,
+    "failed": 0
+  },
+  "rustTests": {
+    "domainPassed": 147,
+    "geometryPassed": 2,
+    "totalPassed": 149
+  },
+  "releaseBuild": "passed",
+  "artifactIds": {
+    "executable": 15131701933,
+    "smokeEvidence": 15131802112
+  },
+  "smoke": {
+    "result": "passed",
+    "candidateSha256": "4a043c5742d79d400cf23d54373654e2642d8b6c68a9a4b8cb2efbc1ac03c81b",
+    "failure": null,
+    "checks": [
+      {
+        "name": "candidate-executable",
+        "status": "passed",
+        "details": {
+          "sha256": "4a043c5742d79d400cf23d54373654e2642d8b6c68a9a4b8cb2efbc1ac03c81b"
+        }
+      },
+      {
+        "name": "cdp-port-free",
+        "status": "passed",
+        "details": {
+          "port": 9222,
+          "free": true
+        }
+      },
+      {
+        "name": "webview2-cdp-start",
+        "status": "passed",
+        "details": {
+          "browser": "Edg/157.0.4341.60",
+          "pageUrl": "http://tauri.localhost/design-preview.html",
+          "pageTitle": "Still \u2014 personal workspace"
+        }
+      },
+      {
+        "name": "dashboard-ui-and-fullscreen",
+        "status": "passed",
+        "details": {
+          "activeWorkspace": "Dashboard workspace",
+          "dashboardElement": true,
+          "dashboardSurfaceVisible": true,
+          "fullscreen": true
+        }
+      },
+      {
+        "name": "native-runtime-status",
+        "status": "passed",
+        "details": {
+          "runtimeId": "92ddb717-fb99-4c7e-bd45-c324087ae682",
+          "latestSequence": 0,
+          "tickIntervalMs": 15000,
+          "trayAvailable": true,
+          "trayError": null,
+          "mainWindowVisible": true,
+          "hiddenToTray": false
+        }
+      },
+      {
+        "name": "embedded-browser-create-navigate-close",
+        "status": "passed",
+        "details": {
+          "presentTarget": {
+            "id": "A9BCE7B356C244014EA1D7C8ECE68F99",
+            "url": "https://example.com/"
+          },
+          "navigatedTarget": {
+            "id": "A9BCE7B356C244014EA1D7C8ECE68F99",
+            "url": "https://example.org/"
+          },
+          "closed": true
+        }
+      },
+      {
+        "name": "create-tray-layout-rule-through-ui",
+        "status": "passed",
+        "details": {
+          "ruleId": "c52e2dcb-5b7b-4c5d-a816-58b093aa8824",
+          "trigger": {
+            "kind": "once",
+            "at": "2026-11-26T15:07:32.000Z"
+          },
+          "action": {
+            "kind": "prepareWorkspaceLayout",
+            "workspaceId": "32948092-660b-4156-aa0e-842629ab05ab",
+            "layoutId": "ec181da8-e92d-4ee0-b4a2-c7027a673b57",
+            "mode": "replace"
+          },
+          "targetName": "Study",
+          "beforeWidgetIds": [
+            "105763bf-1be3-439e-99f4-6e7b4a701337",
+            "fcc54b8f-b2b8-4a8a-bd2f-537c0e98b4db",
+            "fd24ff8c-30b5-44ca-9f69-d53ad557d917"
+          ],
+          "savedLayout": {
+            "id": "ec181da8-e92d-4ee0-b4a2-c7027a673b57",
+            "name": "Smoke mwxorwv4",
+            "widgetTypes": [
+              "ai",
+              "files",
+              "notes"
+            ]
+          },
+          "receiptCountBeforeHide": 0,
+          "hiddenExecutionNotYetDue": true,
+          "createdThrough": "Message Still AI"
+        }
+      },
+      {
+        "name": "hidden-window-native-tick-delivery",
+        "status": "passed",
+        "details": {
+          "before": {
+            "latestSequence": 0,
+            "visible": true
+          },
+          "hidden": {
+            "hiddenToTray": true,
+            "hiddenAt": "2026-11-26T15:07:22.477Z",
+            "visible": false
+          },
+          "after": {
+            "latestSequence": 1,
+            "visible": false
+          },
+          "hiddenPageDelivered": [
+            "sequence:1"
+          ],
+          "ruleExecution": {
+            "ruleId": "c52e2dcb-5b7b-4c5d-a816-58b093aa8824",
+            "receipt": {
+              "ruleId": "c52e2dcb-5b7b-4c5d-a816-58b093aa8824",
+              "occurrenceKey": "once:2026-11-26T15:07:32.000Z",
+              "status": "succeeded",
+              "attempts": 1,
+              "startedAt": "2026-11-26T15:07:35.129Z",
+              "updatedAt": "2026-11-26T15:07:35.129Z",
+              "operationReceiptId": "c52e2dcb-5b7b-4c5d-a816-58b093aa8824/once:2026-11-26T15:07:32.000Z",
+              "message": "Prepared \u201cSmoke mwxorwv4\u201d to Study."
+            },
+            "workspaceBeforeWidgetIds": [
+              "105763bf-1be3-439e-99f4-6e7b4a701337",
+              "fcc54b8f-b2b8-4a8a-bd2f-537c0e98b4db",
+              "fd24ff8c-30b5-44ca-9f69-d53ad557d917"
+            ],
+            "workspaceAfterWidgetIds": [
+              "3df4db3d-8b43-4375-9a6a-597a0361eb7c",
+              "7812319c-f9ef-4d20-80bd-87e42290eeeb",
+              "debea492-ec1d-4090-b8a1-a2d10832a5c0"
+            ],
+            "layoutWidgetTypes": [
+              "ai",
+              "files",
+              "notes"
+            ],
+            "workspaceWidgetTypes": [
+              "ai",
+              "files",
+              "notes"
+            ],
+            "startedAfterHidden": true
+          },
+          "afterExecutionHidden": {
+            "latestSequence": 1,
+            "hiddenToTray": true,
+            "mainWindowVisible": false
+          },
+          "dedupeAfterLaterTick": {
+            "receiptCount": 1,
+            "widgetIdsUnchanged": true,
+            "terminalStatus": "succeeded"
+          }
+        }
+      }
+    ],
+    "cdp": {
+      "port": 9222,
+      "browser": "Edg/157.0.4341.60",
+      "lastProbeError": "TypeError: fetch failed\ncaused by Error: connect ECONNREFUSED 127.0.0.1:9222\ncode=ECONNREFUSED\nTypeError: fetch failed",
+      "lastConnectError": null
+    },
+    "process": {
+      "pid": 6400,
+      "exitCode": 1,
+      "spawnError": null,
+      "windows": [],
+      "windowsDiagnosticError": null
+    }
+  },
+  "limits": [
+    "Automation used an opt-in WebView2 CDP session on a hosted Windows runner; same executable was tested and uploaded.",
+    "No physical tray menu click, third-party App GUI, field recovery or Windows responsiveness acceptance.",
+    "Terminal artifact download returned Forbidden in an earlier run; bounded structured CI log evidence is retained here."
+  ]
+}

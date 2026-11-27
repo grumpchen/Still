@@ -1,0 +1,45 @@
+name: Publish verified workbench preview
+on:
+  push:
+    branches: [agent/codex/still-workbench]
+    paths: [.github/workflows/publish-workbench-preview.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: publish-still-workbench-preview-1
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify successful candidate run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api repos/grumpchen/Still/actions/runs/45844571306 > /tmp/candidate-run.json
+          jq -e '.conclusion == "success" and .head_sha == "f8ad35700891ae19ce27fb72f13757ac0e377adb"' /tmp/candidate-run.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: still-workbench-f8ad35700891ae19ce27fb72f13757ac0e377adb-windows-x64
+          run-id: 45844571306
+          github-token: ${{ github.token }}
+          path: candidate
+      - name: Check exact executable identity
+        working-directory: candidate
+        run: |
+          echo '4a043c5742d79d400cf23d54373654e2642d8b6c68a9a4b8cb2efbc1ac03c81b  still-desktop.exe' | sha256sum -c -
+          sha256sum still-desktop.exe > still-desktop.exe.sha256
+      - name: Publish testing release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v0.2371-workbench.1 \
+            --repo grumpchen/Still \
+            --target f8ad35700891ae19ce27fb72f13757ac0e377adb \
+            --title 'Still Workbench 测试版 1' \
+            --prerelease --latest=false \
+            --notes-file docs/release-notes/workbench-preview.md \
+            candidate/still-desktop.exe candidate/still-desktop.exe.sha256

@@ -41,7 +41,7 @@ test('first launch opens the tour and General Settings can run it again',async()
  assert.match(app,/localStorage\.getItem\(TUTORIAL_KEY\)==='done'[\s\S]*?setModal\(current=>current\?\?'tutorial'\)/);
  assert.match(app,/localStorage\.setItem\(TUTORIAL_KEY,'done'\)/);
  assert.match(app,/modal==='tutorial'[\s\S]*?<GettingStartedTour/);
- assert.match(settings,/Run tutorial again/);
+ assert.match(settings,/onClick=\{runTutorial\}[^>]*>\{t\('runTutorialAgain'\)\}/);
 });
 
 test('tutorial text stays inside its larger dialog at desktop and narrow widths',async()=>{

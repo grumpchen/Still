@@ -75,9 +75,9 @@ async function setupStatusCard(widget,{screenshotPluginMode='global',screenshotP
 test('Apps header actions are hidden by default and can be enabled individually',async()=>{
  const widget=createWidget('apps');widget.id='app-actions';widget.title='Attached app';widget.appKey='app-one';widget.appPanelOpen=true;
  const hidden=await setup([widget]);
- try{for(const label of ['Attach open app to Attached app','Detach app from Attached app','Save Attached app to tray'])assert.equal(hidden.window.document.querySelector(`[aria-label="${label}"]`),null,label+' starts hidden')}finally{await hidden.cleanup()}
+ try{for(const label of ['Attach an open app to Attached app','Detach app from Attached app','Save Attached app to tray'])assert.equal(hidden.window.document.querySelector(`[aria-label="${label}"]`),null,label+' starts hidden')}finally{await hidden.cleanup()}
  const visible=await setup([widget],{showAppAttachAction:true,showAppDetachAction:true,showAppSaveAction:true});
- try{for(const label of ['Attach open app to Attached app','Detach app from Attached app','Save Attached app to tray'])assert.ok(visible.window.document.querySelector(`[aria-label="${label}"]`),label+' can be shown')}finally{await visible.cleanup()}
+ try{for(const label of ['Attach an open app to Attached app','Detach app from Attached app','Save Attached app to tray'])assert.ok(visible.window.document.querySelector(`[aria-label="${label}"]`),label+' can be shown')}finally{await visible.cleanup()}
 });
 
 test('Notes opens a second tab and switching tabs keeps each page text separate',async()=>{
@@ -190,7 +190,7 @@ test('Files uses the selected AI provider to match PDF keywords to the user pref
 });
 
 test('Notes library opens Markdown tabs beside local notes and writes edits to the selected file',async()=>{
- const widget=createWidget('notes'),app=await setup([widget],{responses:{notes_library_choose:'Study',notes_library_list:[{name:'kinetics.md',path:'Chemistry/kinetics.md',size:12},{name:'lecture.pdf',path:'lecture.pdf',size:12}],notes_library_read:'Initial note',files_preview:{mimeType:'application/pdf',base64:'JVBERi0xLjQK'}}});
+ const widget=createWidget('notes'),appText={value:'Initial note'};const app=await setup([widget],{responses:{notes_library_choose:'Study',notes_library_list:[{name:'kinetics.md',path:'Chemistry/kinetics.md',size:12},{name:'lecture.pdf',path:'lecture.pdf',size:12}],notes_library_read:()=>appText.value,notes_library_write:args=>{appText.value=args.text;return null},files_preview:{mimeType:'application/pdf',base64:'JVBERi0xLjQK'}}});
  try{
   const localId=widget.noteDocuments[0].id;
   await act(async()=>app.window.document.querySelector('.note-library-toggle').click());
@@ -203,11 +203,21 @@ test('Notes library opens Markdown tabs beside local notes and writes edits to t
   await act(async()=>folder.click());
   const file=[...app.window.document.querySelectorAll('.note-library-file')][0];assert.equal(file.querySelector('.note-library-file-name').textContent,'kinetics.md');
   await act(async()=>file.click());
-  assert.equal(app.window.document.querySelector('.file-preview-text').textContent,'Initial note','Markdown is previewed inside the Notes library');
-  await act(async()=>app.window.document.querySelector('.note-library-preview-head button').click());
+  assert.equal(app.window.document.querySelector('.note-library-editor').value,'Initial note','Markdown remains editable in the explorer preview');
+  const open=app.window.document.querySelector('.note-library-preview-head button');assert.equal(open.textContent,'Open note');
+  await act(async()=>open.click());
   assert.equal(app.window.document.querySelector('[aria-label="Note text"]').value,'Initial note');
   assert.equal(app.window.document.querySelectorAll('[role="tab"]').length,2);
+  const editor=app.window.document.querySelector('[aria-label="Note text"]');await act(async()=>{Object.getOwnPropertyDescriptor(app.window.HTMLTextAreaElement.prototype,'value').set.call(editor,'Edited in Notes');editor[Object.keys(editor).find(key=>key.startsWith('__reactProps$'))].onChange({target:editor,currentTarget:editor})});await act(async()=>editor[Object.keys(editor).find(key=>key.startsWith('__reactProps$'))].onBlur({target:editor,currentTarget:editor}));
+  await act(async()=>{await new Promise(resolve=>setTimeout(resolve,0))});
+  assert.equal(appText.value,'Edited in Notes','editing the opened tab writes the Markdown source');
   assert.equal(app.currentState.workspaces[0].widgets[0].noteDocuments.find(note=>note.id===localId).text,widget.noteDocuments[0].text);
+  await act(async()=>app.window.document.querySelector('.note-library-toggle').click());
+  const folderAgain=[...app.window.document.querySelectorAll('.note-library-file')].find(button=>button.textContent.includes('Chemistry'));await act(async()=>folderAgain.click());
+  const fileAgain=app.window.document.querySelector('.note-library-file');await act(async()=>fileAgain.click());
+  const openAgain=app.window.document.querySelector('.note-library-preview-head button');await act(async()=>openAgain.click());
+  assert.equal(app.window.document.querySelectorAll('[role="tab"]').length,2,'opening an already-open source reuses its tab');
+  assert.equal(app.window.document.querySelector('[aria-label="Note text"]').value,'Edited in Notes','reopening refreshes from the source file');
  }finally{await app.cleanup()}
 });
 
@@ -242,11 +252,11 @@ test('Clock is added from a widget plus menu and opens its floating timer from t
  const note=createWidget('notes');note.id='clock-addon-note';note.title='Clock note';
  const app=await setup([note]);
  try{
-  await act(async()=>app.window.document.querySelector('[aria-label="Add widget add-on to Clock note"]').click());
+  await act(async()=>app.window.document.querySelector('[aria-label="Add an add-on to Clock note"]').click());
   const addClock=app.window.document.querySelector('[aria-label="Add Clock timer plugin"]');assert.ok(addClock,'Clock is available in the widget add-on menu');
   await act(async()=>addClock.click());
   assert.equal(app.currentState.workspaces[0].widgets[0].clockPluginEnabled,true);
-  const clockButton=app.window.document.querySelector('[aria-label="Open clock timer for Clock note"]');assert.ok(clockButton,'adding Clock places a clock icon in the widget header');
+  const clockButton=app.window.document.querySelector('[aria-label="Open the clock timer for Clock note"]');assert.ok(clockButton,'adding Clock places a clock icon in the widget header');
    let cardRect=rect(470,600,420,320);const card=clockButton.closest('.canvas-card');card.getBoundingClientRect=()=>cardRect;
   await act(async()=>clockButton.click());
   let dialog=app.window.document.querySelector('[role="dialog"][aria-label="Clock timer for Clock note"]');assert.ok(dialog,'the clock icon opens a floating timer dialog');
@@ -270,13 +280,13 @@ test('Relaunch and Export PNG controls can be hidden independently without remov
  try{
   assert.equal(hidden.window.document.querySelector('[data-widget-id="button-note"] .widget-relaunch-control'),null,'the normal card Relaunch toolbar control can be hidden');
   assert.equal(hidden.window.document.querySelector('[data-widget-id="minimized-focus"] .widget-minimized-relaunch'),null,'the minimized-card Relaunch control follows the same setting');
-  assert.equal(hidden.window.document.querySelector('[aria-label="Export Button note PNG"]'),null,'the PNG export button can be hidden');
+  assert.equal(hidden.window.document.querySelector('[data-widget-id="button-note"] .widget-export-control'),null,'the PNG export button can be hidden');
   assert.ok([...hidden.window.document.querySelectorAll('[data-widget-id="button-note"] button')].some(button=>button.textContent==='Relaunch Button note'),'manual-startup recovery remains available when its toolbar button is hidden');
  }finally{await hidden.cleanup()}
  const onlyExport=await setup([note],{showWidgetRelaunchAction:false,showWidgetExportPngAction:true});
- try{assert.ok(onlyExport.window.document.querySelector('[aria-label="Export Button note PNG"]'),'PNG export can remain visible while Relaunch is hidden')}finally{await onlyExport.cleanup()}
+ try{assert.ok(onlyExport.window.document.querySelector('[data-widget-id="button-note"] .widget-export-control'),'PNG export can remain visible while Relaunch is hidden')}finally{await onlyExport.cleanup()}
  const onlyRelaunch=await setup([note],{showWidgetRelaunchAction:true,showWidgetExportPngAction:false});
- try{assert.ok(onlyRelaunch.window.document.querySelector('[aria-label="Relaunch Button note"]'),'Relaunch can remain visible while PNG export is hidden');assert.equal(onlyRelaunch.window.document.querySelector('[aria-label="Export Button note PNG"]'),null)}finally{await onlyRelaunch.cleanup()}
+ try{assert.ok(onlyRelaunch.window.document.querySelector('[aria-label="Relaunch Button note"]'),'Relaunch can remain visible while PNG export is hidden');assert.equal(onlyRelaunch.window.document.querySelector('[data-widget-id="button-note"] .widget-export-control'),null)}finally{await onlyRelaunch.cleanup()}
 });
 
 test('Relaunch remounts an ordinary widget view while preserving its saved content',async()=>{
@@ -298,8 +308,8 @@ test('manual startup keeps the widget card and saved data in place until Relaunc
  try{
   assert.ok(app.window.document.querySelector('[data-widget-id="manual-note"]'),'the card stays on its workspace');
   assert.equal(app.window.document.querySelector('.note'),null,'the widget view waits for manual relaunch');
-  assert.ok(app.window.document.querySelector('[aria-label="Relaunch Manual note"]'));
-  await act(async()=>app.window.document.querySelector('[aria-label="Relaunch Manual note"]').dispatchEvent(new app.window.MouseEvent('click',{bubbles:true})));
+  const relaunch=app.window.document.querySelector('[data-widget-id="manual-note"] .widget-startup-waiting button');assert.ok(relaunch);assert.equal(relaunch.textContent,'Relaunch Manual note');
+  await act(async()=>relaunch.dispatchEvent(new app.window.MouseEvent('click',{bubbles:true})));
   assert.equal(app.window.document.querySelector('.note')?.value,'Keep this saved text');
   assert.equal(app.currentState.workspaces[0].widgets[0].id,'manual-note');assert.deepEqual(app.currentState.workspaces[0].widgets[0].placement,note.placement);
  }finally{await app.cleanup()}
@@ -312,7 +322,7 @@ test('manual startup delays native app creation until the user relaunches its ca
   await act(async()=>await new Promise(resolve=>setTimeout(resolve,30)));
   assert.equal(app.calls.filter(call=>call.command==='app_panel_open').length,0);
   assert.ok(app.window.document.querySelector('[data-widget-id="manual-app"]'));
-  await act(async()=>app.window.document.querySelector('[aria-label="Relaunch Manual app"]').dispatchEvent(new app.window.MouseEvent('click',{bubbles:true})));
+  const relaunch=app.window.document.querySelector('[data-widget-id="manual-app"] .widget-startup-waiting button');assert.ok(relaunch);await act(async()=>relaunch.dispatchEvent(new app.window.MouseEvent('click',{bubbles:true})));
   await act(async()=>{for(let attempt=0;attempt<40&&!app.calls.some(call=>call.command==='app_panel_open');attempt++)await new Promise(resolve=>setTimeout(resolve,10))});
   assert.equal(app.calls.filter(call=>call.command==='app_panel_open').length,1);
  }finally{await app.cleanup()}
@@ -332,32 +342,32 @@ test('Tag Color Status stacks controls from multiple registered widget plugins',
   const allGlobal=app.window.document.querySelector('[aria-label="All tag colors follow global mode"]');assert.ok(allGlobal);assert.equal(allGlobal.checked,true,'all colors follow global by default');
   await act(async()=>allGlobal.dispatchEvent(new app.window.MouseEvent('click',{bubbles:true})));
   assert.equal(app.window.document.querySelector('[aria-label="All tag colors follow global mode"]').checked,false,'turning the switch off exposes color-specific rules');
-  const addColor=app.window.document.querySelector('[aria-label="Add tag color relaunch setting"]');assert.ok(addColor);
+  const addColor=app.window.document.querySelector('[aria-label="Add tag color setting"]');assert.ok(addColor);
   addColor.value='red';await act(async()=>addColor.dispatchEvent(new app.window.Event('change',{bubbles:true})));
-  let redSetting=app.window.document.querySelector('[aria-label="Add red plugin setting"]');assert.ok(redSetting,'a color rule can stack plugin settings through its dropdown');redSetting.value='relaunch';await act(async()=>redSetting.dispatchEvent(new app.window.Event('change',{bubbles:true})));
-  let redMode=app.window.document.querySelector('[aria-label="Status card red relaunch mode"]');assert.ok(redMode,'selected color settings stack as separate rows');
+  let redSetting=app.window.document.querySelector('[aria-label="Add plugin setting for Red"]');assert.ok(redSetting,'a color rule can stack plugin settings through its dropdown');redSetting.value='relaunch';await act(async()=>redSetting.dispatchEvent(new app.window.Event('change',{bubbles:true})));
+  let redMode=app.window.document.querySelector('[aria-label="Relaunch mode Red"]');assert.ok(redMode,'selected color settings stack as separate rows');
   redMode.value='manual';await act(async()=>redMode.dispatchEvent(new app.window.Event('change',{bubbles:true})));
   assert.equal(app.window.document.querySelector('[aria-label="All tag colors follow global mode"]').checked,false,'a color-specific choice turns off the all-global switch');
-  const addSecondColor=app.window.document.querySelector('[aria-label="Add tag color relaunch setting"]');addSecondColor.value='purple';await act(async()=>addSecondColor.dispatchEvent(new app.window.Event('change',{bubbles:true})));
-  assert.ok(app.window.document.querySelector('[aria-label="Status card red relaunch mode"]'));
-  const purpleSetting=app.window.document.querySelector('[aria-label="Add purple plugin setting"]');purpleSetting.value='relaunch';await act(async()=>purpleSetting.dispatchEvent(new app.window.Event('change',{bubbles:true})));
-  assert.ok(app.window.document.querySelector('[aria-label="Status card purple relaunch mode"]'));
+  const addSecondColor=app.window.document.querySelector('[aria-label="Add tag color setting"]');addSecondColor.value='purple';await act(async()=>addSecondColor.dispatchEvent(new app.window.Event('change',{bubbles:true})));
+  assert.ok(app.window.document.querySelector('[aria-label="Relaunch mode Red"]'));
+  const purpleSetting=app.window.document.querySelector('[aria-label="Add plugin setting for Purple"]');purpleSetting.value='relaunch';await act(async()=>purpleSetting.dispatchEvent(new app.window.Event('change',{bubbles:true})));
+  assert.ok(app.window.document.querySelector('[aria-label="Relaunch mode Purple"]'));
   assert.match(app.window.document.querySelector('.tag-status-summary')?.textContent??'',/Manual: Red/);
-  redSetting=app.window.document.querySelector('[aria-label="Add red plugin setting"]');redSetting.value='screenshot';await act(async()=>redSetting.dispatchEvent(new app.window.Event('change',{bubbles:true})));
-  const redScreenshot=app.window.document.querySelector('[aria-label="Status card red screenshot setting"]');assert.ok(redScreenshot,'Screenshot is available as another setting within Red');redScreenshot.value='disabled';await act(async()=>redScreenshot.dispatchEvent(new app.window.Event('change',{bubbles:true})));
+  redSetting=app.window.document.querySelector('[aria-label="Add plugin setting for Red"]');redSetting.value='screenshot';await act(async()=>redSetting.dispatchEvent(new app.window.Event('change',{bubbles:true})));
+  const redScreenshot=app.window.document.querySelector('[aria-label="Screenshot setting Red"]');assert.ok(redScreenshot,'Screenshot is available as another setting within Red');redScreenshot.value='disabled';await act(async()=>redScreenshot.dispatchEvent(new app.window.Event('change',{bubbles:true})));
   const {showScreenshotControl}=await vite.ssrLoadModule('/src/domain/screenshotPlugin.ts');
   assert.equal(showScreenshotControl('global',[],'red',app.currentState.screenshotPluginColorOverrides),false,'a red color override can hide its camera while global screenshot remains enabled');
   assert.equal(showScreenshotControl('global',[],'blue',app.currentState.screenshotPluginColorOverrides),true,'the color override leaves other colors unchanged');
   assert.ok(app.window.document.querySelector('[aria-label="Status card screenshot scope"]'),'the Screenshot settings appear alongside relaunch controls');
   const scope=app.window.document.querySelector('[aria-label="Status card screenshot scope"]');scope.value='tag-colors';
   await act(async()=>scope.dispatchEvent(new app.window.Event('change',{bubbles:true})));
-  const red=app.window.document.querySelector('[aria-label="Status card red screenshot color"]');assert.ok(red);
+  const red=app.window.document.querySelector('[aria-label="Screenshot color for Red"]');assert.ok(red);
   await act(async()=>red.dispatchEvent(new app.window.MouseEvent('click',{bubbles:true})));
   assert.equal(app.currentState.screenshotPluginMode,'tag-colors');assert.deepEqual(app.currentState.screenshotPluginColors,['red']);
   const globalSwitch=app.window.document.querySelector('[aria-label="All tag colors follow global mode"]');await act(async()=>globalSwitch.dispatchEvent(new app.window.MouseEvent('click',{bubbles:true})));
   assert.equal(app.window.document.querySelector('[aria-label="All tag colors follow global mode"]').checked,true,'turning global mode back on removes stacked per-color overrides');
   assert.deepEqual(app.currentState.screenshotPluginColorOverrides,{},'following global clears color-specific Screenshot overrides');
-  assert.equal(app.window.document.querySelector('[aria-label="Status card red relaunch mode"]'),null);
+  assert.equal(app.window.document.querySelector('[aria-label="Relaunch mode Red"]'),null);
  }finally{await app.cleanup()}
 });
 
@@ -372,10 +382,10 @@ test('Tag Color Status exposes Clock timer globally and as a stacked tag-color s
   assert.ok(app.window.document.querySelector('[aria-label="Status card clock timer scope"]'),'Clock timer global settings render on the status card');
   const allGlobal=app.window.document.querySelector('[aria-label="All tag colors follow global mode"]');
   await act(async()=>allGlobal.dispatchEvent(new app.window.MouseEvent('click',{bubbles:true})));
-  const color=app.window.document.querySelector('[aria-label="Add tag color relaunch setting"]');color.value='red';await act(async()=>color.dispatchEvent(new app.window.Event('change',{bubbles:true})));
-  const setting=app.window.document.querySelector('[aria-label="Add red plugin setting"]');assert.ok(setting);
+  const color=app.window.document.querySelector('[aria-label="Add tag color setting"]');color.value='red';await act(async()=>color.dispatchEvent(new app.window.Event('change',{bubbles:true})));
+  const setting=app.window.document.querySelector('[aria-label="Add plugin setting for Red"]');assert.ok(setting);
   setting.value='clock-timer';await act(async()=>setting.dispatchEvent(new app.window.Event('change',{bubbles:true})));
-  const redClock=app.window.document.querySelector('[aria-label="Status card red clock timer setting"]');assert.ok(redClock,'Clock timer can be stacked under a tag color');
+  const redClock=app.window.document.querySelector('[aria-label="Clock timer setting Red"]');assert.ok(redClock,'Clock timer can be stacked under a tag color');
   redClock.value='disabled';await act(async()=>redClock.dispatchEvent(new app.window.Event('change',{bubbles:true})));
   assert.equal(app.currentState.clockPluginColorOverrides.red,false,'the color rule persists the disabled Clock override');
  }finally{await app.cleanup()}
@@ -390,7 +400,7 @@ test('Tag Color Status automatically exposes and stacks controls from a newly re
  try{
   app=await setupStatusCard(status);
   await act(async()=>app.window.document.querySelector('[aria-label="Customize status controls"]').dispatchEvent(new app.window.MouseEvent('click',{bubbles:true})));
-  const choice=app.window.document.querySelector('[aria-label="Show Example status"]');assert.ok(choice,'new plugin controls automatically appear in the status-card customizer');
+  const choice=app.window.document.querySelector('[aria-label="Show statusControl_example-plugin.status"]');assert.ok(choice,'new plugin controls automatically appear in the status-card customizer through the current translation-key label');
   await act(async()=>choice.dispatchEvent(new app.window.MouseEvent('click',{bubbles:true})));
   assert.deepEqual(app.currentWidget.pluginControls,['widget-relaunch.tag-colors','example-plugin.status']);
   assert.equal(app.window.document.querySelector('[aria-label="Example plugin status"]')?.textContent,'Ready','the plugin-provided renderer is stacked into the status card');

@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, io::Read, path::{Component, Path, PathBuf}, sync::Mutex};
 use tauri::{AppHandle, Manager, State, Webview};
 use tauri_plugin_dialog::DialogExt;
@@ -73,6 +73,12 @@ pub(crate) struct StillInbox { listing:FolderListing,path:String }
 #[derive(Serialize)]
 #[serde(rename_all="camelCase")]
 pub(crate) struct FileMoveResult { source_path:String, destination_path:String }
+#[derive(Deserialize)]
+#[serde(tag="type",rename_all="camelCase")]
+pub(crate) enum ManagedFileAction { Rename{name:String},Move{destination_folder:String},Delete,EditText{text:String,expected_text:String} }
+#[derive(Debug,Serialize)]
+#[serde(rename_all="camelCase")]
+pub(crate) struct ManagedFileResult { action:String,source_path:String,destination_path:String }
 #[derive(Serialize)]
 #[serde(rename_all="camelCase")]
 pub(crate) struct ExtractedPdfText { text:String, pages_read:usize, total_pages:usize, truncated:bool }
@@ -518,9 +524,89 @@ pub async fn files_move_resource(webview:Webview,roots:State<'_,FolderRoots>,id:
     let root=roots.root(&id)?;
     tauri::async_runtime::spawn_blocking(move||move_file_within_root(&root,&source_path,&destination_folder)).await.map_err(|_|"Could not file this item")?
 }
+fn managed_resource(root:&Path,relative:&str)->Result<PathBuf,String>{
+    let root=root.canonicalize().map_err(|_|"The selected folder is unavailable. Choose it again.")?;
+    if relative.is_empty()||relative.len()>1000||relative.contains(':')||relative.contains('\\')||relative.contains('\0')||relative.split('/').any(|part|!valid_filing_segment(part)){
+        return Err("Choose an item within the selected Files folder.".into())
+    }
+    let mut current=root.clone();
+    for (index,part) in relative.split('/').enumerate(){
+        current.push(part);
+        let metadata=fs::symlink_metadata(&current).map_err(|_|"This file or folder is no longer available")?;
+        if metadata.file_type().is_symlink(){return Err("Still cannot change a linked item in the Library.".into())}
+        if index+1<relative.split('/').count()&&!metadata.is_dir(){return Err("The selected path contains a non-folder item.".into())}
+    }
+    let path=current.canonicalize().map_err(|_|"This file or folder is no longer available")?;
+    if !path.starts_with(&root)||path==root{return Err("Choose an item inside the selected Files folder.".into())}
+    if path.is_file()&&blocked(&path){return Err("Programs and shortcuts cannot be edited in the Library.".into())}
+    Ok(path)
+}
+fn managed_folder(root:&Path,relative:&str)->Result<PathBuf,String>{
+    let root=root.canonicalize().map_err(|_|"The selected folder is unavailable. Choose it again.")?;
+    if relative.is_empty(){return Ok(root)}
+    if relative.len()>1000||relative.contains(':')||relative.contains('\\')||relative.contains('\0')||relative.split('/').any(|part|!valid_filing_segment(part)){return Err("Choose a destination folder in this Files library.".into())}
+    let mut current=root.clone();for part in relative.split('/') {current.push(part);let metadata=fs::symlink_metadata(&current).map_err(|_|"Choose an existing destination folder in this Files library")?;if metadata.file_type().is_symlink()||!metadata.is_dir(){return Err("The destination must be an ordinary folder in this Files library.".into())}}
+    current=current.canonicalize().map_err(|_|"The destination folder is unavailable")?;if !current.starts_with(&root){return Err("The destination is outside the selected Files folder.".into())}Ok(current)
+}
+fn name_collision(parent:&Path,name:&str)->Result<bool,String>{
+    for entry in fs::read_dir(parent).map_err(|_|"Could not inspect the destination folder")?{let entry=entry.map_err(|_|"Could not inspect the destination folder")?;if entry.file_name().to_string_lossy().eq_ignore_ascii_case(name){return Ok(true)}}Ok(false)
+}
+pub(crate) fn manage_resource_within_root(root:&Path,source_relative:&str,action:ManagedFileAction)->Result<ManagedFileResult,String>{
+    let root=root.canonicalize().map_err(|_|"The selected folder is unavailable. Choose it again.")?;let source=managed_resource(&root,source_relative)?;
+    let (action_name,destination_path)=match action{
+        ManagedFileAction::Rename{name}=>{
+            if !valid_filing_segment(&name)||source.is_file()&&source.file_name().is_some_and(|old|old.to_string_lossy().rsplit_once('.').map(|x|x.1.to_ascii_lowercase())!=name.rsplit_once('.').map(|x|x.1.to_ascii_lowercase())){return Err("Use a safe name and keep the file extension unchanged.".into())}
+            let parent=source.parent().ok_or("Choose an item inside the selected Files folder")?;if name_collision(parent,&name)?{return Err("An item with that name already exists in this folder. Nothing was replaced.".into())}
+            let target=parent.join(name);fs::rename(&source,&target).map_err(|_|"Could not rename this item. Check that it is not open in another app.")?;
+            let relative=target.strip_prefix(&root).map_err(|_|"The renamed item escaped the selected Files folder")?.components().map(|part|part.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/");("rename",relative)
+        },
+        ManagedFileAction::Move{destination_folder}=>{
+            let folder=managed_folder(&root,&destination_folder)?;if source.is_dir()&&folder.starts_with(&source){return Err("A folder cannot be moved into itself.".into())}
+            let name=source.file_name().ok_or("This item has no usable name")?.to_string_lossy().into_owned();if name_collision(&folder,&name)?{return Err("An item with that name already exists in the destination. Nothing was replaced.".into())}
+            let target=folder.join(name);fs::rename(&source,&target).map_err(|_|"Could not move this item. Check that it is not open in another app.")?;
+            let relative=target.strip_prefix(&root).map_err(|_|"The moved item escaped the selected Files folder")?.components().map(|part|part.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/");("move",relative)
+        },
+        ManagedFileAction::Delete=>{
+            if source.is_dir(){if fs::read_dir(&source).map_err(|_|"Could not inspect this folder")?.next().is_some(){return Err("Only empty folders can be deleted. Move or delete their contents first.".into())}fs::remove_dir(&source).map_err(|_|"Could not delete this empty folder")?;}else{fs::remove_file(&source).map_err(|_|"Could not delete this file")?;}("delete",String::new())
+        },
+        ManagedFileAction::EditText{text,expected_text}=>{
+            const MAX_EDIT_BYTES:usize=1_000_000;
+            let extension=source.extension().and_then(|item|item.to_str()).unwrap_or("").to_ascii_lowercase();if !source.is_file()||!matches!(extension.as_str(),"txt"|"md"|"csv"|"log")||text.len()>MAX_EDIT_BYTES||expected_text.len()>MAX_EDIT_BYTES{return Err("Edit supports text, Markdown, CSV, and log files up to 1 MB.".into())}
+            let current=fs::read_to_string(&source).map_err(|_|"This text file is unavailable or is not valid UTF-8")?;if current!=expected_text{return Err("This file changed since it was opened. Reload it before saving.".into())}
+            fs::write(&source,text).map_err(|_|"Could not save this text file. Check that it is writable")?;("editText",source_relative.into())
+        }
+    };
+    Ok(ManagedFileResult{action:action_name.into(),source_path:source_relative.into(),destination_path})
+}
+#[tauri::command]
+pub async fn files_manage_resource(webview:Webview,roots:State<'_,FolderRoots>,id:String,source_path:String,action:ManagedFileAction)->Result<ManagedFileResult,String>{
+    crate::security::authorize(&webview)?;valid_id(&id)?;let root=roots.root(&id)?;
+    tauri::async_runtime::spawn_blocking(move||manage_resource_within_root(&root,&source_path,action)).await.map_err(|_|"Could not manage this Library item")?
+}
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn temp_root(label:&str)->PathBuf{let root=std::env::temp_dir().join(format!("still-library-{label}-{}",uuid::Uuid::new_v4()));fs::create_dir_all(&root).unwrap();root}
+    #[test]
+    fn managed_files_rename_move_edit_delete_and_reject_escape(){
+        let root=temp_root("managed");fs::write(root.join("draft.md"),"old").unwrap();fs::create_dir(root.join("Course")).unwrap();
+        let renamed=manage_resource_within_root(&root,"draft.md",ManagedFileAction::Rename{name:"notes.md".into()}).unwrap();assert_eq!(renamed.destination_path,"notes.md");
+        let edited=manage_resource_within_root(&root,"notes.md",ManagedFileAction::EditText{text:"new".into(),expected_text:"stale".into()}).unwrap_err();assert!(edited.contains("changed"));
+        // Text writes require the exact current version; the stale edit left it untouched.
+        assert_eq!(fs::read_to_string(root.join("notes.md")).unwrap(),"old");
+        manage_resource_within_root(&root,"notes.md",ManagedFileAction::EditText{text:"new".into(),expected_text:"old".into()}).unwrap();assert_eq!(fs::read_to_string(root.join("notes.md")).unwrap(),"new");
+        let moved=manage_resource_within_root(&root,"notes.md",ManagedFileAction::Move{destination_folder:"Course".into()}).unwrap();assert_eq!(moved.destination_path,"Course/notes.md");
+        assert!(manage_resource_within_root(&root,"../outside.txt",ManagedFileAction::Delete).is_err());
+        manage_resource_within_root(&root,"Course/notes.md",ManagedFileAction::Delete).unwrap();assert!(root.join("Course").is_dir());
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn managed_delete_only_removes_empty_folders_and_refuses_overwrite(){
+        let root=temp_root("delete");fs::create_dir(root.join("Folder")).unwrap();fs::write(root.join("Folder/keep.md"),"keep").unwrap();fs::write(root.join("same.txt"),"one").unwrap();fs::write(root.join("Folder/same.txt"),"two").unwrap();
+        assert!(manage_resource_within_root(&root,"Folder",ManagedFileAction::Delete).unwrap_err().contains("empty"));
+        assert!(manage_resource_within_root(&root,"same.txt",ManagedFileAction::Move{destination_folder:"Folder".into()}).unwrap_err().contains("already exists"));
+        assert!(root.join("same.txt").exists());fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn failed_notes_library_grant_persistence_restores_previous_root() {
         let old = PathBuf::from("old-library");

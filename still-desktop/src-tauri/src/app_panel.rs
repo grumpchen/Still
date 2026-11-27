@@ -333,11 +333,12 @@ fn restore(entry:&mut Entry){unsafe{
  let mut placement=entry.original_placement;if !entry.original_visible{placement.showCmd=SW_HIDE.0 as u32;}
  let _=SetWindowPlacement(hwnd,&placement);let _=ShowWindow(hwnd,if entry.original_visible{SW_SHOWNA}else{SW_HIDE});
 }}
+fn request_normal_close(hwnd:HWND)->bool{unsafe{IsWindow(Some(hwnd)).as_bool()&&PostMessageW(Some(hwnd),WM_CLOSE,windows::Win32::Foundation::WPARAM(0),LPARAM(0)).is_ok()}}
 fn apply_shutdown_action(hwnd:HWND,action:ShutdownAction){unsafe{
  if !IsWindow(Some(hwnd)).as_bool(){return}
  match action{
   ShutdownAction::Minimize=>{let _=ShowWindow(hwnd,SW_MINIMIZE);}
-  ShutdownAction::Close=>{let _=PostMessageW(Some(hwnd),WM_CLOSE,windows::Win32::Foundation::WPARAM(0),LPARAM(0));}
+  ShutdownAction::Close=>{let _=request_normal_close(hwnd);}
   ShutdownAction::LeaveOpen=>{}
  }
 }}
@@ -527,7 +528,8 @@ pub fn install(app:&AppHandle)->Result<(),String>{
  OWNER.store(main.0 as usize,std::sync::atomic::Ordering::Relaxed);
  unsafe{for (a,b) in [(EVENT_SYSTEM_FOREGROUND,EVENT_SYSTEM_FOREGROUND),(EVENT_OBJECT_DESTROY,EVENT_OBJECT_LOCATIONCHANGE)]{if SetWinEventHook(a,b,None,Some(event),0,0,WINEVENT_OUTOFCONTEXT).0.is_null(){return Err("Unable to synchronize application panels".into())}}}Ok(())
 }
-fn release(app:&AppHandle,id:&str,close_app:bool){if let Ok(mut s)=app.state::<AppPanelState>().0.lock(){*s.generation.entry(id.into()).or_default()+=1;s.pending.remove(id);if let Some(mut entry)=s.items.remove(id){let should_close=close_app&&valid_window(&entry);let hwnd=handle(entry.hwnd);clear_collection_marker(&mut entry);restore(&mut entry);if should_close{apply_shutdown_action(hwnd,ShutdownAction::Close);}}}}
+#[derive(Clone,Copy,Debug,Default,Serialize)]#[serde(rename_all="camelCase")]pub struct AppPanelReleaseResult{pub managed_window:bool,pub close_requested:bool}
+fn release(app:&AppHandle,id:&str,close_app:bool)->AppPanelReleaseResult{let state=app.state::<AppPanelState>();let Ok(mut s)=state.0.lock()else{return AppPanelReleaseResult::default()};*s.generation.entry(id.into()).or_default()+=1;s.pending.remove(id);let Some(mut entry)=s.items.remove(id)else{return AppPanelReleaseResult::default()};let managed_window=valid_window(&entry);let hwnd=handle(entry.hwnd);clear_collection_marker(&mut entry);restore(&mut entry);let close_requested=close_app&&managed_window&&request_normal_close(hwnd);AppPanelReleaseResult{managed_window,close_requested}}
 pub fn shutdown(app:&AppHandle){let state=app.state::<AppPanelState>();if let Ok(mut s)=state.0.lock(){s.closed=true;s.pending.clear();let action=shutdown_action(s.shutdown_behavior);for (_,mut entry) in s.items.drain(){clear_collection_marker(&mut entry);let hwnd=handle(entry.hwnd);restore(&mut entry);apply_shutdown_action(hwnd,action);}};}
 
 #[tauri::command]
@@ -707,7 +709,7 @@ pub async fn app_panel_present(app:AppHandle,webview:Webview,id:String,bounds:Bo
  let main=owner()?;let entry=s.items.get(&id).ok_or("The app was closed. Reopen it below.")?;let result=info(entry,main,entry.fresh);drop(s);crate::native_panels::apply_order(&app);Ok(result)
 }
 #[tauri::command]
-pub async fn app_panel_release(app:AppHandle,webview:Webview,id:String,close_app:Option<bool>)->Result<(),String>{crate::security::authorize(&webview)?;instance(&id)?;release(&app,&id,close_app.unwrap_or(false));crate::native_panels::apply_order(&app);Ok(())}
+pub async fn app_panel_release(app:AppHandle,webview:Webview,id:String,close_app:Option<bool>)->Result<AppPanelReleaseResult,String>{crate::security::authorize(&webview)?;instance(&id)?;let result=release(&app,&id,close_app.unwrap_or(false));crate::native_panels::apply_order(&app);Ok(result)}
 
 pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
  let state=app.state::<AppPanelState>();let panels=state.0.lock().map_err(|_|"App panels unavailable")?;
@@ -1015,7 +1017,7 @@ pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
    assert_eq!(info_at(&entry,1.0,true).required_width,Some(600.));assert_eq!(info_at(&entry,2.0,true).required_width,Some(600.));
   }
  #[test]fn real_window_fixture_tracks_bounds_clips_native_content_and_releases_without_closing(){unsafe{
-  let main=Fixture::new("Still fixture owner");let target=Fixture::new("Still fixture app");let original=rect(target.0).unwrap();let original_style=GetWindowLongPtrW(target.0,GWL_STYLE);
+  let geometry_class=GeometryFixtureClass::new();let main=geometry_class.window("Still fixture owner");let target=geometry_class.window("Still fixture app");let original=rect(target.0).unwrap();let original_style=GetWindowLongPtrW(target.0,GWL_STYLE);
   let mut original_placement=WINDOWPLACEMENT{length:std::mem::size_of::<WINDOWPLACEMENT>() as u32,..Default::default()};GetWindowPlacement(target.0,&mut original_placement).unwrap();
   let bounds=Bounds{x:100.,y:140.,width:800.,height:500.};let clip=Bounds{x:130.,y:160.,width:700.,height:450.};let grip=Bounds{x:798.,y:578.,width:32.,height:32.};
    let mut entry=test_entry(target.0.0 as usize,&bounds);entry.clip=clip.clone();entry.grip=Some(grip);entry.original_placement=original_placement;
@@ -1027,6 +1029,20 @@ pub fn capture(app:&AppHandle,id:&str)->Result<Vec<u8>,String>{
   entry.bounds.x=220.;position(&mut entry,main.0,POINT{x:30,y:20},1.5).unwrap();assert_eq!(rect(target.0).unwrap().0,360);
   restore(&mut entry);assert_eq!(GetWindowLongPtrW(target.0,GWL_STYLE),original_style);assert!(IsWindow(Some(target.0)).as_bool());assert_eq!(GetWindowLongPtrW(target.0,GWLP_HWNDPARENT),0);assert_eq!(rect(target.0).unwrap(),original);assert!(!IsWindowVisible(target.0).as_bool());
   assert!(GetPropW(target.0,PCWSTR(marker().as_ptr())).0.is_null());
-  drop(target);assert!(!valid_window(&entry),"A closed app window must be rejected instead of retaining an attached card");
+  drop(target);assert!(!valid_window(&entry),"A closed app window must be rejected instead of retaining an attached card");drop(main);drop(geometry_class);
  }}
+ struct GeometryFixtureClass{name:Vec<u16>,instance:windows::Win32::Foundation::HINSTANCE}
+ impl GeometryFixtureClass{
+  fn new()->Self{unsafe{
+   let name=wide("StillAppPanelGeometryFixture");let module=windows::Win32::System::LibraryLoader::GetModuleHandleW(None).unwrap();let instance=windows::Win32::Foundation::HINSTANCE(module.0);
+   let class=WNDCLASSW{lpfnWndProc:Some(geometry_fixture_proc),hInstance:instance,lpszClassName:PCWSTR(name.as_ptr()),..Default::default()};assert_ne!(RegisterClassW(&class),0);
+   Self{name,instance}
+  }}
+  fn window(&self,title:&str)->Fixture{unsafe{let title=wide(title);Fixture(CreateWindowExW(WINDOW_EX_STYLE(0),PCWSTR(self.name.as_ptr()),PCWSTR(title.as_ptr()),WS_OVERLAPPEDWINDOW,50,60,840,520,None,None,Some(self.instance),None).unwrap())}}
+ }
+ impl Drop for GeometryFixtureClass{fn drop(&mut self){unsafe{let _=UnregisterClassW(PCWSTR(self.name.as_ptr()),Some(self.instance));}}}
+ unsafe extern "system" fn geometry_fixture_proc(hwnd:HWND,message:u32,wparam:windows::Win32::Foundation::WPARAM,lparam:LPARAM)->windows::Win32::Foundation::LRESULT{
+  if message==WM_GETMINMAXINFO{let limits=&mut *(lparam.0 as *mut MINMAXINFO);limits.ptMaxTrackSize.x=4096;limits.ptMaxTrackSize.y=4096;return windows::Win32::Foundation::LRESULT(0)}
+  DefWindowProcW(hwnd,message,wparam,lparam)
+ }
 }
