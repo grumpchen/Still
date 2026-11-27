@@ -276,7 +276,9 @@ pub async fn app_picker_preview(webview:Webview,hwnd:usize,pid:u32)->Result<Vec<
   let root=std::env::temp_dir().join(format!("still-app-catalog-test-{}",crate::dropped_files::source_id().unwrap()));
   let nested=root.join("Nested");let fake_directory=root.join("Folder.lnk");std::fs::create_dir_all(&nested).unwrap();std::fs::create_dir_all(&fake_directory).unwrap();
   let first=root.join("One.lnk");let second=nested.join("Two.LNK");std::fs::write(&first,b"fixture").unwrap();std::fs::write(&second,b"fixture").unwrap();
-  let mut files=Vec::new();let mut remaining=100;shortcut_files(&root,0,&mut remaining,&mut files);files.sort();let mut expected=vec![first,second];expected.sort();assert_eq!(files,expected);
+  let portable=nested.join("Portable.exe");std::fs::write(&portable,b"fixture").unwrap();
+  let mut files=Vec::new();let mut remaining=100;app_files(&root,0,&mut remaining,"lnk",&mut files);files.sort();let mut expected=vec![first,second];expected.sort();assert_eq!(files,expected);
+  let mut files=Vec::new();let mut remaining=100;app_files(&root,0,&mut remaining,"exe",&mut files);assert_eq!(files,vec![portable]);
   let _=std::fs::remove_dir_all(root);
  }
  #[test]fn distinct_chrome_profile_shortcuts_are_not_collapsed_to_one_installed_app(){
