@@ -18,6 +18,7 @@ export default function NotesHome({entries,create,edit,remove}:{
  const [query,setQuery]=useState(''),[markdownOnly,setMarkdownOnly]=useState(false),[selectedId,setSelectedId]=useState('');
  const [draft,setDraft]=useState<{id:string;text:string;expected:string}|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false);
  const input=useRef<HTMLInputElement>(null);
+ const saving=useRef(false);
  const entry=entries.find(item=>item.document.id===selectedId),note=entry?.document;
  const keyword=query.trim().replace(/^#/,'').toLocaleLowerCase();
  const matches=entries.filter(item=>{
@@ -45,14 +46,16 @@ export default function NotesHome({entries,create,edit,remove}:{
   finally{setBusy(false)}
  }
  async function saveLinkedNote(){
-  if(!note?.sourcePath||!entry?.widgetId||draft?.id!==note.id||busy)return;
+  if(!note?.sourcePath||!entry?.widgetId||draft?.id!==note.id||busy||saving.current)return;
+  saving.current=true;
   setBusy(true);setError('');
   try{
    await notesLibrary.write(entry.widgetId,note.sourcePath,draft.text,draft.expected);
+   window.dispatchEvent(new CustomEvent('still-note-file-saved',{detail:{widgetId:entry.widgetId,path:note.sourcePath,previous:draft.expected,text:draft.text}}));
    edit(note.id,{text:draft.text});
    setDraft(null);
   }catch(reason){setError(String(reason))}
-  finally{setBusy(false)}
+  finally{saving.current=false;setBusy(false)}
  }
  function deleteSelected(){
   if(!note||!window.confirm(t('deleteNotePrompt').replace('{note}',note.title||t('untitledNote'))))return;

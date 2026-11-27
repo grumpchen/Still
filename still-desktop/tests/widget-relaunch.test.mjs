@@ -194,10 +194,15 @@ test('Previously linked Markdown stays editable after removal of the folder brow
  widget.notesLibraryKey=widget.id;widget.notesLibraryName='Study';
  active.title='kinetics.md';active.sourcePath='Chemistry/kinetics.md';active.text=appText.value;
  widget.title=active.title;widget.text=active.text;
- const app=await setup([widget],{responses:{notes_library_write:args=>{appText.value=args.text;return null}}});
+ const app=await setup([widget],{responses:{notes_library_write:args=>{
+  assert.equal(args.expected,appText.value);
+  appText.value=args.text;return null;
+ }}});
  try{
   assert.equal(app.window.document.querySelector('.note-library-toggle'),null);
   assert.match(app.window.document.querySelector('.note-storage').textContent,/Study \/ Chemistry\/kinetics.md/);
+  appText.value='Edited in Notes home';
+  app.window.dispatchEvent(new app.window.CustomEvent('still-note-file-saved',{detail:{widgetId:widget.id,path:active.sourcePath,previous:active.text,text:appText.value}}));
   const editor=app.window.document.querySelector('[aria-label="Note text"]');
   await act(async()=>{Object.getOwnPropertyDescriptor(app.window.HTMLTextAreaElement.prototype,'value').set.call(editor,'Edited in Notes');editor[Object.keys(editor).find(key=>key.startsWith('__reactProps$'))].onChange({target:editor,currentTarget:editor})});
   await act(async()=>editor[Object.keys(editor).find(key=>key.startsWith('__reactProps$'))].onBlur({target:editor,currentTarget:editor}));

@@ -27,6 +27,16 @@ export default function NotesWidget({widget,update,notify}:WidgetProps){
  const linksToIds=[...new Set(Array.from(active.text.matchAll(/\[\[note:([a-zA-Z0-9-]{1,500})\]\]/g),match=>match[1]))],linkedNotes=documents.filter(document=>document.id!==active.id&&linksToIds.includes(document.id)),referencingNotes=documents.filter(document=>document.id!==active.id&&document.text.includes(`[[note:${active.id}]]`));
 
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;if(saveTimer.current)clearTimeout(saveTimer.current);for(const [path,text] of pendingSave.current)queueSave(path,text,false)}},[widget.id]);
+ useEffect(()=>{
+  const sync=(event:Event)=>{
+   const detail=(event as CustomEvent<{widgetId:string;path:string;previous:string;text:string}>).detail;
+   if(detail?.widgetId===widget.id&&!pendingSave.current.has(detail.path)&&baseline.current.get(detail.path)===detail.previous){
+    baseline.current.set(detail.path,detail.text);
+   }
+  };
+  window.addEventListener('still-note-file-saved',sync);
+  return()=>window.removeEventListener('still-note-file-saved',sync);
+ },[widget.id]);
  useEffect(()=>{const receive=(event:Event)=>{const request=(event as CustomEvent<AiDraftApplyRequest>).detail;if(!request||request.widgetId!==widget.id||typeof request.resolve!=='function'||typeof request.reject!=='function')return;void (async()=>{try{
    const target=latestDocuments.current.find(document=>document.id===request.noteId);if(!target)throw new Error(t('noteDraftUnavailable'));if(target.text!==request.expectedText)throw new Error(t('noteDraftStale'));
    const nextText=request.mode==='append'?(target.text.trim()?`${target.text.trim()}\n\n${request.draft.trim()}`:request.draft.trim()):request.draft.trim();const totalLength=latestDocuments.current.reduce((total,document)=>total+document.text.length,0)-target.text.length+nextText.length;if(!nextText||nextText.length>NOTE_DOCUMENT_TEXT_LIMIT||totalLength>NOTE_DOCUMENT_TOTAL_LIMIT)throw new Error(t('noteDraftTooLong'));
@@ -76,7 +86,7 @@ export default function NotesWidget({widget,update,notify}:WidgetProps){
   update({noteDocuments:[...documents,created],activeNoteDocumentId:created.id,title:created.title,text:created.text});
  }
  return <>
-  <div className="note-tabs" aria-label={t('openNotes')}>
+  <div className="note-tabs" role="tablist" aria-label={t('openNotes')}>
    <button className="note-home-toggle" type="button" onClick={()=>window.dispatchEvent(new Event('still-open-notes-home'))}>{t('notesHome')}</button>
    {documents.map((document,index)=><div className="note-tab-item" key={document.id}>
     <button type="button" role="tab" aria-selected={document.id===active.id} className="note-tab" onClick={()=>setActive(document.id)} title={document.title||t('untitledNote')}>{document.title||t('untitledNote')+' '+(index+1)}</button>
