@@ -1,9 +1,8 @@
-import {useEffect,useId,useMemo,useRef,useState} from 'react';
+import {useEffect,useId,useRef,useState} from 'react';
 import type {WidgetProps} from './widgets.tsx';
 import type {WidgetInstance} from './domain/workspaces.ts';
-import {checkedNoteSources,checkedNoteTags,createNoteDocument,detachNoteLibraryDocuments,noteDocument,updatedNoteDocument,NOTE_DOCUMENT_LIMIT,NOTE_DOCUMENT_TEXT_LIMIT,NOTE_DOCUMENT_TOTAL_LIMIT,NOTE_TAG_LIMIT,type NoteSource} from './domain/noteDocuments.ts';
-import {notesLibrary,type NotesLibraryEntry} from './platform/notesLibrary.ts';
-import NotesLibraryExplorer from './NotesLibraryExplorer.tsx';
+import {checkedNoteSources,checkedNoteTags,createNoteDocument,noteDocument,updatedNoteDocument,NOTE_DOCUMENT_LIMIT,NOTE_DOCUMENT_TEXT_LIMIT,NOTE_DOCUMENT_TOTAL_LIMIT,NOTE_TAG_LIMIT,type NoteSource} from './domain/noteDocuments.ts';
+import {notesLibrary} from './platform/notesLibrary.ts';
 import {pendingNoteText} from './domain/noteAutosave.ts';
 import {localizeOperationalMessage,useLocale,useT} from './localization.tsx';
 
@@ -16,31 +15,17 @@ type SaveSelectionRequest={widgetId:string;noteId:string;text:string;source?:Not
 
 export default function NotesWidget({widget,update,notify}:WidgetProps){
  const t=useT(),locale=useLocale();
- const [entries,setEntries]=useState<NotesLibraryEntry[]>([]),[showLibrary,setShowLibrary]=useState(false),[newName,setNewName]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[saveState,setSaveState]=useState<'savedLocally'|'savingStatus'|'savedToLibrary'|'saveFailed'|'loadedLatestFile'>('savedLocally'),[searchQuery,setSearchQuery]=useState(''),[tagInput,setTagInput]=useState('');
+ const [busy,setBusy]=useState(false),[error,setError]=useState(''),[saveState,setSaveState]=useState<'savedLocally'|'savingStatus'|'savedToLibrary'|'saveFailed'|'loadedLatestFile'>('savedLocally'),[tagInput,setTagInput]=useState('');
  const saveTimer=useRef<ReturnType<typeof setTimeout>|null>(null),saveQueue=useRef<Promise<void>>(Promise.resolve()),latestSave=useRef(0),pendingSave=useRef(new Map<string,string>()),baseline=useRef(new Map((widget.noteDocuments??[]).filter(document=>document.sourcePath).map(document=>[document.sourcePath!,document.text]))),mounted=useRef(true),editor=useRef<HTMLTextAreaElement>(null);
  const [conflictPath,setConflictPath]=useState<string|null>(null);
- const [showNotes,setShowNotes]=useState(false);
- const [filing,setFiling]=useState<{noteId:string;name:string;folder:string}|null>(null);
- const filingLock=useRef(false);
  const aiMenuId=useId(),aiMenu=useRef<HTMLDivElement>(null);
  const documents=widget.noteDocuments,active=noteDocument(documents,widget.activeNoteDocumentId);
  const latestDocuments=useRef(documents),latestWidget=useRef(widget);latestDocuments.current=documents;latestWidget.current=widget;
  const fontFamily=widget.noteFont==='serif'?'Georgia, "Times New Roman", serif':widget.noteFont==='mono'?'ui-monospace, SFMono-Regular, Consolas, monospace':'Inter, "Segoe UI", sans-serif';
- const libraryConnected=widget.notesLibraryKey===widget.id;
- const matchingNotes=useMemo(()=>{
-  const query=searchQuery.trim().replace(/^#/,'').toLocaleLowerCase();
-  return documents.filter(document=>`${document.title||t('untitledNote')} ${document.text} ${(document.tags??[]).join(' ')}`.toLocaleLowerCase().includes(query));
- },[documents,searchQuery,t]);
- const libraryFolders=useMemo(()=>[...new Set(entries.flatMap(file=>{
-  const parts=file.path.split('/').slice(0,-1);
-  return parts.map((_,index)=>parts.slice(0,index+1).join('/'));
- }))].sort((left,right)=>left.localeCompare(right,locale)),[entries,locale]);
  const folderLabel=widget.notesLibraryName||t('widget_notes');
- const sourceLabel=(path?:string)=>path?`${folderLabel} / ${path}`:t('savedInNotesWidget');
+ const sourceLabel=(path?:string)=>path?folderLabel+' / '+path:t('savedInSharedNotes');
  const linksToIds=[...new Set(Array.from(active.text.matchAll(/\[\[note:([a-zA-Z0-9-]{1,500})\]\]/g),match=>match[1]))],linkedNotes=documents.filter(document=>document.id!==active.id&&linksToIds.includes(document.id)),referencingNotes=documents.filter(document=>document.id!==active.id&&document.text.includes(`[[note:${active.id}]]`));
 
- async function refreshLibrary(){if(!libraryConnected)return;setBusy(true);setError('');try{setEntries(await notesLibrary.list(widget.id))}catch(reason){setError(localizeOperationalMessage(locale,String(reason)))}finally{setBusy(false)}}
- useEffect(()=>{if(widget.notesLibraryKey===widget.id){void notesLibrary.list(widget.id).then(setEntries).catch(reason=>setError(localizeOperationalMessage(locale,String(reason))))}},[widget.id,widget.notesLibraryKey]);
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;if(saveTimer.current)clearTimeout(saveTimer.current);for(const [path,text] of pendingSave.current)queueSave(path,text,false)}},[widget.id]);
  useEffect(()=>{const receive=(event:Event)=>{const request=(event as CustomEvent<AiDraftApplyRequest>).detail;if(!request||request.widgetId!==widget.id||typeof request.resolve!=='function'||typeof request.reject!=='function')return;void (async()=>{try{
    const target=latestDocuments.current.find(document=>document.id===request.noteId);if(!target)throw new Error(t('noteDraftUnavailable'));if(target.text!==request.expectedText)throw new Error(t('noteDraftStale'));
@@ -55,11 +40,11 @@ export default function NotesWidget({widget,update,notify}:WidgetProps){
    const nextText=target.text.trimEnd()?`${target.text.trimEnd()}\n\n${text}`:text,totalLength=currentDocuments.reduce((total,document)=>total+document.text.length,0)-target.text.length+nextText.length;if(nextText.length>NOTE_DOCUMENT_TEXT_LIMIT||totalLength>NOTE_DOCUMENT_TOTAL_LIMIT)throw new Error(t('noteDraftTooLong'));
    setBusy(true);setError('');
    if(target.sourcePath){if(!await flushPendingSaves())throw new Error(t('noteDraftSaveFailed'));const current=latestDocuments.current.find(document=>document.id===request.noteId);if(!current||current.text!==target.text)throw new Error(t('noteDraftStale'));const baselineText=baseline.current.get(target.sourcePath);if(baselineText!==target.text)throw new Error(t('noteDraftStale'));await notesLibrary.write(widget.id,target.sourcePath,nextText,baselineText);baseline.current.set(target.sourcePath,nextText);pendingSave.current.delete(target.sourcePath)}
-   const sources=checkedNoteSources(request.source?[...(target.sources??[]),request.source]:target.sources??[]),updated=updatedNoteDocument(latestDocuments.current,request.noteId,{text:nextText,sources});update({noteDocuments:updated,activeNoteDocumentId:request.noteId,title:target.title,text:nextText});setTagInput('');setShowLibrary(false);setSaveState(target.sourcePath?'savedToLibrary':'savedLocally');setError('');request.resolve(target.title||t('untitledNote'));
+   const sources=checkedNoteSources(request.source?[...(target.sources??[]),request.source]:target.sources??[]),updated=updatedNoteDocument(latestDocuments.current,request.noteId,{text:nextText,sources});update({noteDocuments:updated,activeNoteDocumentId:request.noteId,title:target.title,text:nextText});setTagInput('');setSaveState(target.sourcePath?'savedToLibrary':'savedLocally');setError('');request.resolve(target.title||t('untitledNote'));
   }catch(reason){const message=reason instanceof Error?reason.message:String(reason);setError(message);request.reject(new Error(message))}finally{setBusy(false)}})()};window.addEventListener('still-notes-save-selection',receive);return()=>window.removeEventListener('still-notes-save-selection',receive)},[widget.id,update,t]);
  useEffect(()=>{const receive=(event:Event)=>{const detail=(event as CustomEvent<{widgetId?:string;noteId?:string}>).detail;if(detail?.widgetId!==widget.id||typeof detail.noteId!=='string'||!latestDocuments.current.some(document=>document.id===detail.noteId))return;setActive(detail.noteId)};window.addEventListener('still-notes-open-document',receive);return()=>window.removeEventListener('still-notes-open-document',receive)},[widget.id,update]);
 
- function setActive(id:string){const selected=noteDocument(documents,id);setTagInput('');setFiling(null);update({activeNoteDocumentId:selected.id,title:selected.title,text:selected.text})}
+ function setActive(id:string){const selected=noteDocument(documents,id);setTagInput('');update({activeNoteDocumentId:selected.id,title:selected.title,text:selected.text})}
  async function closeDocument(id:string){const closing=documents.find(document=>document.id===id);if(!closing)return;const path=closing.sourcePath;if(path&&pendingSave.current.has(path)){queueSave(path,pendingSave.current.get(path)!);await saveQueue.current.catch(()=>{});if(pendingSave.current.has(path))return}const remaining=documents.filter(document=>document.id!==id);if(!remaining.length){const created=createNoteDocument();update({noteDocuments:[created],activeNoteDocumentId:created.id,title:created.title,text:created.text});return}if(active.id===id){const next=remaining[0];update({noteDocuments:remaining,activeNoteDocumentId:next.id,title:next.title,text:next.text})}else update({noteDocuments:remaining})}
  function editTitle(title:string){update({title,noteDocuments:updatedNoteDocument(documents,active.id,{title})})}
  function editText(text:string){update({text,noteDocuments:updatedNoteDocument(documents,active.id,{text})});const path=active.sourcePath;if(path){pendingSave.current.set(path,text);setSaveState('savingStatus');if(saveTimer.current)clearTimeout(saveTimer.current);saveTimer.current=setTimeout(()=>queueSave(path,text),500)}}
@@ -87,72 +72,25 @@ export default function NotesWidget({widget,update,notify}:WidgetProps){
  async function flushPendingSaves():Promise<boolean>{if(saveTimer.current){clearTimeout(saveTimer.current);saveTimer.current=null}for(const [path,text] of pendingSave.current)queueSave(path,text);await saveQueue.current.catch(()=>{});return pendingSave.current.size===0}
  function addLocal(){
   if(documents.length>=NOTE_DOCUMENT_LIMIT){notify(`Notes supports up to ${NOTE_DOCUMENT_LIMIT} open notes in one widget.`);return}
-  const created=createNoteDocument();
-  setShowLibrary(false);setShowNotes(false);setSearchQuery('');setFiling(null);
+  const created={...createNoteDocument(),historyCreated:true};
   update({noteDocuments:[...documents,created],activeNoteDocumentId:created.id,title:created.title,text:created.text});
  }
- async function chooseLibrary(openExplorer=true){setBusy(true);setError('');try{if(libraryConnected&&!await flushPendingSaves())throw new Error('A note could not be saved to the current library. Save it successfully before changing folders.');const name=await notesLibrary.choose(widget.id);if(name){update({notesLibraryKey:widget.id,notesLibraryName:name,noteDocuments:detachNoteLibraryDocuments(latestDocuments.current)});setEntries([]);setShowLibrary(openExplorer);setEntries(await notesLibrary.list(widget.id))}}catch(reason){setError(localizeOperationalMessage(locale,String(reason)))}finally{setBusy(false)}}
- async function openLibraryFile(file:NotesLibraryEntry){const existing=documents.find(document=>document.sourcePath===file.path);if(documents.length>=NOTE_DOCUMENT_LIMIT&&!existing){notify(`Notes supports up to ${NOTE_DOCUMENT_LIMIT} open notes in one widget.`);return}if(pendingSave.current.has(file.path)){if(existing)setActive(existing.id);setShowLibrary(false);return}setBusy(true);setError('');try{const text=await notesLibrary.read(widget.id,file.path);baseline.current.set(file.path,text);if(existing){update({noteDocuments:updatedNoteDocument(documents,existing.id,{text}),activeNoteDocumentId:existing.id,title:existing.title,text});setShowLibrary(false);setSaveState('loadedLatestFile');return}const created={id:crypto.randomUUID(),title:file.name,text,sourcePath:file.path};update({noteDocuments:[...documents,created],activeNoteDocumentId:created.id,title:created.title,text:created.text});setShowLibrary(false);setSaveState('savedToLibrary')}catch(reason){setError(localizeOperationalMessage(locale,String(reason)))}finally{setBusy(false)}}
- async function createLibraryFile(location:string,titleOverride?:string){const title=(titleOverride??newName).trim();if(!title)return;setBusy(true);setError('');try{const createdFile=await notesLibrary.create(widget.id,title,location),entry={...createdFile,text:'',id:crypto.randomUUID()};if(documents.length>=NOTE_DOCUMENT_LIMIT){notify(`Created ${createdFile.name}; close another tab before opening it.`)}else{const created={id:entry.id,title:entry.name,text:entry.text,sourcePath:entry.path};update({noteDocuments:[...documents,created],activeNoteDocumentId:created.id,title:created.title,text:''});setShowLibrary(false)}setNewName('');setEntries(await notesLibrary.list(widget.id))}catch(reason){setError(localizeOperationalMessage(locale,String(reason)))}finally{setBusy(false)}}
-
- async function saveActiveToFolder(){
-  if(!filing||filing.noteId!==active.id||active.sourcePath||!filing.name.trim()||!libraryConnected||busy||filingLock.current)return;
-  const {name,folder}=filing;
-  const target=active;
-  filingLock.current=true;setBusy(true);setError('');
-  try{
-   const saved=await notesLibrary.create(widget.id,name.trim().replace(/\.md$/i,''),folder,target.text);
-   const latest=latestWidget.current,current=latestDocuments.current.find(note=>note.id===target.id);
-   if(!current||current.sourcePath||current.text!==target.text){
-    notify(`${t('savedToLibrary')} · ${sourceLabel(saved.path)}`);
-    setFiling(null);return;
-   }
-   baseline.current.set(saved.path,target.text);
-   const title=saved.name.slice(0,60);
-   update({noteDocuments:latestDocuments.current.map(note=>note.id===target.id?{...note,title,sourcePath:saved.path}:note),...(latest.activeNoteDocumentId===target.id?{title}:{} )});
-   setSaveState('savedToLibrary');setFiling(null);
-   setEntries(current=>[...current.filter(entry=>entry.path!==saved.path),saved].sort((left,right)=>left.path.localeCompare(right.path,locale)));
-  }catch(reason){setError(localizeOperationalMessage(locale,String(reason)))}
-  finally{filingLock.current=false;setBusy(false)}
- }
  return <>
-  <div className="notes-search" role="search">
-   <label><span aria-hidden="true">⌕</span><input aria-label={t('findSavedNotes')} placeholder={t('findSavedNotes')} value={searchQuery} onChange={event=>setSearchQuery(event.target.value)}/>{searchQuery&&<button type="button" aria-label={t('clearSearch')} onClick={()=>setSearchQuery('')}>×</button>}</label>
-   {(searchQuery||showNotes)&&<div className="notes-search-results" role="region" aria-label={t('savedNotesList')}>
-    {matchingNotes.length?matchingNotes.map(document=><button type="button" key={document.id} onClick={()=>{setActive(document.id);setSearchQuery('');setShowNotes(false);setShowLibrary(false)}}>
-     <strong>{document.title||t('untitledNote')}</strong>
-     <small>{sourceLabel(document.sourcePath)}{document.tags?.map(tag=>' · #'+tag).join('')}</small>
-    </button>):<p>{t('noMatchingNotesText')}</p>}
-   </div>}
-  </div>
-  <div className="note-tabs" role="tablist" aria-label={t('openNotes')}>
-   <button className="note-list-toggle" type="button" aria-expanded={showNotes} onClick={()=>{setShowNotes(value=>!value);setSearchQuery('')}}>{t('savedNotesList')}</button>
+  <div className="note-tabs" aria-label={t('openNotes')}>
+   <button className="note-home-toggle" type="button" onClick={()=>window.dispatchEvent(new Event('still-open-notes-home'))}>{t('notesHome')}</button>
    {documents.map((document,index)=><div className="note-tab-item" key={document.id}>
-    <button type="button" role="tab" aria-selected={document.id===active.id} className="note-tab" onClick={()=>{setActive(document.id);setShowLibrary(false);setShowNotes(false)}} title={document.title||t('untitledNote')}>{document.title||t('untitledNote')+' '+(index+1)}</button>
+    <button type="button" role="tab" aria-selected={document.id===active.id} className="note-tab" onClick={()=>setActive(document.id)} title={document.title||t('untitledNote')}>{document.title||t('untitledNote')+' '+(index+1)}</button>
     <button className="note-tab-close" type="button" aria-label={'Close '+(document.title||'Untitled '+(index+1))} title={t('closeNote')} onClick={()=>void closeDocument(document.id)}>×</button>
    </div>)}
    <button className="note-tab-add" type="button" aria-label={t('newNote')} title={t('newLocalNote')} onClick={addLocal}>+</button>
-   <button className="note-library-toggle" type="button" aria-expanded={showLibrary} onClick={()=>{setShowLibrary(value=>!value);setShowNotes(false);setSearchQuery('');setFiling(null);setError('')}}>{showLibrary?t('backToNoteEditor'):t('notesFolder')}</button>
   </div>
-  {!showLibrary&&<div className="note-storage">
-   <span title={sourceLabel(active.sourcePath)}>{sourceLabel(active.sourcePath)}</span>
-   {!active.sourcePath&&notesLibrary.native&&<button type="button" disabled={busy} onClick={()=>{setFiling({noteId:active.id,name:active.title||t('untitledNote'),folder:''});setError('')}}>{t('saveNoteToFolder')}</button>}
-  </div>}
-  {!showLibrary&&filing?.noteId===active.id&&<form className="note-filing" onSubmit={event=>{event.preventDefault();void saveActiveToFolder()}}>
-   {libraryConnected?<><label>{t('notesFolder')}<select value={filing.folder} disabled={busy} onChange={event=>setFiling({...filing,folder:event.target.value})}>
-    <option value="">{folderLabel}</option>{libraryFolders.map(folder=><option key={folder} value={folder}>{folderLabel} / {folder}</option>)}
-   </select></label>
-   <label>{t('noteFileName')}<input value={filing.name} disabled={busy} maxLength={80} onChange={event=>setFiling({...filing,name:event.target.value})}/></label>
-   <button type="submit" disabled={busy||!filing.name.trim()}>{t('save')}</button></>:<button type="button" disabled={busy} onClick={()=>void chooseLibrary(false)}>{t('chooseNotesFolder')}</button>}
-   <button type="button" disabled={busy} onClick={()=>{setFiling(null);setError('')}}>{t('cancel')}</button>
-  </form>}
-  {!showLibrary&&error&&<p className="widget-error" role="alert">{error}</p>}
-  {showLibrary?<NotesLibraryExplorer key={widget.notesLibraryName||widget.id} widgetId={widget.id} connected={libraryConnected} libraryName={widget.notesLibraryName||t('widget_notes')} entries={entries} busy={busy} error={error} newName={newName} onNewName={setNewName} onRefresh={()=>void refreshLibrary()} onChoose={()=>void chooseLibrary()} onCreate={location=>void createLibraryFile(location)} onOpenNote={file=>void openLibraryFile(file)}/>
-   :<><div className="card-body note-editor"><input className="note-title note-heading-input" aria-label={t('noteHeading')} placeholder={t('untitledNote')} maxLength={60} disabled={!!active.sourcePath||busy} title={active.sourcePath?t('noteFileNameNotice'):''} value={active.title} onChange={event=>editTitle(event.target.value)}/><div className="note-tags" aria-label={t('noteTags')}><span>{t('noteTags')}</span>{(active.tags??[]).map(tag=><button type="button" className="note-tag" key={tag} onClick={()=>removeTag(tag)} aria-label={t('removeNoteTag').replace('{tag}',tag)}>#{tag}<i>×</i></button>)}{(active.tags??[]).length<NOTE_TAG_LIMIT&&<input aria-label={t('addNoteTag')} placeholder={t('addNoteTag')} maxLength={32} value={tagInput} onChange={event=>setTagInput(event.target.value)} onKeyDown={event=>{if(event.key==='Enter'||event.key===','){event.preventDefault();addTag()}}} onBlur={()=>{if(tagInput.trim())addTag()}}/>}</div><div className="note-format-toolbar" aria-label={t('noteFormatting')}><div className="note-ai-menu">
+  <div className="note-storage"><span title={sourceLabel(active.sourcePath)}>{sourceLabel(active.sourcePath)}</span></div>
+  {error&&<p className="widget-error" role="alert">{error}</p>}
+<div className="card-body note-editor"><input className="note-title note-heading-input" aria-label={t('noteHeading')} placeholder={t('untitledNote')} maxLength={60} disabled={!!active.sourcePath||busy} title={active.sourcePath?t('noteFileNameNotice'):''} value={active.title} onChange={event=>editTitle(event.target.value)}/><div className="note-tags" aria-label={t('noteTags')}><span>{t('noteTags')}</span>{(active.tags??[]).map(tag=><button type="button" className="note-tag" key={tag} onClick={()=>removeTag(tag)} aria-label={t('removeNoteTag').replace('{tag}',tag)}>#{tag}<i>×</i></button>)}{(active.tags??[]).length<NOTE_TAG_LIMIT&&<input aria-label={t('addNoteTag')} placeholder={t('addNoteTag')} maxLength={32} value={tagInput} onChange={event=>setTagInput(event.target.value)} onKeyDown={event=>{if(event.key==='Enter'||event.key===','){event.preventDefault();addTag()}}} onBlur={()=>{if(tagInput.trim())addTag()}}/>}</div><div className="note-format-toolbar" aria-label={t('noteFormatting')}><div className="note-ai-menu">
     <button type="button" popoverTarget={aiMenuId} disabled={busy}>AI</button>
     <div id={aiMenuId} ref={aiMenu} popover="auto" className="note-ai-menu-options" role="group" aria-label={t('studyWithAi')}>
      {noteAiActions.map(([action,label])=><button type="button" key={action} disabled={busy} onClick={()=>{aiMenu.current?.hidePopover();askAi(action)}}>{t(label)}</button>)}
     </div>
-   </div><div className="note-markdown-actions"><button type="button" aria-label={t('insertHeading')} title={t('heading')} onClick={()=>formatNote('heading')}>H2</button><button type="button" aria-label={t('insertBullet')} title={t('bulletList')} onClick={()=>formatNote('bullet')}>• List</button><button type="button" aria-label={t('insertChecklist')} title={t('checklist')} onClick={()=>formatNote('task')}>☐ Task</button><button type="button" aria-label={t('boldSelection')} title={t('bold')} onClick={()=>formatNote('bold')}><strong>B</strong></button></div><label><span>{t('font')}</span><select aria-label={t('font')} value={widget.noteFont} onChange={event=>update({noteFont:event.target.value as WidgetInstance['noteFont']})}><option value="sans">{t('sansSerif')}</option><option value="serif">{t('serif')}</option><option value="mono">{t('monospace')}</option></select></label><label><span>{t('size')}</span><select aria-label={t('noteTextSize')} value={widget.noteFontSize} onChange={event=>update({noteFontSize:Number(event.target.value)})}>{[12,14,16,18,20,24,28].map(size=><option key={size} value={size}>{size}px</option>)}</select></label><label className="note-link-insert"><span>{t('insertNoteLink')}</span><select aria-label={t('insertNoteLink')} value="" onChange={event=>insertNoteLink(event.target.value)}><option value="">{t('insertNoteLink')}</option>{documents.filter(document=>document.id!==active.id).map(document=><option key={document.id} value={document.id}>{document.title||t('untitledNote')}</option>)}</select></label>{active.sourcePath&&<button type="button" onClick={flushSave}>{t('save')}</button>}{conflictPath===active.sourcePath&&<button type="button" disabled={busy} onClick={()=>void reloadActiveLibraryFile()}>{t('reloadFromFile')}</button>}</div><textarea ref={editor} className="note" aria-label={t('noteText')} disabled={busy} maxLength={NOTE_DOCUMENT_TEXT_LIMIT} style={{fontFamily,fontSize:`${widget.noteFontSize}px`}} value={active.text} onChange={event=>editText(event.target.value)} onBlur={flushSave}/>{(active.sources?.length??0)>0&&<div className="note-sources" aria-label={t('savedSources')}><span>{t('savedSources')}</span>{active.sources?.map((source,index)=><button type="button" key={`${source.widgetId}:${source.path}:${source.page??''}:${index}`} onClick={()=>window.dispatchEvent(new CustomEvent('still-open-library-recent-file',{detail:{widgetId:source.widgetId,path:source.path,page:source.page}}))}>{source.fileName}{source.page?` · p. ${source.page}`:''}</button>)}</div>}{(linkedNotes.length>0||referencingNotes.length>0)&&<div className="note-links">{linkedNotes.length>0&&<div><span>{t('linkedNotes')}</span>{linkedNotes.map(document=><button type="button" key={document.id} onClick={()=>setActive(document.id)}>{document.title||t('untitledNote')}</button>)}</div>}{referencingNotes.length>0&&<div><span>{t('referencedBy')}</span>{referencingNotes.map(document=><button type="button" key={document.id} onClick={()=>setActive(document.id)}>{document.title||t('untitledNote')}</button>)}</div>}</div>}</div>{active.sourcePath&&<div className="note-status" role="status">{t(saveState==='savedLocally'?'savedToLibrary':saveState)}</div>}</>}
+   </div><div className="note-markdown-actions"><button type="button" aria-label={t('insertHeading')} title={t('heading')} onClick={()=>formatNote('heading')}>H2</button><button type="button" aria-label={t('insertBullet')} title={t('bulletList')} onClick={()=>formatNote('bullet')}>• List</button><button type="button" aria-label={t('insertChecklist')} title={t('checklist')} onClick={()=>formatNote('task')}>☐ Task</button><button type="button" aria-label={t('boldSelection')} title={t('bold')} onClick={()=>formatNote('bold')}><strong>B</strong></button></div><label><span>{t('font')}</span><select aria-label={t('font')} value={widget.noteFont} onChange={event=>update({noteFont:event.target.value as WidgetInstance['noteFont']})}><option value="sans">{t('sansSerif')}</option><option value="serif">{t('serif')}</option><option value="mono">{t('monospace')}</option></select></label><label><span>{t('size')}</span><select aria-label={t('noteTextSize')} value={widget.noteFontSize} onChange={event=>update({noteFontSize:Number(event.target.value)})}>{[12,14,16,18,20,24,28].map(size=><option key={size} value={size}>{size}px</option>)}</select></label><label className="note-link-insert"><span>{t('insertNoteLink')}</span><select aria-label={t('insertNoteLink')} value="" onChange={event=>insertNoteLink(event.target.value)}><option value="">{t('insertNoteLink')}</option>{documents.filter(document=>document.id!==active.id).map(document=><option key={document.id} value={document.id}>{document.title||t('untitledNote')}</option>)}</select></label>{active.sourcePath&&<button type="button" onClick={flushSave}>{t('save')}</button>}{conflictPath===active.sourcePath&&<button type="button" disabled={busy} onClick={()=>void reloadActiveLibraryFile()}>{t('reloadFromFile')}</button>}</div><textarea ref={editor} className="note" aria-label={t('noteText')} disabled={busy} maxLength={NOTE_DOCUMENT_TEXT_LIMIT} style={{fontFamily,fontSize:`${widget.noteFontSize}px`}} value={active.text} onChange={event=>editText(event.target.value)} onBlur={flushSave}/>{(active.sources?.length??0)>0&&<div className="note-sources" aria-label={t('savedSources')}><span>{t('savedSources')}</span>{active.sources?.map((source,index)=><button type="button" key={`${source.widgetId}:${source.path}:${source.page??''}:${index}`} onClick={()=>window.dispatchEvent(new CustomEvent('still-open-library-recent-file',{detail:{widgetId:source.widgetId,path:source.path,page:source.page}}))}>{source.fileName}{source.page?` · p. ${source.page}`:''}</button>)}</div>}{(linkedNotes.length>0||referencingNotes.length>0)&&<div className="note-links">{linkedNotes.length>0&&<div><span>{t('linkedNotes')}</span>{linkedNotes.map(document=><button type="button" key={document.id} onClick={()=>setActive(document.id)}>{document.title||t('untitledNote')}</button>)}</div>}{referencingNotes.length>0&&<div><span>{t('referencedBy')}</span>{referencingNotes.map(document=><button type="button" key={document.id} onClick={()=>setActive(document.id)}>{document.title||t('untitledNote')}</button>)}</div>}</div>}</div>{active.sourcePath&&<div className="note-status" role="status">{t(saveState==='savedLocally'?'savedToLibrary':saveState)}</div>}
  </>;
 }

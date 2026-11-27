@@ -37,8 +37,8 @@ const chatgptPlanLabels:Record<Locale,Record<string,string>>={
   },
 };
 const notesStorageLabels:Record<Locale,Record<string,string>>={
- en:{findSavedNotes:'Search note titles, text, or tags',savedNotesList:'Saved notes',notesFolder:'Notes folder',backToNoteEditor:'Back to notes',savedInNotesWidget:'Saved in this Notes widget',saveNoteToFolder:'Save to folder…',noteFileName:'Markdown file name'},
- 'zh-CN':{findSavedNotes:'搜索笔记标题、正文或标签',savedNotesList:'笔记列表',notesFolder:'笔记文件夹',backToNoteEditor:'返回笔记',savedInNotesWidget:'已保存在此工作区的笔记组件中',saveNoteToFolder:'保存到文件夹…',noteFileName:'Markdown 文件名'},
+ en:{notesHome:'Notes home',findSavedNotes:'Search titles, text, or tags',savedNotesList:'Saved notes',allSavedNotes:'All notes',markdownHistory:'Markdown history',openMarkdown:'Open Markdown…',chooseMarkdownFile:'Choose a .md or .markdown file.',markdownTooLarge:'This Markdown file exceeds the note size limit.',emptyMarkdownHistory:'No Markdown files opened yet.',emptyNotesHome:'No notes yet.',savedInSharedNotes:'Saved in Notes',importedMarkdown:'Imported copy · {name}',linkedMarkdown:'Linked file · {name}',backToNotesHome:'Back to list',deleteSavedNote:'Delete note',deleteNotePrompt:'Delete “{note}” from Notes?'},
+ 'zh-CN':{notesHome:'笔记主页',findSavedNotes:'搜索标题、正文或标签',savedNotesList:'笔记列表',allSavedNotes:'全部笔记',markdownHistory:'Markdown 历史',openMarkdown:'打开 Markdown…',chooseMarkdownFile:'请选择 .md 或 .markdown 文件。',markdownTooLarge:'此 Markdown 文件超过笔记大小上限。',emptyMarkdownHistory:'还没有打开过 Markdown 文件。',emptyNotesHome:'还没有笔记。',savedInSharedNotes:'已保存在笔记中',importedMarkdown:'导入副本 · {name}',linkedMarkdown:'关联文件 · {name}',backToNotesHome:'返回列表',deleteSavedNote:'删除笔记',deleteNotePrompt:'从笔记中删除「{note}」？'},
 };
 export function translate(locale:Locale,key:string):string{return notesStorageLabels[locale][key]??chatgptPlanLabels[locale][key]??courseEnvironmentRuntime[locale][key]??courseEnvironmentRuntime.en[key]??supplementalDictionaries[locale][key]??supplementalDictionaries.en[key]??dictionaries[locale][key]??dictionaries.en[key]??key}
 export const LocaleContext=createContext<Locale>('en');

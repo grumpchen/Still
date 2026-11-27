@@ -1,5 +1,5 @@
 export interface NoteSource {widgetId:string;path:string;fileName:string;page?:number}
-export interface NoteDocument {id:string;title:string;text:string;sourcePath?:string;tags?:string[];sources?:NoteSource[]}
+export interface NoteDocument {id:string;title:string;text:string;sourcePath?:string;tags?:string[];sources?:NoteSource[];historyCreated?:boolean}
 export const NOTE_DOCUMENT_LIMIT=40;
 export const NOTE_DOCUMENT_TEXT_LIMIT=256000;
 export const NOTE_DOCUMENT_TOTAL_LIMIT=4000000;
@@ -21,7 +21,7 @@ export function checkedNoteDocuments(value:unknown,fallback:{id:string;title:str
   if(typeof item.id!=='string'||!/^[a-zA-Z0-9-]{1,500}$/.test(item.id)||ids.has(item.id)||typeof item.title!=='string'||typeof item.text!=='string'||(item.sourcePath!==undefined&&(typeof item.sourcePath!=='string'||item.sourcePath.length>1000)))continue;
   const title=item.title.trim().slice(0,60),text=item.text.slice(0,NOTE_DOCUMENT_TEXT_LIMIT),room=NOTE_DOCUMENT_TOTAL_LIMIT-total;
   if(room<=0)break;
-  const checkedText=text.slice(0,room),tags=checkedNoteTags(item.tags),sources=checkedNoteSources(item.sources);total+=checkedText.length;ids.add(item.id);result.push({id:item.id,title,text:checkedText,...(item.sourcePath&&checkedText.length===item.text.length?{sourcePath:item.sourcePath}:{}),...(tags.length?{tags}:{}),...(sources.length?{sources}:{})});
+  const checkedText=text.slice(0,room),tags=checkedNoteTags(item.tags),sources=checkedNoteSources(item.sources);total+=checkedText.length;ids.add(item.id);result.push({id:item.id,title,text:checkedText,...(item.sourcePath&&checkedText.length===item.text.length?{sourcePath:item.sourcePath}:{}),...(tags.length?{tags}:{}),...(sources.length?{sources}:{}),...(item.historyCreated===true?{historyCreated:true}:{})});
  }
  return result.length?result:[{id:fallback.id,title:fallback.title.trim().slice(0,60),text:fallback.text.slice(0,NOTE_DOCUMENT_TEXT_LIMIT)}];
 }
