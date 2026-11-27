@@ -3,13 +3,13 @@ import {appPanel} from './appPanel.ts';
 
 export async function openAssistantInstalledApp(request:NonNullable<ReturnType<typeof installedAppRequest>>,zh:boolean){
  if(!appPanel.available)return {handled:true,message:zh?'请在 Still 的 Windows 桌面版中打开已安装的应用。':'Open installed apps from the Still desktop app on Windows.'};
- const {exact,candidates}=matchInstalledApp(await appPanel.installed(),request);
+ const {exact,candidates}=matchInstalledApp(await appPanel.installedForAssistant(),request);
  if(candidates.length===0){
   if(!request.explicit&&!request.alias)return {handled:false};
-  return {handled:true,message:zh?`在 Still 的已安装应用列表里找不到「${request.name}」。`:`I couldn’t find “${request.name}” in Still’s installed app list.`};
+  return {handled:true,message:zh?`在 Windows 的应用快捷方式和下载文件夹里找不到「${request.name}」。`:`I couldn’t find “${request.name}” in Windows app shortcuts or Downloads.`};
  }
  if(!exact||candidates.length>1){
-  const names=[...new Set(candidates.map(app=>app.name))];
+  const names=[...new Set(candidates.map(app=>app.fileName??app.name))];
   const list=names.slice(0,8).join(zh?'、':', ');
   if(names.length===1&&candidates.length>1)return {handled:true,message:zh?`找到多个同名的「${list}」。请在 Apps 中选择要打开的快捷方式。`:`Several shortcuts share the name “${list}”. Choose the one you want in Apps.`};
   return {handled:true,message:zh

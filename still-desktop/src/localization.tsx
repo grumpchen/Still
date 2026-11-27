@@ -36,7 +36,11 @@ const chatgptPlanLabels:Record<Locale,Record<string,string>>={
     chatgptPlanRevokeUnconfirmed:'已在此设备退出登录。要撤销访问权限，请检查 ChatGPT 设置中的已连接应用。',
   },
 };
-export function translate(locale:Locale,key:string):string{return chatgptPlanLabels[locale][key]??courseEnvironmentRuntime[locale][key]??courseEnvironmentRuntime.en[key]??supplementalDictionaries[locale][key]??supplementalDictionaries.en[key]??dictionaries[locale][key]??dictionaries.en[key]??key}
+const notesStorageLabels:Record<Locale,Record<string,string>>={
+ en:{findSavedNotes:'Search note titles, text, or tags',savedNotesList:'Saved notes',notesFolder:'Notes folder',backToNoteEditor:'Back to notes',savedInNotesWidget:'Saved in this Notes widget',saveNoteToFolder:'Save to folder…',noteFileName:'Markdown file name'},
+ 'zh-CN':{findSavedNotes:'搜索笔记标题、正文或标签',savedNotesList:'笔记列表',notesFolder:'笔记文件夹',backToNoteEditor:'返回笔记',savedInNotesWidget:'已保存在此工作区的笔记组件中',saveNoteToFolder:'保存到文件夹…',noteFileName:'Markdown 文件名'},
+};
+export function translate(locale:Locale,key:string):string{return notesStorageLabels[locale][key]??chatgptPlanLabels[locale][key]??courseEnvironmentRuntime[locale][key]??courseEnvironmentRuntime.en[key]??supplementalDictionaries[locale][key]??supplementalDictionaries.en[key]??dictionaries[locale][key]??dictionaries.en[key]??key}
 export const LocaleContext=createContext<Locale>('en');
 export function useT(){const locale=useContext(LocaleContext);return useCallback((key:string)=>translate(locale,key),[locale])}
 export function useLocale(){return useContext(LocaleContext)}

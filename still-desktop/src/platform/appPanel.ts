@@ -33,6 +33,7 @@ export const appPanel={
  choices:(sourceId?:string)=>invoke<AppWindowChoice[]>('app_picker_windows',{sourceId:sourceId??null}),
  icon:(window:AppAttachment)=>invoke<number[]>('app_picker_icon',{hwnd:window.hwnd,pid:window.pid}),
  installed:installedApps,
+ installedForAssistant:()=>invoke<InstalledAppChoice[]>('app_picker_installed',{includeDownloaded:true}),
  installedIcon:(id:string)=>invoke<number[]>('app_picker_installed_icon',{id}),
  selectInstalled:(id:string)=>invoke<DroppedResource>('app_picker_select_installed',{id}),
  launchInstalled:(id:string)=>invoke<void>('app_picker_launch_installed',{id}),

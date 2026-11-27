@@ -14,7 +14,7 @@ fn clean_name(text:&str)->String{text.chars().map(|c|if c.is_control()||c=='/'||
 pub struct PickerWindow{hwnd:usize,pid:u32,app_name:String,title:String,attached:bool,minimized:bool,icon:Vec<u8>}
 
 #[derive(Serialize)]#[serde(rename_all="camelCase")]
-pub struct InstalledApp{ id:String,name:String,icon:Vec<u8> }
+pub struct InstalledApp{ id:String,name:String,icon:Vec<u8>,plain_launch:bool,#[serde(skip_serializing_if="Option::is_none")]file_name:Option<String> }
 
 #[derive(Default)]
 pub struct InstalledAppCatalog(Mutex<HashMap<String,PathBuf>>);
@@ -109,17 +109,17 @@ fn shortcut_roots()->Vec<PathBuf>{
 }
 fn has_chrome_profile_argument(args:&str)->bool{args.split_whitespace().any(|arg|matches!(arg.trim_matches('"').split('=').next().unwrap_or("").to_ascii_lowercase().as_str(),"--profile-directory"|"--user-data-dir"))}
 fn shortcut_identity(target:&Path,args:&str)->String{format!("{}\0{}",target.to_string_lossy().to_lowercase(),args.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase())}
-fn shortcut_files(root:&Path,depth:u8,remaining:&mut usize,items:&mut Vec<PathBuf>){
+fn app_files(root:&Path,depth:u8,remaining:&mut usize,extension:&str,items:&mut Vec<PathBuf>){
  if depth>8||*remaining==0{return}
  let Ok(entries)=std::fs::read_dir(root) else{return};
  for entry in entries.flatten(){if *remaining==0{break}*remaining-=1;let path=entry.path();let Ok(kind)=entry.file_type()else{continue};
-  if kind.is_dir(){shortcut_files(&path,depth+1,remaining,items)}
-  else if kind.is_file()&&path.extension().is_some_and(|ext|ext.eq_ignore_ascii_case("lnk")){items.push(path)}
+  if kind.is_dir(){app_files(&path,depth+1,remaining,extension,items)}
+  else if kind.is_file()&&path.extension().is_some_and(|ext|ext.eq_ignore_ascii_case(extension)){items.push(path)}
  }
 }
-fn installed_shortcuts()->Result<Vec<(String,PathBuf,String)>,String>{
+fn installed_shortcuts()->Result<Vec<(String,PathBuf,bool)>,String>{
  let _com=Com::initialize();let mut files=Vec::new();let mut remaining=10_000;
- for root in shortcut_roots(){shortcut_files(&root,0,&mut remaining,&mut files)}
+ for root in shortcut_roots(){app_files(&root,0,&mut remaining,"lnk",&mut files)}
  files.sort_by_key(|path|path.to_string_lossy().to_lowercase());
  let mut seen=HashSet::new();let mut result=Vec::new();
  for path in files.into_iter().take(500){
@@ -128,9 +128,24 @@ fn installed_shortcuts()->Result<Vec<(String,PathBuf,String)>,String>{
   let target_text=target.to_string_lossy().into_owned();
   let profile_shortcut=target.file_name().is_some_and(|name|name.to_string_lossy().eq_ignore_ascii_case("chrome.exe"))&&has_chrome_profile_argument(&args);
   let name=if profile_shortcut{path.file_stem().map(|name|name.to_string_lossy().into_owned())}else{version_name(&target_text).filter(|name|!name.is_empty())}.or_else(||path.file_stem().map(|name|name.to_string_lossy().into_owned())).unwrap_or_else(||"Application".into());
-  result.push((name,path,target_text));
+  result.push((name,path,args.trim().is_empty()));
  }
  result.sort_by(|a,b|a.0.to_lowercase().cmp(&b.0.to_lowercase()));Ok(result)
+}
+fn downloads_root()->Option<PathBuf>{
+ known_folder_path(&windows::Win32::UI::Shell::FOLDERID_Downloads)?.canonicalize().ok()
+}
+fn downloaded_apps()->Vec<(String,PathBuf,String)>{
+ let Some(root)=downloads_root()else{return Vec::new()};
+ let mut files=Vec::new();
+ let mut remaining=10_000;
+ app_files(&root,0,&mut remaining,"exe",&mut files);
+ files.sort();
+ files.into_iter().take(500).filter_map(|path|{
+  let name=path.file_name()?.to_string_lossy().into_owned();
+  let title=version_name(&path.to_string_lossy()).unwrap_or_else(||clean_name(&path.file_stem().unwrap_or_default().to_string_lossy()));
+  Some((title,path,name))
+ }).collect()
 }
 
 fn choices(app:&AppHandle,source_id:Option<&str>)->Result<Vec<PickerWindow>,String>{
@@ -162,13 +177,17 @@ pub async fn app_picker_windows(app:AppHandle,webview:Webview,source_id:Option<S
  crate::security::authorize(&webview)?;tauri::async_runtime::spawn_blocking(move||choices(&app,source_id.as_deref())).await.map_err(|e|e.to_string())?
 }
 #[tauri::command]
-pub async fn app_picker_installed(app:AppHandle,webview:Webview)->Result<Vec<InstalledApp>,String>{
+pub async fn app_picker_installed(app:AppHandle,webview:Webview,include_downloaded:Option<bool>)->Result<Vec<InstalledApp>,String>{
  crate::security::authorize(&webview)?;
- let found=tauri::async_runtime::spawn_blocking(installed_shortcuts).await.map_err(|e|e.to_string())??;
+ let found=tauri::async_runtime::spawn_blocking(move||->Result<Vec<_>,String>{
+  let mut found=installed_shortcuts()?.into_iter().map(|(name,path,plain_launch)|(name,path,plain_launch,None)).collect::<Vec<_>>();
+  if include_downloaded==Some(true){found.extend(downloaded_apps().into_iter().map(|(name,path,file_name)|(name,path,false,Some(file_name))))}
+  Ok(found)
+ }).await.map_err(|e|e.to_string())??;
  let state=app.state::<InstalledAppCatalog>();let mut catalog=state.0.lock().map_err(|_|"Installed app list is unavailable")?;
  if catalog.len()>5000{catalog.clear()}
  let mut by_path:HashMap<PathBuf,String>=catalog.iter().map(|(id,path)|(path.clone(),id.clone())).collect();let mut choices=Vec::new();
- for(name,path,_)in found{let id=if let Some(id)=by_path.get(&path){id.clone()}else{let id=crate::dropped_files::source_id()?;by_path.insert(path.clone(),id.clone());catalog.insert(id.clone(),path);id};choices.push(InstalledApp{id,name,icon:Vec::new()});}Ok(choices)
+ for(name,path,plain_launch,file_name)in found{let id=if let Some(id)=by_path.get(&path){id.clone()}else{let id=crate::dropped_files::source_id()?;by_path.insert(path.clone(),id.clone());catalog.insert(id.clone(),path);id};choices.push(InstalledApp{id,name,icon:Vec::new(),plain_launch,file_name});}Ok(choices)
 }
 #[tauri::command]
 pub async fn app_picker_installed_icon(app:AppHandle,webview:Webview,id:String)->Result<Vec<u8>,String>{
@@ -189,7 +208,9 @@ pub async fn app_picker_launch_installed(app:AppHandle,webview:Webview,id:String
    .get(&id).cloned().ok_or("Refresh the installed app list and choose again")?;
   let (path,entry)=crate::dropped_files::classify(&path)?;
   let is_shortcut=path.extension().is_some_and(|ext|ext.eq_ignore_ascii_case("lnk"));
-  if entry.kind!="app"||!is_shortcut||crate::app_panel::expected_executable(&path).is_none(){
+  let valid=if is_shortcut{crate::app_panel::expected_executable(&path).is_some()}
+   else{downloads_root().is_some_and(|root|path.starts_with(root))};
+  if entry.kind!="app"||!valid{
    return Err("This installed app shortcut is no longer available.".into())
   }
   crate::dropped_files::open_app_target(&path)

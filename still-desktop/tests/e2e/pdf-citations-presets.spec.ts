@@ -34,7 +34,7 @@ test('PDF excerpts keep a clickable page citation and highlight presets are reus
     await files.locator('input[type="file"]').setInputFiles(folder);
     await files.getByRole('button', { name: `Preview file ${fileName}` }).click();
 
-    await files.getByText('AI tools', { exact: true }).click();
+    await files.getByText('AI', { exact: true }).click();
     const preset = files.getByRole('combobox', { name: 'Highlight preset' });
     const instruction = files.locator(`#pdf-highlight-${fileId}`);
     await preset.selectOption('deadlines');

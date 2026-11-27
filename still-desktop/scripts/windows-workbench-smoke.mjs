@@ -57,6 +57,7 @@ function summarizeSmokeCheck(check){
   case'embedded-browser-create-navigate-close':return{name:check.name,status:check.status,details:{presentTarget:details.presentTarget?{id:boundedText(details.presentTarget.id),url:boundedText(details.presentTarget.url)}:null,navigatedTarget:details.navigatedTarget?{id:boundedText(details.navigatedTarget.id),url:boundedText(details.navigatedTarget.url)}:null,closed:details.closed}};
   case'current-files-ai-create-rename':return{name:check.name,status:check.status,details:{created:details.created,renamed:details.renamed,clarified:details.clarified}};
   case'ai-open-installed-chrome':return{name:check.name,status:check.status,details:{windowTitle:boundedText(details.windowTitle),workspaceUnchanged:details.workspaceUnchanged}};
+  case'ai-open-downloaded-app':return{name:check.name,status:check.status,details:{windowTitle:boundedText(details.windowTitle)}};
   case'create-tray-layout-rule-through-ui':return{name:check.name,status:check.status,details:{ruleId:boundedText(details.ruleId),trigger:details.trigger,action:details.action,targetName:boundedText(details.targetName),beforeWidgetIds:boundedIds(details.beforeWidgetIds),savedLayout:details.savedLayout?{id:boundedText(details.savedLayout.id),name:boundedText(details.savedLayout.name),widgetTypes:boundedIds(details.savedLayout.widgetTypes)}:null,receiptCountBeforeHide:details.receiptCountBeforeHide,hiddenExecutionNotYetDue:details.hiddenExecutionNotYetDue,createdThrough:details.createdThrough}};
   case'hidden-window-native-tick-delivery':{
    const receipt=details.ruleExecution?.receipt??{};
@@ -253,7 +254,7 @@ async function main(){
     return {activeId:state.activeId,widgetIds:state.workspaces.find(item=>item.id===state.activeId).widgets.map(widget=>widget.id)};
    });
    const before=await snapshot();
-   const nativeWindows=()=>page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('app_panel_windows',{}));
+   const nativeWindows=()=>page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('app_picker_windows',{sourceId:null}));
    const priorWindows=new Set((await nativeWindows()).map(window=>window.hwnd));
    await page.locator('.dashboard-hero-actions').getByRole('button',{name:'Ask AI',exact:true}).click();
    const assistant=page.locator('#ai-sidebar');
@@ -262,11 +263,41 @@ async function main(){
    await assistant.getByText('Asked Windows to open “Google Chrome”.',{exact:true}).waitFor({timeout:15_000}).catch(async error=>{
     throw new Error(`Chrome launch response missing. ${await assistant.innerText()}\n${errorText(error)}`);
    });
-   const opened=await pollUntil('new Google Chrome desktop window',async()=>(await nativeWindows()).find(window=>!priorWindows.has(window.hwnd)&&/google chrome/i.test(window.title)),15_000);
+   const opened=await pollUntil('new Google Chrome desktop window',async()=>(await nativeWindows()).find(window=>!window.attached&&!priorWindows.has(window.hwnd)&&window.appName==='Google Chrome'),15_000);
    const workspaceUnchanged=JSON.stringify(await snapshot())===JSON.stringify(before);
    if(!workspaceUnchanged)throw new Error('The app launch changed the Dashboard workspace or its widgets.');
    await assistant.locator('.assistant-heading button').last().click();
    return{windowTitle:opened.title,workspaceUnchanged};
+  });
+
+  await check('ai-open-downloaded-app',async()=>{
+   const name='StillPortableFixture.exe',title='Still Portable Fixture';
+   const script=[
+    "$folder=(New-Object -ComObject Shell.Application).NameSpace('shell:Downloads').Self.Path",
+    "if(!$folder) { throw 'Downloads folder unavailable' }",
+    `$exe=Join-Path $folder '${name}'`,
+    `$source='using System.Windows.Forms; public class StillPortableFixture { public static void Main() { Application.Run(new Form { Text = "${title}" }); } }'`,
+    'Add-Type -TypeDefinition $source -ReferencedAssemblies System.Windows.Forms -OutputAssembly $exe -OutputType WindowsApplication -ErrorAction Stop',
+    'Write-Output $exe',
+   ].join('\n');
+   const {stdout}=await execFileAsync('powershell.exe',['-NoProfile','-NonInteractive','-Command',script],{timeout:20_000,windowsHide:true});
+   const program=stdout.trim().split(/\r?\n/).at(-1);
+   let opened;
+   try{
+    await page.locator('.dashboard-hero-actions').getByRole('button',{name:'Ask AI',exact:true}).click();
+    const assistant=page.locator('#ai-sidebar');
+    await assistant.getByLabel('Message Still AI').fill(`Open ${name}`);
+    await assistant.getByRole('button',{name:'Send',exact:true}).click();
+    opened=await pollUntil('new downloaded fixture desktop window',async()=>page.evaluate(async title=>{
+     const rows=await window.__TAURI_INTERNALS__.invoke('app_panel_windows',{});
+     return rows.find(window=>window.title===title);
+    },title),15_000).catch(async error=>{throw new Error(`${errorText(error)}\n${await assistant.innerText()}`)});
+    await assistant.locator('.assistant-heading button').last().click();
+    return{windowTitle:opened.title};
+   }finally{
+    if(opened)await execFileAsync('taskkill.exe',['/PID',String(opened.pid),'/F'],{timeout:8_000,windowsHide:true}).catch(()=>{});
+    if(program)await rm(program,{force:true}).catch(()=>{});
+   }
   });
 
   await check('create-tray-layout-rule-through-ui',async()=>{

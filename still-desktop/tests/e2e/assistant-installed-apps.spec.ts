@@ -16,11 +16,13 @@ test('Still AI opens a named Windows app without a provider and asks when the na
     metadata:{currentWindow:{label:'main'},currentWebview:{label:'main'}},
     invoke:async(command:string,args:{id:string})=>{
      if(command==='app_picker_installed')return [
-      {id:'chrome',name:'Google Chrome',icon:[]},
+      {id:'chrome',name:'Google Chrome',icon:[],plainLaunch:true},
+      {id:'chrome-custom',name:'Google Chrome',icon:[],plainLaunch:false},
       {id:'chrome-beta',name:'Google Chrome Beta',icon:[]},
       {id:'studio',name:'Visual Studio',icon:[]},
       {id:'code',name:'Visual Studio Code',icon:[]},
       {id:'vlc',name:'VLC',icon:[]},
+      {id:'portable',name:'Portable Viewer',fileName:'viewer-portable.exe',icon:[]},
      ];
      if(command==='app_picker_launch_installed')return (window as unknown as {recordAppLaunch:(id:string)=>Promise<void>}).recordAppLaunch(args.id);
      return null;
@@ -45,6 +47,9 @@ test('Still AI opens a named Windows app without a provider and asks when the na
  await ask('Open app Visual Studio Code');
  await expect(assistant).toContainText('Asked Windows to open “Visual Studio Code”.');
  expect(launched).toEqual(['chrome','code']);
+ await ask('Open viewer-portable.exe');
+ await expect(assistant).toContainText('Asked Windows to open “Portable Viewer”.');
+ expect(launched).toEqual(['chrome','code','portable']);
  await ask('Open app VLC');
  await expect(assistant).toContainText('Windows could not open VLC.');
  await expect(assistant).not.toContainText('Asked Windows to open “VLC”.');

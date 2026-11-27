@@ -221,6 +221,37 @@ test('Notes library opens Markdown tabs beside local notes and writes edits to t
  }finally{await app.cleanup()}
 });
 
+test('Notes shows storage, searches saved tags, and links a Markdown file after a successful save',async()=>{
+ const widget=createWidget('notes'),active=widget.noteDocuments[0];
+ active.title='Exam notes';active.text='Review momentum.';active.tags=['physics'];
+ widget.title=active.title;widget.text=active.text;
+ const writes=[];
+ const app=await setup([widget],{responses:{
+  notes_library_choose:'Course notes',
+  notes_library_list:[{name:'Overview.md',path:'Physics/Overview.md',size:12}],
+  notes_library_create:args=>{writes.push(args);return {name:'Exam notes.md',path:'Physics/Exam notes.md',size:16}},
+ }});
+ const doc=app.window.document;
+ const button=text=>[...doc.querySelectorAll('button')].find(item=>item.textContent===text);
+ try{
+  assert.match(doc.querySelector('.note-storage').textContent,/Saved in this Notes widget/);
+  await act(async()=>button('Saved notes').click());
+  assert.match(doc.querySelector('.notes-search-results').textContent,/#physics/);
+  await act(async()=>doc.querySelector('.notes-search-results button').click());
+  await act(async()=>button('Save to folder…').click());
+  await act(async()=>button('Choose a notes folder').click());
+  const folder=doc.querySelector('.note-filing select');
+  await act(async()=>{folder.value='Physics';folder.dispatchEvent(new app.window.Event('change',{bubbles:true}))});
+  await act(async()=>doc.querySelector('.note-filing').requestSubmit());
+  assert.deepEqual(writes,[{id:widget.id,title:'Exam notes',location:'Physics',text:'Review momentum.'}]);
+  const saved=app.currentState.workspaces[0].widgets[0].noteDocuments[0];
+  assert.equal(saved.id,active.id);
+  assert.equal(saved.sourcePath,'Physics/Exam notes.md');
+  assert.deepEqual(saved.tags,['physics']);
+  assert.match(doc.querySelector('.note-storage').textContent,/Course notes \/ Physics\/Exam notes.md/);
+ }finally{await app.cleanup()}
+});
+
 test('Screenshot widget plugin supports global, selected-tag, and off scopes in rendered headers',async()=>{
  const red=createWidget('notes');red.id='red-note';red.tagColor='red';const blue=createWidget('notes');blue.id='blue-note';blue.tagColor='blue';const untagged=createWidget('notes');untagged.id='plain-note';
  const global=await setup([red,blue,untagged]);

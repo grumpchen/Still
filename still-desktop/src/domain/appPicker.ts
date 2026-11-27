@@ -1,7 +1,7 @@
 import {checkedAppIconData,createWidget,createWidgetFromPreset,nextInstanceNumber,type WidgetInstance} from './workspaces.ts';
 import {nextPlacement,placement} from './layout.ts';
 export interface AppWindowChoice {hwnd:number;pid:number;appName:string;title:string;attached:boolean;minimized:boolean;icon?:number[]}
-export interface InstalledAppChoice {id:string;name:string;icon:number[];iconData?:string}
+export interface InstalledAppChoice {id:string;name:string;icon:number[];iconData?:string;plainLaunch?:boolean;fileName?:string}
 export function appIconData(bytes:unknown):string|undefined {
  if(!Array.isArray(bytes)||bytes.length<8||bytes.length>280_000||bytes.some(value=>!Number.isInteger(value)||value<0||value>255))return undefined;
  if([137,80,78,71,13,10,26,10].some((value,index)=>bytes[index]!==value))return undefined;

@@ -17,18 +17,26 @@ export function installedAppRequest(prompt:string){
  const match=english??chinese;
  if(!match)return null;
  const name=match[2].trim().replace(/^["“](.+)["”]$/u,'$1');
- if(!/^[\p{L}\p{N}][\p{L}\p{M}\p{N} .+'’&()_-]{0,79}$/u.test(name)||/\.(?:exe|lnk|bat|cmd|ps1)$/i.test(name)||/\s--?[a-z0-9]/i.test(name))return null;
+ if(!/^[\p{L}\p{N}][\p{L}\p{M}\p{N} .+'’&()_-]{0,119}$/u.test(name)||/\.(?:lnk|bat|cmd|ps1)$/i.test(name)||/\s--?[a-z0-9]/i.test(name))return null;
  const alias=aliases.get(normalized(name));
- return {name,alias,explicit:!!match[1]};
+ return {name,alias,explicit:!!match[1]||/\.exe$/i.test(name)};
 }
 
 export function matchInstalledApp(apps:InstalledAppChoice[],query:NonNullable<ReturnType<typeof installedAppRequest>>){
  const name=normalized(query.name);
+ const namedFiles=apps.filter(app=>app.fileName&&normalized(app.fileName)===name);
+ if(namedFiles.length)return {exact:true,candidates:namedFiles};
  const exact=apps.filter(app=>normalized(app.name)===name);
- if(exact.length)return {exact:true,candidates:exact};
+ const preferred=(candidates:InstalledAppChoice[])=>{
+  const plain=candidates.filter(app=>app.plainLaunch);
+  return {exact:true,candidates:plain.length===1?plain:candidates};
+ };
+ if(exact.length)return preferred(exact);
  if(query.alias){
   const branded=apps.filter(app=>normalized(app.name)===query.alias);
-  if(branded.length)return {exact:true,candidates:branded};
+  if(branded.length)return preferred(branded);
  }
+ const fileStems=apps.filter(app=>app.fileName&&normalized(app.fileName.replace(/\.exe$/i,''))===name);
+ if(fileStems.length)return {exact:true,candidates:fileStems};
  return {exact:false,candidates:filterInstalledApps(apps,query.name)};
 }

@@ -70,6 +70,7 @@ test('selecting text in Files offers workspace notes and saves the selection', a
     await expect(notes.locator('textarea.note')).toHaveValue('Existing note body mentions interim report deadlines\n\nInterim report is due September 30, 2025.');
     const citation = notes.getByRole('button', { name: 'agreement.txt' });
     await expect(citation).toBeVisible();
+    await notes.getByRole('textbox', { name: 'Note heading' }).click();
     await citation.click();
     await expect(files.getByRole('region', { name: 'Preview file agreement.txt' })).toBeVisible();
     await files.getByRole('combobox', { name: 'Reading status' }).selectOption('done');
