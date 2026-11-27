@@ -4,8 +4,8 @@ export interface FolderListing { rootName:string; location:string; entries:FileE
 export interface NativeFilePreview {mimeType:string;base64:string}
 export interface StillInbox {listing:FolderListing;path:string}
 export interface FileMoveResult {sourcePath:string;destinationPath:string}
-export interface ManagedFileResult {action:'rename'|'move'|'delete'|'editText';sourcePath:string;destinationPath:string}
-export type ManagedFileAction={type:'rename';name:string}|{type:'move';destinationFolder:string}|{type:'delete'}|{type:'editText';text:string;expectedText:string};
+export interface ManagedFileResult {action:'rename'|'move'|'delete'|'editText'|'createText';sourcePath:string;destinationPath:string}
+export type ManagedFileAction={type:'rename';name:string}|{type:'move';destinationFolder:string}|{type:'delete'}|{type:'editText';text:string;expectedText:string}|{type:'createText';text:string};
 export interface ExtractedPdfText {text:string;pagesRead:number;totalPages:number;truncated:boolean}
 export interface LibrarySearchHit {widgetId:string;entry:FileEntry}
 export interface LibrarySearchResponse {results:LibrarySearchHit[];unavailableWidgetIds:string[];truncated:boolean}

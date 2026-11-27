@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fs, io::Read, path::{Component, Path, PathBuf}, sync::Mutex};
+use std::{collections::HashMap, fs, io::{Read, Write}, path::{Component, Path, PathBuf}, sync::Mutex};
 use tauri::{AppHandle, Manager, State, Webview};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
@@ -75,7 +75,7 @@ pub(crate) struct StillInbox { listing:FolderListing,path:String }
 pub(crate) struct FileMoveResult { source_path:String, destination_path:String }
 #[derive(Deserialize)]
 #[serde(tag="type",rename_all="camelCase")]
-pub(crate) enum ManagedFileAction { Rename{name:String},Move{destination_folder:String},Delete,EditText{text:String,expected_text:String} }
+pub(crate) enum ManagedFileAction { Rename{name:String},Move{destination_folder:String},Delete,EditText{text:String,expected_text:String},CreateText{text:String} }
 #[derive(Debug,Serialize)]
 #[serde(rename_all="camelCase")]
 pub(crate) struct ManagedFileResult { action:String,source_path:String,destination_path:String }
@@ -548,10 +548,33 @@ fn managed_folder(root:&Path,relative:&str)->Result<PathBuf,String>{
     let mut current=root.clone();for part in relative.split('/') {current.push(part);let metadata=fs::symlink_metadata(&current).map_err(|_|"Choose an existing destination folder in this Files library")?;if metadata.file_type().is_symlink()||!metadata.is_dir(){return Err("The destination must be an ordinary folder in this Files library.".into())}}
     current=current.canonicalize().map_err(|_|"The destination folder is unavailable")?;if !current.starts_with(&root){return Err("The destination is outside the selected Files folder.".into())}Ok(current)
 }
+fn create_text_within_root(root:&Path,relative:&str,text:&str)->Result<ManagedFileResult,String>{
+    const MAX_CREATE_BYTES:usize=1_000_000;
+    if text.len()>MAX_CREATE_BYTES{return Err("New text files are limited to 1 MB.".into())}
+    let root=root.canonicalize().map_err(|_|"The selected folder is unavailable. Choose it again.")?;
+    if relative.is_empty()||relative.len()>1000||relative.contains(':')||relative.contains('\\')||relative.contains('\0')||relative.split('/').any(|part|!valid_filing_segment(part)){
+        return Err("Choose a relative file path inside the selected Files folder.".into())
+    }
+    let extension=Path::new(relative).extension().and_then(|value|value.to_str()).unwrap_or("");
+    if !extension.eq_ignore_ascii_case("txt")&&!extension.eq_ignore_ascii_case("md"){
+        return Err("Create supports .txt and .md files only.".into())
+    }
+    let parent_relative=Path::new(relative).parent().filter(|path|!path.as_os_str().is_empty()).map(|path|path.to_string_lossy().replace('\\',"/" )).unwrap_or_default();
+    let parent=managed_folder(&root,&parent_relative)?;
+    let name=Path::new(relative).file_name().ok_or("Choose a file name.")?;
+    if !valid_filing_segment(&name.to_string_lossy()){return Err("Choose a safe file name.".into())}
+    let target=parent.join(name);
+    let mut file=fs::OpenOptions::new().write(true).create_new(true).open(&target).map_err(|error|{
+        if error.kind()==std::io::ErrorKind::AlreadyExists{"A file with that path already exists. Nothing was replaced."}else{"Could not create this text file in the selected folder."}
+    })?;
+    if file.write_all(text.as_bytes()).and_then(|_|file.sync_all()).is_err(){drop(file);return match fs::remove_file(&target){Ok(())=>Err("Could not finish writing this text file. No file was saved.".into()),Err(_)=>Err("Could not finish writing this text file; an incomplete file may remain. Check the folder before retrying.".into())}}
+    Ok(ManagedFileResult{action:"createText".into(),source_path:relative.into(),destination_path:relative.into()})
+}
 fn name_collision(parent:&Path,name:&str)->Result<bool,String>{
     for entry in fs::read_dir(parent).map_err(|_|"Could not inspect the destination folder")?{let entry=entry.map_err(|_|"Could not inspect the destination folder")?;if entry.file_name().to_string_lossy().eq_ignore_ascii_case(name){return Ok(true)}}Ok(false)
 }
 pub(crate) fn manage_resource_within_root(root:&Path,source_relative:&str,action:ManagedFileAction)->Result<ManagedFileResult,String>{
+    let action=match action{ManagedFileAction::CreateText{text}=>return create_text_within_root(root,source_relative,&text),other=>other};
     let root=root.canonicalize().map_err(|_|"The selected folder is unavailable. Choose it again.")?;let source=managed_resource(&root,source_relative)?;
     let (action_name,destination_path)=match action{
         ManagedFileAction::Rename{name}=>{
@@ -575,6 +598,7 @@ pub(crate) fn manage_resource_within_root(root:&Path,source_relative:&str,action
             let current=fs::read_to_string(&source).map_err(|_|"This text file is unavailable or is not valid UTF-8")?;if current!=expected_text{return Err("This file changed since it was opened. Reload it before saving.".into())}
             fs::write(&source,text).map_err(|_|"Could not save this text file. Check that it is writable")?;("editText",source_relative.into())
         }
+        ManagedFileAction::CreateText{..}=>unreachable!("handled before resolving an existing source"),
     };
     Ok(ManagedFileResult{action:action_name.into(),source_path:source_relative.into(),destination_path})
 }
@@ -606,6 +630,16 @@ mod tests {
         assert!(manage_resource_within_root(&root,"Folder",ManagedFileAction::Delete).unwrap_err().contains("empty"));
         assert!(manage_resource_within_root(&root,"same.txt",ManagedFileAction::Move{destination_folder:"Folder".into()}).unwrap_err().contains("already exists"));
         assert!(root.join("same.txt").exists());fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn creates_only_new_markdown_or_text_files_inside_the_granted_root(){
+        let fixture=temp_root("create-text");let root=fixture.join("chosen");fs::create_dir_all(root.join("Course")).unwrap();
+        let created=manage_resource_within_root(&root,"Course/lecture.md",ManagedFileAction::CreateText{text:"# New notes\n".into()}).unwrap();
+        assert_eq!(created.action,"createText");assert_eq!(created.source_path,"Course/lecture.md");assert_eq!(created.destination_path,"Course/lecture.md");assert_eq!(fs::read_to_string(root.join("Course/lecture.md")).unwrap(),"# New notes\n");
+        assert!(manage_resource_within_root(&root,"Course/lecture.md",ManagedFileAction::CreateText{text:"replacement".into()}).unwrap_err().contains("already exists"));
+        assert_eq!(fs::read_to_string(root.join("Course/lecture.md")).unwrap(),"# New notes\n");
+        for path in ["Course/file.csv","../escape.txt","C:/outside.txt","Course/missing/new.txt"]{assert!(manage_resource_within_root(&root,path,ManagedFileAction::CreateText{text:"x".into()}).is_err(),"{path}");}
+        assert!(!fixture.join("escape.txt").exists());fs::remove_dir_all(fixture).unwrap();
     }
     #[test]
     fn failed_notes_library_grant_persistence_restores_previous_root() {

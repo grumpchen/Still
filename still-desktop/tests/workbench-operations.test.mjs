@@ -2,6 +2,7 @@ import test,{afterEach} from 'node:test';
 import assert from 'node:assert/strict';
 import {createInitialState,createWorkspace} from '../src/domain/workspaces.ts';
 import {configureCollectionOperationHost} from '../src/platform/collectionOperations.ts';
+import {localFiles} from '../src/platform/files.ts';
 import {createWorkbenchService} from '../src/platform/workbenchOperations.ts';
 
 function installStorage(){const values=new Map();globalThis.localStorage={getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,String(value)),removeItem:key=>values.delete(key)};return values}
@@ -72,6 +73,17 @@ test('Workbench routes all file reference variants into the typed collection ope
  const [renamed]=await service.executeWorkbenchActions([{operation:'file.renameReference',widgetId:pdf.id,name:'Biology reading'}]);assert.equal(renamed.status,'succeeded');assert.equal(current.workspaces.find(item=>item.id===source.id).widgets.find(item=>item.id===pdf.id).fileName,'Biology reading');
  const [moved]=await service.executeWorkbenchActions([{operation:'file.moveReference',widgetId:pdf.id,destinationWorkspaceId:target.id}]);assert.equal(moved.status,'succeeded');assert.equal(current.workspaces.find(item=>item.id===target.id).widgets.find(item=>item.id===pdf.id).fileKey,'pdf-id');
  const [removed]=await service.executeWorkbenchActions([{operation:'file.deleteReference',widgetId:pdf.id}]);assert.equal(removed.status,'succeeded');assert.equal(current.workspaces.find(item=>item.id===target.id).widgets.some(item=>item.id===pdf.id),false);
+});
+
+test('file.createText dispatches one native create-new request and reports its exact receipt',async()=>{
+ installStorage();const {state,source}=stateWithCourses(),files=createWorkspace('Temp',['files']).widgets[0];files.id='files-create-1';source.widgets.push(files);let current=state;configureCollectionOperationHost({getState:()=>current,commitState:next=>{current=next}});
+ const original=localFiles.manageResource;let request;
+ localFiles.manageResource=async(widgetId,path,action)=>{request={widgetId,path,action};return{action:'createText',sourcePath:path,destinationPath:path}};
+ try{
+  const service=createWorkbenchService({getState:()=>current,commitState:next=>{current=next},layoutHandlers:emptyLayoutHandlers,saveRule:async()=>({kind:'error',message:'unsupported'}),getCaptureEvent:async()=>null});
+  const [receipt]=await service.executeWorkbenchActions([{operation:'file.createText',widgetId:files.id,path:'Course/summary.md',text:'# Summary\n'}]);
+  assert.deepEqual(request,{widgetId:files.id,path:'Course/summary.md',action:{type:'createText',text:'# Summary\n'}});assert.equal(receipt.status,'succeeded');assert.equal(receipt.changed,true);assert.match(receipt.summary,/Created Course\/summary\.md/);
+ }finally{localFiles.manageResource=original}
 });
 
 test('collection commit failures return failure without claiming a successful workbench mutation',async()=>{

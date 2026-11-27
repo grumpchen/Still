@@ -27,14 +27,15 @@ export async function executeCollectionOperation(action:CollectionOperationReque
  let result:CollectionOperationResult,physicalChanged=false;
  try{
   if(!host)throw new Error('The Library operation service is not connected to the workspace state.');
-  if(action.type==='file.rename'||action.type==='file.move'||action.type==='file.delete'||action.type==='file.editText'){
+  if(action.type==='file.rename'||action.type==='file.move'||action.type==='file.delete'||action.type==='file.editText'||action.type==='file.createText'){
    const sourceWidget=host.getState().workspaces.flatMap(workspace=>workspace.widgets).find(widget=>widget.id===action.widgetId&&widget.type==='files');
    if(!sourceWidget)throw new Error('The source Files widget is no longer available. Reopen the Library and choose its current card.');
-   const sourcePath=action.path,managed=action.type==='file.rename'?{type:'rename' as const,name:action.name}:action.type==='file.move'?{type:'move' as const,destinationFolder:action.destinationFolder}:action.type==='file.delete'?{type:'delete' as const}:{type:'editText' as const,text:action.text,expectedText:action.expectedText};
+   const sourcePath=action.path,managed=action.type==='file.rename'?{type:'rename' as const,name:action.name}:action.type==='file.move'?{type:'move' as const,destinationFolder:action.destinationFolder}:action.type==='file.delete'?{type:'delete' as const}:action.type==='file.createText'?{type:'createText' as const,text:action.text}:{type:'editText' as const,text:action.text,expectedText:action.expectedText};
    const receipt=await localFiles.manageResource(action.widgetId,sourcePath,managed);
-   if(receipt.action!==managed.type||receipt.sourcePath!==sourcePath)throw new Error('The Library result did not match the requested operation. Check the folder before retrying.');
+   if(action.type==='file.createText'&&receipt.action==='createText'&&receipt.sourcePath===sourcePath)physicalChanged=true;
+   if(receipt.action!==managed.type||receipt.sourcePath!==sourcePath||action.type==='file.createText'&&receipt.destinationPath!==sourcePath)throw new Error('The Library result did not match the requested operation. Check the folder before retrying.');
    physicalChanged=true;
-   if(action.type!=='file.editText'){
+   if(action.type!=='file.editText'&&action.type!=='file.createText'){
     const destinationPath=action.type==='file.delete'?'':receipt.destinationPath;
     const state=host.getState(),workspaces=state.workspaces.map(workspace=>({...workspace,widgets:workspace.widgets.map(widget=>{
      if(widget.id!==action.widgetId||widget.type!=='files')return widget;
@@ -45,7 +46,7 @@ export async function executeCollectionOperation(action:CollectionOperationReque
    if(action.type==='file.delete')forgetRecentLibraryFiles(new Set([action.widgetId]),sourcePath);else remapRecentLibraryFiles(new Set([action.widgetId]),sourcePath,destinationPath);
    window.dispatchEvent(new CustomEvent('still-files-resource-moved',{detail:{widgetId:action.widgetId,sourcePath,destinationPath,removedFolder:action.type==='file.delete'}}));
    }
-   const summary=action.type==='file.delete'?`Deleted ${sourcePath} from the connected folder.`:action.type==='file.editText'?`Saved changes to ${sourcePath}.`:action.type==='file.rename'?`Renamed ${sourcePath} to ${receipt.destinationPath}.`:`Moved ${sourcePath} to ${receipt.destinationPath}.`;
+   const summary=action.type==='file.delete'?`Deleted ${sourcePath} from the connected folder.`:action.type==='file.editText'?`Saved changes to ${sourcePath}.`:action.type==='file.createText'?`Created ${receipt.destinationPath} in the connected folder.`:action.type==='file.rename'?`Renamed ${sourcePath} to ${receipt.destinationPath}.`:`Moved ${sourcePath} to ${receipt.destinationPath}.`;
    result={status:'succeeded',changed:true,summary,receiptId:key};
    try{writeJournal([...readJournal().filter(item=>item.key!==key),{key,state:'complete',result}])}catch{return{status:'outcome_unknown',changed:true,summary:'The file operation completed, but Still could not save its receipt. Check the Library before retrying.',receiptId:key}}
    return result;

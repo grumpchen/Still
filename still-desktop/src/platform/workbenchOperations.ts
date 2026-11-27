@@ -42,6 +42,7 @@ function collectionRequest(action:Exclude<WorkbenchAction,{operation:`layout.${s
   case'file.move':return{type:'file.move',widgetId:action.widgetId,path:action.path,destinationFolder:action.destinationFolder};
   case'file.delete':return{type:'file.delete',widgetId:action.widgetId,path:action.path};
   case'file.editText':return{type:'file.editText',widgetId:action.widgetId,path:action.path,text:action.text,expectedText:action.expectedText};
+  case'file.createText':return{type:'file.createText',widgetId:action.widgetId,path:action.path,text:action.text};
   case'note.quickCapture':return{type:'note.quickCapture',workspaceId:action.workspaceId,...(action.notesWidgetId?{notesWidgetId:action.notesWidgetId}:{}),title:action.title,text:action.text};
  }
 }

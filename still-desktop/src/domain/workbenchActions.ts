@@ -25,6 +25,7 @@ export type WorkbenchAction =
  | {operation:'file.move';widgetId:string;path:string;destinationFolder:string}
  | {operation:'file.delete';widgetId:string;path:string}
  | {operation:'file.editText';widgetId:string;path:string;text:string;expectedText:string}
+ | {operation:'file.createText';widgetId:string;path:string;text:string}
  | {operation:'note.quickCapture';workspaceId:string;notesWidgetId?:string;title:string;text:string}
  | {operation:'rule.save';text:string};
 export type LinkOrigin={kind:'group';workspaceId:string;groupId:string}|{kind:'browser';workspaceId:string;widgetId:string};
@@ -43,6 +44,9 @@ function text(value:unknown,min:number,max:number):string{
 }
 function content(value:unknown,max:number,allowEmpty=false):string{
  if(typeof value!=='string'||value.length>max||value.includes('\0')||!allowEmpty&&!value.trim())return invalid();return value;
+}
+function createTextContent(value:unknown):string{
+ const result=content(value,1_000_000,true);if(new TextEncoder().encode(result).byteLength>1_000_000)return invalid();return result;
 }
 function id(value:unknown):string{
  if(typeof value!=='string'||!ID_RE.test(value))return invalid();return value;
@@ -64,6 +68,11 @@ function fileName(value:unknown):string{
  const device=name.split('.')[0].replace(/[ .]+$/,'').toUpperCase();
  if(/^(CON|PRN|AUX|NUL|COM[1-9¹²³]|LPT[1-9¹²³])$/.test(device))return invalid();
  return name;
+}
+function createTextPath(value:unknown):string{
+ const path=relativePath(value),name=path.split('/').at(-1)??'';
+ if(!/^.+\.(?:md|txt)$/i.test(name)||name==='.'||name==='..')return invalid();
+ if(fileName(name)!==name)return invalid();return path;
 }
 function httpsUrl(value:unknown):string{
  if(typeof value!=='string'||value.length>4096)return invalid();
@@ -95,6 +104,7 @@ function parseOne(raw:unknown):WorkbenchAction{
   case 'file.move':fields(raw,['operation','widgetId','path','destinationFolder']);return{operation:raw.operation,widgetId:id(raw.widgetId),path:relativePath(raw.path),destinationFolder:relativePath(raw.destinationFolder,true)};
   case 'file.delete':fields(raw,['operation','widgetId','path']);return{operation:raw.operation,widgetId:id(raw.widgetId),path:relativePath(raw.path)};
   case 'file.editText':fields(raw,['operation','widgetId','path','text','expectedText']);return{operation:raw.operation,widgetId:id(raw.widgetId),path:relativePath(raw.path),text:content(raw.text,1_000_000,true),expectedText:content(raw.expectedText,1_000_000,true)};
+  case 'file.createText':fields(raw,['operation','widgetId','path','text']);return{operation:raw.operation,widgetId:id(raw.widgetId),path:createTextPath(raw.path),text:createTextContent(raw.text)};
   case 'note.quickCapture':fields(raw,['operation','workspaceId','title','text'],['notesWidgetId']);return{operation:raw.operation,workspaceId:id(raw.workspaceId),...(raw.notesWidgetId!==undefined?{notesWidgetId:id(raw.notesWidgetId)}:{}),title:text(raw.title,1,60),text:content(raw.text,12_000)};
   case 'rule.save':fields(raw,['operation','text']);return{operation:raw.operation,text:content(raw.text,2000)};
   default:return invalid();
