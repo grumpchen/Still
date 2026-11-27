@@ -1,6 +1,6 @@
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {createAutomationRule,loadAutomationState,parseAutomationRule,saveAutomationState,type AutomationAction,type AutomationRule,type AutomationRuleDraft,type AutomationStorage,type RuleCatalog,type RuleParseResult} from './domain/automationRules.ts';
-import {AutomationRunnerController,type AutomationCaptureQueue,type AutomationRunnerSnapshot} from './domain/automationRunner.ts';
+import {AutomationRunnerController,type AutomationCaptureQueue,type AutomationRunnerSnapshot,type AutomationRunSummary} from './domain/automationRunner.ts';
 import type {AutomationRuntimePort} from './platform/automationRuntime.ts';
 import {automationRuntime} from './platform/automationRuntime.ts';
 import {automationCaptureInbox} from './platform/automationCaptureInbox.ts';
@@ -12,7 +12,7 @@ export interface AutomationRunnerApi extends AutomationRunnerSnapshot {
  setEnabled(ruleId:string,enabled:boolean):void;
  setLayoutMode(ruleId:string,mode:'append'|'replace'):void;
  deleteRule(ruleId:string):void;
- runDueNow():Promise<void>;
+ runDueNow():Promise<AutomationRunSummary>;
  hideToTray():Promise<{ok:true}|{ok:false;message:string}>;
 }
 export interface UseAutomationRunnerOptions {
@@ -83,7 +83,7 @@ export function useAutomationRunner(options:UseAutomationRunnerOptions):Automati
   try{const rules=current.state.rules.map(rule=>{if(rule.id!==ruleId)return rule;const{requiresModeChoice:_needsChoice,resumeAfterModeChoice,...rest}=rule;return{...rest,enabled:resumeAfterModeChoice===true,action:{...rule.action,mode},updatedAt:new Date().toISOString()}});saveAutomationState(latest.current.storage,{...current.state,rules});setMutationError(null);refresh()}
   catch(error){const message=`Could not save layout mode: ${error instanceof Error?error.message:String(error)}`;setMutationError(message);setSnapshot(value=>({...value,error:message}))}
  },[refresh]);
- const runDueNow=useCallback(async()=>{try{await controller.current?.runDueNow()}catch(error){const message=`Could not run due automations: ${error instanceof Error?error.message:String(error)}`;setMutationError(message);setSnapshot(value=>({...value,error:message}))}},[]);
+ const runDueNow=useCallback(async():Promise<AutomationRunSummary>=>{try{if(!controller.current)return{ok:false,dueCount:0,succeededCount:0,attentionCount:0,notConfirmedCount:0,message:'Automation runner is still starting.'};const result=await controller.current.runDueNow();if(!result.ok){const message=result.message??'Automation evaluation could not complete.';setMutationError(message);setSnapshot(value=>({...value,error:message}))}else setMutationError(null);return result}catch(error){const message=`Could not run due automations: ${error instanceof Error?error.message:String(error)}`;setMutationError(message);setSnapshot(value=>({...value,error:message}));return{ok:false,dueCount:0,succeededCount:0,attentionCount:0,notConfirmedCount:0,message}}},[]);
  const hideToTray=useCallback(async()=>{try{await(latest.current.runtime??automationRuntime).hideToTray();await controller.current?.refreshRuntimeStatus();return{ok:true as const}}catch(error){return{ok:false as const,message:error instanceof Error?error.message:String(error)}}},[]);
  return{...snapshot,error:mutationError??snapshot.error,createFromText,setEnabled,setLayoutMode,deleteRule,runDueNow,hideToTray};
 }
