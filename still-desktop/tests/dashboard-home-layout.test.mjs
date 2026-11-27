@@ -10,7 +10,8 @@ test('Dashboard routes to a fixed study page with a distinct responsive layout',
  assert.match(app,/w\.role==='dashboard'\?<DashboardHome[\s\S]*?w\.role==='library'\?<LibraryHome[\s\S]*?<WorkspaceCanvas/,'the fixed Dashboard and Library use page components while normal workspaces use the canvas');
  assert.match(dashboard,/className="dashboard-home"[\s\S]*?className="dashboard-grid"/);
  assert.match(dashboard,/className=\{'dashboard-module dashboard-'\+widget\.type\+'-module'/,'Dashboard modules render from the selected widget instances');
- assert.match(dashboard,/draggable=\{editing\}/,'Dashboard widgets move only while editing');
+ assert.match(dashboard,/className="dashboard-drag-handle"[\s\S]*?onPointerDown=\{event=>beginPointerDrag\(event,widget\.id\)\}/,'Dashboard modules reorder by dragging an edit handle');
+ assert.doesNotMatch(dashboard,/Move earlier|Move later|draggable=\{editing\}/,'Dashboard has no arrow reorder controls or whole-card drag capture');
  assert.match(dashboard,/widgetTypes\.filter\(type=>type!=='group'\)/,'the Dashboard editor can add supported widget types');
  assert.match(dashboard,/widgetRegistry\[widget\.type\]\.component/,'Dashboard can render each supported widget component');
 
