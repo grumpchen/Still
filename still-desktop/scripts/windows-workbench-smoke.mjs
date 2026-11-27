@@ -198,18 +198,23 @@ async function main(){
    const sample=await mkdtemp(path.join(inbox.path,'workbench-smoke-'));
    try{
     const widgetId=await page.evaluate(()=>{
+     const state=JSON.parse(localStorage.getItem('still-workspace-v2'));
+     return state.workspaces.find(workspace=>workspace.name==='Design').widgets.find(widget=>widget.type==='files').id;
+    });
+    await page.addInitScript(widgetId=>{
+     if(sessionStorage.getItem('still-smoke-files-seeded'))return;
      localStorage.setItem('still-first-run-tutorial-v1','done');
      const state=JSON.parse(localStorage.getItem('still-workspace-v2'));
      const design=state.workspaces.find(workspace=>workspace.name==='Design');
-     const files=design.widgets.find(widget=>widget.type==='files');
+     const files=design.widgets.find(widget=>widget.id===widgetId);
      files.folderKey='still-downloads-inbox';
      files.folderName='Still Downloads';
      files.placement={x:20,y:30,width:540,height:360};
-     // Keep the test card unobscured by the existing Design preset.
+     // Seed after the previous page has flushed its workspace state on unload.
      design.widgets=design.widgets.filter(widget=>widget.id!==files.id).concat(files);
      localStorage.setItem('still-workspace-v2',JSON.stringify(state));
-     return files.id;
-    });
+     sessionStorage.setItem('still-smoke-files-seeded','true');
+    },widgetId);
     await page.reload({timeout:15_000});
     await page.locator('.dashboard-hero-actions').getByRole('button',{name:'Ask AI',exact:true}).click({timeout:10_000});
     await page.getByRole('button',{name:'Show sidebar',exact:true}).click({timeout:10_000});
