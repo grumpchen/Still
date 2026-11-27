@@ -27,7 +27,7 @@ test('selecting text in Files offers workspace notes and saves the selection', a
       localStorage.setItem('still-first-run-tutorial-v1', 'done');
     }, { state });
     await page.goto('/design-preview.html');
-    await page.getByRole('button',{name:'Resume Design',exact:true}).click();
+    await page.getByRole('button',{name:'Show sidebar'}).click();await page.locator('.nav button').filter({hasText:'Design'}).click();
 
     const files = page.locator(`[data-widget-id="${fileId}"]`);
     const notes = page.locator(`[data-widget-id="${notesId}"]`);

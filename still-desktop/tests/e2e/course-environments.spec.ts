@@ -49,7 +49,7 @@ test('normal workspace deletion clears timetable links and undo restores the cou
  state.activeId=destinations[0].id;
  await page.addInitScript(({data})=>{localStorage.setItem('still-first-run-tutorial-v1','done');localStorage.setItem('still-workspace-v2',data)}, {data:JSON.stringify(state)});
  await page.goto('/design-preview.html');
- await page.getByRole('button',{name:'Resume Chemistry',exact:true}).click();
+ await page.getByRole('button',{name:'Show sidebar'}).click();await page.locator('.nav button').filter({hasText:'Chemistry'}).click();
  await page.keyboard.press('Control+k');
  await page.getByRole('button',{name:'Arrange workspace'}).click();
  await page.getByRole('button',{name:'Remove workspace'}).click();
