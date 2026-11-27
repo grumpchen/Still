@@ -25,10 +25,7 @@ test('a finished AI Command minimizes, single click runs, and double-click only 
   await page.evaluate(() => {
     const observed = {count: 0};
     Object.assign(window, {observedCommandRuns: observed});
-    window.addEventListener('still-run-ai-command', event => {
-      observed.count++;
-      event.stopImmediatePropagation();
-    }, true);
+    window.addEventListener('still-run-ai-command', () => { observed.count++; });
   });
   const runs = () => page.evaluate(() => (window as Window & {observedCommandRuns?: {count: number}}).observedCommandRuns!.count);
   await card.locator('.widget-minimized-button').dblclick();
@@ -37,7 +34,9 @@ test('a finished AI Command minimizes, single click runs, and double-click only 
   await card.locator('.widget-minimized-button').click();
   await expect.poll(runs).toBe(1);
   await expect(card).toHaveClass(/widget-minimized/);
+  await expect(page.locator('.workspace-surface:not([hidden]) .widget-notes')).toHaveCount(2);
 
-  await card.click({button: 'right'});
-  await expect(page.getByRole('menu', {name: 'Add widget'})).toHaveCount(0);
+  await card.evaluate(element => element.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true, button: 2, clientX: 200, clientY: 200})));
+  await expect(page.getByRole('menu', {name: 'Quick command'}).getByRole('menuitem', {name: 'Edit command'})).toBeVisible();
+  await expect(page.locator('.add-tool-context-menu').getByRole('menuitem', {name: 'Calculator'})).toHaveCount(0);
 });
