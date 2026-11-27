@@ -46,7 +46,7 @@ export async function executeCollectionOperation(action:CollectionOperationReque
    if(action.type==='file.delete')forgetRecentLibraryFiles(new Set([action.widgetId]),sourcePath);else remapRecentLibraryFiles(new Set([action.widgetId]),sourcePath,destinationPath);
    window.dispatchEvent(new CustomEvent('still-files-resource-moved',{detail:{widgetId:action.widgetId,sourcePath,destinationPath,removedFolder:action.type==='file.delete'}}));
    }
-   if(action.type==='file.createText'){
+   if(action.type==='file.createText'&&typeof window!=='undefined'){
     window.dispatchEvent(new CustomEvent('still-files-resource-created',{detail:{widgetId:action.widgetId}}));
    }
    const summary=action.type==='file.delete'?`Deleted ${sourcePath} from the connected folder.`:action.type==='file.editText'?`Saved changes to ${sourcePath}.`:action.type==='file.createText'?`Created ${receipt.destinationPath} in the connected folder.`:action.type==='file.rename'?`Renamed ${sourcePath} to ${receipt.destinationPath}.`:`Moved ${sourcePath} to ${receipt.destinationPath}.`;
