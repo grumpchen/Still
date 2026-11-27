@@ -135,6 +135,10 @@ fn installed_shortcuts()->Result<Vec<(String,PathBuf,bool)>,String>{
 fn downloads_root()->Option<PathBuf>{
  known_folder_path(&windows::Win32::UI::Shell::FOLDERID_Downloads)?.canonicalize().ok()
 }
+fn registered_chrome()->Option<PathBuf>{
+ let path=crate::chrome::executable().ok()?.canonicalize().ok()?;
+ path.file_name().is_some_and(|name|name.eq_ignore_ascii_case("chrome.exe")).then_some(path)
+}
 fn downloaded_apps()->Vec<(String,PathBuf,String)>{
  let Some(root)=downloads_root()else{return Vec::new()};
  let mut files=Vec::new();
@@ -181,7 +185,13 @@ pub async fn app_picker_installed(app:AppHandle,webview:Webview,include_download
  crate::security::authorize(&webview)?;
  let found=tauri::async_runtime::spawn_blocking(move||->Result<Vec<_>,String>{
   let mut found=installed_shortcuts()?.into_iter().map(|(name,path,plain_launch)|(name,path,plain_launch,None)).collect::<Vec<_>>();
-  if include_downloaded==Some(true){found.extend(downloaded_apps().into_iter().map(|(name,path,file_name)|(name,path,false,Some(file_name))))}
+  if include_downloaded==Some(true){
+   if let Some(chrome)=registered_chrome(){
+    found.retain(|(name,_,_,_)|!name.eq_ignore_ascii_case("Google Chrome"));
+    found.push(("Google Chrome".into(),chrome,true,None));
+   }
+   found.extend(downloaded_apps().into_iter().map(|(name,path,file_name)|(name,path,false,Some(file_name))));
+  }
   Ok(found)
  }).await.map_err(|e|e.to_string())??;
  let state=app.state::<InstalledAppCatalog>();let mut catalog=state.0.lock().map_err(|_|"Installed app list is unavailable")?;
@@ -209,7 +219,7 @@ pub async fn app_picker_launch_installed(app:AppHandle,webview:Webview,id:String
   let (path,entry)=crate::dropped_files::classify(&path)?;
   let is_shortcut=path.extension().is_some_and(|ext|ext.eq_ignore_ascii_case("lnk"));
   let valid=if is_shortcut{crate::app_panel::expected_executable(&path).is_some()}
-   else{downloads_root().is_some_and(|root|path.starts_with(root))};
+   else{registered_chrome().as_ref()==Some(&path)||downloads_root().is_some_and(|root|path.starts_with(root))};
   if entry.kind!="app"||!valid{
    return Err("This installed app shortcut is no longer available.".into())
   }

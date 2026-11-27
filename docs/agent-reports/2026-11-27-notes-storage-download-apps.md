@@ -21,4 +21,5 @@
 ## Handoff
 
 - The standard Windows Downloads folder is discovered using its known-folder location. Only executable files inside that folder are returned as Download matches.
+- The Windows desktop run surfaced several catalog shortcuts labeled Google Chrome. The assistant now resolves the registered Chrome executable first. The manual Apps picker still exposes its shortcuts.
 - Publication remains on hold.
