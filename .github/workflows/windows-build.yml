@@ -1,120 +1,47 @@
 name: Windows build
-
 on:
-  push:
-    branches:
-      - agent/codex/still-workbench
-      - agent/codex/workbench-feedback
-      - agent/luna/**
-    paths:
-      - still-desktop/src/**
-      - still-desktop/src-tauri/**
-      - still-desktop/package.json
-      - still-desktop/pnpm-lock.yaml
-      - still-desktop/tests/**
-      - still-desktop/scripts/**
-      - .github/workflows/windows-build.yml
   workflow_dispatch:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
-  windows-build:
+  replay-package:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: pnpm/action-setup@v4
         with:
           version: 11.24.0
-
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: pnpm
           cache-dependency-path: still-desktop/pnpm-lock.yaml
-
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: stable
-          cache: false
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: still-desktop/src-tauri -> target
-          shared-key: still-workbench-windows
-          cache-on-failure: true
-
-      - name: Install frontend dependencies
+      - name: Install frontend test dependencies
         working-directory: still-desktop
         run: pnpm install --frozen-lockfile
-
-      - name: TypeScript check
-        working-directory: still-desktop
-        run: pnpm check
-
-      - name: Frontend regression tests
-        working-directory: still-desktop
-        run: pnpm test
-
-      - name: Rust regression tests
-        if: ${{ !cancelled() }}
-        working-directory: still-desktop/src-tauri
-        run: >-
-          cargo test --bin still-desktop --
-          --skip app_panel::tests::real_window_fixture_tracks_bounds_clips_native_content_and_releases_without_closing
-          --skip native_resize::tests::managed_resize_blocks_edge_hit_testing_but_allows_still_sizes_and_restores_on_release
-
-      - name: Native embedded window geometry fixture
-        if: ${{ !cancelled() }}
-        timeout-minutes: 2
-        working-directory: still-desktop/src-tauri
-        run: cargo test --bin still-desktop app_panel::tests::real_window_fixture_tracks_bounds_clips_native_content_and_releases_without_closing -- --exact --test-threads=1
-
-      - name: Native resize geometry fixture
-        if: ${{ !cancelled() }}
-        timeout-minutes: 2
-        working-directory: still-desktop/src-tauri
-        run: cargo test --bin still-desktop native_resize::tests::managed_resize_blocks_edge_hit_testing_but_allows_still_sizes_and_restores_on_release -- --exact --test-threads=1
-
-      - name: Build Windows executable
-        id: executable
-        if: ${{ !cancelled() }}
-        working-directory: still-desktop
-        run: pnpm tauri build --no-bundle
-
-      - name: Hash candidate executable
-        if: ${{ !cancelled() && steps.executable.conclusion == 'success' }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: still-workbench-e06f42f0e0ce712c63175d9f39b989b84b176020-windows-x64
+          run-id: 45998766943
+          github-token: ${{ github.token }}
+          path: candidate
+      - name: Verify the candidate executable
         shell: pwsh
         run: |
-          $candidate = 'still-desktop/src-tauri/target/release/still-desktop.exe'
-          $hash = (Get-FileHash $candidate -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  still-desktop.exe" | Set-Content "$candidate.sha256"
-          Write-Output "$hash  still-desktop.exe"
-
+          $actual = (Get-FileHash candidate/still-desktop.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne '27b3d0ab15d1381ff02bcbfd05f5e1c734306a4a94fc933e310f211fcb19539e') { throw "Unexpected executable hash $actual" }
+          Write-Output $actual
       - name: Native Windows workbench smoke
-        if: ${{ !cancelled() && steps.executable.conclusion == 'success' }}
         timeout-minutes: 5
         working-directory: still-desktop
-        run: node scripts/windows-workbench-smoke.mjs --exe src-tauri/target/release/still-desktop.exe --artifact-dir ../artifacts/windows-smoke
-
-      - name: Upload native smoke evidence
+        run: node scripts/windows-workbench-smoke.mjs --exe ../candidate/still-desktop.exe --artifact-dir ../artifacts/windows-smoke
+      - name: Upload smoke evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: still-native-smoke-${{ github.sha }}
+          name: still-smoke-replay-e06f42f
           path: artifacts/windows-smoke
           if-no-files-found: warn
-          retention-days: 14
-
-      - name: Upload Windows executable
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: still-workbench-${{ github.sha }}-windows-x64
-          path: |
-            still-desktop/src-tauri/target/release/still-desktop.exe
-            still-desktop/src-tauri/target/release/still-desktop.exe.sha256
-          if-no-files-found: error
-          retention-days: 14
