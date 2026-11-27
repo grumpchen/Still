@@ -16,7 +16,10 @@
 ## Checks
 - Original candidate run 45844571306 remains successful.
 - Direct terminal artifact download returned Forbidden; publication uses GitHub-hosted Actions instead.
-- Publication verification pending workflow execution.
+- Publication workflow 45950928519: success. Candidate identity check and release upload passed.
+- Published `v0.2371-workbench.1` as a non-draft prerelease targeting tested source `f8ad35700891ae19ce27fb72f13757ac0e377adb`.
+- Verified both release assets are uploaded. GitHub reports the exe asset digest as `sha256:4a043c5742d79d400cf23d54373654e2642d8b6c68a9a4b8cb2efbc1ac03c81b`, matching the accepted candidate.
+- Release: https://github.com/grumpchen/Still/releases/tag/v0.2371-workbench.1
 
 ## Handoff
 - Release is a prerelease and will not replace the latest stable release. Main remains unchanged.
