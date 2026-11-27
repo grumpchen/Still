@@ -27,7 +27,7 @@ test('PDF excerpts keep a clickable page citation and highlight presets are reus
       localStorage.setItem('still-first-run-tutorial-v1', 'done');
     }, { state });
     await page.goto('/design-preview.html');
-    await page.getByRole('button',{name:'Resume Design',exact:true}).click();
+    await page.getByRole('button',{name:'Show sidebar'}).click();await page.locator('.nav button').filter({hasText:'Design'}).click();
     const files = page.locator(`[data-widget-id="${fileId}"]`);
     const notesCard = page.locator(`[data-widget-id="${notesId}"]`);
     await files.getByRole('button', { name: /choose folder/i }).click();

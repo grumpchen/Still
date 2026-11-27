@@ -8,11 +8,11 @@ test('saved course session opens Dashboard and resumes with course content intac
  await page.addInitScript(({state})=>{if(!sessionStorage.getItem('recovery-fixture')){localStorage.setItem('still-workspace-v2',JSON.stringify(state));localStorage.setItem('still-first-run-tutorial-v1','done');sessionStorage.setItem('recovery-fixture','1')}},{state});
  await page.goto('/design-preview.html');
  await expect(page.locator('.dashboard-home')).toBeVisible();
- await page.getByRole('button',{name:'Resume Physics',exact:true}).click();
+ await page.getByRole('button',{name:'Show sidebar'}).click();await page.locator('.nav button').filter({hasText:'Physics'}).click();
  await expect(page.locator('.workspace-surface:not([hidden])')).toContainText('Retained course notes');
  await page.reload();
  await expect(page.locator('.dashboard-home')).toBeVisible();
- await page.getByRole('button',{name:'Resume Physics',exact:true}).click();
+ await page.getByRole('button',{name:'Show sidebar'}).click();await page.locator('.nav button').filter({hasText:'Physics'}).click();
  await expect(page.locator('.workspace-surface:not([hidden])')).toContainText('Retained course notes');
  const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('still-workspace-v2')!));
  const savedNotes=saved.workspaces.find((w:any)=>w.id===course.id).widgets.find((w:any)=>w.id===notes.id);
