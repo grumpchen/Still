@@ -218,7 +218,7 @@ test('widget add commands show replies and provider chat carries complete action
   for(const [key,value] of Object.entries({window,document:window.document,navigator:window.navigator,localStorage:window.localStorage,HTMLElement:window.HTMLElement,Element:window.Element,Node:window.Node,MutationObserver:window.MutationObserver,requestAnimationFrame:callback=>setTimeout(()=>callback(Date.now()),0),cancelAnimationFrame:clearTimeout,IS_REACT_ACT_ENVIRONMENT:true,isTauri:true}))setGlobal(key,value);
   window.HTMLElement.prototype.scrollTo=function(){};window.HTMLTextAreaElement.prototype.focus=function(){};window.__TAURI_INTERNALS__={};
   window.localStorage.setItem('still-assistant-share-workspace-image','false');
-  mockIPC((command,args)=>{calls.push({command,args});if(command==='assistant_configured')return true;if(command==='assistant_models')return['gemini-2.5-flash'];if(command==='assistant_chat'){
+  mockIPC((command,args)=>{calls.push({command,args});if(command==='assistant_configured')return true;if(command==='assistant_models')return['gemini-2.5-flash'];if(command==='app_picker_installed')return [];if(command==='assistant_chat'){
     const prompt=args.request.messages.at(-1).text;
     if(prompt==='hi')return{intent:'chat',reply:'Hello! I am here to help.',layout:[{id:timetable.id,x:0,y:0,width:350,height:400}],actions:[{type:'edit_widget',ids:[timetable.id],title:'Unexpected edit'}]};
     if(prompt==='what is a black hole?')return{intent:'chat',reply:'It is a region where gravity is so strong that light cannot escape.',layout:[],actions:[{type:'remove_widget',ids:[timetable.id]}]};

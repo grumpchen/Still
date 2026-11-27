@@ -10,6 +10,9 @@ import {readAssistantChat,saveAssistantChat} from './domain/assistantChat.ts';
 import {addAssistantMemory,assistantMemoryContext,clearAssistantMemory,deleteAssistantMemory,readAssistantMemory,memoryRequestedInPrompt,validateRequestedMemory,AssistantMemoryError,type AssistantMemoryEntry} from './domain/assistantMemory.ts';
 import {Icon} from './widgets.tsx';
 import {isFilesLocationQuestion} from './platform/currentFilesView.ts';
+import {installedAppRequest} from './domain/assistantInstalledApps.ts';
+import {openAssistantInstalledApp} from './platform/assistantInstalledApps.ts';
+import {appPanel} from './platform/appPanel.ts';
 import './assistant.css';
 import AssistantLibraryTools,{type AssignedLibraryRoot,type LibraryOrganisationContext} from './AssistantLibraryTools.tsx';
 import type {LibraryProposal,LibraryNativeOperation,LibraryReceipt,LibraryUndoResult} from './domain/libraryOrganisation.ts';
@@ -81,7 +84,15 @@ export default function AssistantPanel({libraryRoots=[],organiseLibrary,undoLibr
   const selectedMentions=mentions.some(item=>item.id==='__all__')?[{id:'__all__',label:t('allWidgets')}]:selectedIds.map(id=>workspace.widgets.find(widget=>widget.id===id)).filter((widget):widget is WidgetInstance=>!!widget).map(widget=>({id:widget.id,label:widgetLabel(widget)}));
   const requestLimit=assistantRequestLimitError(input,trayItems),directActions=libraryOrganisationContext?null:resolveDirectAssistantActions(input,workspace,selectedIds,trayItems,workspaces);
   const confirmationRequest=libraryOrganisationContext?null:unsupportedAssistantRequest(input);
-  const directWorkbenchAvailable=(!agentMode||isFilesLocationQuestion(input))&&!!directWorkbenchRequest&&!!canHandleDirectWorkbenchRequest?.(input.trim());
+  const canRunWorkbenchRequest=(prompt:string)=>(!agentMode||isFilesLocationQuestion(prompt))&&!!directWorkbenchRequest&&!!canHandleDirectWorkbenchRequest?.(prompt.trim());
+  function directInstalledApp(prompt:string){
+    if(libraryResource||libraryOrganisationContext)return null;
+    const request=installedAppRequest(prompt);
+    if(!request||(!appPanel.available&&!request.explicit&&!request.alias))return null;
+    if(!request.explicit&&(unsupportedAssistantRequest(prompt)||assistantActionRequest(prompt,request.alias?[]:trayItems,workspaces).length))return null;
+    return request;
+  }
+  const directWorkbenchAvailable=canRunWorkbenchRequest(input)||!!directInstalledApp(input);
   const directTimerRequest=!libraryOrganisationContext&&!libraryResource&&(assistantTimerStartRequested(input)||assistantActionRequest(input,trayItems).includes('set_timer')||pendingSelection.current?.workspaceId===workspace.id&&pendingSelection.current.timerWidgetIds!==undefined);
   const visibleMentions=mentionOpen?[
     {id:'__all__',label:t('allWidgets')},
@@ -204,10 +215,12 @@ useEffect(()=>{const attachMany=(event:Event)=>{const detail=(event as CustomEve
     const selectedIds=timerFollowUp&&pendingTimerWidgetIds?pendingTimerWidgetIds:mentionIds.length?mentionIds:nameMatches.length===1?[nameMatches[0].id]:focusMatches.map(widget=>widget.id);
     const selectionOnly=focusMatches.length>0||selectedIds.length===1&&(nameMatches.length===1||/^(?:|this one|this widget|this timetable)[.!?]*$/i.test(removeAssistantWidgetMention(displayPrompt,owner,selectedIds[0]).trim()));
     const prompt=timerFollowUp??(selectionOnly&&waitingForSelection?waitingForSelection.prompt:displayPrompt);
-    if((!agentMode||isFilesLocationQuestion(prompt))&&directWorkbenchRequest&&canHandleDirectWorkbenchRequest?.(prompt)){
+    const runWorkbench=canRunWorkbenchRequest(prompt)?directWorkbenchRequest:undefined;
+    const appRequest=selectionOnly||selectedIds.length?null:directInstalledApp(prompt);
+    if(runWorkbench||appRequest){
       sending.current=true;setBusy(true);setPending(prompt);setError('');
       try{
-        const outcome=await directWorkbenchRequest(prompt,selectedIds);
+        const outcome=runWorkbench?await runWorkbench(prompt,selectedIds):await openAssistantInstalledApp(appRequest!,locale==='zh-CN');
         if(!alive.current)return;
         if(outcome.handled){
           pendingSelection.current=null;

@@ -35,6 +35,7 @@ export const appPanel={
  installed:installedApps,
  installedIcon:(id:string)=>invoke<number[]>('app_picker_installed_icon',{id}),
  selectInstalled:(id:string)=>invoke<DroppedResource>('app_picker_select_installed',{id}),
+ launchInstalled:(id:string)=>invoke<void>('app_picker_launch_installed',{id}),
  prepare:(window:AppAttachment)=>invoke<DroppedResource>('app_picker_prepare',{hwnd:window.hwnd,pid:window.pid}),
  preview:async(window:AppAttachment)=>appImageUrl(await invoke<number[]>('app_picker_preview',{hwnd:window.hwnd,pid:window.pid})),
  release:async(id:string,closeApp=false)=>{retainedForDrag.delete(id);retainedForCollection.delete(id);return command<AppPanelReleaseResult>(id,'app_panel_release',{closeApp})},

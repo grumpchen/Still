@@ -56,6 +56,7 @@ function summarizeSmokeCheck(check){
   case'native-runtime-status':return{name:check.name,status:check.status,details:{runtimeId:boundedText(details.runtimeId),latestSequence:details.latestSequence,tickIntervalMs:details.tickIntervalMs,trayAvailable:details.trayAvailable,trayError:boundedText(details.trayError),mainWindowVisible:details.mainWindowVisible,hiddenToTray:details.hiddenToTray}};
   case'embedded-browser-create-navigate-close':return{name:check.name,status:check.status,details:{presentTarget:details.presentTarget?{id:boundedText(details.presentTarget.id),url:boundedText(details.presentTarget.url)}:null,navigatedTarget:details.navigatedTarget?{id:boundedText(details.navigatedTarget.id),url:boundedText(details.navigatedTarget.url)}:null,closed:details.closed}};
   case'current-files-ai-create-rename':return{name:check.name,status:check.status,details:{created:details.created,renamed:details.renamed,clarified:details.clarified}};
+  case'ai-open-installed-chrome':return{name:check.name,status:check.status,details:{windowTitle:boundedText(details.windowTitle),workspaceUnchanged:details.workspaceUnchanged}};
   case'create-tray-layout-rule-through-ui':return{name:check.name,status:check.status,details:{ruleId:boundedText(details.ruleId),trigger:details.trigger,action:details.action,targetName:boundedText(details.targetName),beforeWidgetIds:boundedIds(details.beforeWidgetIds),savedLayout:details.savedLayout?{id:boundedText(details.savedLayout.id),name:boundedText(details.savedLayout.name),widgetTypes:boundedIds(details.savedLayout.widgetTypes)}:null,receiptCountBeforeHide:details.receiptCountBeforeHide,hiddenExecutionNotYetDue:details.hiddenExecutionNotYetDue,createdThrough:details.createdThrough}};
   case'hidden-window-native-tick-delivery':{
    const receipt=details.ruleExecution?.receipt??{};
@@ -244,6 +245,28 @@ async function main(){
     await workspaceButton('Dashboard').click({timeout:10_000});
     return{created:true,renamed:true,clarified:true};
    }finally{await rm(sample,{recursive:true,force:true})}
+  });
+
+  await check('ai-open-installed-chrome',async()=>{
+   const snapshot=()=>page.evaluate(()=>{
+    const state=JSON.parse(localStorage.getItem('still-workspace-v2'));
+    return {activeId:state.activeId,widgetIds:state.workspaces.find(item=>item.id===state.activeId).widgets.map(widget=>widget.id)};
+   });
+   const before=await snapshot();
+   const nativeWindows=()=>page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('app_panel_windows',{}));
+   const priorWindows=new Set((await nativeWindows()).map(window=>window.hwnd));
+   await page.locator('.dashboard-hero-actions').getByRole('button',{name:'Ask AI',exact:true}).click();
+   const assistant=page.locator('#ai-sidebar');
+   await assistant.getByLabel('Message Still AI').fill('Open Chrome');
+   await assistant.getByRole('button',{name:'Send',exact:true}).click();
+   await assistant.getByText('Asked Windows to open “Google Chrome”.',{exact:true}).waitFor({timeout:15_000}).catch(async error=>{
+    throw new Error(`Chrome launch response missing. ${await assistant.innerText()}\n${errorText(error)}`);
+   });
+   const opened=await pollUntil('new Google Chrome desktop window',async()=>(await nativeWindows()).find(window=>!priorWindows.has(window.hwnd)&&/google chrome/i.test(window.title)),15_000);
+   const workspaceUnchanged=JSON.stringify(await snapshot())===JSON.stringify(before);
+   if(!workspaceUnchanged)throw new Error('The app launch changed the Dashboard workspace or its widgets.');
+   await assistant.locator('.assistant-heading button').last().click();
+   return{windowTitle:opened.title,workspaceUnchanged};
   });
 
   await check('create-tray-layout-rule-through-ui',async()=>{

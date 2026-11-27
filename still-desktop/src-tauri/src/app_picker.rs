@@ -181,6 +181,21 @@ pub async fn app_picker_installed_icon(app:AppHandle,webview:Webview,id:String)-
  }).await.map_err(|e|e.to_string())?
 }
 #[tauri::command]
+pub async fn app_picker_launch_installed(app:AppHandle,webview:Webview,id:String)->Result<(),String>{
+ crate::security::authorize(&webview)?;
+ crate::files::valid_id(&id)?;
+ tauri::async_runtime::spawn_blocking(move||{
+  let path=app.state::<InstalledAppCatalog>().0.lock().map_err(|_|"Installed app list is unavailable")?
+   .get(&id).cloned().ok_or("Refresh the installed app list and choose again")?;
+  let (path,entry)=crate::dropped_files::classify(&path)?;
+  let is_shortcut=path.extension().is_some_and(|ext|ext.eq_ignore_ascii_case("lnk"));
+  if entry.kind!="app"||!is_shortcut||crate::app_panel::expected_executable(&path).is_none(){
+   return Err("This installed app shortcut is no longer available.".into())
+  }
+  crate::dropped_files::open_app_target(&path)
+ }).await.map_err(|e|e.to_string())?
+}
+#[tauri::command]
 pub async fn app_picker_select_installed(app:AppHandle,webview:Webview,id:String)->Result<crate::dropped_files::DropEntry,String>{
  crate::security::authorize(&webview)?;crate::files::valid_id(&id)?;
  tauri::async_runtime::spawn_blocking(move||{

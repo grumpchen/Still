@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-app-picker-launch-installed"
+description = "Enables the app_picker_launch_installed command without any pre-configured scope."
+commands.allow = ["app_picker_launch_installed"]
+
+[[permission]]
+identifier = "deny-app-picker-launch-installed"
+description = "Denies the app_picker_launch_installed command without any pre-configured scope."
+commands.deny = ["app_picker_launch_installed"]

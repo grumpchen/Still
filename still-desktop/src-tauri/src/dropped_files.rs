@@ -325,14 +325,16 @@ pub async fn document_choose(app: AppHandle, webview: Webview, grants: State<'_,
 pub async fn app_open(webview: Webview, grants: State<'_, AppGrants>, source_id: String) -> Result<(), String> {
     crate::security::authorize(&webview)?;
     let target = grants.target(&source_id)?;
+    open_app_target(&target)
+}
+
+pub(crate) fn open_app_target(target: &Path) -> Result<(), String> {
     if target.extension().and_then(|extension| extension.to_str()).is_some_and(|extension| extension.eq_ignore_ascii_case("lnk")) {
         // Windows resolves an explicitly chosen app shortcut through its normal shell handler.
-        return tauri_plugin_opener::open_path(&target, None::<&str>).map_err(|error| error.to_string());
+        return tauri_plugin_opener::open_path(target, None::<&str>).map_err(|error| error.to_string());
     }
     #[cfg(windows)] {
-        // Never assemble command strings or request elevation. A dropped app does
-        // not reach this function until the user explicitly clicks Open app.
-        let mut command = std::process::Command::new(&target);
+        let mut command = std::process::Command::new(target);
         if let Some(directory) = target.parent() { command.current_dir(directory); }
         command.spawn().map(|_| ()).map_err(|error| format!("Cannot open this app: {error}"))
     }
