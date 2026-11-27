@@ -1,3 +1,4 @@
+import {currentFileRequest,currentFilesView} from './platform/currentFilesView.ts';
 import {useEffect,useRef,useState} from 'react';
 import type {WorkspaceState} from './domain/workspaces.ts';
 import type {WorkbenchAction} from './domain/workbenchActions.ts';
@@ -42,7 +43,37 @@ export function useStillWorkbench(host:StillWorkbenchHost){
  useEffect(()=>{configureCollectionOperationHost({getState:()=>latest.current.getState(),commitState:next=>latest.current.commitState(next)})},[]);
  const runner=useAutomationRunner({storage,getCatalog,getService:()=>service.automationService});runnerRef.current=runner;
  const executeWorkbench=async(actions:WorkbenchAction[],_prompt:string)=>{const receipts=await service.executeWorkbenchActions(actions);lastResults.current=receipts;return receipts.map(describeReceipt).join('\n\n')};
- const directWorkbenchRequest=async(prompt:string)=>{
+ const pendingRename=useRef<{workspaceId:string;widgetId:string;path:string}|null>(null);
+ const renameReplyName=(prompt:string)=>prompt.trim().match(/^(?:to\s+|改成|改为)?[“"']?([^\\/:*?"<>|\r\n]+\.[a-z0-9]{1,12})[”"']?$/i)?.[1];
+ const canHandleDirectWorkbenchRequest=(prompt:string)=>isDirectRuleRequest(prompt)||!!currentFileRequest(prompt)||!!(pendingRename.current&&renameReplyName(prompt));
+
+ const directWorkbenchRequest=async(prompt:string,selectedIds:string[]=[])=>{
+  const direct=currentFileRequest(prompt);
+  const pending=pendingRename.current;
+  pendingRename.current=null;
+  const replyName=pending&&!direct?renameReplyName(prompt):undefined;
+  const request=direct??(replyName?{kind:'rename' as const,name:replyName}:undefined);
+  if(request){
+   const state=latest.current.getState();
+   const workspace=state.workspaces.find(item=>item.id===state.activeId);
+   const view=workspace&&currentFilesView(workspace,selectedIds);
+   if(!view)return{handled:true,message:'Open or select the Files widget and folder you want to use.'};
+   const source=view.selectedFile??view.onlyFile;
+   if(request.kind==='rename'&&!source)return{handled:true,message:'Open the file preview in Files so I know which file you want to rename.'};
+   const name=request.name?.replace(/^[“"']|[”"']$/g,'');
+   if(replyName&&(pending?.workspaceId!==workspace?.id||pending?.widgetId!==view.widgetId||pending?.path!==source)){
+    return{handled:true,message:'The current file changed. Open the file and request the rename again.'};
+   }
+   if(!name){
+    pendingRename.current={workspaceId:workspace!.id,widgetId:view.widgetId,path:source!};
+    return{handled:true,message:`What should I rename “${source!.split('/').at(-1)}” to? Include the file extension in the new name.`};
+   }
+   if(/[\\/:*?"<>|]/.test(name)||name==='.'||name==='..'||name.length>120)return{handled:true,message:'Enter a file name without a folder path or Windows reserved characters.'};
+   const action:WorkbenchAction=request.kind==='rename'
+    ?{operation:'file.rename',widgetId:view.widgetId,path:source!,name}
+    :{operation:'file.createText',widgetId:view.widgetId,path:view.folder?`${view.folder}/${name}`:name,text:''};
+   return{handled:true,message:await executeWorkbench([action],prompt)};
+  }
   if(!isDirectRuleRequest(prompt))return{handled:false};
   const result=await runner.createFromText(ruleRequestText(prompt));
   if(result.kind==='unsupported')return{handled:false,message:result.message};
@@ -50,5 +81,11 @@ export function useStillWorkbench(host:StillWorkbenchHost){
   if(result.kind==='clarification'&&result.code==='layout-mode-required')latest.current.onRuleModeRequired?.(ruleRequestText(prompt));
   return{handled:true,message:result.message};
  };
- return{runner,catalog:getCatalog(),service,executeWorkbench,directWorkbenchRequest,canHandleDirectWorkbenchRequest:isDirectRuleRequest,workbenchContext:()=>boundedWorkbenchContext(service.snapshot(),lastResults.current)};
+ return{runner,catalog:getCatalog(),service,executeWorkbench,directWorkbenchRequest,resetDirectWorkbench:()=>{pendingRename.current=null},canHandleDirectWorkbenchRequest,workbenchContext:(prompt:string,selectedIds:string[])=>{
+  const snapshot=boundedWorkbenchContext(service.snapshot(),lastResults.current);
+  if(!/\b(?:file|files|folder|directory|rename)\b|文件|目录/.test(prompt.toLocaleLowerCase()))return snapshot;
+  const state=latest.current.getState(),workspace=state.workspaces.find(item=>item.id===state.activeId);
+  const view=workspace&&currentFilesView(workspace,selectedIds);
+  return view?{...snapshot,currentFilesView:view}:snapshot;
+ }};
 }

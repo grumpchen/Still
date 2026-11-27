@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - agent/codex/still-workbench
+      - agent/codex/workbench-feedback
       - agent/luna/**
     paths:
       - still-desktop/src/**

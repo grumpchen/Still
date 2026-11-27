@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import {createHash} from 'node:crypto';
 import {createReadStream} from 'node:fs';
-import {mkdir,writeFile} from 'node:fs/promises';
+import {mkdir,mkdtemp,readdir,readFile,rm,writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {spawn} from 'node:child_process';
 import {createServer} from 'node:net';
@@ -55,6 +55,7 @@ function summarizeSmokeCheck(check){
   case'dashboard-ui-and-fullscreen':return{name:check.name,status:check.status,details:{activeWorkspace:boundedText(details.activeWorkspace),dashboardElement:details.dashboardElement,dashboardSurfaceVisible:details.dashboardSurfaceVisible,fullscreen:details.fullscreen}};
   case'native-runtime-status':return{name:check.name,status:check.status,details:{runtimeId:boundedText(details.runtimeId),latestSequence:details.latestSequence,tickIntervalMs:details.tickIntervalMs,trayAvailable:details.trayAvailable,trayError:boundedText(details.trayError),mainWindowVisible:details.mainWindowVisible,hiddenToTray:details.hiddenToTray}};
   case'embedded-browser-create-navigate-close':return{name:check.name,status:check.status,details:{presentTarget:details.presentTarget?{id:boundedText(details.presentTarget.id),url:boundedText(details.presentTarget.url)}:null,navigatedTarget:details.navigatedTarget?{id:boundedText(details.navigatedTarget.id),url:boundedText(details.navigatedTarget.url)}:null,closed:details.closed}};
+  case'current-files-ai-create-rename':return{name:check.name,status:check.status,details:{created:details.created,renamed:details.renamed,clarified:details.clarified}};
   case'create-tray-layout-rule-through-ui':return{name:check.name,status:check.status,details:{ruleId:boundedText(details.ruleId),trigger:details.trigger,action:details.action,targetName:boundedText(details.targetName),beforeWidgetIds:boundedIds(details.beforeWidgetIds),savedLayout:details.savedLayout?{id:boundedText(details.savedLayout.id),name:boundedText(details.savedLayout.name),widgetTypes:boundedIds(details.savedLayout.widgetTypes)}:null,receiptCountBeforeHide:details.receiptCountBeforeHide,hiddenExecutionNotYetDue:details.hiddenExecutionNotYetDue,createdThrough:details.createdThrough}};
   case'hidden-window-native-tick-delivery':{
    const receipt=details.ruleExecution?.receipt??{};
@@ -190,6 +191,53 @@ async function main(){
     return targets.some(target=>target.type==='page'&&(target.url.startsWith('https://example.com/')||target.url.startsWith('https://example.org/')))?null:true;
    },10_000);
    return{presentTarget:{id:firstTarget.id,url:firstTarget.url},navigatedTarget:{id:navigatedTarget.id,url:navigatedTarget.url},closed:true};
+  });
+
+  await check('current-files-ai-create-rename',async()=>{
+   const inbox=await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('files_still_inbox',{id:'smoke-files-context'}));
+   const sample=await mkdtemp(path.join(inbox.path,'workbench-smoke-'));
+   try{
+    const widgetId=await page.evaluate(()=>{
+     localStorage.setItem('still-first-run-tutorial-v1','done');
+     const state=JSON.parse(localStorage.getItem('still-workspace-v2'));
+     const design=state.workspaces.find(workspace=>workspace.name==='Design');
+     const files=design.widgets.find(widget=>widget.type==='files');
+     files.folderKey='still-downloads-inbox';
+     files.folderName='Still Downloads';
+     files.placement={x:20,y:30,width:540,height:360};
+     // Keep the test card unobscured by the existing Design preset.
+     design.widgets=design.widgets.filter(widget=>widget.id!==files.id).concat(files);
+     localStorage.setItem('still-workspace-v2',JSON.stringify(state));
+     return files.id;
+    });
+    await page.reload({timeout:15_000});
+    await page.locator('.dashboard-hero-actions').getByRole('button',{name:'Ask AI',exact:true}).click({timeout:10_000});
+    await page.getByRole('button',{name:'Show sidebar',exact:true}).click({timeout:10_000});
+    const workspaceButton=name=>page.locator('.nav button').filter({has:page.locator('.nav-name',{hasText:new RegExp(`^${name}$`)})});
+    await workspaceButton('Design').click({timeout:10_000});
+    const files=page.locator(`[data-widget-id="${widgetId}"]`);
+    await files.getByRole('button',{name:`Open folder ${path.basename(sample)}`,exact:true}).click({timeout:10_000});
+    const assistant=page.locator('#ai-sidebar');
+    async function send(text){
+     await assistant.getByLabel('Message Still AI').fill(text,{timeout:5_000});
+     await assistant.getByRole('button',{name:'Send',exact:true}).click({timeout:5_000});
+    }
+    await send('can u add one md file in current page of files widget');
+    const original=path.join(sample,'Untitled.md');
+    await pollUntil('Markdown file actually created in current subfolder',async()=>await readFile(original,'utf8')==='',10_000);
+    await files.getByRole('button',{name:'Preview file Untitled.md',exact:true}).waitFor({timeout:10_000});
+    await send('can u rename this file');
+    await assistant.getByText('What should I rename “Untitled.md” to?',{exact:false}).waitFor({timeout:10_000});
+    await send('Renamed.md');
+    await pollUntil('actual renamed file and original removed',async()=>{
+     const entries=await readdir(sample);
+     return entries.length===1&&entries[0]==='Renamed.md';
+    },10_000);
+    await files.getByRole('button',{name:'Preview file Renamed.md',exact:true}).waitFor({timeout:10_000});
+    await assistant.locator('.assistant-heading button').last().click();
+    await workspaceButton('Dashboard').click();
+    return{created:true,renamed:true,clarified:true};
+   }finally{await rm(sample,{recursive:true,force:true})}
   });
 
   await check('create-tray-layout-rule-through-ui',async()=>{

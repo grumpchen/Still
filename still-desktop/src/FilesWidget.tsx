@@ -96,7 +96,13 @@ function FolderWidget({widget,update,notify,workspaceWidgets=[]}:WidgetProps){
  const entries=(searchAll?(searchResults??[]):folder?.entries??[]).filter(file=>(searchAll||file.name.toLowerCase().includes(filter.toLowerCase()))&&(readingFilter==='all'||readingStatus(file.path)===readingFilter));
  const parent=folder?.location.split('/').slice(0,-1).join('/')??'';
 
- return <div className="files-widget">
+ const listedFiles = folder?.entries.filter(entry => !entry.directory);
+ return <div className="files-widget"
+  data-files-location={!busy && !searchAll ? folder?.location : undefined}
+  data-files-root={folder?.rootName}
+  data-files-selected={!selected?.blocked ? selected?.path : undefined}
+  data-files-only={!folder?.truncated && !filter && listedFiles?.length === 1 && !listedFiles[0].blocked ? listedFiles[0].path : undefined}
+ >
   <input ref={picker} aria-label={t('selectFilesFolder')} type="file" multiple {...{webkitdirectory:'',directory:''}} hidden onChange={event=>{try{const result=localFiles.select(widget.id,Array.from(event.target.files??[]));setFolder(result);setInboxPath('');setFilter('');setError('');setSelected(null);setPreview(null);setHighlightTerms([]);update({folderName:result.rootName,folderKey:null})}catch(reason){setError(String(reason))}event.target.value=''}}/>
   <div className="files-toolbar">
    {widget.folderKey!=='still-downloads-inbox'&&<button onClick={()=>void choose()} disabled={busy}>{folder?t('changeFolder'):t('chooseFolder')}</button>}
