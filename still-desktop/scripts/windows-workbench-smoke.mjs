@@ -235,7 +235,8 @@ async function main(){
     },10_000);
     await files.getByRole('button',{name:'Preview file Renamed.md',exact:true}).waitFor({timeout:10_000});
     await assistant.locator('.assistant-heading button').last().click();
-    await workspaceButton('Dashboard').click();
+    await page.getByRole('button',{name:'Show sidebar',exact:true}).click({timeout:10_000});
+    await workspaceButton('Dashboard').click({timeout:10_000});
     return{created:true,renamed:true,clarified:true};
    }finally{await rm(sample,{recursive:true,force:true})}
   });
