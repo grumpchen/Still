@@ -251,9 +251,13 @@ async function main(){
   await check('ai-open-installed-chrome',async()=>{
    const snapshot=()=>page.evaluate(()=>{
     const state=JSON.parse(localStorage.getItem('still-workspace-v2'));
-    return {activeId:state.activeId,widgetIds:state.workspaces.find(item=>item.id===state.activeId).widgets.map(widget=>widget.id)};
+    const dashboard=state.workspaces.find(item=>item.role==='dashboard');
+    return {activeId:state.activeId,dashboardId:dashboard.id,widgetIds:dashboard.widgets.map(widget=>widget.id).sort()};
    });
-   const before=await snapshot();
+   const before=await pollUntil('persisted Dashboard after the preceding workspace switch',async()=>{
+    const state=await snapshot();
+    return state.activeId===state.dashboardId?state:null;
+   },5_000);
    const nativeWindows=()=>page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('app_picker_windows',{sourceId:null}));
    const priorWindows=new Set((await nativeWindows()).map(window=>window.hwnd));
    await page.locator('.dashboard-hero-actions').getByRole('button',{name:'Ask AI',exact:true}).click();
@@ -264,8 +268,8 @@ async function main(){
     throw new Error(`Chrome launch response missing. ${await assistant.innerText()}\n${errorText(error)}`);
    });
    const opened=await pollUntil('new Google Chrome desktop window',async()=>(await nativeWindows()).find(window=>!window.attached&&!priorWindows.has(window.hwnd)&&window.appName==='Google Chrome'),15_000);
-   const workspaceUnchanged=JSON.stringify(await snapshot())===JSON.stringify(before);
-   if(!workspaceUnchanged)throw new Error('The app launch changed the Dashboard workspace or its widgets.');
+   const after=await snapshot(),workspaceUnchanged=JSON.stringify(after)===JSON.stringify(before);
+   if(!workspaceUnchanged)throw new Error(`The app launch changed the Dashboard workspace or its widgets. Before: ${JSON.stringify(before)}. After: ${JSON.stringify(after)}.`);
    await assistant.locator('.assistant-heading button').last().click();
    return{windowTitle:opened.title,workspaceUnchanged};
   });
