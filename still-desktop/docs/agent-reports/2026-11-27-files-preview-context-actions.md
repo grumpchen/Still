@@ -22,3 +22,8 @@
 
 ## Handoff
 - WorkspaceCanvas and platform/workbench AI context were not changed. Native file actions remain gated by existing native capability checks.
+
+## Follow-up
+- Added explicit Summarize and Classify AI actions for readable text and native PDF previews. Both reuse the existing `still-assistant-resource` context event with a task prompt.
+- The AI dropdown is hidden when the current image/unsupported preview has no applicable AI action. Updated the PDF preset and related-notes E2E flows to open the corresponding dropdown.
+- Focused component tests and `pnpm check` passed. The two targeted Playwright specs could not launch because the configured Microsoft Edge binary is absent at `/opt/microsoft/msedge/msedge`.

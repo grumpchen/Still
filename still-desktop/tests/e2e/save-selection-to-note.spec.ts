@@ -38,7 +38,8 @@ test('selecting text in Files offers workspace notes and saves the selection', a
 
     const documentText = files.locator('.file-preview-text');
     await expect(documentText).toContainText('Interim report is due September 30, 2025.');
-    await files.locator('.folder-file-preview .files-study-actions').first().getByRole('button', { name: 'Find related notes' }).click();
+    await files.getByText('File actions', { exact: true }).click();
+    await files.getByRole('menu').getByRole('menuitem', { name: 'Find related notes' }).click();
     await expect(files.getByRole('region', { name: 'Related notes' })).toContainText('Research notes');
     await documentText.evaluate(element => {
       const range = document.createRange();

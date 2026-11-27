@@ -10,7 +10,7 @@ const vite=await createServer({server:{middlewareMode:true,hmr:false},appType:'c
 const setGlobal=(key,value)=>Object.defineProperty(globalThis,key,{configurable:true,writable:true,value});
 async function renderFile(file){
  const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true}),{window}=dom;
- const keys=['window','document','navigator','HTMLElement','Element','Node','MutationObserver','ResizeObserver','requestAnimationFrame','cancelAnimationFrame','getComputedStyle','IS_REACT_ACT_ENVIRONMENT','isTauri'];
+ const keys=['window','document','navigator','HTMLElement','Element','Node','MutationObserver','Event','CustomEvent','ResizeObserver','requestAnimationFrame','cancelAnimationFrame','getComputedStyle','IS_REACT_ACT_ENVIRONMENT','isTauri'];
  const old=new Map(keys.map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]));let root;
  for(const key of keys)setGlobal(key,key==='IS_REACT_ACT_ENVIRONMENT'?true:key==='isTauri'?false:key==='ResizeObserver'?class{observe(){}disconnect(){}}:key==='requestAnimationFrame'?window.requestAnimationFrame.bind(window):key==='cancelAnimationFrame'?window.cancelAnimationFrame.bind(window):key==='getComputedStyle'?window.getComputedStyle.bind(window):window[key]);
  try{
@@ -37,8 +37,10 @@ test('right-clicking a readable file opens file-specific actions wired to the ex
   const event=new ui.window.MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:45,clientY:50});await act(async()=>preview.dispatchEvent(event));
   assert.equal(event.defaultPrevented,true);assert.ok(ui.window.document.querySelector('.files-preview-context-menu'));
   const actions=[...ui.window.document.querySelectorAll('.files-preview-context-menu button')].map(button=>button.textContent);
-  assert.ok(actions.includes('Open externally'));assert.ok(actions.some(value=>value.includes('Ask Still AI')));assert.ok(actions.includes('Find related notes'));
-  assert.ok([...ui.window.document.querySelectorAll('.files-ai-menu button')].some(button=>button.textContent.includes('Ask Still AI')));
+  assert.ok(actions.includes('Open externally'));assert.ok(actions.some(value=>value.includes('Ask Still AI')));assert.ok(actions.includes('Summarize'));assert.ok(actions.includes('Ask AI to classify'));assert.ok(actions.includes('Find related notes'));
+  const summarize=[...ui.window.document.querySelectorAll('.files-ai-menu button')].find(button=>button.textContent==='Summarize');assert.ok(summarize);assert.ok([...ui.window.document.querySelectorAll('.files-ai-menu button')].some(button=>button.textContent==='Ask AI to classify'));
+  const resources=[];ui.window.addEventListener('still-assistant-resource',event=>resources.push(event.detail));await act(async()=>{summarize.click();await new Promise(resolve=>setTimeout(resolve,0))});
+  assert.equal(resources.length,1,ui.window.document.querySelector('[role=alert]')?.textContent||'no resource context event');assert.match(resources[0].prompt,/Summarize the key ideas/);
  }finally{await ui.cleanup()}
 });
 
@@ -47,7 +49,7 @@ test('image previews keep applicable open actions and hide text-only AI actions'
  try{
   const preview=ui.window.document.querySelector('.folder-file-preview .document-preview');await act(async()=>preview.dispatchEvent(new ui.window.MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:40,clientY:40})));
   const actions=[...ui.window.document.querySelectorAll('.files-preview-context-menu button')];
-  assert.ok(actions.some(button=>button.textContent==='Open externally'));assert.equal(actions.some(button=>button.textContent.includes('Ask Still AI')),false);assert.equal(ui.window.document.querySelectorAll('.files-ai-menu').length,1);
+  assert.ok(actions.some(button=>button.textContent==='Open externally'));assert.equal(actions.some(button=>button.textContent.includes('Ask Still AI')),false);assert.equal(ui.window.document.querySelectorAll('.files-ai-menu').length,0,'unsupported image preview has no empty AI dropdown');
   let opened;const originalOpen=ui.localFiles.open;ui.localFiles.open=async(...args)=>{opened=args};
   await act(async()=>actions.find(button=>button.textContent==='Open externally').click());assert.deepEqual(opened,[ui.id,'photo.png']);ui.localFiles.open=originalOpen;
  }finally{await ui.cleanup()}
