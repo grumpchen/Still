@@ -20,6 +20,7 @@ export type CollectionOperationRequest=
  |{type:'file.move';widgetId:string;path:string;destinationFolder:string}
  |{type:'file.delete';widgetId:string;path:string}
  |{type:'file.editText';widgetId:string;path:string;text:string;expectedText:string}
+ |{type:'file.createText';widgetId:string;path:string;text:string}
  |{type:'note.quickCapture';workspaceId:string;notesWidgetId?:string;title:string;text:string};
 export type CollectionOperationContext={source:'manual'|'assistant'|'automation';idempotencyKey?:string};
 export type CollectionOperationResource={kind:'link';origin:CollectionLinkOrigin;linkId:string;name:string;url:string}|{kind:'note';workspaceId:string;widgetId:string;documentId:string;name:string}|{kind:'file';workspaceId:string;widgetId:string;name:string;sourceId:string};

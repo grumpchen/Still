@@ -63,3 +63,10 @@ test('file contents and annotations preserve intentional whitespace',()=>{
  const annotation=reply([{operation:'file.annotation',widgetId:'files-1',path:'notes.md',text:'  note  '}]);
  assert.equal(annotation.workbenchActions[0].text,'  note  ');
 });
+
+test('file.createText accepts only bounded relative .md and .txt paths',()=>{
+ const action={operation:'file.createText',widgetId:'files-1',path:'Course/new notes.md',text:'# Notes\n'};
+ assert.deepEqual(reply([action]).workbenchActions,[action]);
+ for(const path of ['Course/new.csv','../outside.txt','C:/outside.txt','Course/.txt','Course/folder/'])assert.throws(()=>reply([{...action,path}]));
+ assert.throws(()=>reply([{...action,text:'x'.repeat(1_000_001)}]));assert.throws(()=>reply([{...action,text:'é'.repeat(500_001)}]));
+});
