@@ -3,7 +3,8 @@ import {expect,test} from '@playwright/test';
 test('liquid glass Library uses white text and a blue accent instead of green text',async({page})=>{
  await page.addInitScript(()=>localStorage.setItem('still-first-run-tutorial-v1','done'));
  await page.goto('/design-preview.html');
- await page.getByRole('button',{name:'Library',exact:true}).click();
+ await page.getByRole('button',{name:'Show sidebar',exact:true}).click();
+ await page.locator('.nav button').filter({has:page.locator('.nav-name',{hasText:/^Library$/})}).click();
  const library=page.locator('.library-home');
  await expect(library).toBeVisible();
  await expect.poll(()=>library.evaluate(element=>getComputedStyle(element).color)).toBe('rgb(255, 255, 255)');

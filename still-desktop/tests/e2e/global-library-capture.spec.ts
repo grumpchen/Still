@@ -6,7 +6,8 @@ test('Library keeps Notes in their course and manages saved links from one globa
  course.groups=[{id:'course-links',name:'Course links',shortcuts:[{id:'lecture-link',name:'Lecture',url:'https://example.edu/lecture',icon:'L'}],widgets:[],expanded:false}];
  state.workspaces.push(course);
  await page.addInitScript(({serialized})=>{localStorage.setItem('still-first-run-tutorial-v1','done');localStorage.setItem('still-workspace-v2',serialized)}, {serialized:JSON.stringify(state)});
- await page.goto('/design-preview.html');await page.getByRole('button',{name:'Library',exact:true}).click();
+ await page.goto('/design-preview.html');await page.getByRole('button',{name:'Show sidebar',exact:true}).click();
+ await page.locator('.nav button').filter({has:page.locator('.nav-name',{hasText:/^Library$/})}).click();
  const library=page.locator('.library-home');
  await expect(library.locator('.library-note-nav')).toHaveCount(0);
  await library.getByRole('button',{name:'Saved links',exact:true}).click();
