@@ -136,7 +136,7 @@ function FolderWidget({widget,update,notify,workspaceWidgets=[]}:WidgetProps){
    <div className="files-location"><button aria-label={t('parentFolder')} onClick={()=>void navigate(parent)} disabled={!folder.location||busy}>↑</button><span title={folder.rootName+'/'+folder.location}>{folder.rootName}{folder.location&&' / '+folder.location}</span></div>
    <div className={selected?'files-content-with-preview':'files-content-browse'}>
     <aside className="files-selection-list">
-     <input ref={filterInput} className="file-filter" aria-label={t('search')} placeholder={searchAll?t('searchFolders'):t('findFile')} value={searchAll?searchQuery:filter} onChange={event=>{if(searchAll){setSearchQuery(event.target.value);resetSearchResults();setError('')}else setFilter(event.target.value)}} onKeyDown={event=>{
+     <input className="file-filter" ref={filterInput} aria-label={t('search')} placeholder={searchAll?t('searchFolders'):t('findFile')} value={searchAll?searchQuery:filter} onChange={event=>{if(searchAll){setSearchQuery(event.target.value);resetSearchResults();setError('')}else setFilter(event.target.value)}} onKeyDown={event=>{
       if(!searchAll||event.nativeEvent.isComposing)return;
       if(event.key==='Enter'){event.preventDefault();void searchEverywhere()}
       if(event.key==='Escape'){event.stopPropagation();cancelSearch()}
