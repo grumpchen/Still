@@ -55,6 +55,19 @@ test('scheduled layout rule prepares a course automatically without changing the
  await page.locator('.topbar').getByRole('button',{name:'Rules',exact:true}).click();const rules=page.getByRole('dialog',{name:'Rules',exact:true});await expect(rules).toContainText('succeeded');await rules.getByRole('button',{name:'Run due now',exact:true}).click();await rules.locator('.dialog-head button').click();await page.reload();await expect.poll(async()=>{const s=await saved(page);return s.workspaces.find((w:any)=>w.id===chemistry.id).widgets.length}).toBe(before+physics.widgets.length);
 });
 
+test('Rules panel saves a supported once rule and Run due now reports and performs its layout action',async({page})=>{
+ test.setTimeout(60000);const {physics,chemistry}=await fixture(page,true),before=chemistry.widgets.length;
+ await page.locator('.topbar').getByRole('button',{name:'Rules',exact:true}).click();const rules=page.getByRole('dialog',{name:'Rules',exact:true});
+ await expect(rules.getByText('Supported rule examples')).toBeVisible();
+ await expect(rules.getByText('No automation rules yet.')).toBeVisible();await rules.getByRole('button',{name:'Run due now',exact:true}).click();await expect(rules.getByRole('status')).toContainText('No scheduled rules were due.');
+ await rules.getByLabel('Create a rule in one sentence').fill('When the moon is purple, reorganize everything');await rules.getByRole('button',{name:'Save rule',exact:true}).click();await expect(rules.getByRole('alert')).toContainText('Supported filing form');await expect(rules.getByText('No automation rules yet.')).toBeVisible();
+ const past=new Date(Date.now()-60_000).toISOString().slice(0,16).replace('T',' '),sentence=`At ${past} append Ready set layout to Chemistry workspace`;
+ await rules.getByLabel('Create a rule in one sentence').fill(sentence);await rules.getByRole('button',{name:'Save rule',exact:true}).click();await expect(rules.getByRole('status')).toContainText('Automation saved.');
+ await expect(rules.locator('.automation-rule')).toHaveCount(1);await rules.getByRole('button',{name:'Run due now',exact:true}).click();await expect(rules.getByRole('status')).toContainText('due rule(s) ran successfully.');
+ await expect.poll(async()=>{const s=await saved(page);return s.workspaces.find((w:any)=>w.id===chemistry.id).widgets.length}).toBe(before+physics.widgets.length);
+ await expect(rules.locator('.automation-receipt-succeeded')).toBeVisible();
+});
+
 test('AI layout rule with missing mode asks for append or replace before saving',async({page})=>{
  const {chemistry}=await fixture(page,true);await page.locator('.dashboard-hero-actions').getByRole('button',{name:'Ask AI',exact:true}).click();const assistant=page.locator('#ai-sidebar');await assistant.getByLabel('Message Still AI').fill('Save a rule: Every day at 09:00 prepare Chemistry using Ready set layout');await assistant.getByRole('button',{name:'Send',exact:true}).click();const rules=page.getByRole('dialog',{name:'Rules',exact:true});await expect(rules.getByLabel('Layout application mode')).toBeVisible();expect(await page.evaluate(key=>JSON.parse(localStorage.getItem(key)||'{"rules":[]}').rules.length,AUTOMATION_STORAGE_KEY)).toBe(0);await rules.getByLabel('Layout application mode').selectOption('replace');await rules.getByRole('button',{name:'Save with selected mode',exact:true}).click();const stored=await page.evaluate(key=>JSON.parse(localStorage.getItem(key)!),AUTOMATION_STORAGE_KEY);expect(stored.rules).toHaveLength(1);expect(stored.rules[0].action).toMatchObject({kind:'prepareWorkspaceLayout',workspaceId:chemistry.id,mode:'replace'});
 });

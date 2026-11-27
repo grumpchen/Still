@@ -2,6 +2,7 @@ import { dueAutomationOccurrences, evaluateAutomationRules, loadAutomationState,
 import type { AutomationCursor, AutomationRuntimePort, AutomationRuntimeStatus, AutomationTick } from '../platform/automationRuntime.ts';
 
 export interface PendingCapture extends AutomationCaptureEvent {}
+export interface AutomationRunSummary {ok:boolean;dueCount:number;succeededCount:number;attentionCount:number;notConfirmedCount:number;message?:string}
 export interface AutomationCaptureQueue {
   listPending():Promise<PendingCapture[]>;
   acknowledge(eventId:string,receipts:AutomationReceipt[]):Promise<void|boolean>;
@@ -88,7 +89,22 @@ export class AutomationRunnerController {
   try{writeCursor(this.options.storage,this.cursor)}catch(error){this.publish({error:`Tick ran but its cursor could not be saved: ${this.errorText(error)}`});return false}
   this.publish({cursor:this.cursor,lastTickAt:new Date(tick.scheduledAtUnixMs).toISOString(),...(runtimeStatusError?{error:runtimeStatusError}:{})});return true;
  }
- async runDueNow():Promise<void>{await this.enqueue(async()=>{await this.runPass(this.now())})}
+ async runDueNow():Promise<AutomationRunSummary>{
+  const now=this.now(),loaded=loadAutomationState(this.options.storage);
+  if(!loaded.ok)return{ok:false,dueCount:0,succeededCount:0,attentionCount:0,notConfirmedCount:0,message:loaded.message};
+  const due=dueAutomationOccurrences(loaded.state,now);
+  let okay=false;await this.enqueue(async()=>{okay=await this.runPass(now)});
+  const latest=loadAutomationState(this.options.storage);
+  if(!latest.ok)return{ok:false,dueCount:due.length,succeededCount:0,attentionCount:0,notConfirmedCount:due.length,message:latest.message};
+  let succeededCount=0,attentionCount=0,notConfirmedCount=0;
+  for(const occurrence of due){
+   const receipt=latest.state.receipts.find(item=>item.ruleId===occurrence.rule.id&&item.occurrenceKey===occurrence.occurrenceKey);
+   if(receipt?.status==='succeeded')succeededCount++;
+   else if(receipt&&receipt.status!=='running')attentionCount++;
+   else notConfirmedCount++;
+  }
+  return{ok:okay,dueCount:due.length,succeededCount,attentionCount,notConfirmedCount,...(!okay?{message:this.snapshot.error??'Automation evaluation could not complete.'}:{})};
+ }
  async refreshRuntimeStatus():Promise<AutomationRuntimeStatus|null>{if(!this.options.runtime.native)return null;const status=await this.options.runtime.runtimeStatus();this.publish({runtimeStatus:status,mode:'native-tray-runtime'});return status}
  refresh():void{this.reloadState()}
  private async runPass(now:Date):Promise<boolean>{
