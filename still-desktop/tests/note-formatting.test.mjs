@@ -18,6 +18,12 @@ test('Markdown headings, bold, lists and checked tasks render as actual editable
  const dom=new JSDOM('<div></div>'),root=dom.window.document.querySelector('div');root.innerHTML=html;const task=root.querySelector('[data-task-checkbox]');task.checked=true;task.dispatchEvent(new dom.window.Event('change',{bubbles:true}));assert.match(noteEditorHtmlToMarkdown(root),/- \[x\] review reading/);dom.window.close();
 });
 
+test('literal Markdown markers typed in the editor are escaped instead of becoming accidental formatting',()=>{
+ const dom=new JSDOM('<div contenteditable="true"><p>Type **literal stars** and `inline ticks`.</p></div>'),root=dom.window.document.querySelector('div');
+ const saved=noteEditorHtmlToMarkdown(root),rendered=noteMarkdownToHtml(saved);
+ assert.match(saved,/\\\*literal stars\\\*/);assert.match(saved,/\\`inline ticks\\`/);assert.doesNotMatch(rendered,/<strong>/);assert.doesNotMatch(rendered,/<code>/);dom.window.close();
+});
+
 test('formatting parser escapes pasted markup and does not create executable HTML',()=>{
  const html=noteMarkdownToHtml('<img src=x onerror=alert(1)>');
  assert.equal(html,'<p>&lt;img src=x onerror=alert(1)&gt;</p>');

@@ -211,6 +211,20 @@ test('Previously linked Markdown stays editable after removal of the folder brow
  }finally{await app.cleanup()}
 });
 
+test('Notes validates flashcard saves against the exact note and navigates to source quotes',async()=>{
+ const note=createWidget('notes');note.id='flashcard-note';note.noteDocuments=[{id:'flashcard-doc-a',title:'Old note',text:'Old source.'},{id:'flashcard-doc-b',title:'New source',text:'A matching source quote.'}];note.activeNoteDocumentId='flashcard-doc-a';note.title='Old note';note.text='Old source.';
+ const app=await setup([note]);
+ try{
+  const deck={id:'deck-one',noteId:'flashcard-doc-a',title:'Course cards',createdAt:'2026-11-28T00:00:00Z',updatedAt:'2026-11-28T00:00:00Z',cards:[{id:'card-one',front:'Question',back:'Answer',sourceQuote:'Old source.'}]};let receipt='',failure='';
+  await act(async()=>app.window.dispatchEvent(new app.window.CustomEvent('still-notes-save-flashcards',{detail:{widgetId:note.id,noteId:'flashcard-doc-a',expectedText:'Old source.',deck,resolve:value=>{receipt=value},reject:error=>{failure=error.message}}})));
+  assert.equal(receipt,'Flashcards saved.');assert.equal(failure,'');assert.equal(app.currentState.workspaces[0].widgets[0].flashcardDecks[0].id,'deck-one');
+  await act(async()=>app.window.dispatchEvent(new app.window.CustomEvent('still-notes-save-flashcards',{detail:{widgetId:note.id,noteId:'flashcard-doc-a',expectedText:'Stale text',deck:{...deck,id:'deck-stale'},resolve:()=>{receipt='wrongly saved'},reject:error=>{failure=error.message}}})));
+  assert.equal(receipt,'Flashcards saved.');assert.match(failure,/changed or is no longer available/);assert.equal(app.currentState.workspaces[0].widgets[0].flashcardDecks.length,1);
+  await act(async()=>app.window.dispatchEvent(new app.window.CustomEvent('still-notes-navigate-source',{detail:{widgetId:note.id,noteId:'flashcard-doc-b',quote:'matching source quote'}})));
+  await new Promise(resolve=>setTimeout(resolve,40));assert.equal(app.currentState.workspaces[0].widgets[0].activeNoteDocumentId,'flashcard-doc-b');assert.equal(app.window.getSelection()?.toString(),'matching source quote');
+ }finally{await app.cleanup()}
+});
+
 test('Screenshot widget plugin supports global, selected-tag, and off scopes in rendered headers',async()=>{
  const red=createWidget('notes');red.id='red-note';red.tagColor='red';const blue=createWidget('notes');blue.id='blue-note';blue.tagColor='blue';const untagged=createWidget('notes');untagged.id='plain-note';
  const global=await setup([red,blue,untagged]);

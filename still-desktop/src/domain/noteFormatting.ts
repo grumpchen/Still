@@ -1,8 +1,9 @@
 function escapeHtml(value:string):string{return value.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;')}
-function escapeMarkdownInline(value:string):string{return value.replaceAll('\\','\\\\').replaceAll('**','\\**')}
+function escapeMarkdownInline(value:string):string{return value.replaceAll('\\','\\\\').replaceAll('*','\\*').replaceAll('`','\\`')}
 function inlineHtml(value:string):string{
- const escaped=escapeHtml(value);
- return escaped.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/(^|[^*])\*([^*\n]+)\*/g,'$1<em>$2</em>').replace(/`([^`\n]+)`/g,'<code>$1</code>');
+ const literals:string[]=[];let escaped=escapeHtml(value).replace(/\\([\\*`])/g,(_match,literal:string)=>{const token=`\uE000${literals.length}\uE001`;literals.push(literal);return token});
+ escaped=escaped.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/(^|[^*])\*([^*\n]+)\*/g,'$1<em>$2</em>').replace(/`([^`\n]+)`/g,'<code>$1</code>');
+ return escaped.replace(/\uE000(\d+)\uE001/g,(_match,index:string)=>escapeHtml(literals[Number(index)]??''));
 }
 function isListLine(line:string):boolean{return /^\s*(?:[-*+]\s+|\d+[.)]\s+)/.test(line)}
 function listPrefix(line:string):{kind:'task'|'bullet'|'ordered';content:string;checked?:boolean}|null{
@@ -58,7 +59,7 @@ export function applyNoteEditorFormat(root:HTMLElement,kind:NoteFormat):string{
   const list=document.createElement('ul'),item=document.createElement('li'),checkbox=document.createElement('input');list.append(item);item.dataset.task='unchecked';checkbox.type='checkbox';checkbox.dataset.taskCheckbox='';checkbox.setAttribute('contenteditable','false');item.append(checkbox);
   const fullBlock=!!selected&&block?.textContent?.trim()===selected.trim();
   if(fullBlock&&block){while(block.firstChild)item.append(block.firstChild);block.replaceWith(list)}
-  else{item.append(document.createTextNode(selected||'Task'));if(block?.parentElement===root)block.after(list);else root.append(list)}
+  else{if(selected)item.append(document.createTextNode(selected));if(block?.parentElement===root)block.after(list);else root.append(list)}
   const caret=document.createRange();caret.selectNodeContents(item);caret.collapse(false);selection?.removeAllRanges();selection?.addRange(caret);
  }else if(kind==='heading')root.ownerDocument.execCommand('formatBlock',false,'h2');
  else if(kind==='bullet')root.ownerDocument.execCommand('insertUnorderedList');
