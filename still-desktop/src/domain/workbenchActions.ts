@@ -3,6 +3,7 @@
  * canvas. Collection operations mirror the shared collection operation
  * service's request fields; this module validates wire data, not execution.
  */
+import {NOTE_DOCUMENT_TEXT_LIMIT} from './noteDocuments.ts';
 export type WorkbenchAction =
  | {operation:'layout.list'}
  | {operation:'layout.find';query:string}
@@ -27,8 +28,13 @@ export type WorkbenchAction =
  | {operation:'file.editText';widgetId:string;path:string;text:string;expectedText:string}
  | {operation:'file.createText';widgetId:string;path:string;text:string}
  | {operation:'note.quickCapture';workspaceId:string;notesWidgetId?:string;title:string;text:string}
+ | {operation:'note.find';query:string}
+ | {operation:'note.rename';identity:NoteIdentity;expectedRevision:string;title:string}
+ | {operation:'note.edit';identity:NoteIdentity;expectedRevision:string;mode:'replace'|'append';text:string}
+ | {operation:'note.delete';identity:NoteIdentity;expectedRevision:string}
  | {operation:'rule.save';text:string};
 export type LinkOrigin={kind:'group';workspaceId:string;groupId:string}|{kind:'browser';workspaceId:string;widgetId:string};
+export type NoteIdentity={documentId:string;workspaceId?:string;widgetId?:string};
 
 export const MAX_WORKBENCH_ACTIONS=10;
 const ID_RE=/^[A-Za-z0-9_-]{1,120}$/;
@@ -51,6 +57,7 @@ function createTextContent(value:unknown):string{
 function id(value:unknown):string{
  if(typeof value!=='string'||!ID_RE.test(value))return invalid();return value;
 }
+function noteId(value:unknown):string{if(typeof value!=='string'||!/^[A-Za-z0-9-]{1,500}$/.test(value))return invalid();return value}
 function relativePath(value:unknown,allowEmpty=false):string{
  if(typeof value!=='string'||value.length>1000||(!allowEmpty&&!value)||value.startsWith('/')||/^[a-z]:/i.test(value)||value.includes(':')||value.includes('\\'))return invalid();
  if(value&&value.split('/').some(part=>!part||part==='.'||part==='..'))return invalid();
@@ -62,6 +69,12 @@ function origin(value:unknown):LinkOrigin{
  if(value.kind==='browser'){fields(value,['kind','workspaceId','widgetId']);return{kind:'browser',workspaceId:id(value.workspaceId),widgetId:id(value.widgetId)}}
  return invalid();
 }
+function noteIdentity(value:unknown):NoteIdentity{
+ if(!object(value))return invalid();
+ fields(value,['documentId'],['workspaceId','widgetId']);
+ return{documentId:noteId(value.documentId),...(value.workspaceId!==undefined?{workspaceId:id(value.workspaceId)}:{}),...(value.widgetId!==undefined?{widgetId:id(value.widgetId)}:{})};
+}
+function revision(value:unknown):string{if(typeof value!=='string'||!/^[a-f0-9]{64}$/.test(value))return invalid();return value}
 function fileName(value:unknown):string{
  const name=text(value,1,255);
  if(name==='.'||name==='..'||/[\\/:<>|?*"\u0000-\u001f]/.test(name)||/[ .]$/.test(name))return invalid();
@@ -106,6 +119,10 @@ function parseOne(raw:unknown):WorkbenchAction{
   case 'file.editText':fields(raw,['operation','widgetId','path','text','expectedText']);return{operation:raw.operation,widgetId:id(raw.widgetId),path:relativePath(raw.path),text:content(raw.text,1_000_000,true),expectedText:content(raw.expectedText,1_000_000,true)};
   case 'file.createText':fields(raw,['operation','widgetId','path','text']);return{operation:raw.operation,widgetId:id(raw.widgetId),path:createTextPath(raw.path),text:createTextContent(raw.text)};
   case 'note.quickCapture':fields(raw,['operation','workspaceId','title','text'],['notesWidgetId']);return{operation:raw.operation,workspaceId:id(raw.workspaceId),...(raw.notesWidgetId!==undefined?{notesWidgetId:id(raw.notesWidgetId)}:{}),title:text(raw.title,1,60),text:content(raw.text,12_000)};
+  case 'note.find':fields(raw,['operation','query']);return{operation:raw.operation,query:text(raw.query,1,300)};
+  case 'note.rename':fields(raw,['operation','identity','expectedRevision','title']);return{operation:raw.operation,identity:noteIdentity(raw.identity),expectedRevision:revision(raw.expectedRevision),title:text(raw.title,1,60)};
+  case 'note.edit':fields(raw,['operation','identity','expectedRevision','mode','text']);if(raw.mode!=='replace'&&raw.mode!=='append')return invalid();return{operation:raw.operation,identity:noteIdentity(raw.identity),expectedRevision:revision(raw.expectedRevision),mode:raw.mode,text:content(raw.text,NOTE_DOCUMENT_TEXT_LIMIT,true)};
+  case 'note.delete':fields(raw,['operation','identity','expectedRevision']);return{operation:raw.operation,identity:noteIdentity(raw.identity),expectedRevision:revision(raw.expectedRevision)};
   case 'rule.save':fields(raw,['operation','text']);return{operation:raw.operation,text:content(raw.text,2000)};
   default:return invalid();
  }
@@ -121,6 +138,6 @@ export function parseWorkbenchActions(value:unknown):WorkbenchAction[]{
 /** Mutations must be uniquely targeted; query-only workbench calls may batch. */
 export function validateWorkbenchActionBatch(actions:WorkbenchAction[]):void{
  if(actions.length>MAX_WORKBENCH_ACTIONS)return invalid();
- const mutations=actions.filter(action=>action.operation!=='layout.list'&&action.operation!=='layout.find'&&action.operation!=='resource.find');
+ const mutations=actions.filter(action=>action.operation!=='layout.list'&&action.operation!=='layout.find'&&action.operation!=='resource.find'&&action.operation!=='note.find');
  if(mutations.length&&actions.length!==1)return invalid();
 }

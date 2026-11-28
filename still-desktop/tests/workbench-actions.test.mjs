@@ -27,11 +27,20 @@ test('Files reference operations are distinct from physical disk actions',()=>{
 });
 
 test('query operations can batch while mutations remain singular',()=>{
- const actions=[{operation:'layout.list'},{operation:'layout.find',query:'Chemistry'},{operation:'resource.find',query:'lecture notes'}];
+ const actions=[{operation:'layout.list'},{operation:'layout.find',query:'Chemistry'},{operation:'resource.find',query:'lecture notes'},{operation:'note.find',query:'exam review'}];
  assert.deepEqual(reply(actions).workbenchActions,actions);
  const movedLink={operation:'link.move',origin:{kind:'browser',workspaceId:'w1',widgetId:'browser-1'},linkId:'l1',destinationWorkspaceId:'w2'};
  assert.deepEqual(reply([movedLink]).workbenchActions,[movedLink]);
  assert.throws(()=>reply([{operation:'link.delete',origin:{kind:'group',workspaceId:'w1',groupId:'g1'},linkId:'l1'},{operation:'file.delete',widgetId:'files-1',path:'CHEM111/old.pdf'}]));
+});
+
+test('Notes Home workbench operations require exact identity and revision tokens',()=>{
+ const identity={documentId:'note-1',workspaceId:'workspace-1',widgetId:'notes-1'},expectedRevision='a'.repeat(64);
+ assert.deepEqual(reply([{operation:'note.rename',identity,expectedRevision,title:'Exam review'}]).workbenchActions[0],{operation:'note.rename',identity,expectedRevision,title:'Exam review'});
+ assert.deepEqual(reply([{operation:'note.edit',identity,expectedRevision,mode:'append',text:'More detail'}]).workbenchActions[0].mode,'append');
+ assert.deepEqual(reply([{operation:'note.delete',identity,expectedRevision}]).workbenchActions[0].identity,identity);
+ assert.throws(()=>reply([{operation:'note.delete',identity,expectedRevision:'stale'}]));
+ assert.throws(()=>reply([{operation:'note.find',query:'exam'},{operation:'note.delete',identity,expectedRevision}]));
 });
 
 test('workbench mutations cannot mix with legacy workspace changes or another reply intent',()=>{

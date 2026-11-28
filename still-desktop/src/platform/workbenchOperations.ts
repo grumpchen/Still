@@ -1,10 +1,13 @@
 import type {AutomationAction,AutomationOperationContext,AutomationOperationResult,AutomationOperationService,AutomationStorage,RuleCatalog} from '../domain/automationRules.ts';
-import {parseWorkbenchActions,validateWorkbenchActionBatch,type LinkOrigin,type WorkbenchAction} from '../domain/workbenchActions.ts';
+import {parseWorkbenchActions,validateWorkbenchActionBatch,type LinkOrigin,type NoteIdentity,type WorkbenchAction} from '../domain/workbenchActions.ts';
 import type {CollectionOperationRequest,CollectionOperationResult} from '../domain/collectionOperations.ts';
 import type {CaptureInboxEvent} from '../domain/captureInbox.ts';
 import type {GlobalWorkspaceLayout,WorkspaceState} from '../domain/workspaces.ts';
+import {allSavedNotes,editSavedNote,noteHistoryIdentity,noteRevision} from '../domain/noteHistory.ts';
+import {NOTE_DOCUMENT_TEXT_LIMIT,NOTE_DOCUMENT_TOTAL_LIMIT} from '../domain/noteDocuments.ts';
 import {executeCollectionOperation as sharedCollectionOperation} from './collectionOperations.ts';
 import {localFiles,type LibrarySearchResponse} from './files.ts';
+import {notesLibrary} from './notesLibrary.ts';
 
 export type WorkbenchCaptureEvent=CaptureInboxEvent;
 export type WorkbenchLayoutHandlers={
@@ -22,12 +25,13 @@ export interface WorkbenchServiceOptions {
  saveRule:(text:string)=>Promise<{kind:'rule';rule:unknown}|{kind:'clarification'|'unsupported'|'error';message:string}>;
  getCaptureEvent:(eventId:string)=>Promise<WorkbenchCaptureEvent|null|{ok:true;value:WorkbenchCaptureEvent|null}|{ok:false;message:string}>;getCourses?:()=>RuleCatalog['courses'];
  searchFiles?:(widgetIds:string[],query:string)=>Promise<LibrarySearchResponse>;
+ deleteNote?:(identity:NoteIdentity,expectedRevision:string)=>void|string|Promise<void|string>;
  storage?:AutomationStorage;
 }
 const JOURNAL_KEY='still.workbench-automation-operations.v1',MAX_JOURNAL=5000;
 type JournalEntry={key:string;signature:string;state:'running'|'complete';result:AutomationOperationResult};
 function memoryStorage():AutomationStorage{return{getItem:key=>localStorage.getItem(key),setItem:(key,value)=>localStorage.setItem(key,value)}};
-function collectionRequest(action:Exclude<WorkbenchAction,{operation:`layout.${string}`}|{operation:'resource.find'}|{operation:'rule.save'}>):CollectionOperationRequest{
+function collectionRequest(action:Exclude<WorkbenchAction,{operation:`layout.${string}`}|{operation:'resource.find'|'note.find'|'note.rename'|'note.edit'|'note.delete'|'rule.save'}>):CollectionOperationRequest{
  switch(action.operation){
   case'link.create':return{type:'link.create',workspaceId:action.workspaceId,...(action.groupId?{groupId:action.groupId}:{}),name:action.name,url:action.url};
   case'link.rename':return{type:'link.rename',origin:action.origin,linkId:action.linkId,name:action.name};
@@ -65,7 +69,7 @@ export function createWorkbenchService(options:WorkbenchServiceOptions){
  }
  async function executeWorkbenchActions(raw:WorkbenchAction[]):Promise<WorkbenchReceipt[]>{
   const actions=parseWorkbenchActions(raw);validateWorkbenchActionBatch(actions);const receipts:WorkbenchReceipt[]=[];
-  for(const action of actions){try{receipts.push(await executeOne(action))}catch(error){const readOnly=action.operation==='layout.list'||action.operation==='layout.find'||action.operation==='resource.find';receipts.push({operation:action.operation,status:readOnly?'failed':'outcome_unknown',summary:error instanceof Error?error.message:String(error)})}}
+  for(const action of actions){try{receipts.push(await executeOne(action))}catch(error){const readOnly=action.operation==='layout.list'||action.operation==='layout.find'||action.operation==='resource.find'||action.operation==='note.find';receipts.push({operation:action.operation,status:readOnly?'failed':'outcome_unknown',summary:error instanceof Error?error.message:String(error)})}}
   return receipts;
  }
  async function executeOne(action:WorkbenchAction):Promise<WorkbenchReceipt>{
@@ -81,6 +85,41 @@ export function createWorkbenchService(options:WorkbenchServiceOptions){
    const unavailable=result.unavailableWidgetIds.map(widgetId=>({widgetId,...(()=>{const owner=fileWidgets.find(item=>item.widget.id===widgetId);return owner?{sourceWorkspaceId:owner.workspace.id,workspaceName:owner.workspace.name,widgetName:owner.widget.title||owner.widget.folderName||'Files'}:{}})()}));
    return{operation:action.operation,status:'succeeded',summary:`Found ${results.length} resources${result.truncated?' before reaching the file search limit':''}.${unavailable.length?` ${unavailable.length} folder connection(s) were unavailable.`:''}`,data:{results,unavailable,truncated:result.truncated}};
   }
+  if(action.operation==='note.find'){
+   const state=options.getState(),term=action.query.toLocaleLowerCase(),matches=allSavedNotes(state).filter(entry=>[entry.document.title,entry.document.text,...(entry.document.tags??[])].join(' ').toLocaleLowerCase().includes(term)),results:Array<Record<string,unknown>>=[];
+   for(const entry of matches.slice(0,12)){
+    const open=!!entry.widgetId&&state.workspaces.some(workspace=>workspace.id===entry.workspaceId&&([...workspace.widgets,...workspace.groups.flatMap(group=>group.widgets.flatMap(item=>item.instance?[item.instance]:[]))].some(widget=>widget.id===entry.widgetId)));
+    results.push({identity:noteHistoryIdentity(entry),revision:await noteRevision(entry.document),name:entry.document.title||'Untitled note',title:entry.document.title||'Untitled note',workspaceName:entry.workspaceName??'',snippet:entry.document.text.slice(0,240),tags:entry.document.tags??[],textLength:entry.document.text.length,closed:!open});
+   }
+   return{operation:action.operation,status:'succeeded',summary:'Found '+matches.length+' matching saved notes'+(matches.length>results.length?' (showing the first 12)':'')+'.',data:{results,total:matches.length,truncated:matches.length>results.length}};
+  }
+  if(action.operation==='note.rename'||action.operation==='note.edit'||action.operation==='note.delete'){
+   const state=options.getState(),candidates=allSavedNotes(state).filter(entry=>entry.document.id===action.identity.documentId&&(!action.identity.workspaceId||entry.workspaceId===action.identity.workspaceId)&&(!action.identity.widgetId||entry.widgetId===action.identity.widgetId));
+   if(candidates.length!==1)return{operation:action.operation,status:'needs_clarification',summary:candidates.length?'More than one saved note matches that ID. Use the exact workspace and Notes widget IDs returned by note.find.':'That saved note is no longer available.'};
+   const entry=candidates[0],identity=noteHistoryIdentity(entry),currentRevision=await noteRevision(entry.document);
+   if(currentRevision!==action.expectedRevision)return{operation:action.operation,status:'needs_clarification',summary:'That note changed after it was found. Run note.find again before changing it.'};
+   if(action.operation==='note.rename'&&entry.document.sourcePath)return{operation:action.operation,status:'needs_clarification',summary:'This note title comes from its linked Markdown filename. Rename the file from its Files library.'};
+   if(action.operation==='note.delete'){
+    const message=entry.document.sourcePath?'Removed the note from Still. Its linked Markdown file was left unchanged.':'Deleted “'+(entry.document.title||'Untitled note')+'” from Notes.';
+    const latest=options.getState(),current=allSavedNotes(latest).filter(item=>item.document.id===identity.documentId&&(!identity.workspaceId||item.workspaceId===identity.workspaceId)&&(!identity.widgetId||item.widgetId===identity.widgetId));
+    if(current.length!==1||await noteRevision(current[0].document)!==action.expectedRevision)return{operation:action.operation,status:'needs_clarification',summary:'That note changed while the deletion was being prepared. Run note.find again.'};
+    if(options.deleteNote)await options.deleteNote(identity,action.expectedRevision);else await options.commitState(editSavedNote(latest,identity,()=>null));
+    return{operation:action.operation,status:'succeeded',summary:message,changed:true};
+   }
+   let nextText:string|undefined,linkedFileWritten=false;
+   if(action.operation==='note.edit'){
+    nextText=action.mode==='append'?(entry.document.text?entry.document.text+'\n\n'+action.text:action.text):action.text;
+    if(nextText.length>NOTE_DOCUMENT_TEXT_LIMIT)return{operation:action.operation,status:'needs_clarification',summary:'The edited note would exceed the per-note text limit.'};
+    const owner=state.workspaces.find(workspace=>workspace.id===entry.workspaceId),widget=entry.widgetId?owner?.widgets.find(item=>item.id===entry.widgetId)??owner?.groups.flatMap(group=>group.widgets.flatMap(item=>item.instance?[item.instance]:[])).find(item=>item.id===entry.widgetId):undefined;
+    if(widget?.type==='notes'&&widget.noteDocuments.reduce((total,note)=>total+note.text.length,0)-entry.document.text.length+nextText.length>NOTE_DOCUMENT_TOTAL_LIMIT)return{operation:action.operation,status:'needs_clarification',summary:'The edited note would exceed this widget’s total Notes text limit.'};
+    if(entry.document.sourcePath){if(!entry.widgetId)return{operation:action.operation,status:'needs_clarification',summary:'The linked Markdown source no longer has an owner widget. Reopen it from Notes Home before editing.'};await notesLibrary.write(entry.widgetId,entry.document.sourcePath,nextText,entry.document.text);linkedFileWritten=true}
+   }
+   const latest=options.getState(),current=allSavedNotes(latest).filter(item=>item.document.id===identity.documentId&&(!identity.workspaceId||item.workspaceId===identity.workspaceId)&&(!identity.widgetId||item.widgetId===identity.widgetId));
+   if(current.length!==1||await noteRevision(current[0].document)!==action.expectedRevision){if(linkedFileWritten)throw new Error('The linked Markdown file was updated, but the Still note changed before its index could be saved. Refresh Notes Home before retrying.');return{operation:action.operation,status:'needs_clarification',summary:'That note changed while the edit was being prepared. Run note.find again.'}}
+   const updated=editSavedNote(latest,identity,document=>action.operation==='note.rename'?{...document,title:action.title.trim().slice(0,60)}:{...document,text:nextText!});
+   await options.commitState(updated);
+   return{operation:action.operation,status:'succeeded',summary:action.operation==='note.rename'?'Renamed note to “'+action.title.trim()+'”.':'Updated the saved note.',changed:true};
+  }
   if(action.operation.startsWith('layout.')){
    const state=options.getState();let message='';
    if(action.operation==='layout.save'){const source=action.sourceWorkspaceId??state.activeId;if(!state.workspaces.some(item=>item.id===source))return clarification(action,'The source workspace is no longer available.');message=await options.layoutHandlers.save(action.name,source)}
@@ -91,7 +130,7 @@ export function createWorkbenchService(options:WorkbenchServiceOptions){
   if(action.operation==='rule.save'){
    const result=await options.saveRule(action.text);return result.kind==='rule'?{operation:action.operation,status:'succeeded',summary:'Automation saved.',data:result.rule,changed:true}:result.kind==='clarification'?clarification(action,result.message):{operation:action.operation,status:'failed',summary:result.message};
   }
-  const request=collectionRequest(action as Exclude<WorkbenchAction,{operation:`layout.${string}`}|{operation:'resource.find'}|{operation:'rule.save'}>);
+  const request=collectionRequest(action as Exclude<WorkbenchAction,{operation:`layout.${string}`}|{operation:'resource.find'|'note.find'|'note.rename'|'note.edit'|'note.delete'|'rule.save'}>);
   const result=await collection(request,{source:'assistant'});
   return{operation:action.operation,status:result.status==='failed'&&result.changed?'outcome_unknown':result.status,summary:result.summary,receiptId:result.receiptId,changed:result.changed,...(result.resource?{data:result.resource}:{})};
  }

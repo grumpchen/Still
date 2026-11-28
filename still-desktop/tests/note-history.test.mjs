@@ -34,7 +34,7 @@ test('shared Notes identity distinguishes duplicate document IDs across workspac
  assert.equal(edited.workspaces.find(item=>item.id===study.id).widgets[0].noteDocuments[0].title,'Study copy');
 });
 
-test('permanent Notes Home deletion removes the exact note from persisted live, history, layout, and source preset copies',()=>{
+test('permanent Notes Home deletion removes only the exact live and history note, preserving saved copies',()=>{
  const state=createInitialState(),owner=state.workspaces.find(item=>item.name==='Study'),notes=createWidget('notes'),other=createWidget('notes'),id='same-legacy-note-id';
  notes.noteDocuments=[{id,title:'Delete me',text:'Private note'}];notes.activeNoteDocumentId=id;
  other.noteDocuments=[{id,title:'Keep this copy',text:'Separate workspace copy'}];other.activeNoteDocumentId=id;
@@ -47,6 +47,6 @@ test('permanent Notes Home deletion removes the exact note from persisted live, 
  assert.equal(allSavedNotes(restored).some(item=>item.workspaceId===owner.id&&item.widgetId===notes.id&&item.document.id===id),false);
  assert.equal(restored.workspaces.find(item=>item.id===owner.id).widgets.find(item=>item.id===notes.id).noteDocuments.some(item=>item.id===id),false);
  assert.equal(restored.workspaces.find(item=>item.id===state.workspaces.find(x=>x.name==='Design').id).widgets.find(item=>item.id===other.id).noteDocuments[0].text,'Separate workspace copy');
- assert.equal(restored.globalLayouts[0].widgets.find(item=>item.id===notes.id).noteDocuments.some(item=>item.id===id),false);
- assert.equal(restored.presets[0].noteDocuments.some(item=>item.id===id),false);
+ assert.equal(restored.globalLayouts[0].widgets.find(item=>item.id===notes.id).noteDocuments.some(item=>item.id===id),true);
+ assert.equal(restored.presets[0].noteDocuments.some(item=>item.id===id),true);
 });

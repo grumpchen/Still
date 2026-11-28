@@ -14,7 +14,7 @@ function short(value:unknown):unknown{
  return value;
 }
 function boundRecent(receipts:WorkbenchReceipt[]){
- const matching=receipts.filter(item=>item.operation==='resource.find'||item.operation==='layout.find'||item.operation==='layout.list');
+ const matching=receipts.filter(item=>item.operation==='resource.find'||item.operation==='note.find'||item.operation==='layout.find'||item.operation==='layout.list');
  const recent=matching.slice(-MAX_RECENT_RESULTS).map(item=>{
   let data=short(item.data);
   if(Array.isArray(item.data)&&item.data.length>MAX_RECENT_ROWS)data={items:item.data.slice(0,MAX_RECENT_ROWS).map(short),contextTruncated:true,totalItems:item.data.length};

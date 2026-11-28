@@ -9,9 +9,10 @@ import {automationCaptureInbox} from './platform/automationCaptureInbox.ts';
 import {localFiles} from './platform/files.ts';
 import {useAutomationRunner,type AutomationRunnerApi} from './useAutomationRunner.ts';
 import {boundedWorkbenchContext} from './domain/workbenchContext.ts';
+import type {NoteIdentity} from './domain/workbenchActions.ts';
 
 const storage={getItem:(key:string)=>localStorage.getItem(key),setItem:(key:string,value:string)=>localStorage.setItem(key,value)};
-export interface StillWorkbenchHost {getState:()=>WorkspaceState;commitState:(state:WorkspaceState)=>void;layoutHandlers:WorkbenchLayoutHandlers;onRuleModeRequired?:(text:string)=>void}
+export interface StillWorkbenchHost {getState:()=>WorkspaceState;commitState:(state:WorkspaceState)=>void;deleteNote?:(identity:NoteIdentity,expectedRevision:string)=>void|Promise<void>;layoutHandlers:WorkbenchLayoutHandlers;onRuleModeRequired?:(text:string)=>void}
 export function ruleRequestText(text:string):string{return text.trim().replace(/^(?:please\s+)?(?:save|create|add)\s+(?:an?\s+)?(?:automation\s+)?rule\s*[:：,，]?\s*/i,'').replace(/^(?:请)?(?:保存|创建|添加)(?:一条|一个)?(?:自动)?规则\s*[:：,，]?\s*/,'')}
 export function isDirectRuleRequest(text:string):boolean{
  if(/^(?:how\s+(?:do|can|to)|what\s+|为什么|如何|怎么|怎样)/i.test(text.trim()))return false;
@@ -34,7 +35,7 @@ export function useStillWorkbench(host:StillWorkbenchHost){
   return{workspaces:state.workspaces.filter(item=>item.role!=='library').map(({id,name})=>({id,name})),courses:courses.map(({id,name})=>({id,title:name,workspaceId:id})),layouts:state.globalLayouts.map(({id,name})=>({id,name}))};
  };
  const [service]=useState(()=>createWorkbenchService({
-  getState:()=>latest.current.getState(),commitState:next=>latest.current.commitState(next),getCourses:()=>getCatalog().courses,
+  getState:()=>latest.current.getState(),commitState:next=>latest.current.commitState(next),...(latest.current.deleteNote?{deleteNote:(identity:NoteIdentity,revision:string)=>latest.current.deleteNote?.(identity,revision)}:{}),getCourses:()=>getCatalog().courses,
   layoutHandlers:{save:(...args)=>latest.current.layoutHandlers.save(...args),apply:(...args)=>latest.current.layoutHandlers.apply(...args),rename:(...args)=>latest.current.layoutHandlers.rename(...args),duplicate:(...args)=>latest.current.layoutHandlers.duplicate(...args),delete:(...args)=>latest.current.layoutHandlers.delete(...args),prepare:(...args)=>(latest.current.layoutHandlers.prepare??latest.current.layoutHandlers.apply)(...args)},
   saveRule:async (text:string)=>{const runner=runnerRef.current;if(!runner)return{kind:'error' as const,message:'Rules are still starting. Try again.'};return runner.createFromText(ruleRequestText(text))},
   getCaptureEvent:async id=>{const result=automationCaptureInbox.get(id);if(!result.ok)throw new Error(result.message);return result.value},
