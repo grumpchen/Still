@@ -8,7 +8,7 @@ import type {FilesViewCommand} from '../platform/filesViewCommands.ts';
 import type {CanvasCommand} from '../platform/canvasCommands.ts';
 import {snapLayouts} from './snapLayouts.ts';
 export const workbenchPanels=['notes-home','settings','shortcuts','gallery','trayEdit','sidebarPlugins','commands','rules'] as const;
-export type InterfaceAction={operation:'view.open';panel:typeof workbenchPanels[number]}|{operation:'view.focusMode';enabled:boolean};
+export type InterfaceAction={operation:'view.open';panel:typeof workbenchPanels[number]};
 export type WorkbenchAction = InterfaceAction| WorkspaceCommand|FilesViewCommand|CanvasCommand
  | {operation:'layout.list'}
  | {operation:'layout.find';query:string}
@@ -93,7 +93,6 @@ function parseOne(raw:unknown):WorkbenchAction{
    fields(raw,['operation','panel']);const panel=workbenchPanels.find(item=>item===raw.panel);
    if(!panel)return invalid();return {operation:raw.operation,panel};
   }
-  case 'view.focusMode':fields(raw,['operation','enabled']);if(typeof raw.enabled!=='boolean')return invalid();return {operation:raw.operation,enabled:raw.enabled};
   case 'canvas.exportPng':case 'canvas.copyImage':case 'canvas.raise':fields(raw,['operation','workspaceId','widgetId']);return {operation:raw.operation,workspaceId:id(raw.workspaceId),widgetId:id(raw.widgetId)};
   case 'canvas.overview':fields(raw,['operation','workspaceId','enabled']);if(typeof raw.enabled!=='boolean')return invalid();return {operation:raw.operation,workspaceId:id(raw.workspaceId),enabled:raw.enabled};
   case 'canvas.filter':fields(raw,['operation','workspaceId','status']);if(raw.status!=='all'&&raw.status!=='unset'&&raw.status!=='todo'&&raw.status!=='in-progress'&&raw.status!=='done')return invalid();return {operation:raw.operation,workspaceId:id(raw.workspaceId),status:raw.status};

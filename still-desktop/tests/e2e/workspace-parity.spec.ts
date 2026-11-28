@@ -66,3 +66,22 @@ test('Files view commands share the real preview, search and reading controls',a
   await expect(files.getByRole('button',{name:'Preview file momentum.txt'})).toHaveCount(0);
  }finally{rmSync(folder,{recursive:true,force:true})}
 });
+
+test('AI Command uses neutral, readable input colors over the liquid-glass wallpaper',async({page})=>{
+ const state=createInitialState();
+ const course=state.workspaces.find(item=>item.name==='Design')!;
+ const {createWidget}=await import('../../src/domain/workspaces.ts');
+ const command=createWidget('aiCommand');
+ command.title='Study timer';command.text='Set a 5 minute timer';
+ course.widgets=[command];
+ await page.addInitScript(state=>{
+  localStorage.setItem('still-workspace-v2',JSON.stringify(state));
+  localStorage.setItem('still-first-run-tutorial-v1','done');
+ },state);
+ await page.goto('/design-preview.html');
+ await page.getByRole('button',{name:'Show sidebar'}).click();
+ await page.locator('.nav button').filter({hasText:'Design'}).click();
+ const widget=page.locator('.ai-command-widget');
+ await expect(widget.getByRole('textbox',{name:'Button name'})).toHaveCSS('background-color','rgb(36, 39, 44)');
+ await expect(widget.getByRole('textbox',{name:'Command for Still AI'})).toHaveCSS('color','rgb(244, 245, 247)');
+});

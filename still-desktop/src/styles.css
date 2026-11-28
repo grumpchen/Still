@@ -348,3 +348,29 @@ dialog:has(.shared-notes-home){width:min(870px,calc(100vw - 36px));max-width:non
 .library-reference-toolbar{display:flex;align-items:end;gap:8px;flex-wrap:wrap;padding:12px;border:1px solid var(--glass-border);border-radius:12px;background:var(--glass-surface)}.library-reference-toolbar label{display:grid;gap:5px;min-width:150px;color:var(--text-muted);font-size:12px}.library-reference-toolbar input,.library-reference-toolbar select{max-width:240px;min-height:34px;padding:6px 9px;border:1px solid var(--glass-border);border-radius:8px;color:var(--text-primary);background:var(--glass-surface)}.library-reference-toolbar button{min-height:34px;padding:6px 10px;border:1px solid var(--glass-border);border-radius:8px;color:var(--text-primary);background:var(--glass-surface);cursor:pointer}.library-reference-toolbar small,.library-reference-toolbar [role=alert]{flex-basis:100%;margin:0;color:var(--text-muted);font-size:12px}
 
 .workbench-shortcuts{display:flex;align-items:center;gap:6px;margin-left:auto}.workbench-shortcuts button{font-size:12px;padding:6px 10px;white-space:nowrap}
+
+/* AI Command sits over changing wallpaper. Keep editor controls opaque for contrast. */
+.ai-command-widget {
+  --command-field: #f4f5f7;
+  --command-text: #22262c;
+  --command-border: #bdc4ce;
+  color: var(--command-text);
+}
+.liquid-glass .ai-command-widget, .dark .ai-command-widget {
+  --command-field: #24272c;
+  --command-text: #f4f5f7;
+  --command-border: #676d76;
+}
+.ai-command-widget .field-label { color: var(--command-text); }
+.ai-command-widget .field-label input,
+.ai-command-widget .field-label textarea,
+.ai-command-widget .ai-command-actions button:not(.primary) {
+  background: var(--command-field);
+  color: var(--command-text);
+  border-color: var(--command-border);
+}
+.ai-command-widget input::placeholder,
+.ai-command-widget textarea::placeholder { color: currentColor; opacity: .72; }
+.liquid-glass .widget-aiCommand > .widget-content {
+  background: rgb(28 30 34 / .91);
+}

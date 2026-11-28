@@ -14,16 +14,6 @@ test('widget headers expose other workspace rows as transfer targets and reset i
  assert.match(styles,/workspace-drop-active/);
 });
 
-test('compact focus state is temporary and keeps its exit control beside fullscreen',()=>{
- assert.match(app,/useState\(false\);const \[workspaceDropTarget/);
- assert.match(app,/aria-label=\{focusMode\?'Exit focus mode':'Enter focus mode'\}/);
- assert.match(app,/aria-pressed=\{focusMode\} onClick=\{\(\)=>setFocusMode/);
- assert.match(app,/focusMode\?' focus-mode':''/);
- assert.match(styles,/\.canvas-app\.focus-mode \.sidebar\{display:none\}/);
- assert.match(styles,/\.canvas-app\.focus-mode \.widget-tray\{display:none\}/);
- assert.doesNotMatch(readFileSync(new URL('../src/domain/workspaces.ts',import.meta.url),'utf8'),/focusMode\??:/);
-});
-
 test('sidebar hover reveal zone and Apps reveal rail sit on their panel edges',()=>{
  assert.match(app,/<div className="sidebar-reveal-zone" aria-hidden="true" onPointerEnter=\{openSidebarPeek\}\/\>/);
  assert.match(app,/<aside id="workspace-sidebar" className="sidebar" onPointerEnter=\{openSidebarPeek\} onPointerLeave=\{closeSidebarPeek\}/);

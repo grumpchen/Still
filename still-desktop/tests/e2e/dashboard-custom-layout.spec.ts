@@ -17,9 +17,9 @@ test('Dashboard starts full page, edits Browser modules transactionally, and res
  await page.getByRole('button',{name:'Show sidebar'}).click();await page.locator('.nav button').filter({hasText:'Study'}).click();await expect(page.locator('.nav button.active .nav-name')).toHaveText('Study');
 });
 
-test('focus mode hides workspace chrome and keeps a visible exit control',async({page})=>{
+test('Dashboard keeps its Focus timer without a Focus Mode control',async({page})=>{
  await page.addInitScript(()=>localStorage.setItem('still-first-run-tutorial-v1','done'));
- await page.goto('/design-preview.html');const app=page.locator('.app');await expect(app).not.toHaveClass(/focus-mode/);
- await page.getByRole('button',{name:'Enter focus mode'}).first().click();await expect(app).toHaveClass(/focus-mode/);
- const exit=page.getByRole('button',{name:'Exit focus mode'}).last();await expect(exit).toBeVisible();await exit.click();await expect(app).not.toHaveClass(/focus-mode/);
+ await page.goto('/design-preview.html');
+ await expect(page.locator('.dashboard-focus-module')).toBeVisible();
+ await expect(page.getByRole('button',{name:/focus mode/i})).toHaveCount(0);
 });

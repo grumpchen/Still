@@ -76,7 +76,7 @@ export function createWorkbenchService(options:WorkbenchServiceOptions){
  }
  async function executeOne(action:WorkbenchAction):Promise<WorkbenchReceipt>{
   switch(action.operation){
-   case 'view.open':case 'view.focusMode': {
+   case 'view.open': {
     if(!options.interfaceAction)return {operation:action.operation,status:'failed',summary:'The workspace window is unavailable.'};
     return {operation:action.operation,status:'succeeded',summary:options.interfaceAction(action),changed:true};
    }
