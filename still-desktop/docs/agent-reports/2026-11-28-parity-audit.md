@@ -35,7 +35,7 @@ Assistant action definitions are in `src/domain/assistant.ts`; workbench action 
 - Focused `workbench-actions`, `workbench-operations`, and `note-history` tests: 27 passed.
 - Notes Home E2E at checkpoint `b2a3713`: `STILL_PLAYWRIGHT_EXECUTABLE_PATH=/usr/bin/chromium pnpm exec playwright test tests/e2e/notes-home.spec.ts` passed (1 test). The default configured Edge path was unavailable in this environment; Chromium is installed and passed the same E2E.
 - `cargo test assistant_protocol::tests --lib` could not run because `cargo` is not installed in this environment. Rust changes are covered by source validation/schema assertions but need CI Rust compilation.
-- Full `pnpm test` is running at report generation; final count will be appended before commit.
+- Full `pnpm test`: 611 passed, 0 failed.
 
 ## Boundaries and follow-ups
 
