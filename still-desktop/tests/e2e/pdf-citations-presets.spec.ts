@@ -74,7 +74,8 @@ test('PDF excerpts keep a clickable page citation and highlight presets are reus
     const menu = page.getByRole('menu', { name: 'Save selection to note…' });
     await expect(menu).toContainText(`${fileName} · p. 2`);
     await menu.getByRole('menuitem', { name: /Research notes/ }).click();
-    await expect(notesCard.locator('textarea.note')).toHaveValue('Existing agreement notes\n\nrecipient must retain records');
+    await expect(notesCard.locator('.note[contenteditable=true] p').nth(0)).toHaveText('Existing agreement notes');
+    await expect(notesCard.locator('.note[contenteditable=true] p').nth(1)).toHaveText('recipient must retain records');
     const citation = notesCard.getByRole('button', { name: `${fileName} · p. 2` });
     await expect(citation).toBeVisible();
     await citation.evaluate(element => {
