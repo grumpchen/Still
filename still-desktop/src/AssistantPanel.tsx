@@ -9,7 +9,6 @@ import type {AgentToolExecution} from './domain/agentLoop.ts';
 import {readAssistantChat,saveAssistantChat} from './domain/assistantChat.ts';
 import {addAssistantMemory,assistantMemoryContext,clearAssistantMemory,deleteAssistantMemory,readAssistantMemory,memoryRequestedInPrompt,validateRequestedMemory,AssistantMemoryError,type AssistantMemoryEntry} from './domain/assistantMemory.ts';
 import {Icon} from './widgets.tsx';
-import {isFilesLocationQuestion} from './platform/currentFilesView.ts';
 import {installedAppRequest} from './domain/assistantInstalledApps.ts';
 import {openAssistantInstalledApp} from './platform/assistantInstalledApps.ts';
 import {appPanel} from './platform/appPanel.ts';
@@ -84,7 +83,7 @@ export default function AssistantPanel({libraryRoots=[],organiseLibrary,undoLibr
   const selectedMentions=mentions.some(item=>item.id==='__all__')?[{id:'__all__',label:t('allWidgets')}]:selectedIds.map(id=>workspace.widgets.find(widget=>widget.id===id)).filter((widget):widget is WidgetInstance=>!!widget).map(widget=>({id:widget.id,label:widgetLabel(widget)}));
   const requestLimit=assistantRequestLimitError(input,trayItems),directActions=libraryOrganisationContext?null:resolveDirectAssistantActions(input,workspace,selectedIds,trayItems,workspaces);
   const confirmationRequest=libraryOrganisationContext?null:unsupportedAssistantRequest(input);
-  const canRunWorkbenchRequest=(prompt:string)=>(!agentMode||isFilesLocationQuestion(prompt))&&!!directWorkbenchRequest&&!!canHandleDirectWorkbenchRequest?.(prompt.trim());
+  const canRunWorkbenchRequest=(prompt:string)=>!libraryResource&&!libraryOrganisationContext&&!!directWorkbenchRequest&&!!canHandleDirectWorkbenchRequest?.(prompt.trim());
   function directInstalledApp(prompt:string){
     if(libraryResource||libraryOrganisationContext)return null;
     const request=installedAppRequest(prompt);
@@ -296,7 +295,7 @@ useEffect(()=>{const attachMany=(event:Event)=>{const detail=(event as CustomEve
         let inspectedContext:string|null=null;
         const getSnapshot=():StillToolSnapshot=>{const live=latestContext.current;if(live.workspace.id!==owner.id)throw new Error('The active workspace changed while the agent was responding. Try again.');const partial={workspace:live.workspace,savedTrayItems:live.trayItems,workspaces:live.workspaces},revision=agentSnapshotRevision(partial);inspectedContext=revision;return {...partial,revision}};
         const memoryRequest=memoryRequestedInPrompt(prompt);
-        const registry=createStillWorkspaceToolRegistry({getSnapshot,enableAssistantMemoryTool:memoryRequest,validate:(snapshot,actions)=>{validateAssistantActions(snapshot.workspace,actions,snapshot.savedTrayItems,snapshot.workspaces);validateAssistantActionIntent(prompt,snapshot.workspace,actions,snapshot.savedTrayItems,snapshot.workspaces,selectedIds.filter(id=>snapshot.workspace.widgets.some(widget=>widget.id===id)))},validateIntent:(snapshot,actions)=>validateAssistantActionIntent(prompt,snapshot.workspace,actions,snapshot.savedTrayItems,snapshot.workspaces,selectedIds.filter(id=>snapshot.workspace.widgets.some(widget=>widget.id===id))),validateMemoryIntent:text=>validateRequestedMemory(prompt,text),execute:(snapshot,actions)=>act(snapshot.workspace.id,actions,prompt,selectedIds.filter(id=>snapshot.workspace.widgets.some(widget=>widget.id===id)))});
+        const registry=createStillWorkspaceToolRegistry({getSnapshot,inspectWorkbench:workbenchContext?()=>workbenchContext(prompt,selectedIds):undefined,enableAssistantMemoryTool:memoryRequest,validate:(snapshot,actions)=>{validateAssistantActions(snapshot.workspace,actions,snapshot.savedTrayItems,snapshot.workspaces);validateAssistantActionIntent(prompt,snapshot.workspace,actions,snapshot.savedTrayItems,snapshot.workspaces,selectedIds.filter(id=>snapshot.workspace.widgets.some(widget=>widget.id===id)))},validateIntent:(snapshot,actions)=>validateAssistantActionIntent(prompt,snapshot.workspace,actions,snapshot.savedTrayItems,snapshot.workspaces,selectedIds.filter(id=>snapshot.workspace.widgets.some(widget=>widget.id===id))),validateMemoryIntent:text=>validateRequestedMemory(prompt,text),execute:(snapshot,actions)=>act(snapshot.workspace.id,actions,prompt,selectedIds.filter(id=>snapshot.workspace.widgets.some(widget=>widget.id===id)))});
         const outcome=await runProviderAgent({provider:requestProvider,model:requestModel,messages:agentMessages,sessionId:owner.id,toolRegistry:registry,enableSafeWorkspaceActionTool:agentSafeActionMode,enableAssistantMemoryTool:memoryRequest,validateWorkspace:()=>{const live=latestContext.current;if(live.workspace.id!==owner.id)throw new Error('The active workspace changed while the agent was responding. Try again.');const partial={workspace:live.workspace,savedTrayItems:live.trayItems,workspaces:live.workspaces};if(inspectedContext!==null&&agentSnapshotRevision(partial)!==inspectedContext)throw new Error('The workspace changed while the agent was responding. Nothing was applied; try again.')}});
         if(outcome.status==='awaiting_confirmation'){
           setAgentNotesPending(outcome);setAgentProposalProvider(requestProvider);setMessages(current=>[...current,{role:'user',text:displayPrompt},{role:'model',text:agentProposalMessage(outcome.proposal,requestProvider,owner,trayItems)}]);setInput('');setMentions([]);setScreenshot(false);return;
@@ -305,6 +304,7 @@ useEffect(()=>{const attachMany=(event:Event)=>{const detail=(event as CustomEve
       }else result=await geminiAssistant.send({provider:requestProvider,model:requestModel,messages:[...history,{role:'user',text:prompt}],context:serialized,image,session_id:owner.id});
       if(!alive.current)return;
       if(result.workbenchActions?.length){
+        if(libraryOrganisationContext||libraryResource)throw new Error('This material is open for study or review. Ask separately to change the workspace.');
         if(!executeWorkbench)throw new Error('Still could not execute the requested workspace operation. Nothing was changed.');
         const receipt=await executeWorkbench(result.workbenchActions,prompt);
         if(!alive.current)return;

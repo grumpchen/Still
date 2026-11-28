@@ -3,7 +3,9 @@
  * canvas. Collection operations mirror the shared collection operation
  * service's request fields; this module validates wire data, not execution.
  */
-export type WorkbenchAction =
+import type {WorkspaceCommand} from './workspaceCommands.ts';
+import type {FilesViewCommand} from '../platform/filesViewCommands.ts';
+export type WorkbenchAction = WorkspaceCommand|FilesViewCommand
  | {operation:'layout.list'}
  | {operation:'layout.find';query:string}
  | {operation:'layout.save';name:string;sourceWorkspaceId?:string}
@@ -83,6 +85,17 @@ function httpsUrl(value:unknown):string{
 function parseOne(raw:unknown):WorkbenchAction{
  if(!object(raw)||typeof raw.operation!=='string')return invalid();
  switch(raw.operation){
+  case 'filesView.search':fields(raw,['operation','widgetId','query']);return {operation:raw.operation,widgetId:id(raw.widgetId),query:text(raw.query,1,300)};
+  case 'filesView.open':fields(raw,['operation','widgetId','path']);return {operation:raw.operation,widgetId:id(raw.widgetId),path:relativePath(raw.path,true)};
+  case 'filesView.closePreview':case 'filesView.exitSearch':fields(raw,['operation','widgetId']);return {operation:raw.operation,widgetId:id(raw.widgetId)};
+  case 'filesView.filter':fields(raw,['operation','widgetId','status']);if(raw.status!=='all'&&raw.status!=='unread'&&raw.status!=='in-progress'&&raw.status!=='done')return invalid();return {operation:raw.operation,widgetId:id(raw.widgetId),status:raw.status};
+  case 'filesView.readingStatus':fields(raw,['operation','widgetId','path','status']);if(raw.status!=='unread'&&raw.status!=='in-progress'&&raw.status!=='done')return invalid();return {operation:raw.operation,widgetId:id(raw.widgetId),path:relativePath(raw.path),status:raw.status};
+  case 'workspace.duplicate':fields(raw,['operation','workspaceId'],['name']);return {operation:raw.operation,workspaceId:id(raw.workspaceId),...(raw.name===undefined?{}:{name:text(raw.name,1,60)})};
+  case 'workspace.stack':fields(raw,['operation','workspaceId']);return {operation:raw.operation,workspaceId:id(raw.workspaceId)};
+  case 'preset.rename':fields(raw,['operation','presetId','name']);return {operation:raw.operation,presetId:id(raw.presetId),name:text(raw.name,1,60)};
+  case 'preset.delete':fields(raw,['operation','presetId']);return {operation:raw.operation,presetId:id(raw.presetId)};
+  case 'appearance.reset':fields(raw,['operation']);return {operation:raw.operation};
+  case 'relaunch.applyAll':fields(raw,['operation','value']);if(raw.value!=='manual'&&raw.value!=='automatic')return invalid();return {operation:raw.operation,value:raw.value};
   case 'layout.find':fields(raw,['operation','query']);return{operation:raw.operation,query:text(raw.query,1,300)};
   case 'layout.list':fields(raw,['operation']);return{operation:raw.operation};
   case 'layout.save':fields(raw,['operation','name'],['sourceWorkspaceId']);return{operation:raw.operation,name:text(raw.name,1,60),...(raw.sourceWorkspaceId!==undefined?{sourceWorkspaceId:id(raw.sourceWorkspaceId)}:{})};

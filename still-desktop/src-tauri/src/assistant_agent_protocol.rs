@@ -154,7 +154,7 @@ pub fn gemini_agent_body(request: &AgentRequest) -> Result<Value, String> {
     if request.enable_assistant_memory_tool { declarations.push(json!({"name":PROPOSE_ASSISTANT_MEMORY,"description":"Propose one user-requested item for local assistant memory. This only shows a review proposal; it does not save. Provide the exact user-authored text, not a paraphrase or inferred fact.","parameters":{"type":"OBJECT","properties":{"text":{"type":"STRING","minLength":1,"maxLength":1000,"description":"Exact user-authored text to remember for future conversations."}},"required":["text"]}})); }
     let guidance = format!("You are Still AI, a helpful general-purpose assistant. {AGENT_GUIDANCE} {} {} {}", if request.enable_add_widget_tool { ADD_WIDGET_GUIDANCE } else { "" }, if request.enable_safe_workspace_action_tool { SAFE_WORKSPACE_ACTION_GUIDANCE } else { "" }, if request.enable_assistant_memory_tool { PROPOSE_MEMORY_GUIDANCE } else { "" });
     Ok(json!({
-        "systemInstruction":{"parts":[{"text":format!("{guidance} {AGENT_MEMORY_GUIDANCE} {GEMINI_FINAL_REPLY_GUIDANCE}")}]},
+        "systemInstruction":{"parts":[{"text":format!("{guidance} {AGENT_MEMORY_GUIDANCE} {GEMINI_FINAL_REPLY_GUIDANCE} {}", assistant_protocol::workbench_operation_signatures())}]},
         "contents":contents,
         "tools":[{"functionDeclarations":declarations}],
         "toolConfig":{"functionCallingConfig":{"mode":"AUTO"}},
@@ -202,7 +202,7 @@ fn compatible_agent_body(request: &AgentRequest, provider: Provider) -> Result<V
     let guidance = if request.enable_assistant_memory_tool { format!("{guidance} {PROPOSE_MEMORY_GUIDANCE}") } else { guidance };
     let mut messages = vec![json!({
         "role": "system",
-        "content": format!("You are Still AI, a helpful general-purpose assistant. Answer ordinary questions naturally. {} {}", guidance, AGENT_MEMORY_GUIDANCE)
+        "content": format!("You are Still AI, a helpful general-purpose assistant. Answer ordinary questions naturally. {} {} {}", guidance, AGENT_MEMORY_GUIDANCE, assistant_protocol::workbench_operation_signatures())
     })];
     messages.extend(request.messages.iter().map(|message| {
         serde_json::to_value(message).expect("agent message serialization is infallible")

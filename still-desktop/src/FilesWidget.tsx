@@ -19,6 +19,8 @@ import {deepTutorStudyPrompt} from './domain/deepTutor.ts';
 import {executeCollectionOperation} from './platform/collectionOperations.ts';
 import {useLocale} from './localization.tsx';
 
+import {registerFilesView} from './platform/filesViewCommands.ts';
+
 function size(bytes:number){return bytes<1024?bytes+' B':bytes<1048576?(bytes/1024).toFixed(0)+' KB':(bytes/1048576).toFixed(1)+' MB'}
 function isPdf(file:FileEntry|null){return !!file&&file.name.toLowerCase().endsWith('.pdf')}
 function savedHighlightInstruction(widgetId:string){try{return localStorage.getItem(`still-pdf-highlight-instruction:${widgetId}`)??''}catch{return ''}}
@@ -31,7 +33,7 @@ type RelatedSuggestion={widgetId:string;noteId:string;title:string};
 
 export default function FilesWidget(props:WidgetProps){return props.widget.fileKey?<DocumentWidget {...props}/>:<FolderWidget {...props}/>}
 
-function FolderWidget({widget,update,notify,workspaceWidgets=[]}:WidgetProps){
+function FolderWidget({widget,update,notify,workspaceActive=true,workspaceWidgets=[]}:WidgetProps){
  const t=useT();
  const zh=useLocale()==='zh-CN';
  const [folder,setFolder]=useState<FolderListing|null>(null),[inboxPath,setInboxPath]=useState(''),[busy,setBusy]=useState(false),[aiReading,setAiReading]=useState(false),[error,setError]=useState(''),[filter,setFilter]=useState(''),[searchAll,setSearchAll]=useState(false),[searchResults,setSearchResults]=useState<FileEntry[]|null>(null),[selected,setSelected]=useState<FileEntry|null>(null),[preview,setPreview]=useState<{url:string;mimeType:string;text:string|null}|null>(null);
@@ -57,19 +59,18 @@ function FolderWidget({widget,update,notify,workspaceWidgets=[]}:WidgetProps){
  function resetSearchResults(){searchRequest.current++;setSearching(false);setSearchResults(null)}
  function exitSearch(){resetSearchResults();setSearchAll(false);setSearchQuery('')}
  function cancelSearch(){exitSearch();setError('');filterInput.current?.focus()}
- async function navigate(location:string){exitSearch();setBusy(true);setError('');setSelected(null);setPreview(null);setHighlightTerms([]);try{const result=await localFiles.list(widget.id,location);if(active.current){setFolder(result);setFilter('')}}catch(reason){if(active.current)setError(String(reason))}finally{if(active.current)setBusy(false)}}
+ async function navigate(location:string,reportFailure=false){exitSearch();setBusy(true);setError('');setSelected(null);setPreview(null);setHighlightTerms([]);try{const result=await localFiles.list(widget.id,location);if(active.current){setFolder(result);setFilter('')}else if(reportFailure)throw new Error('The folder view was closed.')}catch(reason){if(active.current)setError(String(reason));if(reportFailure)throw reason}finally{if(active.current)setBusy(false)}}
  async function choose(){if(!localFiles.native){picker.current?.click();return}setBusy(true);setError('');try{const result=await localFiles.choose(widget.id);if(result&&active.current){exitSearch();setFolder(result);setInboxPath('');setFilter('');setSelected(null);setPreview(null);setHighlightTerms([]);update({folderName:result.rootName,folderKey:null})}}catch(reason){setError(String(reason))}finally{setBusy(false)}}
- async function searchEverywhere(){
-  const query=searchQuery.trim();
+ async function searchEverywhere(query=searchQuery.trim(),reportFailure=false){
   if(!query||busy||searching)return;
   const request=++searchRequest.current;
   const current=()=>active.current&&searchRequest.current===request;
   setSearching(true);setError('');
-  try{const results=await localFiles.search(widget.id,query);if(current())setSearchResults(results)}
-  catch(reason){if(current())setError(String(reason))}
+  try{const results=await localFiles.search(widget.id,query);if(current()){setSearchResults(results);return results}if(reportFailure)throw new Error('The search was cancelled.')}
+  catch(reason){if(current())setError(String(reason));if(reportFailure)throw reason}
   finally{if(current())setSearching(false)}
  }
- async function open(file:FileEntry,targetPage?:number){if(file.directory){await navigate(file.path);return}setBusy(true);setError('');setSelected(file);setTargetPdfPage(targetPage);setPreview(null);setHighlightTerms([]);setHighlightMatchCount(0);setHighlightPages(0);setRelatedNotes([]);setRelatedSearched(false);setStudyQuestions([]);setQuestionDraft('');try{const blob=await localFiles.preview(widget.id,file.path),url=URL.createObjectURL(blob),mimeType=blob.type||mimeFor(file.name),text=mimeType==='text/plain'?await blob.text():null;if(active.current){setPreview({url,mimeType,text});const recent={widgetId:widget.id,name:file.name,path:file.path,openedAt:Date.now()};rememberRecentLibraryFile(recent);window.dispatchEvent(new CustomEvent('still-library-file-opened',{detail:recent}))}else URL.revokeObjectURL(url)}catch(reason){if(active.current)setError(String(reason))}finally{if(active.current)setBusy(false)}}
+ async function open(file:FileEntry,targetPage?:number,reportFailure=false){if(file.directory){await navigate(file.path,reportFailure);return}setBusy(true);setError('');setSelected(file);setTargetPdfPage(targetPage);setPreview(null);setHighlightTerms([]);setHighlightMatchCount(0);setHighlightPages(0);setRelatedNotes([]);setRelatedSearched(false);setStudyQuestions([]);setQuestionDraft('');try{const blob=await localFiles.preview(widget.id,file.path),url=URL.createObjectURL(blob),mimeType=blob.type||mimeFor(file.name),text=mimeType==='text/plain'?await blob.text():null;if(active.current){setPreview({url,mimeType,text});const recent={widgetId:widget.id,name:file.name,path:file.path,openedAt:Date.now()};rememberRecentLibraryFile(recent);window.dispatchEvent(new CustomEvent('still-library-file-opened',{detail:recent}))}else{URL.revokeObjectURL(url);if(reportFailure)throw new Error('The file preview was closed.')}}catch(reason){if(active.current)setError(String(reason));if(reportFailure)throw reason}finally{if(active.current)setBusy(false)}}
  useEffect(()=>{const openLocation=(event:Event)=>{const detail=(event as CustomEvent<{widgetId?:string;location?:string}>).detail;if(detail?.widgetId!==widget.id||typeof detail.location!=='string'||detail.location.startsWith('/')||/^[a-z]:/i.test(detail.location)||detail.location.split(/[\\/]/).some(segment=>segment==='..'||segment==='.'||!segment))return;void navigate(detail.location)};window.addEventListener('still-open-library-location',openLocation);return()=>window.removeEventListener('still-open-library-location',openLocation)},[widget.id]);
  useEffect(()=>{const receive=(event:Event)=>{const detail=(event as CustomEvent<{widgetId?:string;path?:string;page?:number}>).detail;if(detail?.widgetId!==widget.id||!detail.path||detail.path.startsWith('/')||/^[a-z]:/i.test(detail.path)||detail.path.split(/[\\/]/).includes('..'))return;void(async()=>{setBusy(true);setError('');try{const path=detail.path!.replaceAll('\\','/'),parent=path.split('/').slice(0,-1).join('/'),listing=await localFiles.list(widget.id,parent);if(!active.current)return;setFolder(listing);setFilter('');const file=listing.entries.find(entry=>entry.path===path&&!entry.directory);if(file)await open(file,detail.page);else setError(t('recentFileUnavailable'))}catch(reason){if(active.current)setError(String(reason))}finally{if(active.current)setBusy(false)}})()};window.addEventListener('still-open-library-recent-file',receive);return()=>window.removeEventListener('still-open-library-recent-file',receive)},[widget.id]);
 
@@ -116,6 +117,39 @@ function FolderWidget({widget,update,notify,workspaceWidgets=[]}:WidgetProps){
  const entries=(searchAll?(searchResults??[]):folder?.entries??[]).filter(file=>(searchAll||file.name.toLowerCase().includes(filter.toLowerCase()))&&(readingFilter==='all'||readingStatus(file.path)===readingFilter));
  const parent=folder?.location.split('/').slice(0,-1).join('/')??'';
 
+ function closePreview(){setSelected(null);setPreview(null);setHighlightTerms([]);setEditingText(false);setError('')}
+ useEffect(()=>{
+  if(!workspaceActive||widget.minimized||!folder)return;
+  return registerFilesView(widget.id,async command=>{
+   if(command.operation==='filesView.exitSearch'){exitSearch();return 'Closed folder search.'}
+   if(busy||searching)throw new Error('Files is busy. Wait for the current operation to finish.');
+   switch(command.operation){
+    case 'filesView.closePreview':closePreview();return 'Closed the file preview.';
+    case 'filesView.filter':setReadingFilter(command.status);return 'Reading list filter: '+command.status;
+    case 'filesView.search':{
+     setSearchAll(true);setSearchQuery(command.query);
+     const rows=await searchEverywhere(command.query,true);
+     if(!rows)throw new Error('The search did not run.');
+     return ['Found '+rows.length+' matching entries.',...rows.slice(0,20).map(entry=>entry.path)].join('\n');
+    }
+    case 'filesView.open':case 'filesView.readingStatus':{
+     if(command.path===''){await navigate('',true);return 'Opened '+folder.rootName;}
+     const parent=command.path.split('/').slice(0,-1).join('/');
+     const directory=await localFiles.list(widget.id,parent);
+     if(!active.current)throw new Error('The Files widget was closed.');
+     const file=directory.entries.find(item=>item.path===command.path);
+     if(!file||file.blocked)throw new Error('The requested entry is unavailable.');
+     if(command.operation==='filesView.readingStatus'){
+      if(file.directory)throw new Error('Choose a file to change its reading status.');
+      changeReadingStatus(file.path,command.status);return file.path+' · '+command.status;
+     }
+     await open(file,undefined,true);
+     if(!file.directory){exitSearch();setFolder(directory);setFilter('')}
+     return 'Opened '+file.path;
+    }
+   }
+  });
+ });
  const listedFiles = folder?.entries.filter(entry => !entry.directory);
  return <div className="files-widget"
   data-files-location={!busy && !searchAll ? folder?.location : undefined}
@@ -148,7 +182,7 @@ function FolderWidget({widget,update,notify,workspaceWidgets=[]}:WidgetProps){
      {folder.truncated&&!searchAll&&<p className="files-message">{t('showingFirstEntries')} {t('openSubfolderToNarrow')}</p>}
     </aside>
     {selected?<section className="folder-file-preview" aria-label={t('previewFile')+' '+selected.name}>
-     <div className="folder-file-preview-head"><button aria-label={t('backToFiles')} onClick={()=>{setSelected(null);setPreview(null);setHighlightTerms([]);setEditingText(false);setError('')}}>← {t('files')}</button><strong title={selected.name}>{selected.name}</strong><label className="files-reading-status"><span>{t('readingStatus')}</span><select aria-label={t('readingStatus')} value={readingStatus(selected.path)} onChange={event=>changeReadingStatus(selected.path,event.target.value as ReadingStatus)}><option value="unread">{t('readingUnread')}</option><option value="in-progress">{t('readingInProgress')}</option><option value="done">{t('readingDone')}</option></select></label>{isPdf(selected)&&highlightPages>0&&<span className="pdf-highlight-count">{t('pdfPageCount').replace('{count}',String(highlightPages))}</span>}{isPdf(selected)&&highlightTerms.length>0&&<span className="pdf-highlight-count">{t('highlightApplied').replace('{count}',String(highlightMatchCount))}</span>}<button disabled={busy} onClick={()=>void openExternal()}>{t('openExternally')}</button></div>
+     <div className="folder-file-preview-head"><button aria-label={t('backToFiles')} onClick={closePreview}>← {t('files')}</button><strong title={selected.name}>{selected.name}</strong><label className="files-reading-status"><span>{t('readingStatus')}</span><select aria-label={t('readingStatus')} value={readingStatus(selected.path)} onChange={event=>changeReadingStatus(selected.path,event.target.value as ReadingStatus)}><option value="unread">{t('readingUnread')}</option><option value="in-progress">{t('readingInProgress')}</option><option value="done">{t('readingDone')}</option></select></label>{isPdf(selected)&&highlightPages>0&&<span className="pdf-highlight-count">{t('pdfPageCount').replace('{count}',String(highlightPages))}</span>}{isPdf(selected)&&highlightTerms.length>0&&<span className="pdf-highlight-count">{t('highlightApplied').replace('{count}',String(highlightMatchCount))}</span>}<button disabled={busy} onClick={()=>void openExternal()}>{t('openExternally')}</button></div>
      <div className="files-preview-actions">
       <details className="files-preview-menu"><summary>{zh?'文件操作':'File actions'}</summary><div className="files-preview-menu-panel" role="menu">{(isPdf(selected)||preview?.mimeType==='text/plain')&&<button role="menuitem" disabled={busy} onClick={()=>{setFileContextMenu(null);void findNotesForSelectedFile()}}>{t('findRelatedNotes')}</button>}{preview?.mimeType==='text/plain'&&localFiles.native&&<button role="menuitem" disabled={busy} onClick={()=>{setTextDraft(preview.text??'');setEditingText(true)}}>{zh?'编辑内容':'Edit contents'}</button>}{localFiles.native&&<><button role="menuitem" disabled={busy} onClick={()=>void manageFile('rename')}>{zh?'重命名文件':'Rename file'}</button><button role="menuitem" disabled={busy} onClick={()=>void manageFile('move')}>{zh?'移动文件':'Move file'}</button><button role="menuitem" disabled={busy} onClick={()=>void manageFile('delete')}>{zh?'从磁盘删除':'Delete from disk'}</button></>}</div></details>
       {(isPdf(selected)||(preview?.mimeType==='text/plain'&&!!preview.text?.trim()))&&<details className="files-preview-menu files-ai-menu">

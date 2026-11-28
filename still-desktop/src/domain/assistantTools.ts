@@ -52,6 +52,7 @@ export type AssistantMemoryProposal = { kind: 'assistant_memory'; text: string }
 
 export type StillWorkspaceToolDependencies = {
   getSnapshot: () => StillToolSnapshot | Promise<StillToolSnapshot>;
+  inspectWorkbench?: () => unknown;
   /** Must delegate to Still's existing whole-action validator, including target and domain checks. */
   validate: (snapshot: StillToolSnapshot, actions: AssistantAction[]) => void | Promise<void>;
   /** Must use the UI-owned original prompt and selection, never model-supplied intent. */
@@ -95,7 +96,7 @@ export function createStillWorkspaceToolRegistry(deps: StillWorkspaceToolDepende
     inspect_workspace: async input => {
       if (!emptyObject(input)) return failed('inspect_workspace takes no arguments.');
       try {
-        return { status: 'succeeded', mutation: 'none', result: inspect(await deps.getSnapshot()) };
+        return { status: 'succeeded', mutation: 'none', result: {...inspect(await deps.getSnapshot()), ...(deps.inspectWorkbench ? {workbench: deps.inspectWorkbench()} : {})} };
       } catch (error) {
         return failed(message(error), 'unknown');
       }

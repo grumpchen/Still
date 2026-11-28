@@ -6,6 +6,9 @@ import type {GlobalWorkspaceLayout,WorkspaceState} from '../domain/workspaces.ts
 import {executeCollectionOperation as sharedCollectionOperation} from './collectionOperations.ts';
 import {localFiles,type LibrarySearchResponse} from './files.ts';
 
+import {operateFilesView,type FilesViewCommand} from './filesViewCommands.ts';
+import {applyWorkspaceCommand,type WorkspaceCommand} from '../domain/workspaceCommands.ts';
+
 export type WorkbenchCaptureEvent=CaptureInboxEvent;
 export type WorkbenchLayoutHandlers={
  save:(name:string,sourceWorkspaceId:string)=>string|Promise<string>;
@@ -22,12 +25,13 @@ export interface WorkbenchServiceOptions {
  saveRule:(text:string)=>Promise<{kind:'rule';rule:unknown}|{kind:'clarification'|'unsupported'|'error';message:string}>;
  getCaptureEvent:(eventId:string)=>Promise<WorkbenchCaptureEvent|null|{ok:true;value:WorkbenchCaptureEvent|null}|{ok:false;message:string}>;getCourses?:()=>RuleCatalog['courses'];
  searchFiles?:(widgetIds:string[],query:string)=>Promise<LibrarySearchResponse>;
+ viewport?:()=>{width:number;height:number};
  storage?:AutomationStorage;
 }
 const JOURNAL_KEY='still.workbench-automation-operations.v1',MAX_JOURNAL=5000;
 type JournalEntry={key:string;signature:string;state:'running'|'complete';result:AutomationOperationResult};
 function memoryStorage():AutomationStorage{return{getItem:key=>localStorage.getItem(key),setItem:(key,value)=>localStorage.setItem(key,value)}};
-function collectionRequest(action:Exclude<WorkbenchAction,{operation:`layout.${string}`}|{operation:'resource.find'}|{operation:'rule.save'}>):CollectionOperationRequest{
+function collectionRequest(action:Exclude<WorkbenchAction,WorkspaceCommand|FilesViewCommand|{operation:`layout.${string}`}|{operation:'resource.find'}|{operation:'rule.save'}>):CollectionOperationRequest{
  switch(action.operation){
   case'link.create':return{type:'link.create',workspaceId:action.workspaceId,...(action.groupId?{groupId:action.groupId}:{}),name:action.name,url:action.url};
   case'link.rename':return{type:'link.rename',origin:action.origin,linkId:action.linkId,name:action.name};
@@ -69,6 +73,19 @@ export function createWorkbenchService(options:WorkbenchServiceOptions){
   return receipts;
  }
  async function executeOne(action:WorkbenchAction):Promise<WorkbenchReceipt>{
+  switch(action.operation){
+   case 'filesView.search':case 'filesView.open':case 'filesView.closePreview':case 'filesView.exitSearch':case 'filesView.filter':case 'filesView.readingStatus': {
+    try{return {operation:action.operation,status:'succeeded',summary:await operateFilesView(action),changed:true}}
+    catch(error){return {operation:action.operation,status:'failed',summary:error instanceof Error?error.message:String(error)}}
+   }
+   case 'workspace.duplicate':case 'workspace.stack':case 'preset.rename':case 'preset.delete':case 'appearance.reset':case 'relaunch.applyAll': {
+    let change;
+    try{change=applyWorkspaceCommand(options.getState(),action,action.operation==='workspace.stack'?options.viewport?.():undefined)}
+    catch(error){return clarification(action,error instanceof Error?error.message:String(error))}
+    await options.commitState(change.next);
+    return {status:'succeeded',operation:action.operation,summary:change.summary,changed:true};
+   }
+  }
   if(action.operation==='layout.list')return{operation:action.operation,status:'succeeded',summary:`Found ${getLayouts().length} saved layouts.`,data:getLayouts().map(({id,name,createdAt,widgets,groups})=>({id,name,createdAt,widgetCount:widgets.length,groupCount:groups.length}))};
   if(action.operation==='layout.find'){
    const term=action.query.toLocaleLowerCase(),found=getLayouts().filter(layout=>layout.name.toLocaleLowerCase().includes(term));return{operation:action.operation,status:'succeeded',summary:`Found ${found.length} matching layouts.`,data:found.map(({id,name,createdAt,widgets,groups})=>({id,name,createdAt,widgetCount:widgets.length,groupCount:groups.length}))};
@@ -91,7 +108,7 @@ export function createWorkbenchService(options:WorkbenchServiceOptions){
   if(action.operation==='rule.save'){
    const result=await options.saveRule(action.text);return result.kind==='rule'?{operation:action.operation,status:'succeeded',summary:'Automation saved.',data:result.rule,changed:true}:result.kind==='clarification'?clarification(action,result.message):{operation:action.operation,status:'failed',summary:result.message};
   }
-  const request=collectionRequest(action as Exclude<WorkbenchAction,{operation:`layout.${string}`}|{operation:'resource.find'}|{operation:'rule.save'}>);
+  const request=collectionRequest(action as Exclude<WorkbenchAction,WorkspaceCommand|FilesViewCommand|{operation:`layout.${string}`}|{operation:'resource.find'}|{operation:'rule.save'}>);
   const result=await collection(request,{source:'assistant'});
   return{operation:action.operation,status:result.status==='failed'&&result.changed?'outcome_unknown':result.status,summary:result.summary,receiptId:result.receiptId,changed:result.changed,...(result.resource?{data:result.resource}:{})};
  }
