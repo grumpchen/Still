@@ -60,6 +60,7 @@ fn click_through_blocked(toggle_enabled:bool)->bool{
 fn action_allowed_for_context(still_context:bool,click_through_active:bool,action:Option<&str>)->bool{
     still_context||(click_through_active&&action==Some("clickThrough"))
 }
+fn accelerator_action_allowed_for_editing(action:&str,editing:bool)->bool{action!="undo"||!editing}
 impl ShortcutConfig {
     fn action(&self, key: u32, ctrl: bool, alt: bool, shift: bool) -> Option<String> {
         if !self.enabled { return None; }
@@ -107,6 +108,7 @@ pub async fn attach(app: AppHandle, webview: &Webview) -> Result<(), String> {
                 if GetKeyState(VK_LWIN.0 as i32) < 0 || GetKeyState(VK_RWIN.0 as i32) < 0 || (ctrl && alt && GetKeyState(VK_RMENU.0 as i32) < 0) { return Ok(()); }
                 let action = app.state::<ShortcutState>().0.lock().ok().and_then(|config| config.action(key, ctrl, alt, shift));
                 if let Some(action) = action {
+                    if !accelerator_action_allowed_for_editing(&action,EDITING.load(std::sync::atomic::Ordering::Relaxed)){return Ok(())}
                     if action == "clickThrough" && !crate::window_input::toggle_enabled() { return Ok(()); }
                     args.SetHandled(true)?;
                     let mut status = COREWEBVIEW2_PHYSICAL_KEY_STATUS::default();
@@ -209,6 +211,11 @@ pub fn install(app:&AppHandle)->Result<(),String>{
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test] fn native_undo_accelerator_yields_to_editing_controls(){
+        assert!(!accelerator_action_allowed_for_editing("undo",true),"Ctrl+Z in an editor must reach the focused document");
+        assert!(accelerator_action_allowed_for_editing("undo",false),"workspace undo remains available outside editing controls");
+        assert!(accelerator_action_allowed_for_editing("overview",true),"other configured shortcuts keep their existing routing");
+    }
     #[test] fn shift_only_bindings_are_valid(){
         let shortcuts=WorkspaceShortcuts{up:Shortcut{key:"W".into(),ctrl:false,alt:false,shift:true},down:Shortcut{key:"S".into(),ctrl:false,alt:false,shift:true},..WorkspaceShortcuts::default()};
         assert!(validate(&shortcuts).is_ok());
