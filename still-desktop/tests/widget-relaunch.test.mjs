@@ -7,6 +7,7 @@ import {mockIPC,clearMocks} from '@tauri-apps/api/mocks';
 import {createInitialState,createWidget,minimizeWidgetInstance} from '../src/domain/workspaces.ts';
 import {createServer} from 'vite';
 import {setNoteText} from './fixtures.mjs';
+import {noteEditorHtmlToMarkdown} from '../src/domain/noteFormatting.ts';
 
 const types=['group','desmos','notes','focus','ai','files','apps','timetable','tagStatus'];
 const rect=(left,top,width,height)=>({x:left,y:top,left,top,right:left+width,bottom:top+height,width,height,toJSON(){return this}});
@@ -87,9 +88,9 @@ test('Notes opens a second tab and switching tabs keeps each page text separate'
   await act(async()=>add.click());
   assert.equal(app.currentState.workspaces[0].widgets[0].noteDocuments.length,2);
   const tabs=[...app.window.document.querySelectorAll('[role="tab"]')];assert.equal(tabs.length,2);assert.equal(tabs[1].getAttribute('aria-selected'),'true');
-  assert.equal(app.window.document.querySelector('[aria-label="Note text"]').value,'');
-  await act(async()=>tabs[0].click());assert.equal(app.window.document.querySelector('[aria-label="Note text"]').value,original.text);
-  await act(async()=>tabs[1].click());assert.equal(app.window.document.querySelector('[aria-label="Note text"]').value,'');
+  assert.equal(noteEditorHtmlToMarkdown(app.window.document.querySelector('[aria-label="Note text"]')),'');
+  await act(async()=>tabs[0].click());assert.equal(noteEditorHtmlToMarkdown(app.window.document.querySelector('[aria-label="Note text"]')),original.text);
+  await act(async()=>tabs[1].click());assert.equal(noteEditorHtmlToMarkdown(app.window.document.querySelector('[aria-label="Note text"]')),'');
  }finally{await app.cleanup()}
 });
 
@@ -204,7 +205,7 @@ test('Previously linked Markdown stays editable after removal of the folder brow
   appText.value='Edited in Notes home';
   app.window.dispatchEvent(new app.window.CustomEvent('still-note-file-saved',{detail:{widgetId:widget.id,path:active.sourcePath,previous:active.text,text:appText.value}}));
   const editor=app.window.document.querySelector('[aria-label="Note text"]');
-  await act(async()=>{Object.getOwnPropertyDescriptor(app.window.HTMLTextAreaElement.prototype,'value').set.call(editor,'Edited in Notes');editor[Object.keys(editor).find(key=>key.startsWith('__reactProps$'))].onChange({target:editor,currentTarget:editor})});
+  await act(async()=>{editor.textContent='Edited in Notes';editor[Object.keys(editor).find(key=>key.startsWith('__reactProps$'))].onInput({target:editor,currentTarget:editor})});
   await act(async()=>editor[Object.keys(editor).find(key=>key.startsWith('__reactProps$'))].onBlur({target:editor,currentTarget:editor}));
   assert.equal(appText.value,'Edited in Notes');
  }finally{await app.cleanup()}
@@ -290,13 +291,13 @@ test('Relaunch remounts an ordinary widget view while preserving its saved conte
  const note=createWidget('notes');note.id='saved-note';note.title='Quick note';setNoteText(note,'Keep this saved text');
  const app=await setup([note]);
  try{
-  const before=app.window.document.querySelector('.note');assert.ok(before);assert.equal(before.value,'Keep this saved text');
+  const before=app.window.document.querySelector('.note');assert.ok(before);assert.equal(before.textContent,'Keep this saved text');
   const card=app.window.document.querySelector('[data-widget-id="saved-note"]');
   await act(async()=>card.dispatchEvent(new app.window.MouseEvent('contextmenu',{bubbles:true,cancelable:true,button:2})));
   const relaunch=[...app.window.document.querySelectorAll('[role="menuitem"]')].find(item=>item.textContent==='Relaunch Quick note');assert.ok(relaunch);
   await act(async()=>relaunch.dispatchEvent(new app.window.MouseEvent('click',{bubbles:true})));
   const after=app.window.document.querySelector('.note');assert.ok(after);assert.notEqual(after,before,'the widget view is remounted');
-  assert.equal(after.value,'Keep this saved text','the saved widget model survives the restart');
+  assert.equal(after.textContent,'Keep this saved text','the saved widget model survives the restart');
   assert.equal(app.currentState.workspaces[0].widgets[0].text,'Keep this saved text');
  }finally{await app.cleanup()}
 });
@@ -309,7 +310,7 @@ test('manual startup keeps the widget card and saved data in place until Relaunc
   assert.equal(app.window.document.querySelector('.note'),null,'the widget view waits for manual relaunch');
   const relaunch=app.window.document.querySelector('[data-widget-id="manual-note"] .widget-startup-waiting button');assert.ok(relaunch);assert.equal(relaunch.textContent,'Relaunch Manual note');
   await act(async()=>relaunch.dispatchEvent(new app.window.MouseEvent('click',{bubbles:true})));
-  assert.equal(app.window.document.querySelector('.note')?.value,'Keep this saved text');
+  assert.equal(app.window.document.querySelector('.note')?.textContent,'Keep this saved text');
   assert.equal(app.currentState.workspaces[0].widgets[0].id,'manual-note');assert.deepEqual(app.currentState.workspaces[0].widgets[0].placement,note.placement);
  }finally{await app.cleanup()}
 });
