@@ -56,6 +56,13 @@ async function setup(widgets,{identity={hwnd:451,pid:902},startupDeferredIds=new
  return{dom,window,calls,get currentState(){return currentState},root,cleanup:async()=>{if(root)await act(async()=>root.unmount());clearMocks();dom.window.close();for(const [key,descriptor]of oldGlobals){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}}};
 }
 
+async function openWidgetMenu(app,widget){
+ const card=app.window.document.querySelector(`[data-widget-id="${widget.id}"]`);
+ await act(async()=>card.dispatchEvent(new app.window.MouseEvent('contextmenu',{bubbles:true,cancelable:true,button:2})));
+ const label=widget.title||(widget.type==='notes'?'Notes 1':widget.type);
+ return app.window.document.querySelector(`[role="menu"][aria-label="${label}"]`);
+}
+
 async function setupStatusCard(widget,{screenshotPluginMode='global',screenshotPluginColors=[],screenshotPluginColorOverrides={}}={}){
  const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true}),oldGlobals=new Map(),{window}=dom;
  for(const key of ['window','document','navigator','HTMLElement','Element','Node','IS_REACT_ACT_ENVIRONMENT'])oldGlobals.set(key,Object.getOwnPropertyDescriptor(globalThis,key));
@@ -210,14 +217,14 @@ test('Previously linked Markdown stays editable after removal of the folder brow
  }finally{await app.cleanup()}
 });
 
-test('Screenshot widget plugin supports global, selected-tag, and off scopes in rendered headers',async()=>{
- const red=createWidget('notes');red.id='red-note';red.tagColor='red';const blue=createWidget('notes');blue.id='blue-note';blue.tagColor='blue';const untagged=createWidget('notes');untagged.id='plain-note';
+test('Screenshot widget plugin supports global, selected-tag, and off scopes in widget context menus',async()=>{
+ const red=createWidget('notes');red.id='red-note';red.title='Red note';red.tagColor='red';const blue=createWidget('notes');blue.id='blue-note';blue.title='Blue note';blue.tagColor='blue';const untagged=createWidget('notes');untagged.id='plain-note';untagged.title='Plain note';
  const global=await setup([red,blue,untagged]);
- try{assert.equal(global.window.document.querySelectorAll('.widget-snapshot-control').length,3)}finally{await global.cleanup()}
+ try{for(const widget of [red,blue,untagged]){const menu=await openWidgetMenu(global,widget);assert.ok([...menu.querySelectorAll('[role="menuitem"]')].some(item=>item.textContent==='Copy screenshot to clipboard'),menu?.textContent)}}finally{await global.cleanup()}
  const selected=await setup([red,blue,untagged],{screenshotPluginMode:'tag-colors',screenshotPluginColors:['red']});
- try{assert.ok(selected.window.document.querySelector('[data-widget-id="red-note"] .widget-snapshot-control'));assert.equal(selected.window.document.querySelector('[data-widget-id="blue-note"] .widget-snapshot-control'),null);assert.equal(selected.window.document.querySelector('[data-widget-id="plain-note"] .widget-snapshot-control'),null)}finally{await selected.cleanup()}
+ try{assert.ok([...(await openWidgetMenu(selected,red)).querySelectorAll('[role="menuitem"]')].some(item=>item.textContent==='Copy screenshot to clipboard'));assert.equal([...(await openWidgetMenu(selected,blue)).querySelectorAll('[role="menuitem"]')].some(item=>item.textContent==='Copy screenshot to clipboard'),false);assert.equal([...(await openWidgetMenu(selected,untagged)).querySelectorAll('[role="menuitem"]')].some(item=>item.textContent==='Copy screenshot to clipboard'),false)}finally{await selected.cleanup()}
  const off=await setup([red],{screenshotPluginMode:'off'});
- try{assert.equal(off.window.document.querySelector('.widget-snapshot-control'),null)}finally{await off.cleanup()}
+ try{assert.equal([...(await openWidgetMenu(off,red)).querySelectorAll('[role="menuitem"]')].some(item=>item.textContent==='Copy screenshot to clipboard'),false)}finally{await off.cleanup()}
 });
 
 test('Clock add-on button follows global and tag-color visibility settings',async()=>{
@@ -270,20 +277,20 @@ test('Clock is added from a widget plus menu and opens its floating timer from t
  }finally{await app.cleanup()}
 });
 
-test('widget headers omit relaunch while Export PNG and manual startup recovery remain available',async()=>{
+test('widget menus omit relaunch while Export PNG and manual startup recovery remain available',async()=>{
  const note=createWidget('notes');note.id='button-note';note.title='Button note';
  const minimized=minimizeWidgetInstance({...createWidget('focus'),id:'minimized-focus',title:'Minimized focus'},1400,900);
  const hidden=await setup([note,minimized],{showWidgetRelaunchAction:false,showWidgetExportPngAction:false,startupDeferredIds:new Set(['button-note'])});
  try{
   assert.equal(hidden.window.document.querySelector('[data-widget-id="button-note"] .widget-relaunch-control'),null,'the normal card Relaunch toolbar control can be hidden');
   assert.equal(hidden.window.document.querySelector('[data-widget-id="minimized-focus"] .widget-minimized-relaunch'),null,'the minimized-card Relaunch control follows the same setting');
-  assert.equal(hidden.window.document.querySelector('[data-widget-id="button-note"] .widget-export-control'),null,'the PNG export button can be hidden');
+  const hiddenMenu=await openWidgetMenu(hidden,note);assert.equal([...hiddenMenu.querySelectorAll('[role="menuitem"]')].some(item=>item.textContent==='Export PNG'),false,'the PNG export menu item can be hidden');
   assert.ok([...hidden.window.document.querySelectorAll('[data-widget-id="button-note"] button')].some(button=>button.textContent==='Relaunch Button note'),'manual-startup recovery remains available when its toolbar button is hidden');
  }finally{await hidden.cleanup()}
  const onlyExport=await setup([note],{showWidgetRelaunchAction:false,showWidgetExportPngAction:true});
- try{assert.ok(onlyExport.window.document.querySelector('[data-widget-id="button-note"] .widget-export-control'),'PNG export can remain visible while Relaunch is hidden')}finally{await onlyExport.cleanup()}
+ try{const menu=await openWidgetMenu(onlyExport,note);assert.ok([...menu.querySelectorAll('[role="menuitem"]')].some(item=>item.textContent==='Export PNG'),'PNG export can remain available while Relaunch is hidden')}finally{await onlyExport.cleanup()}
  const noArrow=await setup([note],{showWidgetRelaunchAction:true,showWidgetExportPngAction:false});
- try{assert.equal(noArrow.window.document.querySelector('[aria-label="Relaunch Button note"]'),null);assert.equal(noArrow.window.document.querySelector('[data-widget-id="button-note"] .widget-export-control'),null)}finally{await noArrow.cleanup()}
+ try{assert.equal(noArrow.window.document.querySelector('[aria-label="Relaunch Button note"]'),null);const menu=await openWidgetMenu(noArrow,note);assert.equal([...menu.querySelectorAll('[role="menuitem"]')].some(item=>item.textContent==='Export PNG'),false)}finally{await noArrow.cleanup()}
 });
 
 test('Relaunch remounts an ordinary widget view while preserving its saved content',async()=>{
