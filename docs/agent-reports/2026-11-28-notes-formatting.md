@@ -26,3 +26,9 @@
 
 ## Handoff
 - Notes emits `still-create-flashcards` with `{widgetId,noteId,title,text}`. The stale-safe saved-deck listener and source navigation listener will be added after the flashcard contract branch is ready.
+
+## Flashcards and editor polish follow-up
+- Cherry-picked `fb6ffe6` (`agent/luna/flashcard-plugin`) and connected Notes to its save/review contract. Notes verifies the exact note text before saving a deck into the workspace snapshot, and source navigation opens the note and selects the quoted text when found.
+- Checklist insertion now starts blank; Enter creates a following task item and a second Enter exits an empty task line. Literal Markdown markers typed in the editor are escaped; paste inserts plain text only.
+- Added focused stale-save, note source navigation, checklist enter/exit, and literal-marker regressions.
+- Checks: `pnpm check`; 31 focused tests; Chromium Notes formatting E2E passed.
