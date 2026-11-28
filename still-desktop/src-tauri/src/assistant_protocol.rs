@@ -65,26 +65,27 @@ pub struct Reply {
     // Some JSON-mode providers omit an empty layout array for ordinary chat.
     // Treat omission like `[]`; validated layout actions still go through the
     // same structural and intent checks below.
-    #[serde(default, deserialize_with = "deserialize_reply_layout")]
+    #[serde(default, deserialize_with = "deserialize_empty_vec")]
     pub layout: Vec<LayoutItem>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_empty_vec")]
     pub actions: Vec<AssistantAction>,
-    #[serde(default, rename = "workbenchActions", skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, rename = "workbenchActions", deserialize_with = "deserialize_empty_vec", skip_serializing_if = "Vec::is_empty")]
     pub workbench_actions: Vec<WorkbenchAction>,
-    #[serde(default, rename = "fileProposals")]
+    #[serde(default, rename = "fileProposals", deserialize_with = "deserialize_empty_vec")]
     pub file_proposals: Vec<FileProposal>,
-    #[serde(default, rename = "calendarProposals")]
+    #[serde(default, rename = "calendarProposals", deserialize_with = "deserialize_empty_vec")]
     pub calendar_proposals: Vec<CalendarEventDraft>,
     #[serde(default, rename = "libraryProposal", deserialize_with = "deserialize_library_proposal", skip_serializing_if = "Option::is_none")]
     pub library_proposal: Option<LibraryProposal>,
 }
 
-// Some models use null to indicate there is no layout proposal.
-fn deserialize_reply_layout<'de, D>(deserializer: D) -> Result<Vec<LayoutItem>, D::Error>
+// Some JSON-mode providers use null for an empty proposal array.
+fn deserialize_empty_vec<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
 where
     D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
 {
-    Ok(Option::<Vec<LayoutItem>>::deserialize(deserializer)?.unwrap_or_default())
+    Ok(Option::<Vec<T>>::deserialize(deserializer)?.unwrap_or_default())
 }
 
 #[derive(Deserialize, Serialize)]
