@@ -33,6 +33,11 @@ export const widgetAddonCatalog:readonly WidgetAddonDefinition[]=[
   toggle:widget=>({taskStatus:widget.taskStatus===null?'todo':null as WidgetTaskStatus|null}),
  },
  {
+  id:'flashcards',label:'flashcardsAddon',addLabel:'addFlashcardsAddon',removeLabel:'removeFlashcardsAddon',icon:'study',availableFor:type=>type==='notes',
+  isEnabled:widget=>widget.pluginControls.includes('flashcards'),
+  toggle:widget=>({pluginControls:widget.pluginControls.includes('flashcards')?widget.pluginControls.filter(control=>control!=='flashcards'):[...widget.pluginControls,'flashcards']}),
+ },
+ {
   id:'clock-timer',label:'clockAddon',addLabel:'addClockTimerPlugin',removeLabel:'removeClockTimerPlugin',icon:'clock',availableFor:type=>type!=='group',
   isEnabled:widget=>widget.clockPluginEnabled,
   toggle:widget=>({clockPluginEnabled:!widget.clockPluginEnabled}),
