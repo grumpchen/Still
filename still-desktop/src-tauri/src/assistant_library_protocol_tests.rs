@@ -14,7 +14,7 @@ fn library_shared_safety_cases_match_all_provider_parsers(){
 #[test]
 fn library_provider_schemas_and_consent_guidance_are_available(){
     for provider in [Provider::Gemini,Provider::Openai,Provider::Opencode,Provider::Deepseek] {
-        let request=Request{provider,model:match provider{Provider::Gemini=>"gemini-2.5-flash",Provider::Openai=>"gpt-4o-mini",Provider::Opencode=>"mimo-v2.6-flash",Provider::Deepseek=>"deepseek-chat"}.into(),messages:vec![Message{role:"user".into(),text:"Organise Library".into()}],context:String::new(),image:None,session_id:None};
+        let request=Request{provider,model:match provider{Provider::Gemini=>"gemini-2.5-flash",Provider::Openai=>"gpt-4o-mini",Provider::Opencode=>"mimo-v2.6-flash",Provider::Deepseek=>"deepseek-chat"}.into(),messages:vec![Message{role:"user".into(),text:"Organise Library".into()}],context:String::new(),mode_instructions:None,image:None,session_id:None};
         let payload=match provider{Provider::Gemini=>body(&request),Provider::Openai=>openai_body(&request),Provider::Opencode=>opencode_body(&request),Provider::Deepseek=>deepseek_body(&request)}.unwrap();
         if provider==Provider::Deepseek { assert_eq!(payload["response_format"]["type"],"json_object"); } else {
         let schema=if provider==Provider::Gemini{&payload["generationConfig"]["responseSchema"]}else{&payload["response_format"]["json_schema"]["schema"]};
