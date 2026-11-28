@@ -1,6 +1,6 @@
 import test,{afterEach} from 'node:test';
 import assert from 'node:assert/strict';
-import {createInitialState,createWorkspace} from '../src/domain/workspaces.ts';
+import {createInitialState,createWorkspace,createWidget} from '../src/domain/workspaces.ts';
 import {configureCollectionOperationHost} from '../src/platform/collectionOperations.ts';
 import {localFiles} from '../src/platform/files.ts';
 import {createWorkbenchService} from '../src/platform/workbenchOperations.ts';
@@ -9,6 +9,13 @@ function installStorage(){const values=new Map();globalThis.localStorage={getIte
 afterEach(()=>{delete globalThis.localStorage});
 function stateWithCourses(){const state=createInitialState(),source=createWorkspace('Source',[]),target=createWorkspace('Biology',[]);state.workspaces.push(source,target);return{state,source,target}}
 const emptyLayoutHandlers={save:()=> 'saved',apply:()=> 'applied',rename:()=> 'renamed',duplicate:()=> 'duplicated',delete:()=> 'deleted'};
+
+test('widget workbench actions require a clear matching request and return the host receipt',async()=>{
+ const {state,source}=stateWithCourses();state.activeId=source.id;const browser=createWidget('browser');browser.id='browser-1';browser.title='Research';source.widgets.push(browser);const called=[];
+ const service=createWorkbenchService({getState:()=>state,commitState(){},layoutHandlers:emptyLayoutHandlers,saveRule:async()=>({kind:'unsupported',message:'unsupported'}),getCaptureEvent:async()=>null,widgetAction:async(action,prompt)=>{called.push({action,prompt});return'Opened example.edu in Research.'}});
+ const unclear=await service.executeWorkbenchActions([{operation:'widget.browser.navigate',widgetId:browser.id,url:'https://example.edu'}],'What is example.edu?');assert.equal(unclear[0].status,'needs_clarification');assert.equal(called.length,0);
+ const done=await service.executeWorkbenchActions([{operation:'widget.browser.navigate',widgetId:browser.id,url:'https://example.edu'}],'Open https://example.edu in the Research Browser widget');assert.equal(done[0].status,'succeeded');assert.equal(done[0].changed,true);assert.match(done[0].summary,/Opened example.edu/);assert.equal(called.length,1);
+});
 
 test('workbench snapshot lists workspace resource and layout metadata without exposing widget content',()=>{
  const {state,source}=stateWithCourses();source.widgets.push({...createWorkspace('Temp',['files']).widgets[0],folderKey:null,folderName:'Reading'});source.groups=[{id:'group-saved',name:'Saved',shortcuts:[{id:'saved-link',name:'Lecture',url:'https://example.edu'}],widgets:[],expanded:false}];state.globalLayouts=[{id:'layout-1',name:'Exam setup',createdAt:12,widgets:[],groups:[]}];

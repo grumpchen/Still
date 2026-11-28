@@ -7,6 +7,7 @@ import {executeCollectionOperation as sharedCollectionOperation} from './collect
 import {localFiles,type LibrarySearchResponse} from './files.ts';
 
 export type WorkbenchCaptureEvent=CaptureInboxEvent;
+export type WidgetWorkbenchAction=Extract<WorkbenchAction,{operation:`widget.${string}`|`calendar.${string}`}>
 export type WorkbenchLayoutHandlers={
  save:(name:string,sourceWorkspaceId:string)=>string|Promise<string>;
  apply:(layoutId:string,targetWorkspaceId:string,mode:'append'|'replace')=>string|Promise<string>;prepare?:(layoutId:string,targetWorkspaceId:string,mode:'append'|'replace')=>string|Promise<string>;
@@ -22,12 +23,13 @@ export interface WorkbenchServiceOptions {
  saveRule:(text:string)=>Promise<{kind:'rule';rule:unknown}|{kind:'clarification'|'unsupported'|'error';message:string}>;
  getCaptureEvent:(eventId:string)=>Promise<WorkbenchCaptureEvent|null|{ok:true;value:WorkbenchCaptureEvent|null}|{ok:false;message:string}>;getCourses?:()=>RuleCatalog['courses'];
  searchFiles?:(widgetIds:string[],query:string)=>Promise<LibrarySearchResponse>;
+ widgetAction?:(action:WidgetWorkbenchAction,prompt:string)=>Promise<string>;
  storage?:AutomationStorage;
 }
 const JOURNAL_KEY='still.workbench-automation-operations.v1',MAX_JOURNAL=5000;
 type JournalEntry={key:string;signature:string;state:'running'|'complete';result:AutomationOperationResult};
 function memoryStorage():AutomationStorage{return{getItem:key=>localStorage.getItem(key),setItem:(key,value)=>localStorage.setItem(key,value)}};
-function collectionRequest(action:Exclude<WorkbenchAction,{operation:`layout.${string}`}|{operation:'resource.find'}|{operation:'rule.save'}>):CollectionOperationRequest{
+function collectionRequest(action:Exclude<WorkbenchAction,{operation:`layout.${string}`}|{operation:`widget.${string}`}|{operation:`calendar.${string}`}|{operation:'resource.find'}|{operation:'rule.save'}>):CollectionOperationRequest{
  switch(action.operation){
   case'link.create':return{type:'link.create',workspaceId:action.workspaceId,...(action.groupId?{groupId:action.groupId}:{}),name:action.name,url:action.url};
   case'link.rename':return{type:'link.rename',origin:action.origin,linkId:action.linkId,name:action.name};
@@ -63,12 +65,24 @@ export function createWorkbenchService(options:WorkbenchServiceOptions){
   const state=options.getState();
   return{workspaces:state.workspaces.map(workspace=>({id:workspace.id,name:workspace.name,role:workspace.role,files:workspace.widgets.filter(widget=>widget.type==='files').map(widget=>({widgetId:widget.id,name:widget.fileName||widget.folderName||widget.title||'Files',kind:widget.fileKey?'document':'folder',connected:!!(widget.fileKey||widget.folderKey||widget.folderName)})),links:[...workspace.groups.flatMap(group=>group.shortcuts.map(link=>({id:link.id,name:link.name,url:link.url,origin:{kind:'group' as const,workspaceId:workspace.id,groupId:group.id}}))),...workspace.widgets.filter(widget=>widget.type==='browser'||widget.type==='group'&&!workspace.groups.some(group=>group.id===(widget.groupId??widget.id))).flatMap(widget=>widget.shortcuts.map(link=>({id:link.id,name:link.name,url:link.url,origin:{kind:'browser' as const,workspaceId:workspace.id,widgetId:widget.id}})))]})),layouts:getLayouts().map(layout=>({id:layout.id,name:layout.name,createdAt:layout.createdAt,widgetCount:layout.widgets.length,groupCount:layout.groups.length}))};
  }
- async function executeWorkbenchActions(raw:WorkbenchAction[]):Promise<WorkbenchReceipt[]>{
+ async function executeWorkbenchActions(raw:WorkbenchAction[],prompt=''):Promise<WorkbenchReceipt[]>{
   const actions=parseWorkbenchActions(raw);validateWorkbenchActionBatch(actions);const receipts:WorkbenchReceipt[]=[];
-  for(const action of actions){try{receipts.push(await executeOne(action))}catch(error){const readOnly=action.operation==='layout.list'||action.operation==='layout.find'||action.operation==='resource.find';receipts.push({operation:action.operation,status:readOnly?'failed':'outcome_unknown',summary:error instanceof Error?error.message:String(error)})}}
+  for(const action of actions){try{receipts.push(await executeOne(action,prompt))}catch(error){const readOnly=action.operation==='layout.list'||action.operation==='layout.find'||action.operation==='resource.find';receipts.push({operation:action.operation,status:readOnly?'failed':'outcome_unknown',summary:error instanceof Error?error.message:String(error)})}}
   return receipts;
  }
- async function executeOne(action:WorkbenchAction):Promise<WorkbenchReceipt>{
+ async function executeOne(action:WorkbenchAction,prompt:string):Promise<WorkbenchReceipt>{
+  if(action.operation.startsWith('widget.')||action.operation.startsWith('calendar.')){
+   const widgetAction=action as WidgetWorkbenchAction,state=options.getState(),owner=state.workspaces.find(item=>item.id===state.activeId),widget=owner?.widgets.find(item=>item.id===widgetAction.widgetId);
+   if(!owner||!widget)return{operation:action.operation,status:'needs_clarification',summary:'The selected widget is no longer available. Select the current widget and try again.'};
+   const targetTitle=widgetAction.operation==='calendar.delete'&&widget.type==='calendar'?widget.calendarEvents.find(event=>event.id===widgetAction.eventId)?.title??'':widget.title;
+   const targetCount=owner.widgets.filter(item=>item.type===widget.type).length;
+   const clearIntent=widgetOperationMatchesPrompt(widgetAction,prompt,targetTitle,widget.type,targetCount);
+   if(!clearIntent)return{operation:action.operation,status:'needs_clarification',summary:'Please state the exact widget operation and target clearly. Nothing was changed.'};
+   if(widgetAction.operation==='widget.browser.navigate'&&widget.type!=='browser'||widgetAction.operation==='widget.aiCommand.edit'&&widget.type!=='aiCommand'||widgetAction.operation==='widget.taskStatus.set'&&widget.type==='tagStatus'||widgetAction.operation==='calendar.add'&&widget.type!=='calendar'||widgetAction.operation==='calendar.delete'&&widget.type!=='calendar')return{operation:action.operation,status:'needs_clarification',summary:'That operation does not match the selected widget type.'};
+   if(!options.widgetAction)return{operation:action.operation,status:'failed',summary:'Still could not run this widget operation.'};
+   const summary=await options.widgetAction(widgetAction,prompt);
+   return{operation:action.operation,status:'succeeded',summary,changed:true};
+  }
   if(action.operation==='layout.list')return{operation:action.operation,status:'succeeded',summary:`Found ${getLayouts().length} saved layouts.`,data:getLayouts().map(({id,name,createdAt,widgets,groups})=>({id,name,createdAt,widgetCount:widgets.length,groupCount:groups.length}))};
   if(action.operation==='layout.find'){
    const term=action.query.toLocaleLowerCase(),found=getLayouts().filter(layout=>layout.name.toLocaleLowerCase().includes(term));return{operation:action.operation,status:'succeeded',summary:`Found ${found.length} matching layouts.`,data:found.map(({id,name,createdAt,widgets,groups})=>({id,name,createdAt,widgetCount:widgets.length,groupCount:groups.length}))};
@@ -91,7 +105,7 @@ export function createWorkbenchService(options:WorkbenchServiceOptions){
   if(action.operation==='rule.save'){
    const result=await options.saveRule(action.text);return result.kind==='rule'?{operation:action.operation,status:'succeeded',summary:'Automation saved.',data:result.rule,changed:true}:result.kind==='clarification'?clarification(action,result.message):{operation:action.operation,status:'failed',summary:result.message};
   }
-  const request=collectionRequest(action as Exclude<WorkbenchAction,{operation:`layout.${string}`}|{operation:'resource.find'}|{operation:'rule.save'}>);
+  const request=collectionRequest(action as Exclude<WorkbenchAction,{operation:`layout.${string}`}|{operation:`widget.${string}`}|{operation:`calendar.${string}`}|{operation:'resource.find'}|{operation:'rule.save'}>);
   const result=await collection(request,{source:'assistant'});
   return{operation:action.operation,status:result.status==='failed'&&result.changed?'outcome_unknown':result.status,summary:result.summary,receiptId:result.receiptId,changed:result.changed,...(result.resource?{data:result.resource}:{})};
  }
@@ -139,4 +153,16 @@ export function createWorkbenchService(options:WorkbenchServiceOptions){
  }
  const automationService:AutomationOperationService={execute:executeAutomation};
  return{snapshot,executeWorkbenchActions,automationService};
+}
+
+function widgetOperationMatchesPrompt(action:WidgetWorkbenchAction,prompt:string,title:string,type:string,count:number):boolean{
+ const value=prompt.toLocaleLowerCase(),name=title.trim().toLocaleLowerCase(),typeName=type==='aiCommand'?'ai command':type.toLocaleLowerCase(),named=name?value.includes(name):value.includes(typeName),unique=count===1;
+ switch(action.operation){
+  case'widget.browser.navigate':return named&&/\b(?:open|go|navigate|browse|change|set|update)\b/i.test(prompt)&&/\b(?:browser|website|site|url)\b/i.test(prompt)&&value.includes(new URL(action.url).hostname.toLocaleLowerCase());
+  case'widget.aiCommand.edit':return named&&/\b(?:edit|change|update|rewrite|rename)\b/i.test(prompt)&&/\b(?:ai\s+command|command\s+prompt)\b/i.test(prompt)&&type==='aiCommand';
+  case'widget.taskStatus.set':return named&&/\b(?:mark|set|change|update)\b/i.test(prompt)&&/\b(?:status|todo|to-do|in.progress|done|complete|completed|clear)\b/i.test(prompt)&&((action.status==='done'||action.status==='in-progress')&&new RegExp(action.status==='done'?'\\b(?:done|complete|completed)\\b':'\\b(?:in.progress|in progress)\\b','i').test(prompt)||action.status==='todo'&&/\b(?:todo|to-do)\b/i.test(prompt)||action.status==='none'&&/\b(?:clear|remove|unset)\b/i.test(prompt));
+  case'widget.pin.set':return named&&/\b(?:pin|pinned|unpin)\b/i.test(prompt)&&(action.enabled?/\bpin(?:ned)?\b/i.test(prompt)&&!/\bunpin\b/i.test(prompt):/\bunpin\b/i.test(prompt));
+  case'calendar.add':return type==='calendar'&&(named||unique&&/\bcalendar\b/i.test(prompt))&&/\b(?:add|create|schedule|put)\b/i.test(prompt)&&/\b(?:calendar|event|events)\b/i.test(prompt);
+  case'calendar.delete':return type==='calendar'&&!!name&&value.includes(name)&&/\b(?:delete|remove|cancel)\b/i.test(prompt)&&/\b(?:calendar|event|events)\b/i.test(prompt);
+ }
 }

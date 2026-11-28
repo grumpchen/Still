@@ -3,7 +3,7 @@ import {useEffect,useRef,useState} from 'react';
 import type {WorkspaceState} from './domain/workspaces.ts';
 import type {WorkbenchAction} from './domain/workbenchActions.ts';
 import type {RuleCatalog} from './domain/automationRules.ts';
-import {createWorkbenchService,type WorkbenchLayoutHandlers,type WorkbenchReceipt} from './platform/workbenchOperations.ts';
+import {createWorkbenchService,type WorkbenchLayoutHandlers,type WorkbenchReceipt,type WidgetWorkbenchAction} from './platform/workbenchOperations.ts';
 import {configureCollectionOperationHost} from './platform/collectionOperations.ts';
 import {automationCaptureInbox} from './platform/automationCaptureInbox.ts';
 import {localFiles} from './platform/files.ts';
@@ -11,7 +11,7 @@ import {useAutomationRunner,type AutomationRunnerApi} from './useAutomationRunne
 import {boundedWorkbenchContext} from './domain/workbenchContext.ts';
 
 const storage={getItem:(key:string)=>localStorage.getItem(key),setItem:(key:string,value:string)=>localStorage.setItem(key,value)};
-export interface StillWorkbenchHost {getState:()=>WorkspaceState;commitState:(state:WorkspaceState)=>void;layoutHandlers:WorkbenchLayoutHandlers;onRuleModeRequired?:(text:string)=>void}
+export interface StillWorkbenchHost {getState:()=>WorkspaceState;commitState:(state:WorkspaceState)=>void;layoutHandlers:WorkbenchLayoutHandlers;widgetAction?:(action:WidgetWorkbenchAction,prompt:string)=>Promise<string>;onRuleModeRequired?:(text:string)=>void}
 export function ruleRequestText(text:string):string{return text.trim().replace(/^(?:please\s+)?(?:save|create|add)\s+(?:an?\s+)?(?:automation\s+)?rule\s*[:：,，]?\s*/i,'').replace(/^(?:请)?(?:保存|创建|添加)(?:一条|一个)?(?:自动)?规则\s*[:：,，]?\s*/,'')}
 export function isDirectRuleRequest(text:string):boolean{
  if(/^(?:how\s+(?:do|can|to)|what\s+|为什么|如何|怎么|怎样)/i.test(text.trim()))return false;
@@ -38,11 +38,12 @@ export function useStillWorkbench(host:StillWorkbenchHost){
   layoutHandlers:{save:(...args)=>latest.current.layoutHandlers.save(...args),apply:(...args)=>latest.current.layoutHandlers.apply(...args),rename:(...args)=>latest.current.layoutHandlers.rename(...args),duplicate:(...args)=>latest.current.layoutHandlers.duplicate(...args),delete:(...args)=>latest.current.layoutHandlers.delete(...args),prepare:(...args)=>(latest.current.layoutHandlers.prepare??latest.current.layoutHandlers.apply)(...args)},
   saveRule:async (text:string)=>{const runner=runnerRef.current;if(!runner)return{kind:'error' as const,message:'Rules are still starting. Try again.'};return runner.createFromText(ruleRequestText(text))},
   getCaptureEvent:async id=>{const result=automationCaptureInbox.get(id);if(!result.ok)throw new Error(result.message);return result.value},
-  searchFiles:async(ids,query)=>{const state=latest.current.getState();await Promise.allSettled(ids.map(async id=>{const widget=state.workspaces.flatMap(w=>w.widgets).find(w=>w.id===id);if(widget?.folderKey&&widget.folderKey!=='still-downloads-inbox')await localFiles.reuse(id,widget.folderKey)}));return localFiles.searchLibrary(ids,query)},storage,
+  searchFiles:async(ids,query)=>{const state=latest.current.getState();await Promise.allSettled(ids.map(async id=>{const widget=state.workspaces.flatMap(w=>w.widgets).find(w=>w.id===id);if(widget?.folderKey&&widget.folderKey!=='still-downloads-inbox')await localFiles.reuse(id,widget.folderKey)}));return localFiles.searchLibrary(ids,query)},
+  widgetAction:(action,prompt)=>{if(!latest.current.widgetAction)throw new Error('The widget operation handler is unavailable.');return latest.current.widgetAction(action,prompt)},storage,
  }));
  useEffect(()=>{configureCollectionOperationHost({getState:()=>latest.current.getState(),commitState:next=>latest.current.commitState(next)})},[]);
  const runner=useAutomationRunner({storage,getCatalog,getService:()=>service.automationService});runnerRef.current=runner;
- const executeWorkbench=async(actions:WorkbenchAction[],_prompt:string)=>{const receipts=await service.executeWorkbenchActions(actions);lastResults.current=receipts;return receipts.map(describeReceipt).join('\n\n')};
+ const executeWorkbench=async(actions:WorkbenchAction[],prompt:string)=>{const receipts=await service.executeWorkbenchActions(actions,prompt);lastResults.current=receipts;return receipts.map(describeReceipt).join('\n\n')};
  const pendingRename=useRef<{workspaceId:string;widgetId:string;path:string}|null>(null);
  const renameReplyName=(prompt:string)=>prompt.trim().match(/^(?:to\s+|改成|改为)?[“"']?([^\\/:*?"<>|\r\n]+\.[a-z0-9]{1,12})[”"']?$/i)?.[1];
  const canHandleDirectWorkbenchRequest=(prompt:string)=>isDirectRuleRequest(prompt)||isFilesLocationQuestion(prompt)||!!currentFileRequest(prompt)||!!(pendingRename.current&&renameReplyName(prompt));

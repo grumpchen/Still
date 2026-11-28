@@ -22,9 +22,11 @@ import AssistantPanel from './AssistantPanel.tsx';
 import QuickCapture from './QuickCapture.tsx';
 import {AutomationPanel} from './AutomationPanel.tsx';
 import {useStillWorkbench} from './useStillWorkbench.tsx';
+import type {WidgetWorkbenchAction} from './platform/workbenchOperations.ts';
 import {automationCaptureInbox} from './platform/automationCaptureInbox.ts';
 import {addFocusForAssistantTimer,applyAssistantWidgetActions,applyLayoutPlan,assistantTrayItems,MAX_ASSISTANT_WIDGETS,MAX_ASSISTANT_WORKSPACES,validateAssistantActions,validateAssistantActionIntent,type AssistantAction,type LayoutPlan} from './domain/assistant.ts';
 import {checkedCalendarEvents,checkedStudyCalendarDrafts,type StudyCalendarEventDraft} from './domain/studyCalendar.ts';
+import {normalizeUrl} from './domain/browser.ts';
 import {canvasExtent,canvasHeight,nextPlacement,placement,constrainPlacement} from './domain/layout.ts';
 import type {SnapLayoutId} from './domain/snapLayouts.ts';
 import { nativeShortcuts } from './platform/shortcuts.ts';
@@ -440,6 +442,35 @@ export default function App(){
     setState(value=>({...value,workspaces:value.workspaces.map(item=>item.id!==workspaceId?item:{...item,widgets:item.widgets.map(widget=>widget.id!==widgetId?widget:{...widget,calendarEvents:merged})})}));
     return translate(state.locale,'calendarProposalAdded').replace('{count}',String(safeDrafts.length));
   }
+  async function runWorkbenchWidgetAction(action:WidgetWorkbenchAction,_prompt:string):Promise<string>{
+    const current=captureState.current,workspace=current.workspaces.find(item=>item.id===current.activeId),widget=workspace?.widgets.find(item=>item.id===action.widgetId);
+    if(!workspace||!widget)throw new Error('The selected widget is no longer available. Nothing was changed.');
+    switch(action.operation){
+      case'widget.browser.navigate':{
+        if(widget.type!=='browser')throw new Error('Select a Browser widget. Nothing was changed.');
+        const url=normalizeUrl(action.url);updateWidget(widget.id,{browserUrl:url});return current.locale==='zh-CN'?`已在浏览器组件中打开 ${url}。`:`Opened ${url} in the Browser widget.`;
+      }
+      case'widget.aiCommand.edit':{
+        if(widget.type!=='aiCommand')throw new Error('Select an AI Command widget. Nothing was changed.');
+        if(action.text!==undefined&&action.text.length>8000)throw new Error('AI Command prompts are limited to 8,000 characters. Nothing was changed.');
+        updateWidget(widget.id,{...(action.title!==undefined?{title:action.title.trim()}:{}),...(action.text!==undefined?{text:action.text}:{})});return current.locale==='zh-CN'?'已更新 AI 指令组件。':'Updated the AI Command widget.';
+      }
+      case'widget.taskStatus.set':{
+        if(widget.type==='tagStatus')throw new Error('Choose a regular workspace widget. Nothing was changed.');
+        updateWidget(widget.id,{taskStatus:action.status==='none'?null:action.status});return current.locale==='zh-CN'?`已更新 ${widget.title||translate(current.locale,'widget_'+widget.type)} 的任务状态。`:`Updated the task status for ${widget.title||translate(current.locale,'widget_'+widget.type)}.`;
+      }
+      case'widget.pin.set':{
+        updateWidget(widget.id,{pinPluginEnabled:action.enabled,pinned:action.enabled?(action.pinned??true):false});return action.enabled?(current.locale==='zh-CN'?'已置顶组件。':'Pinned the widget.'):(current.locale==='zh-CN'?'已移除置顶插件。':'Removed the Pin to Front add-on.');
+      }
+      case'calendar.add':return addAssistantCalendarEvents(workspace.id,widget.id,action.events);
+      case'calendar.delete':{
+        if(widget.type!=='calendar')throw new Error('Select a Calendar widget. Nothing was changed.');
+        const event=widget.calendarEvents.find(item=>item.id===action.eventId);if(!event)throw new Error('That calendar event is no longer available. Nothing was changed.');
+        undo.current=current;setState(value=>({...value,workspaces:value.workspaces.map(item=>item.id!==workspace.id?item:{...item,widgets:item.widgets.map(candidate=>candidate.id!==widget.id?candidate:{...candidate,calendarEvents:candidate.calendarEvents.filter(existing=>existing.id!==action.eventId)})})}));
+        return current.locale==='zh-CN'?`已从日历移除「${event.title}」。`:`Removed “${event.title}” from the Calendar widget.`;
+      }
+    }
+  }
   function markAppPanelsNoLongerOpen(snapshot:WorkspaceState,ids:readonly string[]):WorkspaceState{
     return markReleasedAppPanels(snapshot,ids);
   }
@@ -661,7 +692,7 @@ export default function App(){
     commitSnapshot(next);undo.current=current;
     const result={widgetId:widget.id,name:widget.fileName||file.name,sourceId:file.sourceId,workspaceId};capturedPdfAttempts.current.set(captureId,result);return result;
   }
-  const workbench=useStillWorkbench({getState:()=>captureState.current,commitState:next=>{const previous=captureState.current;commitSnapshot(next);undo.current=previous},layoutHandlers:{save:saveGlobalLayout,apply:applyGlobalLayout,prepare:(id,target,mode)=>applyGlobalLayout(id,target,mode,{activate:false}),rename:renameGlobalLayout,duplicate:duplicateGlobalLayout,delete:deleteGlobalLayout},onRuleModeRequired:text=>{setAutomationDraft(text);setAutomationOpen(true)}});
+  const workbench=useStillWorkbench({getState:()=>captureState.current,commitState:next=>{const previous=captureState.current;commitSnapshot(next);undo.current=previous},layoutHandlers:{save:saveGlobalLayout,apply:applyGlobalLayout,prepare:(id,target,mode)=>applyGlobalLayout(id,target,mode,{activate:false}),rename:renameGlobalLayout,duplicate:duplicateGlobalLayout,delete:deleteGlobalLayout},widgetAction:runWorkbenchWidgetAction,onRuleModeRequired:text=>{setAutomationDraft(text);setAutomationOpen(true)}});
   const commands=[{label:translate(state.locale,'openAiAssistant'),run:()=>setAssistantOpen(true)},...state.workspaces.map(w=>({label:translate(state.locale,'switchWorkspaceByName').replace('{workspace}',displayWorkspaceName(w,state.locale)),run:()=>switchWorkspace(w.id)})),{label:translate(state.locale,'createWorkspace'),run:startCreate},...(workspace.role==='dashboard'||workspace.role==='library'?[]:[{label:translate(state.locale,'addWidget'),run:()=>setModal('gallery')}]),{label:translate(state.locale,'settings'),run:()=>{setSettingsTab('general');setModal('settings')}},{label:translate(state.locale,'appearance'),run:()=>{setSettingsTab('appearance');setModal('settings')}},{label:translate(state.locale,'keyboardShortcuts'),run:()=>setModal('shortcuts')},...(workspace.role==='dashboard'||workspace.role==='library'?[]:[{label:translate(state.locale,'arrangeWorkspace'),run:()=>setArrange(true)}]),{label:translate(state.locale,sidebarPeek?'hideSidebar':'showSidebar'),run:toggleSidebar},{label:translate(state.locale,widgetTrayHidden?'showBottomAppsBar':'hideBottomAppsBar'),run:toggleWidgetTray}];
   useEffect(()=>{function onKey(event:KeyboardEvent){if(event.isComposing||modal||quickCaptureOpen||automationOpen)return;const editing=!!(event.target as HTMLElement)?.closest('input,textarea,select,[contenteditable=true],[role=textbox]');const action=shortcutAction(event,state.shortcuts,editing);if(!action)return;if((action==='overview'||action==='undo'||action.startsWith('workspace:'))&&editing)return;if(action==='clickThrough'&&!state.enableWholeWindowClickThrough)return;event.preventDefault();if(!event.repeat)runShortcut(action)}document.addEventListener('keydown',onKey);return()=>document.removeEventListener('keydown',onKey)},[state,modal,quickCaptureOpen,automationOpen]);
   const matches=commands.filter(c=>c.label.toLowerCase().includes(query.toLowerCase()));
