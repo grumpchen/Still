@@ -16,6 +16,7 @@ import {checkedFileReadingStatus} from './fileStudy.ts';
 import {checkedNoteDocuments,createNoteDocument,noteDocument,type NoteDocument} from './noteDocuments.ts';
 import {parseNoteHistory,type NoteHistoryEntry} from './noteHistory.ts';
 import {checkedCalendarEvents,type StudyCalendarEvent} from './studyCalendar.ts';
+import {checkedFlashcardDecks,type FlashcardDeck} from './flashcards.ts';
 import {checkedWidgetTaskStatus,type WidgetTaskStatus} from './widgetTaskStatus.ts';
 import {checkedDeepTutorUrl,DEFAULT_DEEP_TUTOR_URL} from './deepTutor.ts';
 import {normalizeUrl,GOOGLE_URL} from './browser.ts';
@@ -45,6 +46,7 @@ export interface WidgetInstance {
   lockPluginEnabled:boolean;locked:boolean;
   noteFont:'sans'|'serif'|'mono';noteFontSize:number;
   noteDocuments:NoteDocument[];activeNoteDocumentId:string;
+  flashcardDecks:FlashcardDeck[];
   notesLibraryKey:string|null;notesLibraryName?:string;
   fileNotes:Record<string,string>;
   fileReadingStatus?:Record<string,'unread'|'in-progress'|'done'>;
@@ -83,7 +85,7 @@ export interface WorkspaceState {
 export function createWidget(type: WidgetType): WidgetInstance {
   const id=crypto.randomUUID(),initialText='A clear space, a clear mind.\n\nStart with one important thing.\nLeave room for a new idea.',initialNote=createNoteDocument();initialNote.text=initialText;
   return { id, type, instanceNumber:1, title:'', tagColor:null,taskStatus:null, relaunchOverride:'follow',pluginControls:type==='tagStatus'?['widget-relaunch.tag-colors']:[], span: type === 'ai' ? 2 : 1,
-    clockPluginEnabled:false,pinPluginEnabled:false,pinned:false,lockPluginEnabled:false,locked:false,noteFont:'sans',noteFontSize:14,noteDocuments:type==='notes'?[initialNote]:[],activeNoteDocumentId:type==='notes'?initialNote.id:'',notesLibraryKey:null,fileNotes:{},fileReadingStatus:{},text: type === 'notes' ? initialText : '',
+    clockPluginEnabled:false,pinPluginEnabled:false,pinned:false,lockPluginEnabled:false,locked:false,noteFont:'sans',noteFontSize:14,noteDocuments:type==='notes'?[initialNote]:[],activeNoteDocumentId:type==='notes'?initialNote.id:'',flashcardDecks:[],notesLibraryKey:null,fileNotes:{},fileReadingStatus:{},text: type === 'notes' ? initialText : '',
     remaining: 1500, end: null, placement:placement(type,null), shortcuts:[], schedule:[],groupId:null,folderKey:null,fileKey:null,appKey:null,appPanelOpen:false,appReuseExisting:false,deepTutorUrl:DEFAULT_DEEP_TUTOR_URL,browserUrl:GOOGLE_URL,
     minimized:false,restorePlacement:null,groupCollapsed:false,groupExpandedPlacement:null,calendarEvents:[] };
 }
@@ -298,7 +300,7 @@ function parseGroupEntries(value:unknown):GroupWidgetEntry[]{
   const item=groupWidgetEntry({id:typeof v.id==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(v.id)&&!ids.has(v.id)?v.id:undefined,type:v.type,name:v.name,icon:typeof v.icon==='string'?v.icon:undefined,iconData:typeof v.iconData==='string'?v.iconData:undefined});ids.add(item.id);return[item];
  }catch{return []}});
 }
-const PERSISTED_WIDGET_FIELDS:(keyof WidgetInstance)[]=['id','type','span','instanceNumber','title','tagColor','taskStatus','relaunchOverride','pluginControls','clockPluginEnabled','pinPluginEnabled','pinned','lockPluginEnabled','locked','noteFont','noteFontSize','noteDocuments','activeNoteDocumentId','notesLibraryKey','notesLibraryName','fileNotes','fileReadingStatus','deepTutorUrl','browserUrl','text','remaining','end','folderName','folderKey','fileKey','fileName','fileKind','appKey','appName','appIconData','appPanelOpen','appWasCollected','appReuseExisting','appMinWidth','appMinHeight','placement','minimized','restorePlacement','shortcuts','schedule','calendarEvents','groupId'];
+const PERSISTED_WIDGET_FIELDS:(keyof WidgetInstance)[]=['id','type','span','instanceNumber','title','tagColor','taskStatus','relaunchOverride','pluginControls','clockPluginEnabled','pinPluginEnabled','pinned','lockPluginEnabled','locked','noteFont','noteFontSize','noteDocuments','activeNoteDocumentId','flashcardDecks','notesLibraryKey','notesLibraryName','fileNotes','fileReadingStatus','deepTutorUrl','browserUrl','text','remaining','end','folderName','folderKey','fileKey','fileName','fileKind','appKey','appName','appIconData','appPanelOpen','appWasCollected','appReuseExisting','appMinWidth','appMinHeight','placement','minimized','restorePlacement','shortcuts','schedule','calendarEvents','groupId'];
 function persistentWidgetSnapshot(value:unknown):WidgetInstance {
  if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('Invalid collected widget.');
  const source=value as Record<string,unknown>,filtered=Object.fromEntries(PERSISTED_WIDGET_FIELDS.filter(key=>key in source).map(key=>[key,source[key]]));
@@ -460,7 +462,7 @@ function checkedWidget(value: unknown): WidgetInstance {
     pinPluginEnabled:item.pinPluginEnabled===true,pinned:item.pinPluginEnabled===true&&item.pinned===true,
     lockPluginEnabled:item.lockPluginEnabled===true,locked:item.lockPluginEnabled===true&&item.locked===true,
     noteFont:item.noteFont==='serif'||item.noteFont==='mono'?item.noteFont:'sans',noteFontSize:typeof item.noteFontSize==='number'&&Number.isFinite(item.noteFontSize)?Math.max(12,Math.min(28,Math.round(item.noteFontSize/2)*2)):14,
-    noteDocuments,activeNoteDocumentId:item.type==='notes'?activeNote.id:'',notesLibraryKey:item.type==='notes'&&typeof item.notesLibraryKey==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(item.notesLibraryKey)?item.notesLibraryKey:null,notesLibraryName:item.type==='notes'&&typeof item.notesLibraryName==='string'?item.notesLibraryName.slice(0,255):undefined,
+    noteDocuments,activeNoteDocumentId:item.type==='notes'?activeNote.id:'',flashcardDecks:item.type==='notes'?checkedFlashcardDecks(item.flashcardDecks):[],notesLibraryKey:item.type==='notes'&&typeof item.notesLibraryKey==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(item.notesLibraryKey)?item.notesLibraryKey:null,notesLibraryName:item.type==='notes'&&typeof item.notesLibraryName==='string'?item.notesLibraryName.slice(0,255):undefined,
     fileNotes:checkedFileNotes(item.fileNotes),
     fileReadingStatus:item.type==='files'?checkedFileReadingStatus(item.fileReadingStatus):{},
     groupId:item.type==='group'&&typeof item.groupId==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(item.groupId)?item.groupId:null,
