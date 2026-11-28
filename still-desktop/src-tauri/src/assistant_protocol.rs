@@ -62,7 +62,10 @@ pub struct Reply {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub intent: Option<ResponseIntent>,
     pub reply: String,
-    #[serde(deserialize_with = "deserialize_reply_layout")]
+    // Some JSON-mode providers omit an empty layout array for ordinary chat.
+    // Treat omission like `[]`; validated layout actions still go through the
+    // same structural and intent checks below.
+    #[serde(default, deserialize_with = "deserialize_reply_layout")]
     pub layout: Vec<LayoutItem>,
     #[serde(default)]
     pub actions: Vec<AssistantAction>,
