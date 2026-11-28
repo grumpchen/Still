@@ -4,7 +4,7 @@ import {parseAssistantReply,type AssistantProvider,type AssistantReply,type Chat
 import {runAgentLoop,resumeAgentLoop,createAgentToolDispatcher,type AgentLoopOptions,type AgentLoopResult,type AgentToolCall,type AgentToolCallResult,type AgentToolExecution,type AgentToolHandler,type AgentToolDispatchResult} from '../domain/agentLoop.ts';
 import type {AddNotesWidgetProposal,AssistantMemoryProposal,SafeWorkspaceActionProposal,StillWorkspaceToolRegistry} from '../domain/assistantTools.ts';
 
-export type AssistantRequest = {provider:AssistantProvider;model:string;messages:ChatMessage[];context:string;image?:string;session_id?:string};
+export type AssistantRequest = {provider:AssistantProvider;model:string;messages:ChatMessage[];context:string;mode_instructions?:string;image?:string;session_id?:string};
 export type ProviderAgentMessage = {role:'user';content:string}|{role:'assistant';content?:string|null;tool_calls?:{id:string;type:'function';function:{name:string;arguments:string}}[];gemini_content?:unknown;plan_reasoning?:unknown}|{role:'tool';tool_call_id:string;content:string};
 export type ProviderAgentCall = {id:string;name:string;input:unknown};
 export type ProviderAgentTurn = {kind:'final';response:unknown}|{kind:'tool_calls';assistantMessage:ProviderAgentMessage;calls:ProviderAgentCall[]};
@@ -29,7 +29,7 @@ export const geminiAssistant = {
   keySetup:(provider:AssistantProvider)=>invoke<void>('assistant_key_setup',{provider}),
   setKey:(provider:AssistantProvider,key:string)=>invoke<string[]>('assistant_set_key',{provider,key}),
   async send(request:AssistantRequest){return parseAssistantReply(await invoke<unknown>('assistant_chat',{request}));},
-  async agentTurn(request:{provider:AssistantProvider;model:string;messages:ProviderAgentMessage[];session_id:string;enable_add_widget_tool?:boolean;enable_safe_workspace_action_tool?:boolean;enable_assistant_memory_tool?:boolean}){
+  async agentTurn(request:{provider:AssistantProvider;model:string;messages:ProviderAgentMessage[];session_id:string;mode_instructions?:string;enable_add_widget_tool?:boolean;enable_safe_workspace_action_tool?:boolean;enable_assistant_memory_tool?:boolean}){
     const turn=request.provider==='chatgpt'
       ? await invoke<ProviderAgentTurn>('chatgpt_plan_agent_turn',{request:{...request,provider:'openai'}})
       : await invoke<ProviderAgentTurn>('assistant_agent_turn',{request});
@@ -37,7 +37,7 @@ export const geminiAssistant = {
   },
 };
 
-export async function runProviderAgent(options:{provider:AssistantProvider;model:string;messages:ProviderAgentMessage[];sessionId:string;inspectWorkspace?:()=>unknown|Promise<unknown>;validateWorkspace?:()=>void;toolRegistry?:StillWorkspaceToolRegistry;enableSafeWorkspaceActionTool?:boolean;enableAssistantMemoryTool?:boolean}):Promise<ProviderAgentOutcome>{
+export async function runProviderAgent(options:{provider:AssistantProvider;model:string;messages:ProviderAgentMessage[];sessionId:string;modeInstructions?:string;inspectWorkspace?:()=>unknown|Promise<unknown>;validateWorkspace?:()=>void;toolRegistry?:StillWorkspaceToolRegistry;enableSafeWorkspaceActionTool?:boolean;enableAssistantMemoryTool?:boolean}):Promise<ProviderAgentOutcome>{
   let oversizedWorkspaceResult=false,notesToolUsed=false,safeActionToolUsed=false,memoryToolUsed=false;
   const inspectWorkspace:AgentToolHandler=async(input:unknown):Promise<AgentToolDispatchResult>=>{
     const registered=options.toolRegistry?.tools.inspect_workspace;
@@ -66,7 +66,7 @@ export async function runProviderAgent(options:{provider:AssistantProvider;model
   ];
   const loopOptions:AgentLoopOptions<ProviderAgentMessage,AssistantReply>={
     history:options.messages,
-    requestModel:async history=>{if(oversizedWorkspaceResult)throw new Error('The current workspace context is too large for the agent preview. Select fewer widgets or use the standard assistant mode.');return geminiAssistant.agentTurn({provider:options.provider,model:options.model,messages:[...history],session_id:options.sessionId,enable_add_widget_tool:!!options.toolRegistry,enable_safe_workspace_action_tool:!!options.enableSafeWorkspaceActionTool,enable_assistant_memory_tool:!!options.enableAssistantMemoryTool})},
+    requestModel:async history=>{if(oversizedWorkspaceResult)throw new Error('The current workspace context is too large for the agent preview. Select fewer widgets or use the standard assistant mode.');return geminiAssistant.agentTurn({provider:options.provider,model:options.model,messages:[...history],session_id:options.sessionId,mode_instructions:options.modeInstructions,enable_add_widget_tool:!!options.toolRegistry,enable_safe_workspace_action_tool:!!options.enableSafeWorkspaceActionTool,enable_assistant_memory_tool:!!options.enableAssistantMemoryTool})},
     executeTool:(call:AgentToolCall)=>dispatcher(call),appendToolRound,
     ...(options.toolRegistry?{confirmationRequiredToolNames:['add_widget',...(options.enableSafeWorkspaceActionTool?['propose_workspace_action']:[]),...(options.enableAssistantMemoryTool?['propose_assistant_memory']:[])]}:{}),
   };

@@ -1,5 +1,6 @@
 import {invoke,isTauri} from '@tauri-apps/api/core';
 import {toBlob} from 'html-to-image';
+import {localFiles} from './files.ts';
 export async function captureWidget(node:HTMLElement,copy:boolean,includeNativeApps=true,requireNativeApp=true):Promise<Blob> {
   if(isTauri()){
     const rect=node.getBoundingClientRect();
@@ -23,7 +24,8 @@ export async function captureWidget(node:HTMLElement,copy:boolean,includeNativeA
   if(copy){if(!navigator.clipboard?.write || typeof ClipboardItem==='undefined')throw new Error('Clipboard access is unavailable. Use Export PNG instead.');await navigator.clipboard.write([new ClipboardItem({'image/png':blob})])}
   return blob;
 }
-export async function downloadCapture(blob:Blob,name:string):Promise<boolean>{
+export async function downloadCapture(blob:Blob,name:string,saveDirectoryId=''):Promise<boolean>{
+  if(isTauri()&&saveDirectoryId){await localFiles.saveToModeDirectory(saveDirectoryId,`Still-${name.replace(/[^a-z0-9 _-]/gi,'').trim()||'widget'}-${Date.now()}.png`,new Uint8Array(await blob.arrayBuffer()));return true}
   if(isTauri())return invoke<boolean>('widget_export',{png:Array.from(new Uint8Array(await blob.arrayBuffer())),name});
   const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name.replace(/[^a-z0-9 _-]/gi,'').trim()+'-'+Date.now()+'.png';a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);return true;
 }

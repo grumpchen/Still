@@ -22,6 +22,8 @@ pub struct AgentRequest {
     pub model: String,
     pub messages: Vec<AgentMessage>,
     #[serde(default)]
+    pub mode_instructions: Option<String>,
+    #[serde(default)]
     pub session_id: Option<String>,
     /// Defaults off to preserve the existing inspect-only pilot.
     #[serde(default)]
@@ -152,7 +154,8 @@ pub fn gemini_agent_body(request: &AgentRequest) -> Result<Value, String> {
     if request.enable_add_widget_tool { declarations.push(json!({"name":ADD_WIDGET,"description":"Propose adding one Notes widget. Still pauses for explicit user review and approval before applying it.","parameters":{"type":"OBJECT","properties":{"widgetType":{"type":"STRING","enum":["notes"]},"snapshotRevision":{"type":"STRING"}},"required":["widgetType","snapshotRevision"]}})); }
     if request.enable_safe_workspace_action_tool { declarations.push(json!({"name":PROPOSE_WORKSPACE_ACTION,"description":"Propose one safe workspace action for explicit Still review. This function does not apply changes. For create_note_document, include title and the text property; set text to null when the user did not ask for note content. Omitting text makes the proposal invalid.","parameters":{"type":"OBJECT","properties":{"snapshotRevision":{"type":"STRING"},"action":{"type":"OBJECT","properties":{"type":{"type":"STRING","enum":["minimize","restore","set_timer","control_timer","set_ui_visibility","create_note_document"]},"ids":{"type":"ARRAY","items":{"type":"STRING"}},"seconds":{"type":"INTEGER"},"operation":{"type":"STRING","enum":["pause","resume","reset"]},"enabled":{"type":"BOOLEAN"},"title":{"type":"STRING"},"text":{"type":"STRING","nullable":true,"description":"Required when type is create_note_document; provide null for an intentionally blank note, never omit it."}},"required":["type","ids"]}},"required":["snapshotRevision","action"]}})); }
     if request.enable_assistant_memory_tool { declarations.push(json!({"name":PROPOSE_ASSISTANT_MEMORY,"description":"Propose one user-requested item for local assistant memory. This only shows a review proposal; it does not save. Provide the exact user-authored text, not a paraphrase or inferred fact.","parameters":{"type":"OBJECT","properties":{"text":{"type":"STRING","minLength":1,"maxLength":1000,"description":"Exact user-authored text to remember for future conversations."}},"required":["text"]}})); }
-    let guidance = format!("You are Still AI, a helpful general-purpose assistant. {AGENT_GUIDANCE} {} {} {}", if request.enable_add_widget_tool { ADD_WIDGET_GUIDANCE } else { "" }, if request.enable_safe_workspace_action_tool { SAFE_WORKSPACE_ACTION_GUIDANCE } else { "" }, if request.enable_assistant_memory_tool { PROPOSE_MEMORY_GUIDANCE } else { "" });
+    let mode_guidance=request.mode_instructions.as_deref().filter(|value|!value.trim().is_empty()).map(|value|format!("User-selected AI mode instructions (trusted user-authored guidance; apply to this request):\n{value}")).unwrap_or_default();
+    let guidance = format!("You are Still AI, a helpful general-purpose assistant. {AGENT_GUIDANCE} {} {} {} {mode_guidance}", if request.enable_add_widget_tool { ADD_WIDGET_GUIDANCE } else { "" }, if request.enable_safe_workspace_action_tool { SAFE_WORKSPACE_ACTION_GUIDANCE } else { "" }, if request.enable_assistant_memory_tool { PROPOSE_MEMORY_GUIDANCE } else { "" });
     Ok(json!({
         "systemInstruction":{"parts":[{"text":format!("{guidance} {AGENT_MEMORY_GUIDANCE} {GEMINI_FINAL_REPLY_GUIDANCE}")}]},
         "contents":contents,
@@ -200,9 +203,10 @@ fn compatible_agent_body(request: &AgentRequest, provider: Provider) -> Result<V
         guidance
     };
     let guidance = if request.enable_assistant_memory_tool { format!("{guidance} {PROPOSE_MEMORY_GUIDANCE}") } else { guidance };
+    let mode_guidance=request.mode_instructions.as_deref().filter(|value|!value.trim().is_empty()).map(|value|format!("User-selected AI mode instructions (trusted user-authored guidance; apply to this request):\n{value}")).unwrap_or_default();
     let mut messages = vec![json!({
         "role": "system",
-        "content": format!("You are Still AI, a helpful general-purpose assistant. Answer ordinary questions naturally. {} {}", guidance, AGENT_MEMORY_GUIDANCE)
+        "content": format!("You are Still AI, a helpful general-purpose assistant. Answer ordinary questions naturally. {} {} {}", guidance, AGENT_MEMORY_GUIDANCE, mode_guidance)
     })];
     messages.extend(request.messages.iter().map(|message| {
         serde_json::to_value(message).expect("agent message serialization is infallible")
@@ -232,6 +236,7 @@ pub fn validate_agent_request(
     request: &AgentRequest,
     expected_provider: Provider,
 ) -> Result<(), String> {
+    assistant_protocol::validate_mode_instructions(request.mode_instructions.as_deref())?;
     if request.provider != expected_provider
         || !valid_agent_model(&request.model, expected_provider)
     {
@@ -700,6 +705,7 @@ mod tests {
             provider: Provider::Openai,
             model: "gpt-4o-mini".into(),
             messages,
+            mode_instructions: None,
             session_id: None,
             enable_add_widget_tool: false,
             enable_safe_workspace_action_tool: false,
@@ -718,6 +724,12 @@ mod tests {
         assert!(payload.get("max_completion_tokens").is_none());
         let turn=parse_deepseek_agent_response_with_all_tools(json!({"choices":[{"finish_reason":"stop","message":{"content":"{\"intent\":\"chat\",\"reply\":\"Ready\",\"layout\":[],\"actions\":[],\"fileProposals\":[],\"calendarProposals\":[]}"}}]}),false,false,false).unwrap();
         assert!(matches!(turn,AgentTurn::Final { .. }));
+    }
+    #[test]
+    fn mode_instructions_enter_the_agent_system_guidance_and_are_validated(){
+        let mut request=request(vec![AgentMessage::User{content:"Explain acceleration".into()}]);request.mode_instructions=Some("Cite formulas and state units.".into());
+        let body=openai_agent_body(&request).unwrap();assert!(body["messages"][0]["content"].as_str().unwrap().contains("Cite formulas and state units."));
+        request.mode_instructions=Some("x".repeat(10_001));assert!(openai_agent_body(&request).is_err());
     }
 
     fn message_history() -> Vec<AgentMessage> {

@@ -47,7 +47,9 @@ export function folderEntries(items:Iterable<{path:string;size:number}>,location
 export const localFiles={
   native:isTauri(),
   choose:(id:string)=>invoke<FolderListing|null>('files_choose',{id}),
-  async inbox(id:string):Promise<StillInbox>{if(!this.native)throw new Error('The Downloads Inbox is available in the Still desktop app. In browser preview, manage saved PDF shortcuts and links from Library.');return invoke<StillInbox>('files_still_inbox',{id})},
+  async chooseModeDirectory(id:string):Promise<{id:string;name:string}|null>{if(!this.native)throw new Error('Choosing a mode directory requires the Still desktop app.');const listing=await this.choose(id);return listing?{id,name:listing.rootName}:null},
+  async saveToModeDirectory(id:string,name:string,bytes:Uint8Array):Promise<string>{if(!this.native)throw new Error('Saving to a mode directory requires the Still desktop app.');return invoke<string>('files_save_to_directory',{id,name,bytes:[...bytes]})},
+  async inbox(id:string,modeDirectoryId?:string):Promise<StillInbox>{if(!this.native)throw new Error('The Downloads Inbox is available in the Still desktop app. In browser preview, manage saved PDF shortcuts and links from Library.');return invoke<StillInbox>('files_still_inbox',{id,modeDirectoryId:modeDirectoryId||null})},
   select(id:string,files:File[]):FolderListing{
     if(!files.length)throw new Error('This folder contains no selectable files.');
     const first=files[0].webkitRelativePath||files[0].name;const rootName=first.includes('/')?first.split('/')[0]:'Selected files';
