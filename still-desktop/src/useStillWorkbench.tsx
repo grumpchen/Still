@@ -2,7 +2,7 @@ import {currentFileRequest,currentFilesView,isFilesLocationQuestion} from './pla
 import {useEffect,useRef,useState} from 'react';
 import type {WorkspaceState} from './domain/workspaces.ts';
 import type {WorkbenchAction} from './domain/workbenchActions.ts';
-import type {RuleCatalog} from './domain/automationRules.ts';
+import {loadAutomationState,type RuleCatalog} from './domain/automationRules.ts';
 import {createWorkbenchService,type WorkbenchLayoutHandlers,type WorkbenchReceipt} from './platform/workbenchOperations.ts';
 import {configureCollectionOperationHost} from './platform/collectionOperations.ts';
 import {automationCaptureInbox} from './platform/automationCaptureInbox.ts';
@@ -37,6 +37,13 @@ export function useStillWorkbench(host:StillWorkbenchHost){
   getState:()=>latest.current.getState(),commitState:next=>latest.current.commitState(next),getCourses:()=>getCatalog().courses,
   layoutHandlers:{save:(...args)=>latest.current.layoutHandlers.save(...args),apply:(...args)=>latest.current.layoutHandlers.apply(...args),rename:(...args)=>latest.current.layoutHandlers.rename(...args),duplicate:(...args)=>latest.current.layoutHandlers.duplicate(...args),delete:(...args)=>latest.current.layoutHandlers.delete(...args),prepare:(...args)=>(latest.current.layoutHandlers.prepare??latest.current.layoutHandlers.apply)(...args)},
   saveRule:async (text:string)=>{const runner=runnerRef.current;if(!runner)return{kind:'error' as const,message:'Rules are still starting. Try again.'};return runner.createFromText(ruleRequestText(text))},
+  ruleAdmin:{
+   list:()=>{const loaded=loadAutomationState(storage);if(!loaded.ok)return[];return loaded.state.rules.map(rule=>{const latest=loaded.state.receipts.filter(receipt=>receipt.ruleId===rule.id).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt))[0];return{id:rule.id,enabled:rule.enabled,sourceText:rule.sourceText,trigger:rule.trigger,action:rule.action,...(latest?{latestReceipt:{status:latest.status,updatedAt:latest.updatedAt,...(latest.message?{message:latest.message}:{})}}:{})}})},
+   enable:(id,enabled)=>{const api=runnerRef.current;if(!api)throw new Error('Rules are still starting.');api.setEnabled(id,enabled);const loaded=loadAutomationState(storage);if(!loaded.ok)throw new Error(loaded.message);const rule=loaded.state.rules.find(item=>item.id===id);if(!rule||rule.enabled!==enabled)throw new Error('The rule change could not be saved.');return enabled?'Enabled the automation rule.':'Disabled the automation rule.'},
+   setLayoutMode:(id,mode)=>{const api=runnerRef.current;if(!api)throw new Error('Rules are still starting.');api.setLayoutMode(id,mode);const loaded=loadAutomationState(storage);if(!loaded.ok)throw new Error(loaded.message);const rule=loaded.state.rules.find(item=>item.id===id);if(!rule||rule.action.kind!=='prepareWorkspaceLayout'||rule.action.mode!==mode||rule.requiresModeChoice)throw new Error('The layout mode could not be saved.');return`Saved ${mode} mode for the automation rule.`},
+   delete:id=>{const api=runnerRef.current;if(!api)throw new Error('Rules are still starting.');api.deleteRule(id);const loaded=loadAutomationState(storage);if(!loaded.ok)throw new Error(loaded.message);if(loaded.state.rules.some(item=>item.id===id))throw new Error('The automation rule could not be deleted.');return'Deleted the automation rule.'},
+   runDue:async()=>{const api=runnerRef.current;if(!api)throw new Error('Rules are still starting.');return api.runDueNow()},
+  },
   getCaptureEvent:async id=>{const result=automationCaptureInbox.get(id);if(!result.ok)throw new Error(result.message);return result.value},
   searchFiles:async(ids,query)=>{const state=latest.current.getState();await Promise.allSettled(ids.map(async id=>{const widget=state.workspaces.flatMap(w=>w.widgets).find(w=>w.id===id);if(widget?.folderKey&&widget.folderKey!=='still-downloads-inbox')await localFiles.reuse(id,widget.folderKey)}));return localFiles.searchLibrary(ids,query)},storage,
  }));

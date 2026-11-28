@@ -3,6 +3,8 @@
  * canvas. Collection operations mirror the shared collection operation
  * service's request fields; this module validates wire data, not execution.
  */
+import {widgetTypes,type WidgetType} from './workspaces.ts';
+import {widgetCatalog} from './widgetCatalog.ts';
 export type WorkbenchAction =
  | {operation:'layout.list'}
  | {operation:'layout.find';query:string}
@@ -11,6 +13,15 @@ export type WorkbenchAction =
  | {operation:'layout.rename';layoutId:string;name:string}
  | {operation:'layout.duplicate';layoutId:string}
  | {operation:'layout.delete';layoutId:string}
+ | {operation:'dashboard.list'}
+ | {operation:'dashboard.module.add';widgetType:Exclude<WidgetType,'group'>}
+ | {operation:'dashboard.module.remove';widgetId:string}
+ | {operation:'dashboard.module.reorder';widgetId:string;targetWidgetId:string;position:'before'|'after'}
+ | {operation:'dashboard.module.resize';widgetId:string;width:number;height:number}
+ | {operation:'group.list';workspaceId:string}
+ | {operation:'group.create';workspaceId:string;name:string}
+ | {operation:'group.rename';workspaceId:string;groupId:string;name:string}
+ | {operation:'group.delete';workspaceId:string;groupId:string;removeContents:boolean}
  | {operation:'resource.find';query:string}
  | {operation:'link.create';workspaceId:string;groupId?:string;name:string;url:string}
  | {operation:'link.rename';origin:LinkOrigin;linkId:string;name:string}
@@ -27,7 +38,12 @@ export type WorkbenchAction =
  | {operation:'file.editText';widgetId:string;path:string;text:string;expectedText:string}
  | {operation:'file.createText';widgetId:string;path:string;text:string}
  | {operation:'note.quickCapture';workspaceId:string;notesWidgetId?:string;title:string;text:string}
- | {operation:'rule.save';text:string};
+ | {operation:'rule.save';text:string}
+ | {operation:'rule.list'}
+ | {operation:'rule.enable';ruleId:string;enabled:boolean}
+ | {operation:'rule.layoutMode';ruleId:string;mode:'append'|'replace'}
+ | {operation:'rule.delete';ruleId:string}
+ | {operation:'rule.runDue'};
 export type LinkOrigin={kind:'group';workspaceId:string;groupId:string}|{kind:'browser';workspaceId:string;widgetId:string};
 
 export const MAX_WORKBENCH_ACTIONS=10;
@@ -90,6 +106,15 @@ function parseOne(raw:unknown):WorkbenchAction{
   case 'layout.rename':fields(raw,['operation','layoutId','name']);return{operation:raw.operation,layoutId:id(raw.layoutId),name:text(raw.name,1,60)};
   case 'layout.duplicate':fields(raw,['operation','layoutId']);return{operation:raw.operation,layoutId:id(raw.layoutId)};
   case 'layout.delete':fields(raw,['operation','layoutId']);return{operation:raw.operation,layoutId:id(raw.layoutId)};
+  case 'dashboard.list':fields(raw,['operation']);return{operation:raw.operation};
+  case 'dashboard.module.add':fields(raw,['operation','widgetType']);if(typeof raw.widgetType!=='string'||!widgetTypes.includes(raw.widgetType as WidgetType)||raw.widgetType==='group')return invalid();return{operation:raw.operation,widgetType:raw.widgetType as Exclude<WidgetType,'group'>};
+  case 'dashboard.module.remove':fields(raw,['operation','widgetId']);return{operation:raw.operation,widgetId:id(raw.widgetId)};
+  case 'dashboard.module.reorder':fields(raw,['operation','widgetId','targetWidgetId','position']);if(raw.position!=='before'&&raw.position!=='after'||raw.widgetId===raw.targetWidgetId)return invalid();return{operation:raw.operation,widgetId:id(raw.widgetId),targetWidgetId:id(raw.targetWidgetId),position:raw.position};
+  case 'dashboard.module.resize':fields(raw,['operation','widgetId','width','height']);if(!Number.isInteger(raw.width)||!Number.isInteger(raw.height)||typeof raw.width!=='number'||typeof raw.height!=='number'||raw.width<1||raw.height<1||raw.width>3000||raw.height>3000)return invalid();return{operation:raw.operation,widgetId:id(raw.widgetId),width:raw.width,height:raw.height};
+  case 'group.list':fields(raw,['operation','workspaceId']);return{operation:raw.operation,workspaceId:id(raw.workspaceId)};
+  case 'group.create':fields(raw,['operation','workspaceId','name']);return{operation:raw.operation,workspaceId:id(raw.workspaceId),name:text(raw.name,1,60)};
+  case 'group.rename':fields(raw,['operation','workspaceId','groupId','name']);return{operation:raw.operation,workspaceId:id(raw.workspaceId),groupId:id(raw.groupId),name:text(raw.name,1,60)};
+  case 'group.delete':fields(raw,['operation','workspaceId','groupId','removeContents']);if(typeof raw.removeContents!=='boolean')return invalid();return{operation:raw.operation,workspaceId:id(raw.workspaceId),groupId:id(raw.groupId),removeContents:raw.removeContents};
   case 'resource.find':fields(raw,['operation','query']);return{operation:raw.operation,query:text(raw.query,1,300)};
   case 'link.create':fields(raw,['operation','workspaceId','name','url'],['groupId']);return{operation:raw.operation,workspaceId:id(raw.workspaceId),...(raw.groupId!==undefined?{groupId:id(raw.groupId)}:{}),name:text(raw.name,1,60),url:httpsUrl(raw.url)};
   case 'link.rename':fields(raw,['operation','origin','linkId','name']);return{operation:raw.operation,origin:origin(raw.origin),linkId:id(raw.linkId),name:text(raw.name,1,60)};
@@ -107,6 +132,11 @@ function parseOne(raw:unknown):WorkbenchAction{
   case 'file.createText':fields(raw,['operation','widgetId','path','text']);return{operation:raw.operation,widgetId:id(raw.widgetId),path:createTextPath(raw.path),text:createTextContent(raw.text)};
   case 'note.quickCapture':fields(raw,['operation','workspaceId','title','text'],['notesWidgetId']);return{operation:raw.operation,workspaceId:id(raw.workspaceId),...(raw.notesWidgetId!==undefined?{notesWidgetId:id(raw.notesWidgetId)}:{}),title:text(raw.title,1,60),text:content(raw.text,12_000)};
   case 'rule.save':fields(raw,['operation','text']);return{operation:raw.operation,text:content(raw.text,2000)};
+  case 'rule.list':fields(raw,['operation']);return{operation:raw.operation};
+  case 'rule.enable':fields(raw,['operation','ruleId','enabled']);if(typeof raw.enabled!=='boolean')return invalid();return{operation:raw.operation,ruleId:id(raw.ruleId),enabled:raw.enabled};
+  case 'rule.layoutMode':fields(raw,['operation','ruleId','mode']);if(raw.mode!=='append'&&raw.mode!=='replace')return invalid();return{operation:raw.operation,ruleId:id(raw.ruleId),mode:raw.mode};
+  case 'rule.delete':fields(raw,['operation','ruleId']);return{operation:raw.operation,ruleId:id(raw.ruleId)};
+  case 'rule.runDue':fields(raw,['operation']);return{operation:raw.operation};
   default:return invalid();
  }
 }
@@ -121,6 +151,6 @@ export function parseWorkbenchActions(value:unknown):WorkbenchAction[]{
 /** Mutations must be uniquely targeted; query-only workbench calls may batch. */
 export function validateWorkbenchActionBatch(actions:WorkbenchAction[]):void{
  if(actions.length>MAX_WORKBENCH_ACTIONS)return invalid();
- const mutations=actions.filter(action=>action.operation!=='layout.list'&&action.operation!=='layout.find'&&action.operation!=='resource.find');
+ const mutations=actions.filter(action=>action.operation!=='layout.list'&&action.operation!=='layout.find'&&action.operation!=='resource.find'&&action.operation!=='dashboard.list'&&action.operation!=='group.list'&&action.operation!=='rule.list');
  if(mutations.length&&actions.length!==1)return invalid();
 }

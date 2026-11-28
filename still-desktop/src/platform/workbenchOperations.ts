@@ -2,7 +2,10 @@ import type {AutomationAction,AutomationOperationContext,AutomationOperationResu
 import {parseWorkbenchActions,validateWorkbenchActionBatch,type LinkOrigin,type WorkbenchAction} from '../domain/workbenchActions.ts';
 import type {CollectionOperationRequest,CollectionOperationResult} from '../domain/collectionOperations.ts';
 import type {CaptureInboxEvent} from '../domain/captureInbox.ts';
-import type {GlobalWorkspaceLayout,WorkspaceState} from '../domain/workspaces.ts';
+import {createWidget,deleteSavedGroup,nextInstanceNumber,saveGroupName,type GlobalWorkspaceLayout,type WorkspaceState} from '../domain/workspaces.ts';
+import {nextPlacement} from '../domain/layout.ts';
+import {widgetCatalog} from '../domain/widgetCatalog.ts';
+import type {AutomationRunSummary} from '../domain/automationRunner.ts';
 import {executeCollectionOperation as sharedCollectionOperation} from './collectionOperations.ts';
 import {localFiles,type LibrarySearchResponse} from './files.ts';
 
@@ -15,19 +18,21 @@ export type WorkbenchLayoutHandlers={
  delete:(layoutId:string)=>string|Promise<string>;
 };
 export type WorkbenchReceipt={operation:WorkbenchAction['operation'];status:'succeeded'|'failed'|'needs_clarification'|'outcome_unknown';summary:string;receiptId?:string;data?:unknown;changed?:boolean};
-export interface WorkbenchSnapshot {workspaces:Array<{id:string;name:string;role:string;files:Array<{widgetId:string;name:string;kind:'folder'|'document';connected:boolean}>;links:Array<{id:string;name:string;url:string;origin:LinkOrigin}>}>;layouts:Array<{id:string;name:string;createdAt:number;widgetCount:number;groupCount:number}>}
+export interface WorkbenchSnapshot {workspaces:Array<{id:string;name:string;role:string;files:Array<{widgetId:string;name:string;kind:'folder'|'document';connected:boolean}>;links:Array<{id:string;name:string;url:string;origin:LinkOrigin}>;groups?:Array<{id:string;name:string;shortcutCount:number;widgetCount:number}>;dashboardModules?:Array<{id:string;type:string;title:string;visible:boolean}>}>;layouts:Array<{id:string;name:string;createdAt:number;widgetCount:number;groupCount:number}>;automationRules?:Array<{id:string;enabled:boolean;sourceText:string;trigger:unknown;action:unknown;latestReceipt?:{status:string;updatedAt:string;message?:string}}>}
+export interface WorkbenchRuleAdmin {list:()=>WorkbenchSnapshot['automationRules'];enable:(id:string,value:boolean)=>string;setLayoutMode:(id:string,mode:'append'|'replace')=>string;delete:(id:string)=>string;runDue:()=>Promise<AutomationRunSummary>}
 export interface WorkbenchServiceOptions {
  getState:()=>WorkspaceState;commitState:(state:WorkspaceState)=>void|Promise<void>;getLayouts?:()=>GlobalWorkspaceLayout[];layoutHandlers:WorkbenchLayoutHandlers;
  collection?:(action:CollectionOperationRequest,context:{source:'assistant'|'automation';idempotencyKey?:string})=>Promise<CollectionOperationResult>;
  saveRule:(text:string)=>Promise<{kind:'rule';rule:unknown}|{kind:'clarification'|'unsupported'|'error';message:string}>;
  getCaptureEvent:(eventId:string)=>Promise<WorkbenchCaptureEvent|null|{ok:true;value:WorkbenchCaptureEvent|null}|{ok:false;message:string}>;getCourses?:()=>RuleCatalog['courses'];
  searchFiles?:(widgetIds:string[],query:string)=>Promise<LibrarySearchResponse>;
+ ruleAdmin?:WorkbenchRuleAdmin;
  storage?:AutomationStorage;
 }
 const JOURNAL_KEY='still.workbench-automation-operations.v1',MAX_JOURNAL=5000;
 type JournalEntry={key:string;signature:string;state:'running'|'complete';result:AutomationOperationResult};
 function memoryStorage():AutomationStorage{return{getItem:key=>localStorage.getItem(key),setItem:(key,value)=>localStorage.setItem(key,value)}};
-function collectionRequest(action:Exclude<WorkbenchAction,{operation:`layout.${string}`}|{operation:'resource.find'}|{operation:'rule.save'}>):CollectionOperationRequest{
+function collectionRequest(action:Exclude<WorkbenchAction,{operation:`layout.${string}`}|{operation:`dashboard.${string}`}|{operation:`group.${string}`}|{operation:`rule.${string}`}|{operation:'resource.find'}>):CollectionOperationRequest{
  switch(action.operation){
   case'link.create':return{type:'link.create',workspaceId:action.workspaceId,...(action.groupId?{groupId:action.groupId}:{}),name:action.name,url:action.url};
   case'link.rename':return{type:'link.rename',origin:action.origin,linkId:action.linkId,name:action.name};
@@ -59,17 +64,77 @@ export function createWorkbenchService(options:WorkbenchServiceOptions){
  const storage=options.storage??memoryStorage(),collection=options.collection??sharedCollectionOperation,search=(ids:string[],query:string)=>options.searchFiles?options.searchFiles.call(localFiles,ids,query):localFiles.searchLibrary(ids,query);
  let activeAutomation=activeAutomationByStorage.get(storage as object);if(!activeAutomation){activeAutomation=new Map();activeAutomationByStorage.set(storage as object,activeAutomation)}
  const getLayouts=()=>options.getLayouts?.()??options.getState().globalLayouts;
+ const dashboardWorkspace=()=>options.getState().workspaces.find(workspace=>workspace.role==='dashboard');
+ const dashboardOrder=(workspace:NonNullable<ReturnType<typeof dashboardWorkspace>>)=>workspace.dashboardLayout?.order??workspace.widgets.filter(widget=>['calendar','focus','timetable','files'].includes(widget.type)).map(widget=>widget.id);
  function snapshot():WorkbenchSnapshot{
-  const state=options.getState();
-  return{workspaces:state.workspaces.map(workspace=>({id:workspace.id,name:workspace.name,role:workspace.role,files:workspace.widgets.filter(widget=>widget.type==='files').map(widget=>({widgetId:widget.id,name:widget.fileName||widget.folderName||widget.title||'Files',kind:widget.fileKey?'document':'folder',connected:!!(widget.fileKey||widget.folderKey||widget.folderName)})),links:[...workspace.groups.flatMap(group=>group.shortcuts.map(link=>({id:link.id,name:link.name,url:link.url,origin:{kind:'group' as const,workspaceId:workspace.id,groupId:group.id}}))),...workspace.widgets.filter(widget=>widget.type==='browser'||widget.type==='group'&&!workspace.groups.some(group=>group.id===(widget.groupId??widget.id))).flatMap(widget=>widget.shortcuts.map(link=>({id:link.id,name:link.name,url:link.url,origin:{kind:'browser' as const,workspaceId:workspace.id,widgetId:widget.id}})))]})),layouts:getLayouts().map(layout=>({id:layout.id,name:layout.name,createdAt:layout.createdAt,widgetCount:layout.widgets.length,groupCount:layout.groups.length}))};
+  const state=options.getState(),dashboard=state.workspaces.find(workspace=>workspace.role==='dashboard'),visibleDashboard=new Set(dashboard?dashboardOrder(dashboard):[]),rules=options.ruleAdmin?.list();
+  return{workspaces:state.workspaces.map(workspace=>({id:workspace.id,name:workspace.name,role:workspace.role,files:workspace.widgets.filter(widget=>widget.type==='files').map(widget=>({widgetId:widget.id,name:widget.fileName||widget.folderName||widget.title||'Files',kind:widget.fileKey?'document':'folder',connected:!!(widget.fileKey||widget.folderKey||widget.folderName)})),links:[...workspace.groups.flatMap(group=>group.shortcuts.map(link=>({id:link.id,name:link.name,url:link.url,origin:{kind:'group' as const,workspaceId:workspace.id,groupId:group.id}}))),...workspace.widgets.filter(widget=>widget.type==='browser'||widget.type==='group'&&!workspace.groups.some(group=>group.id===(widget.groupId??widget.id))).flatMap(widget=>widget.shortcuts.map(link=>({id:link.id,name:link.name,url:link.url,origin:{kind:'browser' as const,workspaceId:workspace.id,widgetId:widget.id}})))],groups:workspace.groups.map(group=>({id:group.id,name:group.name,shortcutCount:group.shortcuts.length,widgetCount:group.widgets.length})),...(workspace.role==='dashboard'?{dashboardModules:workspace.widgets.map(widget=>({id:widget.id,type:widget.type,title:widget.title||widget.type,visible:visibleDashboard.has(widget.id)}))}:{})})),layouts:getLayouts().map(layout=>({id:layout.id,name:layout.name,createdAt:layout.createdAt,widgetCount:layout.widgets.length,groupCount:layout.groups.length})),...(rules?{automationRules:rules}:{})};
  }
  async function executeWorkbenchActions(raw:WorkbenchAction[]):Promise<WorkbenchReceipt[]>{
   const actions=parseWorkbenchActions(raw);validateWorkbenchActionBatch(actions);const receipts:WorkbenchReceipt[]=[];
-  for(const action of actions){try{receipts.push(await executeOne(action))}catch(error){const readOnly=action.operation==='layout.list'||action.operation==='layout.find'||action.operation==='resource.find';receipts.push({operation:action.operation,status:readOnly?'failed':'outcome_unknown',summary:error instanceof Error?error.message:String(error)})}}
+  for(const action of actions){try{receipts.push(await executeOne(action))}catch(error){const readOnly=action.operation==='layout.list'||action.operation==='layout.find'||action.operation==='resource.find'||action.operation==='dashboard.list'||action.operation==='group.list'||action.operation==='rule.list';receipts.push({operation:action.operation,status:readOnly?'failed':'outcome_unknown',summary:error instanceof Error?error.message:String(error)})}}
   return receipts;
  }
  async function executeOne(action:WorkbenchAction):Promise<WorkbenchReceipt>{
   if(action.operation==='layout.list')return{operation:action.operation,status:'succeeded',summary:`Found ${getLayouts().length} saved layouts.`,data:getLayouts().map(({id,name,createdAt,widgets,groups})=>({id,name,createdAt,widgetCount:widgets.length,groupCount:groups.length}))};
+  if(action.operation==='dashboard.list'){
+   const dashboard=dashboardWorkspace();if(!dashboard)return clarification(action,'The Dashboard is not available.');const visible=new Set(dashboardOrder(dashboard));
+   return{operation:action.operation,status:'succeeded',summary:`Found ${dashboard.widgets.filter(widget=>visible.has(widget.id)).length} visible Dashboard modules.`,data:dashboard.widgets.map(widget=>({id:widget.id,type:widget.type,title:widget.title||widget.type,visible:visible.has(widget.id)}))};
+  }
+  if(action.operation==='dashboard.module.add'||action.operation==='dashboard.module.remove'||action.operation==='dashboard.module.reorder'||action.operation==='dashboard.module.resize'){
+   const dashboard=dashboardWorkspace();if(!dashboard)return clarification(action,'The Dashboard is not available.');
+   if(action.operation==='dashboard.module.add'){
+    const order=dashboardOrder(dashboard).filter(id=>dashboard.widgets.some(widget=>widget.id===id));const hidden=dashboard.widgets.find(widget=>widget.type===action.widgetType&&!order.includes(widget.id)),widget=hidden??createWidget(action.widgetType);if(!hidden){widget.instanceNumber=nextInstanceNumber(widget.type,dashboard.widgets);widget.placement=nextPlacement(widget.type,dashboard.widgets)}
+    const nextOrder=[...order,widget.id],sizes={...(dashboard.dashboardLayout?.sizes??{}),[widget.id]:{width:widget.placement.width,height:widget.placement.height}},placements={...(dashboard.dashboardLayout?.placements??{}),[widget.id]:widget.placement};
+    await options.commitState({...options.getState(),workspaces:options.getState().workspaces.map(owner=>owner.id===dashboard.id?{...owner,widgets:hidden?owner.widgets:[...owner.widgets,widget],dashboardLayout:{order:nextOrder,sizes,placements}}:owner)});
+    return{operation:action.operation,status:'succeeded',summary:`Added ${widget.title||widget.type} to Dashboard.`,data:{widgetId:widget.id,type:widget.type},changed:true};
+   }
+   const order=dashboardOrder(dashboard).filter(id=>dashboard.widgets.some(widget=>widget.id===id)),sizes={...(dashboard.dashboardLayout?.sizes??{})},placements={...(dashboard.dashboardLayout?.placements??{})};
+   if(action.operation==='dashboard.module.remove'){
+    if(!dashboard.widgets.some(widget=>widget.id===action.widgetId)||!order.includes(action.widgetId))return clarification(action,'That module is not visible on the Dashboard.');
+    await options.commitState({...options.getState(),workspaces:options.getState().workspaces.map(owner=>owner.id===dashboard.id?{...owner,dashboardLayout:{order:order.filter(id=>id!==action.widgetId),sizes,placements}}:owner)});
+    return{operation:action.operation,status:'succeeded',summary:'Removed the module from Dashboard. Its saved widget data remains in the workspace.',changed:true};
+   }
+   const widget=dashboard.widgets.find(item=>item.id===action.widgetId);if(!widget||!order.includes(widget.id))return clarification(action,'That module is not visible on the Dashboard.');
+   if(action.operation==='dashboard.module.reorder'){
+    if(!order.includes(action.targetWidgetId))return clarification(action,'The target Dashboard module is no longer visible.');const next=order.filter(id=>id!==action.widgetId),target=next.indexOf(action.targetWidgetId);next.splice(target+(action.position==='after'?1:0),0,action.widgetId);
+    await options.commitState({...options.getState(),workspaces:options.getState().workspaces.map(owner=>owner.id===dashboard.id?{...owner,dashboardLayout:{order:next,sizes,placements}}:owner)});
+    return{operation:action.operation,status:'succeeded',summary:`Moved ${widget.title||widget.type} ${action.position} ${dashboard.widgets.find(item=>item.id===action.targetWidgetId)?.title||'the selected module'}.`,changed:true};
+   }
+   const bounds=widgetCatalog[widget.type];if(action.width<bounds.minWidth||action.height<bounds.minHeight)return clarification(action,`That module needs to be at least ${bounds.minWidth} × ${bounds.minHeight} pixels.`);
+   const size={width:action.width,height:action.height},oldPlacement=placements[widget.id]??widget.placement; sizes[widget.id]=size;placements[widget.id]={...oldPlacement,...size};
+   await options.commitState({...options.getState(),workspaces:options.getState().workspaces.map(owner=>owner.id===dashboard.id?{...owner,dashboardLayout:{order,sizes,placements}}:owner)});
+   return{operation:action.operation,status:'succeeded',summary:`Resized ${widget.title||widget.type} to ${size.width} × ${size.height}.`,changed:true};
+  }
+  if(action.operation==='group.list'){
+   const workspace=options.getState().workspaces.find(item=>item.id===action.workspaceId);return workspace?{operation:action.operation,status:'succeeded',summary:`Found ${workspace.groups.length} groups in ${workspace.name}.`,data:workspace.groups.map(group=>({id:group.id,name:group.name,shortcutCount:group.shortcuts.length,widgetCount:group.widgets.length,expanded:group.expanded}))}:clarification(action,'That workspace is no longer available.');
+  }
+  if(action.operation==='group.create'){
+   const state=options.getState(),workspace=state.workspaces.find(item=>item.id===action.workspaceId);if(!workspace||workspace.role==='dashboard'||workspace.role==='library')return clarification(action,'Choose a regular course or custom workspace for a Group.');
+   if(workspace.groups.some(group=>group.name.trim().toLocaleLowerCase()===action.name.toLocaleLowerCase()))return clarification(action,'A Group already uses that name in this workspace.');
+   const id=crypto.randomUUID(),widget=createWidget('group');widget.groupId=id;widget.title=action.name;widget.instanceNumber=nextInstanceNumber('group',workspace.widgets);widget.placement=nextPlacement('group',workspace.widgets);const group={id,name:action.name,shortcuts:[],widgets:[],expanded:false};
+   await options.commitState({...state,workspaces:state.workspaces.map(owner=>owner.id===workspace.id?{...owner,groups:[...owner.groups,group],widgets:[...owner.widgets,widget]}:owner)});
+   return{operation:action.operation,status:'succeeded',summary:`Created Group “${action.name}” in ${workspace.name}.`,data:{workspaceId:workspace.id,groupId:id,widgetId:widget.id},changed:true};
+  }
+  if(action.operation==='group.rename'){
+   const state=options.getState(),workspace=state.workspaces.find(item=>item.id===action.workspaceId),group=workspace?.groups.find(item=>item.id===action.groupId);if(!workspace||!group)return clarification(action,'The requested Group is no longer available.');
+   if(workspace.groups.some(item=>item.id!==group.id&&item.name.trim().toLocaleLowerCase()===action.name.toLocaleLowerCase()))return clarification(action,'Another Group already uses that name.');
+   const renamed=saveGroupName(workspace,group.id,action.name);await options.commitState({...state,workspaces:state.workspaces.map(owner=>owner.id===workspace.id?renamed:owner)});
+   return{operation:action.operation,status:'succeeded',summary:`Renamed Group to “${action.name}”.`,changed:group.name!==action.name};
+  }
+  if(action.operation==='group.delete'){
+   const state=options.getState(),workspace=state.workspaces.find(item=>item.id===action.workspaceId),group=workspace?.groups.find(item=>item.id===action.groupId);if(!workspace||!group)return clarification(action,'The requested Group is no longer available.');
+   const hasContents=group.shortcuts.length>0||group.widgets.length>0;if(hasContents&&!action.removeContents)return clarification(action,`This Group contains ${group.shortcuts.length} shortcuts and ${group.widgets.length} widget entries. Ask to delete the Group and its contents explicitly.`);
+   const next=deleteSavedGroup(workspace,group.id);await options.commitState({...state,workspaces:state.workspaces.map(owner=>owner.id===workspace.id?next:owner)});
+   return{operation:action.operation,status:'succeeded',summary:hasContents?`Deleted Group “${group.name}” and its saved contents.`:`Deleted empty Group “${group.name}”.`,changed:true};
+  }
+  if(action.operation==='rule.list'||action.operation==='rule.runDue'||action.operation==='rule.enable'||action.operation==='rule.layoutMode'||action.operation==='rule.delete'){
+   const admin=options.ruleAdmin;if(!admin)return clarification(action,'Automation rule management is unavailable.');
+   if(action.operation==='rule.list')return{operation:action.operation,status:'succeeded',summary:`Found ${admin.list()?.length??0} automation rules.`,data:admin.list()??[]};
+   if(action.operation==='rule.runDue'){const result=await admin.runDue();return{operation:action.operation,status:result.ok?'succeeded':'failed',summary:result.ok?result.dueCount===0?'No scheduled automation rules were due.':`${result.succeededCount} of ${result.dueCount} due rule(s) succeeded; ${result.attentionCount} need attention and ${result.notConfirmedCount} were not confirmed.`:result.message??'Automation check failed.',data:result,changed:result.succeededCount>0};}
+   const message=action.operation==='rule.enable'?admin.enable(action.ruleId,action.enabled):action.operation==='rule.layoutMode'?admin.setLayoutMode(action.ruleId,action.mode):admin.delete(action.ruleId);
+   return{operation:action.operation,status:'succeeded',summary:message,changed:true};
+  }
   if(action.operation==='layout.find'){
    const term=action.query.toLocaleLowerCase(),found=getLayouts().filter(layout=>layout.name.toLocaleLowerCase().includes(term));return{operation:action.operation,status:'succeeded',summary:`Found ${found.length} matching layouts.`,data:found.map(({id,name,createdAt,widgets,groups})=>({id,name,createdAt,widgetCount:widgets.length,groupCount:groups.length}))};
   }
@@ -91,7 +156,7 @@ export function createWorkbenchService(options:WorkbenchServiceOptions){
   if(action.operation==='rule.save'){
    const result=await options.saveRule(action.text);return result.kind==='rule'?{operation:action.operation,status:'succeeded',summary:'Automation saved.',data:result.rule,changed:true}:result.kind==='clarification'?clarification(action,result.message):{operation:action.operation,status:'failed',summary:result.message};
   }
-  const request=collectionRequest(action as Exclude<WorkbenchAction,{operation:`layout.${string}`}|{operation:'resource.find'}|{operation:'rule.save'}>);
+  const request=collectionRequest(action as Exclude<WorkbenchAction,{operation:`layout.${string}`}|{operation:`dashboard.${string}`}|{operation:`group.${string}`}|{operation:`rule.${string}`}|{operation:'resource.find'}>);
   const result=await collection(request,{source:'assistant'});
   return{operation:action.operation,status:result.status==='failed'&&result.changed?'outcome_unknown':result.status,summary:result.summary,receiptId:result.receiptId,changed:result.changed,...(result.resource?{data:result.resource}:{})};
  }
