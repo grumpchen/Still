@@ -32,14 +32,15 @@ function boundRecent(receipts:WorkbenchReceipt[]){
 
 /** Keep workspace IDs visible while bounding the cross-workspace resource catalogue sent to the model. */
 export function boundedWorkbenchContext(snapshot:WorkbenchSnapshot,recentResults:WorkbenchReceipt[]){
- const workspaces=snapshot.workspaces.map(workspace=>({...workspace,files:[],links:[]} as WorkbenchSnapshot['workspaces'][number]));
+ let groups=0,dashboardModules=0;
+ const workspaces=snapshot.workspaces.map(workspace=>{const savedGroups=(workspace.groups??[]).slice(0,MAX_DIRECTORY_ENTRIES-groups);groups+=savedGroups.length;const modules=workspace.dashboardModules?.slice(0,Math.max(0,MAX_DIRECTORY_ENTRIES-dashboardModules));dashboardModules+=modules?.length??0;return{...workspace,files:[],links:[],...(workspace.groups?{groups:savedGroups}:{}),...(workspace.dashboardModules?{dashboardModules:modules}:{})} as WorkbenchSnapshot['workspaces'][number]});
  const layouts:WorkbenchSnapshot['layouts']=[];
  let files=0,links=0,layoutCount=0;
  const candidates=snapshot.workspaces.flatMap((workspace,index)=>[
   ...workspace.files.map(item=>({kind:'file' as const,index,item})),
   ...workspace.links.map(item=>({kind:'link' as const,index,item})),
  ]);
- const base={workspaces,layouts},overBudget=()=>byteLength(base)>MAX_CONTEXT_BYTES;
+ const automationRules=snapshot.automationRules?.slice(0,MAX_DIRECTORY_ENTRIES).map(rule=>({...rule,sourceText:rule.sourceText.slice(0,240)})),base={workspaces,layouts,...(automationRules?{automationRules}:{})},overBudget=()=>byteLength(base)>MAX_CONTEXT_BYTES;
  for(const candidate of candidates){
   if(candidate.kind==='file'){
    if(files>=MAX_DIRECTORY_ENTRIES)continue;
@@ -63,11 +64,14 @@ export function boundedWorkbenchContext(snapshot:WorkbenchSnapshot,recentResults
   files:snapshot.workspaces.reduce((sum,item)=>sum+item.files.length,0)-files,
   links:snapshot.workspaces.reduce((sum,item)=>sum+item.links.length,0)-links,
   layouts:snapshot.layouts.length-layoutCount,
+  groups:snapshot.workspaces.reduce((sum,item)=>sum+(item.groups?.length??0),0)-groups,
+  dashboardModules:snapshot.workspaces.reduce((sum,item)=>sum+(item.dashboardModules?.length??0),0)-dashboardModules,
+  automationRules:(snapshot.automationRules?.length??0)-(automationRules?.length??0),
  };
  const directoryTruncated=Object.values(omitted).some(count=>count>0);
  const recent=boundRecent(recentResults);
- const result:{workspaces:typeof workspaces;layouts:typeof layouts;recentResults:typeof recent.recent;directoryTruncated?:true;directoryOmitted?:typeof omitted;directoryNotice?:string;recentResultsTruncated?:true}={workspaces,layouts,recentResults:recent.recent};
- if(directoryTruncated){result.directoryTruncated=true;result.directoryOmitted=omitted;result.directoryNotice='This directory is partial. Use resource.find or layout.find to search entries not listed here.'}
+ const result:{workspaces:typeof workspaces;layouts:typeof layouts;automationRules?:typeof automationRules;recentResults:typeof recent.recent;directoryTruncated?:true;directoryOmitted?:typeof omitted;directoryNotice?:string;recentResultsTruncated?:true}={workspaces,layouts,...(automationRules?{automationRules}:{}),recentResults:recent.recent};
+ if(directoryTruncated){result.directoryTruncated=true;result.directoryOmitted=omitted;result.directoryNotice='This directory is partial. Use resource.find or layout.find to search omitted Files, links or layouts. Request group.list / dashboard.list / rule.list for omitted entries.'}
  if(recent.truncated)result.recentResultsTruncated=true;
  return result;
 }
