@@ -5,6 +5,7 @@ export async function mockAssistant(page:Page,reply='Mock assistant reply'){
  await page.addInitScript(({reply})=>{
   (window as any).isTauri=true;
   const listeners=new Map<string,Set<(event:any)=>void>>();
+  (window as any).__TAURI_EVENT_PLUGIN_INTERNALS__={unregisterListener:()=>{}};
   (window as any).__TAURI_INTERNALS__={
    metadata:{currentWindow:{label:'main',effects:{}},currentWebview:{label:'main',windowLabel:'main'}},
    transformCallback:(callback:(event:any)=>void)=>{const id=String(Math.random());(window as any).__TAURI_INTERNALS__.callbacks??={};(window as any).__TAURI_INTERNALS__.callbacks[id]=callback;return id},
