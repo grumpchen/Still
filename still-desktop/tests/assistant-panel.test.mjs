@@ -123,6 +123,11 @@ test('the single chat can use workspace widgets; @ is optional quick selection a
  }
 });
 
+test('selected mode instructions are sent as a distinct provider request property, not workspace data',async()=>{
+ const h=await mountAssistantHarness({props:{modeContext:'Selected AI mode: Physics. Trusted user-authored mode instructions: cite formulas.'}});
+ try{await h.send('Explain acceleration');await waitFor(()=>h.calls.some(call=>call.command==='assistant_chat'));const request=h.calls.find(call=>call.command==='assistant_chat').args.request;assert.equal(request.mode_instructions,'Selected AI mode: Physics. Trusted user-authored mode instructions: cite formulas.');assert.equal(JSON.parse(request.context).studyMode,undefined);assert.doesNotMatch(request.context,/cite formulas/)}finally{await h.cleanup()}
+});
+
 test('opted-in provider agent proposals still pass through Still removal confirmation',async()=>{
  const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true}),{window}=dom,old=new Map();
  for(const key of ['window','document','navigator','localStorage','HTMLElement','Element','Node','MutationObserver','requestAnimationFrame','cancelAnimationFrame','IS_REACT_ACT_ENVIRONMENT','isTauri'])old.set(key,Object.getOwnPropertyDescriptor(globalThis,key));

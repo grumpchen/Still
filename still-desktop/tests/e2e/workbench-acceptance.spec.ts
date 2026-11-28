@@ -12,7 +12,7 @@ async function fixture(page:Page,withTemplate=false){
  return{state,physics,chemistry};
 }
 async function saved(page:Page){return page.evaluate(()=>JSON.parse(localStorage.getItem('still-workspace-v2')!))}
-async function openCapture(page:Page){await page.locator('.topbar').getByRole('button',{name:'Capture',exact:true}).click();return page.locator('.quick-capture-dialog')}
+async function openCapture(page:Page){await page.keyboard.press('Control+k');const palette=page.getByRole('dialog',{name:'Find action',exact:true});await palette.getByRole('button',{name:'Quick note',exact:true}).click();return page.locator('.quick-capture-dialog')}
 async function saveLink(page:Page,workspaceId:string,name:string,url:string){const dialog=await openCapture(page);await dialog.getByRole('button',{name:'Web link',exact:true}).click();await dialog.getByLabel('Choose course').selectOption(workspaceId);await dialog.getByLabel('Link name').fill(name);await dialog.getByLabel('URL',{exact:true}).fill(url);await dialog.getByRole('button',{name:'Save',exact:true}).click();await expect(dialog).not.toBeVisible()}
 async function navigate(page:Page,name:string){const toggle=page.locator('.topbar .sidebar-toggle');if(await toggle.getAttribute('aria-expanded')!=='true')await toggle.click();await page.locator('.nav button').filter({has:page.locator('.nav-name',{hasText:new RegExp(`^${name}$`)})}).click()}
 

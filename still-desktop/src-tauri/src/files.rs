@@ -445,12 +445,22 @@ pub async fn files_choose(app: AppHandle, webview: Webview, roots: State<'_,Fold
     Ok(Some(result))
 }
 #[tauri::command]
-pub async fn files_still_inbox(app:AppHandle,webview:Webview,roots:State<'_,FolderRoots>,id:String)->Result<StillInbox,String>{
+pub async fn files_save_to_directory(app:AppHandle,webview:Webview,roots:State<'_,FolderRoots>,id:String,name:String,bytes:Vec<u8>)->Result<String,String>{
     crate::security::authorize(&webview)?;valid_id(&id)?;
-    let documents=app.path().document_dir().map_err(|_|"Could not locate your Documents folder")?;
-    let path=documents.join("Still").join("Downloads");
-    fs::create_dir_all(&path).map_err(|_|"Could not create the Still Downloads inbox")?;
-    let path=path.canonicalize().map_err(|_|"Could not open the Still Downloads inbox")?;
+    if bytes.len()>64*1024*1024{return Err("This export exceeds the 64 MB limit.".into())}
+    let name=name.trim();if name.is_empty()||name.len()>180||name.contains('/')||name.contains('\\')||name.contains('\0')||name=="."||name==".."{return Err("Choose a safe file name.".into())}
+    let root=roots.root(&id)?.canonicalize().map_err(|_|"The selected save folder is no longer available. Choose it again.")?;
+    if !root.is_dir(){return Err("The selected save location is not a folder.".into())}
+    let mut candidate=root.join(name);let mut suffix=2u32;
+    while candidate.exists(){let path=Path::new(name);let stem=path.file_stem().and_then(|part|part.to_str()).unwrap_or("Still export");let extension=path.extension().and_then(|part|part.to_str()).map(|part|format!(".{part}")).unwrap_or_default();candidate=root.join(format!("{stem} ({suffix}){extension}"));suffix=suffix.saturating_add(1);if suffix==u32::MAX{return Err("No free file name is available.".into())}}
+    let mut output=fs::OpenOptions::new().write(true).create_new(true).open(&candidate).map_err(|_|"Still could not write to the selected save folder.")?;
+    if let Err(error)=output.write_all(&bytes){let _=fs::remove_file(&candidate);return Err(format!("Still could not finish saving the export: {error}"))}
+    Ok(candidate.file_name().and_then(|part|part.to_str()).unwrap_or(name).to_string())
+}
+#[tauri::command]
+pub async fn files_still_inbox(app:AppHandle,webview:Webview,roots:State<'_,FolderRoots>,id:String,mode_directory_id:Option<String>)->Result<StillInbox,String>{
+    crate::security::authorize(&webview)?;valid_id(&id)?;
+    let path=if let Some(directory_id)=mode_directory_id{valid_id(&directory_id)?;roots.root(&directory_id)?.canonicalize().map_err(|_|"The selected mode download folder is unavailable. Choose it again.")?}else{let documents=app.path().document_dir().map_err(|_|"Could not locate your Documents folder")?;let path=documents.join("Still").join("Downloads");fs::create_dir_all(&path).map_err(|_|"Could not create the Still Downloads inbox")?;path.canonicalize().map_err(|_|"Could not open the Still Downloads inbox")?};
     // Keep an opaque built-in source grant for saved Files shortcuts, then bind
     // this widget instance to the same root. The UI never supplies a path.
     let source="still-downloads-inbox";
