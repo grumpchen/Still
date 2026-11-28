@@ -212,10 +212,16 @@ export function cloneGlobalWorkspaceLayout(layout:Pick<GlobalWorkspaceLayout,'wi
  const copyWidget=(source:WidgetInstance):WidgetInstance=>{
   const id=widgetIds.get(source.id)??crypto.randomUUID();widgetIds.set(source.id,id);
   const noteDocuments=detachNoteLibraryDocuments(source.noteDocuments).map(note=>({...structuredClone(note),id:noteIds.get(note.id)??crypto.randomUUID(),sources:note.sources?.map(citation=>({...citation,widgetId:widgetIds.get(citation.widgetId)??citation.widgetId}))}));
+  const flashcardDecks=(source.flashcardDecks??[]).map(deck=>({
+   ...deck,
+   id:crypto.randomUUID(),
+   noteId:noteIds.get(deck.noteId)??deck.noteId,
+   cards:deck.cards.map(card=>({...card,id:crypto.randomUUID()})),
+  }));
   const folderKey=source.type==='files'&&!source.folderKey&&source.folderName&&source.folderName!=='Still Downloads'?source.id:source.folderKey;
   const remaining=source.end===null?source.remaining:Math.max(0,Math.ceil((source.end-Date.now())/1000));
   const geometry=mode==='append'?{...source.placement,x:source.placement.x+offset,y:source.placement.y+offset}:source.placement;
-  const copy:WidgetInstance={...structuredClone(source),id,type:source.type,instanceNumber:nextInstanceNumber(source.type,existing),placement:source.minimized?compactPlacement(geometry,canvasWidth,canvasHeight):source.type==='group'&&source.groupCollapsed?constrainGroupCollapsedPlacement(geometry,canvasWidth,canvasHeight):constrainPlacement(source.type,geometry,canvasWidth,{},canvasHeight),groupId:source.groupId?groupIds.get(source.groupId)??null:null,folderKey,notesLibraryKey:null,notesLibraryName:undefined,noteDocuments,activeNoteDocumentId:noteIds.get(source.activeNoteDocumentId)??noteDocuments[0]?.id??'',remaining,end:null,appPanelOpen:false,appWasCollected:false};existing.push(copy);
+  const copy:WidgetInstance={...structuredClone(source),id,type:source.type,instanceNumber:nextInstanceNumber(source.type,existing),placement:source.minimized?compactPlacement(geometry,canvasWidth,canvasHeight):source.type==='group'&&source.groupCollapsed?constrainGroupCollapsedPlacement(geometry,canvasWidth,canvasHeight):constrainPlacement(source.type,geometry,canvasWidth,{},canvasHeight),groupId:source.groupId?groupIds.get(source.groupId)??null:null,folderKey,notesLibraryKey:null,notesLibraryName:undefined,noteDocuments,flashcardDecks,activeNoteDocumentId:noteIds.get(source.activeNoteDocumentId)??noteDocuments[0]?.id??'',remaining,end:null,appPanelOpen:false,appWasCollected:false};existing.push(copy);
   return copy;
  };
  const widgets=layout.widgets.map(copyWidget),groups=layout.groups.map(group=>({...structuredClone(group),id:groupIds.get(group.id)!,widgets:group.widgets.map(entry=>{
