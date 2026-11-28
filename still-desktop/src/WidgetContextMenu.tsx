@@ -37,7 +37,7 @@ export function WidgetContextMenu({x, y, label, actions, close}: {
   }
   return createPortal(
     <div ref={menu} role="menu" aria-label={label} className="add-tool-context-menu"
-      style={{left: Math.max(4, Math.min(x, window.innerWidth - 240)), top: Math.max(4, Math.min(y, window.innerHeight - 110))}}
+      style={{left: Math.max(4, Math.min(x, window.innerWidth - 240)), top: Math.max(4, Math.min(y, window.innerHeight - Math.min(window.innerHeight - 8, actions.length * 40 + 20)))}}
       onKeyDown={keyDown} onContextMenu={event => event.preventDefault()}>
       {actions.map(action => <button key={action.label} type="button" role="menuitem"
         onClick={() => { close(); action.run(); }}>{action.label}</button>)}

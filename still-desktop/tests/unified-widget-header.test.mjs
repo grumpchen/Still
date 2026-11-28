@@ -24,9 +24,10 @@ test('shared widget header keeps configurable Apps actions accessible',()=>{
  assert.match(apps,/!ready&&\(widget\.appWasCollected\|\|\(!widget\.appKey&&widget\.appName\)\)&&<button[\s\S]*?t\('reattachOpenApp'\)/,'attached windows can be reselected after a Still restart');
 });
 
-test('Apps omits its PNG and header resize controls while keeping the standard corner resize handle',()=>{
+test('Apps omits its PNG context action and header resize controls while keeping the standard corner resize handle',()=>{
  const canvas=source('../src/WorkspaceCanvas.tsx');
- assert.match(canvas,/w\.type!=='apps'&&<button[^>]*widget-export-control/);
+ assert.match(canvas,/showWidgetExportPngAction&&menuWidget\.type!=='apps'/);
+ assert.doesNotMatch(canvas,/widget-export-control/);
  assert.doesNotMatch(canvas,/widget-resize-control/);
  assert.match(canvas,/className="widget-resize"/);
 });
