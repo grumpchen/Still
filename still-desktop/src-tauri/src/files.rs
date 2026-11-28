@@ -445,10 +445,12 @@ pub async fn files_choose(app: AppHandle, webview: Webview, roots: State<'_,Fold
     Ok(Some(result))
 }
 #[tauri::command]
-pub async fn files_save_to_directory(app:AppHandle,webview:Webview,roots:State<'_,FolderRoots>,id:String,name:String,bytes:Vec<u8>)->Result<String,String>{
+pub async fn files_save_to_directory(webview:Webview,roots:State<'_,FolderRoots>,id:String,name:String,bytes:Vec<u8>)->Result<String,String>{
     crate::security::authorize(&webview)?;valid_id(&id)?;
     if bytes.len()>64*1024*1024{return Err("This export exceeds the 64 MB limit.".into())}
-    let name=name.trim();if name.is_empty()||name.len()>180||name.contains('/')||name.contains('\\')||name.contains('\0')||name=="."||name==".."{return Err("Choose a safe file name.".into())}
+    let name=name.trim();
+    if !valid_filing_segment(name)||!name.to_ascii_lowercase().ends_with(".png"){return Err("Choose a valid PNG export name.".into())}
+    if !bytes.starts_with(b"\x89PNG\r\n\x1a\n"){return Err("Still could not read the PNG export.".into())}
     let root=roots.root(&id)?.canonicalize().map_err(|_|"The selected save folder is no longer available. Choose it again.")?;
     if !root.is_dir(){return Err("The selected save location is not a folder.".into())}
     let mut candidate=root.join(name);let mut suffix=2u32;

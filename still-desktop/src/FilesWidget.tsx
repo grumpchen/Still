@@ -45,7 +45,20 @@ function FolderWidget({widget,update,notify,workspaceActive=true,workspaceWidget
  const picker=useRef<HTMLInputElement>(null),active=useRef(true),selectionMenuRef=useRef<HTMLDivElement>(null),fileContextMenuRef=useRef<HTMLDivElement>(null);
  const noteTargets=workspaceWidgets.filter(target=>target.type==='notes').flatMap(target=>target.noteDocuments.map(note=>({widgetId:target.id,noteId:note.id,name:`${target.title||t('widget_notes')} · ${note.title||t('untitledNote')}`})));
 
- useEffect(()=>{active.current=true;if(widget.folderKey==='still-downloads-inbox'&&!localFiles.native){setFolder(null);setInboxPath('');setError('');return()=>{active.current=false;localFiles.release(widget.id)}}const load=widget.folderKey==='still-downloads-inbox'?localFiles.inbox(widget.id,modeDownloadDirectoryId).then(value=>{if(active.current)setInboxPath(value.path);return value.listing}):widget.folderKey?localFiles.reuse(widget.id,widget.folderKey):localFiles.list(widget.id,'');load.then(value=>{if(active.current)setFolder(value)}).catch(reason=>{if(active.current&&widget.folderKey)setError(String(reason))});return()=>{active.current=false;localFiles.release(widget.id)}},[widget.id,modeDownloadDirectoryId]);
+ const inboxModeDirectory=widget.folderKey==='still-downloads-inbox'?modeDownloadDirectoryId:'';
+ useEffect(()=>{
+  let disposed=false;active.current=true;
+  if(widget.folderKey==='still-downloads-inbox'){
+   setFolder(null);setInboxPath('');closePreview();exitSearch();setFilter('');
+  }
+  if(widget.folderKey!=='still-downloads-inbox'||localFiles.native){
+   const load=widget.folderKey==='still-downloads-inbox'
+    ?localFiles.inbox(widget.id,inboxModeDirectory).then(value=>{if(!disposed)setInboxPath(value.path);return value.listing})
+    :widget.folderKey?localFiles.reuse(widget.id,widget.folderKey):localFiles.list(widget.id,'');
+   void load.then(value=>{if(!disposed)setFolder(value)}).catch(reason=>{if(!disposed&&widget.folderKey)setError(String(reason))});
+  }
+  return()=>{disposed=true;active.current=false;localFiles.release(widget.id)};
+ },[widget.id,inboxModeDirectory]);
  useEffect(()=>{const moved=(event:Event)=>{const detail=(event as CustomEvent<{widgetId?:string;sourcePath?:string;destinationPath?:string;removedFolder?:boolean}>).detail;if(detail?.widgetId!==widget.id)return;const location=folder?.location??'',mapped=detail.sourcePath?detail.removedFolder&&(location===detail.sourcePath||location.startsWith(detail.sourcePath+'/'))?detail.sourcePath.split('/').slice(0,-1).join('/'):remapLibraryPath(location,detail.sourcePath,detail.destinationPath??''):location;void navigate(mapped)};window.addEventListener('still-files-resource-moved',moved);
  window.addEventListener('still-files-resource-created',moved);
  return()=>{
