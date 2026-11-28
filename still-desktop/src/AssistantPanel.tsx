@@ -4,7 +4,7 @@ import {assistantEditTargetsUnchanged,assistantWidgetPluginClarification,assista
 import {isAssistantBulkExclusionRequest,addFocusForAssistantTimer,applyLayoutPlan,assistantActionRequest,assistantActionsDescription,assistantCreationClarification,assistantEditClarification,assistantMoveClarification,assistantNoteDocumentClarification,assistantNoteStyleClarification,assistantNoteTagClarification,assistantRemovalClarification,assistantShortcutClarification,assistantTimerControlClarification,assistantTimerStartRequested,assistantWorkspaceClarification,assistantLayoutRequested,assistantKeyError,assistantReplyNeedsClarification,assistantRequestLimitError,assistantWorkspaceContext,DEFAULT_MODELS,extractAssistantTimerSeconds,isFilesWidgetOpenCommand,layoutFingerprint,prepareAssistantHistory,preferredModel,resolveAcceptedNotesOffer,resolveAssistantTimerDurationReply,resolveDirectAssistantActions,resolveNamedNotesCreation,safeAssistantReceipt,settleAssistantConfirmation,unsupportedAssistantRequest,validateAssistantActionIntent,validateAssistantActions,validateLayout,widgetLabel,type AssistantAction,type AssistantFileProposal,type AssistantProvider,type AssistantTrayItem,type AssistantWorkspaceChoice,type ChatMessage,type LayoutPlan} from './domain/assistant.ts';
 import {checkedStudyCalendarDrafts,type StudyCalendarEventDraft} from './domain/studyCalendar.ts';
 import {checkedFlashcardDeck,type FlashcardCard, type FlashcardDeck} from './domain/flashcards.ts';
-import {saveFlashcardDeck} from './domain/flashcardStorage.ts';
+import {readFlashcardDecks,saveFlashcardDeck} from './domain/flashcardStorage.ts';
 import {chatgptPlan,geminiAssistant,runProviderAgent,widgetImage,workspaceImage,type ProviderAgentMessage,type ProviderAgentOutcome,type ProviderAgentProposal} from './platform/assistant.ts';
 import {createStillWorkspaceToolRegistry,type StillToolSnapshot} from './domain/assistantTools.ts';
 import type {AgentToolExecution} from './domain/agentLoop.ts';
@@ -218,6 +218,10 @@ useEffect(()=>{const create=(event:Event)=>{const detail=(event as CustomEvent<{
     if(sending.current||libraryWorking||libraryProposal||!input.trim())return;
     if(requestLimit)return;
     const owner=latest.current,displayPrompt=input.trim(),mentionIds=resolveAssistantWidgetMentions(displayPrompt,owner,mentions.map(item=>item.id)),commandCandidate=aiCommandSource.current;
+    if(!libraryResource&&/(?:\b(?:list|show|open|review|view)\b.*\bflash\s?cards?\b|闪卡.*(?:列表|打开|查看|复习))/i.test(displayPrompt)){
+      const byId=new Map(readFlashcardDecks(owner.id).map(deck=>[deck.id,deck]));for(const widget of owner.widgets)for(const deck of widget.flashcardDecks??[])if(!byId.has(deck.id))byId.set(deck.id,deck);const decks=[...byId.values()],isOpen=/\b(?:open|review|view)\b|(?:打开|查看|复习)/i.test(displayPrompt),summary=decks.length?decks.map(deck=>`• ${deck.title} — ${deck.cards.length} card${deck.cards.length===1?'':'s'}`).join('\n'):'No saved flashcards in this workspace yet.';
+      setMessages(current=>[...current,{role:'user',text:displayPrompt},{role:'model',text:isOpen?`${decks.length?'Opening your flashcards.':'There are no saved flashcards to open.'}${decks.length?`\n${summary}`:''}`:summary}]);setInput('');setMentions([]);setError('');if(isOpen&&decks.length)window.dispatchEvent(new CustomEvent('still-flashcards-open-request',{detail:{workspaceId:owner.id}}));return;
+    }
     aiCommandSource.current=null;
     const commandSource=commandCandidate?.workspaceId===owner.id&&commandCandidate.prompt===displayPrompt&&owner.widgets.some(widget=>widget.id===commandCandidate.widgetId&&widget.type==='aiCommand'&&widget.text.trim()===displayPrompt)?commandCandidate:null;
     const waitingForSelection=pendingSelection.current?.workspaceId===owner.id&&!libraryResource&&!libraryOrganisationContext?pendingSelection.current:null;

@@ -1,0 +1,38 @@
+import {expect,test} from '@playwright/test';
+import {createInitialState,createWidget} from '../../src/domain/workspaces.ts';
+import {createNoteDocument} from '../../src/domain/noteDocuments.ts';
+import {mockAssistant} from './helpers/mock-assistant';
+
+test('AI flashcards can be generated, edited, saved, reviewed, and restored after reload',async({page})=>{
+ const state=createInitialState(),workspace=state.workspaces.find(item=>item.name==='Design')!,notes=createWidget('notes'),note=createNoteDocument('Motion');
+ note.text='Work equals force multiplied by distance.';notes.noteDocuments=[note];notes.activeNoteDocumentId=note.id;notes.title=note.title;notes.text=note.text;workspace.widgets=[notes];
+ await mockAssistant(page,JSON.stringify({cards:[{front:'How is work calculated?',back:'Force multiplied by distance.',sourceQuote:'force multiplied by distance'}]}));
+ await page.addInitScript(data=>{localStorage.setItem('still-workspace-v2',JSON.stringify(data));localStorage.setItem('still-first-run-tutorial-v1','done');localStorage.setItem('still-assistant-share-workspace-image','false')},state);
+ await page.setViewportSize({width:1440,height:900});await page.goto('/design-preview.html');
+ await page.getByRole('button',{name:'Show sidebar'}).click();await page.locator('.nav button').filter({hasText:'Design'}).click();
+ const widget=page.locator(`[data-widget-id="${notes.id}"]`);
+ await widget.getByRole('button',{name:'Add an add-on to Motion'}).click();
+ await page.getByRole('menu',{name:'Add-ons for Motion'}).getByRole('menuitemcheckbox',{name:'Add flashcards'}).click();
+ await widget.getByRole('button',{name:'AI',exact:true}).click();await widget.getByRole('group',{name:'Study with AI'}).getByRole('button',{name:'Flashcards',exact:true}).click();
+ const assistant=page.locator('#ai-sidebar');await expect(assistant.getByLabel('Message Still AI')).toHaveValue(/Create study flashcards/);
+ await assistant.getByLabel('AI model').selectOption('gemini::mock-model');await assistant.getByRole('button',{name:'Send',exact:true}).click();
+ const preview=assistant.getByRole('region',{name:'Review and edit cards'});await expect(preview).toBeVisible();
+ await preview.getByRole('textbox',{name:'Question 1'}).fill('Define mechanical work.');
+ await preview.getByRole('textbox',{name:'Answer 1'}).fill('Force multiplied by displacement.');
+ await preview.getByRole('button',{name:'Save deck'}).click();
+ await expect(preview).toHaveCount(0);
+ await expect.poll(()=>page.evaluate(id=>JSON.parse(localStorage.getItem(`still-flashcards-v1:${id}`)||'[]').length,workspace.id)).toBe(1);
+ await expect.poll(()=>page.evaluate(({workspaceId,widgetId})=>JSON.parse(localStorage.getItem('still-workspace-v2')||'{}').workspaces.find((item:any)=>item.id===workspaceId)?.widgets.find((item:any)=>item.id===widgetId)?.flashcardDecks?.length,{workspaceId:workspace.id,widgetId:notes.id})).toBe(1);
+ await widget.getByRole('button',{name:'Flashcards',exact:true}).click();
+ const review=page.getByRole('dialog',{name:'Flashcards'});await expect(review).toBeVisible();await expect(review).toContainText('Define mechanical work.');
+ await review.getByRole('button',{name:'Show answer'}).click();await expect(review).toContainText('Force multiplied by displacement.');
+ await review.getByRole('button',{name:'Again'}).click();await expect(review).toContainText('This card will come up again.');await expect(review).toContainText('Define mechanical work.');
+ await review.getByRole('button',{name:'Cancel'}).click();
+ const message=assistant.getByLabel('Message Still AI');await message.fill('list my flashcards');await message.press('Enter');await expect(assistant).toContainText('Define mechanical work.');
+ await message.fill('open flashcards');await message.press('Enter');await expect(page.getByRole('dialog',{name:'Flashcards'})).toBeVisible();
+ await page.getByRole('dialog',{name:'Flashcards'}).getByRole('button',{name:'Cancel'}).click();
+ await page.reload();await page.getByRole('button',{name:'Show sidebar'}).click();await page.locator('.nav button').filter({hasText:'Design'}).click();
+ const restoredWidget=page.locator(`[data-widget-id="${notes.id}"]`);await restoredWidget.getByRole('button',{name:'Flashcards'}).click();
+ const restoredReview=page.getByRole('dialog',{name:'Flashcards'});await expect(restoredReview).toContainText('Define mechanical work.');
+ await restoredReview.getByRole('button',{name:'Show answer'}).click();await expect(restoredReview).toContainText('Force multiplied by displacement.');
+});
