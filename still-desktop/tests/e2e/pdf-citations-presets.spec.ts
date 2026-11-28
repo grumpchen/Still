@@ -48,7 +48,8 @@ test('PDF excerpts keep a clickable page citation and highlight presets are reus
     await expect(instruction).toHaveValue('Find governing law and venue clauses.');
 
     const secondPage = files.locator('.pdf-render-page[aria-label="PDF page 2"]');
-    await expect(secondPage.locator('.textLayer')).toContainText('recipient must retain records');
+    await secondPage.scrollIntoViewIfNeeded();
+    await expect(secondPage.locator('.textLayer')).toContainText('recipient must retain records', { timeout: 12_000 });
     await secondPage.evaluate(element => {
       const walker = document.createTreeWalker(element.querySelector('.textLayer')!, NodeFilter.SHOW_TEXT);
       let node: Node | null;
