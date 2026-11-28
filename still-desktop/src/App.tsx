@@ -3,7 +3,7 @@ import { createWidgetFromPreset,createWidgetFromGroupEntry,openSavedGroup,update
 import {startupDeferredWidgetIds,applyRelaunchModeToAll,type WidgetRelaunchMode,type WidgetRelaunchPluginStatus} from './domain/widgetRelaunch.ts';
 import {type ClockPluginMode} from './domain/clockPlugin.ts';
 import {createNoteDocument,NOTE_DOCUMENT_LIMIT,type NoteDocument} from './domain/noteDocuments.ts';
-import {allSavedNotes,editSavedNote,retainNoteHistory,type NoteHistoryEntry} from './domain/noteHistory.ts';
+import {allSavedNotes,editSavedNote,retainNoteHistory,type NoteHistoryEntry,type NoteHistoryIdentity} from './domain/noteHistory.ts';
 import NotesHome from './NotesHome.tsx';
 import {assistantBulkRemovalSelection} from './domain/assistantBulkRemoval.ts';
 import {closeNativeAppsBeforeMutation,moveWithRetainedNativePanel,NativeAppRemovalError} from './domain/nativeWidgetLifecycle.ts';
@@ -262,13 +262,13 @@ export default function App(){
     const current=captureState.current;
     commitSnapshot({...current,noteHistory:[...(current.noteHistory??[]),entry]},false);
   }
-  function updateSharedNote(id:string,patch:Partial<Pick<NoteDocument,'title'|'text'>>){
-    setWorkspaceState(current=>editSavedNote(current,id,note=>({...note,...patch})));
+  function updateSharedNote(identity:NoteHistoryIdentity,patch:Partial<Pick<NoteDocument,'title'|'text'>>){
+    setWorkspaceState(current=>editSavedNote(current,identity,note=>({...note,...patch})));
   }
-  function deleteSharedNote(id:string){
+  function deleteSharedNote(identity:NoteHistoryIdentity){
     const current=captureState.current;
-    commitSnapshot(editSavedNote(current,id,()=>null),false);
-    if(undo.current)undo.current=editSavedNote(undo.current,id,()=>null);
+    commitSnapshot(editSavedNote(current,identity,()=>null),false);
+    if(undo.current)undo.current=editSavedNote(undo.current,identity,()=>null);
   }
   function commitGlobalLayouts(globalLayouts:GlobalWorkspaceLayout[],messageText:string):string{const next={...captureState.current,globalLayouts};commitSnapshot(next);return messageText}
   function captureDashboardLayout(source:WorkspaceState['workspaces'][number]):Parameters<typeof createGlobalWorkspaceLayout>[3]{const available=new Set(source.widgets.map(widget=>widget.id)),order=(source.dashboardLayout?.order??source.widgets.filter(widget=>['calendar','focus','timetable','files'].includes(widget.type)).map(widget=>widget.id)).filter(id=>available.has(id)),placements={...(source.dashboardLayout?.placements??{})},grid=state.activeId===source.id?document.querySelector<HTMLElement>('.workspace-surface:not([hidden]) .dashboard-grid'):null,gridRect=grid?.getBoundingClientRect();for(const [index,id] of order.entries()){const widget=source.widgets.find(item=>item.id===id),element=grid?.querySelector<HTMLElement>(`[data-module-id="${id}"]`),rect=element?.getBoundingClientRect(),savedSize=source.dashboardLayout?.sizes[id];if(rect&&gridRect&&rect.width>0&&rect.height>0)placements[id]={x:Math.max(0,Math.round(rect.left-gridRect.left)),y:Math.max(0,Math.round(rect.top-gridRect.top)),width:savedSize?.width??Math.round(rect.width),height:savedSize?.height??Math.round(rect.height)};else if(!placements[id]&&widget){const width=savedSize?.width??widget.placement.width,height=savedSize?.height??widget.placement.height;placements[id]={x:(index%2)*(width+24),y:Math.floor(index/2)*(height+24),width,height}}}const dashboardLayout={order,sizes:{...(source.dashboardLayout?.sizes??{})},placements};return{widgetIds:order,widgets:source.widgets,dashboardLayout,placements}}
