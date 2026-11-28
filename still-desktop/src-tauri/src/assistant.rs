@@ -114,6 +114,15 @@ async fn fetch_openai_models_at(client:&reqwest::Client,endpoint:&str,key:&str)-
     if models.is_empty(){return Err("No compatible OpenAI chat models are available for this API key.".into());}
     Ok(models)
 }
+fn deepseek_http_error(status: u16) -> String {
+    match status {
+        401 | 403 => "DeepSeek rejected the API key. Check your key in Still AI settings.".into(),
+        402 => "DeepSeek reported insufficient balance. Check billing in your DeepSeek account.".into(),
+        429 => "DeepSeek rate-limited the request. Wait a moment before sending it again.".into(),
+        500..=599 => format!("DeepSeek is temporarily unavailable (HTTP {status}). Try again later."),
+        _ => format!("DeepSeek rejected the request (HTTP {status})."),
+    }
+}
 fn opencode_http_error(status:u16)->String {
     match status {
         401|403=>"OpenCode Go could not authorize this key. Check your OpenCode account and reconnect.",
@@ -197,7 +206,7 @@ pub async fn assistant_chat(webview:Webview,state:State<'_,AssistantState>,reque
         let status=response.status().as_u16();
         return Err(match provider {
             Provider::Gemini=>{let detail=read_error_body(response).await;assistant_protocol::http_error_with_details(status,&detail,&key)}
-            Provider::Openai=>openai_http_error(status),Provider::Opencode=>opencode_http_error(status),Provider::Deepseek=>match status{401|403=>"DeepSeek could not authorize this key. Check your API key.",402|429=>"DeepSeek balance or rate limit reached. Check your DeepSeek account before retrying.",500..=599=>"DeepSeek is temporarily unavailable.",_=>"DeepSeek could not complete the request."}.into(),
+            Provider::Openai=>openai_http_error(status),Provider::Opencode=>opencode_http_error(status),Provider::Deepseek=>deepseek_http_error(status),
         });
     }
     let mut bytes=Vec::new();
@@ -256,7 +265,7 @@ pub async fn assistant_agent_turn(webview:Webview,state:State<'_,AssistantState>
     })?;
     if !response.status().is_success() {
         let status=response.status().as_u16();
-        return Err(match provider {Provider::Gemini=>assistant_protocol::http_error(status),Provider::Openai=>openai_http_error(status),Provider::Opencode=>opencode_http_error(status),Provider::Deepseek=>match status{401|403=>"DeepSeek could not authorize this key.",402|429=>"DeepSeek balance or rate limit reached.",_=>"DeepSeek request failed."}.into()});
+        return Err(match provider {Provider::Gemini=>assistant_protocol::http_error(status),Provider::Openai=>openai_http_error(status),Provider::Opencode=>opencode_http_error(status),Provider::Deepseek=>deepseek_http_error(status)});
     }
     let mut bytes=Vec::new();
     while let Some(chunk)=response.chunk().await.map_err(|_|"The AI response could not be read.")? {

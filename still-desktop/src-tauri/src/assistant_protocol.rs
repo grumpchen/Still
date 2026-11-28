@@ -644,8 +644,23 @@ pub fn parse_openai_response(value:Value)->Result<Reply,String>{ parse_compatibl
 pub fn parse_opencode_response(value:Value)->Result<Reply,String>{ parse_compatible_response(value,"OpenCode Go") }
 pub fn parse_deepseek_response(value:Value)->Result<Reply,String>{ parse_compatible_response(value,"DeepSeek") }
 fn parse_compatible_response(value:Value,provider:&str)->Result<Reply,String>{
-    let content=value["choices"][0]["message"]["content"].as_str().ok_or_else(||format!("{provider} returned no readable answer."))?;
-    let reply:Reply=serde_json::from_str(content).map_err(|_|format!("{provider} returned an invalid answer. Try again."))?;
+    let choice = value["choices"].as_array().and_then(|choices| choices.first())
+        .ok_or_else(|| format!("{provider} responded without an answer for Still to display."))?;
+    match choice["finish_reason"].as_str() {
+        Some("length") => return Err(format!("{provider} reached its reply length limit before finishing. Try asking for a shorter answer.")),
+        Some("content_filter") => return Err(format!("{provider} reported that its content filter stopped the reply.")),
+        _ => {}
+    }
+    let content = choice["message"]["content"].as_str().filter(|text| !text.trim().is_empty())
+        .ok_or_else(|| format!("{provider} sent an empty reply. You can try sending your message again."))?;
+    let reply: Reply = serde_json::from_str(content).map_err(|error| {
+        use serde_json::error::Category;
+        match error.classify() {
+            Category::Eof => format!("{provider} sent an incomplete reply. You can try sending your message again."),
+            Category::Data => format!("{provider} answered, but its reply didn’t match the format Still expects."),
+            Category::Syntax | Category::Io => format!("{provider} answered, but Still couldn’t read the reply as JSON."),
+        }
+    })?;
     validate_reply(reply,provider)
 }
 fn validate_reply(mut reply:Reply,provider:&str)->Result<Reply,String>{
