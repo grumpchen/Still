@@ -14,6 +14,7 @@ test('assistant duplicates the real course and mutates only the targeted tray sh
  assert.equal((await run({operation:'workspace.duplicate',workspaceId:course.id,name:'Revision'})).status,'succeeded');
  const copy=state.workspaces.at(-1);
  assert.equal(copy.widgets[0].text,course.widgets[0].text);
+ assert.notEqual(copy.widgets[0].activeNoteDocumentId,course.widgets[0].activeNoteDocumentId);
  assert.notEqual(copy.widgets[0].id,course.widgets[0].id);
  assert.equal((await run({operation:'preset.rename',presetId:'preset-sample',name:'Short timer'})).status,'succeeded');
  assert.equal(state.presets[0].remaining,320);

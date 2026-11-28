@@ -1,11 +1,12 @@
 import type {AutomationAction,AutomationOperationContext,AutomationOperationResult,AutomationOperationService,AutomationStorage,RuleCatalog} from '../domain/automationRules.ts';
-import {parseWorkbenchActions,validateWorkbenchActionBatch,type LinkOrigin,type WorkbenchAction} from '../domain/workbenchActions.ts';
+import {parseWorkbenchActions,validateWorkbenchActionBatch,type LinkOrigin,type InterfaceAction,type WorkbenchAction} from '../domain/workbenchActions.ts';
 import type {CollectionOperationRequest,CollectionOperationResult} from '../domain/collectionOperations.ts';
 import type {CaptureInboxEvent} from '../domain/captureInbox.ts';
 import type {GlobalWorkspaceLayout,WorkspaceState} from '../domain/workspaces.ts';
 import {executeCollectionOperation as sharedCollectionOperation} from './collectionOperations.ts';
 import {localFiles,type LibrarySearchResponse} from './files.ts';
 
+import {operateCanvas,type CanvasCommand} from './canvasCommands.ts';
 import {operateFilesView,type FilesViewCommand} from './filesViewCommands.ts';
 import {applyWorkspaceCommand,type WorkspaceCommand} from '../domain/workspaceCommands.ts';
 
@@ -25,13 +26,14 @@ export interface WorkbenchServiceOptions {
  saveRule:(text:string)=>Promise<{kind:'rule';rule:unknown}|{kind:'clarification'|'unsupported'|'error';message:string}>;
  getCaptureEvent:(eventId:string)=>Promise<WorkbenchCaptureEvent|null|{ok:true;value:WorkbenchCaptureEvent|null}|{ok:false;message:string}>;getCourses?:()=>RuleCatalog['courses'];
  searchFiles?:(widgetIds:string[],query:string)=>Promise<LibrarySearchResponse>;
+ interfaceAction?:(action:InterfaceAction)=>string;
  viewport?:()=>{width:number;height:number};
  storage?:AutomationStorage;
 }
 const JOURNAL_KEY='still.workbench-automation-operations.v1',MAX_JOURNAL=5000;
 type JournalEntry={key:string;signature:string;state:'running'|'complete';result:AutomationOperationResult};
 function memoryStorage():AutomationStorage{return{getItem:key=>localStorage.getItem(key),setItem:(key,value)=>localStorage.setItem(key,value)}};
-function collectionRequest(action:Exclude<WorkbenchAction,WorkspaceCommand|FilesViewCommand|{operation:`layout.${string}`}|{operation:'resource.find'}|{operation:'rule.save'}>):CollectionOperationRequest{
+function collectionRequest(action:Exclude<WorkbenchAction,WorkspaceCommand|FilesViewCommand|CanvasCommand|InterfaceAction|{operation:`layout.${string}`}|{operation:'resource.find'}|{operation:'rule.save'}>):CollectionOperationRequest{
  switch(action.operation){
   case'link.create':return{type:'link.create',workspaceId:action.workspaceId,...(action.groupId?{groupId:action.groupId}:{}),name:action.name,url:action.url};
   case'link.rename':return{type:'link.rename',origin:action.origin,linkId:action.linkId,name:action.name};
@@ -74,6 +76,14 @@ export function createWorkbenchService(options:WorkbenchServiceOptions){
  }
  async function executeOne(action:WorkbenchAction):Promise<WorkbenchReceipt>{
   switch(action.operation){
+   case 'view.open':case 'view.focusMode': {
+    if(!options.interfaceAction)return {operation:action.operation,status:'failed',summary:'The workspace window is unavailable.'};
+    return {operation:action.operation,status:'succeeded',summary:options.interfaceAction(action),changed:true};
+   }
+   case 'canvas.overview':case 'canvas.filter':case 'canvas.snap':case 'canvas.exportPng':case 'canvas.copyImage':case 'canvas.raise': {
+    try{return {operation:action.operation,status:'succeeded',summary:await operateCanvas(action),changed:true}}
+    catch(error){return {operation:action.operation,status:'failed',summary:error instanceof Error?error.message:String(error)}}
+   }
    case 'filesView.search':case 'filesView.open':case 'filesView.closePreview':case 'filesView.exitSearch':case 'filesView.filter':case 'filesView.readingStatus': {
     try{return {operation:action.operation,status:'succeeded',summary:await operateFilesView(action),changed:true}}
     catch(error){return {operation:action.operation,status:'failed',summary:error instanceof Error?error.message:String(error)}}
@@ -108,7 +118,7 @@ export function createWorkbenchService(options:WorkbenchServiceOptions){
   if(action.operation==='rule.save'){
    const result=await options.saveRule(action.text);return result.kind==='rule'?{operation:action.operation,status:'succeeded',summary:'Automation saved.',data:result.rule,changed:true}:result.kind==='clarification'?clarification(action,result.message):{operation:action.operation,status:'failed',summary:result.message};
   }
-  const request=collectionRequest(action as Exclude<WorkbenchAction,WorkspaceCommand|FilesViewCommand|{operation:`layout.${string}`}|{operation:'resource.find'}|{operation:'rule.save'}>);
+  const request=collectionRequest(action as Exclude<WorkbenchAction,WorkspaceCommand|FilesViewCommand|CanvasCommand|InterfaceAction|{operation:`layout.${string}`}|{operation:'resource.find'}|{operation:'rule.save'}>);
   const result=await collection(request,{source:'assistant'});
   return{operation:action.operation,status:result.status==='failed'&&result.changed?'outcome_unknown':result.status,summary:result.summary,receiptId:result.receiptId,changed:result.changed,...(result.resource?{data:result.resource}:{})};
  }

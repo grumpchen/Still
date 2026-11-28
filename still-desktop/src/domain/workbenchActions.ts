@@ -5,7 +5,11 @@
  */
 import type {WorkspaceCommand} from './workspaceCommands.ts';
 import type {FilesViewCommand} from '../platform/filesViewCommands.ts';
-export type WorkbenchAction = WorkspaceCommand|FilesViewCommand
+import type {CanvasCommand} from '../platform/canvasCommands.ts';
+import {snapLayouts} from './snapLayouts.ts';
+export const workbenchPanels=['notes-home','settings','shortcuts','gallery','trayEdit','sidebarPlugins','commands','rules'] as const;
+export type InterfaceAction={operation:'view.open';panel:typeof workbenchPanels[number]}|{operation:'view.focusMode';enabled:boolean};
+export type WorkbenchAction = InterfaceAction| WorkspaceCommand|FilesViewCommand|CanvasCommand
  | {operation:'layout.list'}
  | {operation:'layout.find';query:string}
  | {operation:'layout.save';name:string;sourceWorkspaceId?:string}
@@ -85,6 +89,19 @@ function httpsUrl(value:unknown):string{
 function parseOne(raw:unknown):WorkbenchAction{
  if(!object(raw)||typeof raw.operation!=='string')return invalid();
  switch(raw.operation){
+  case 'view.open':{
+   fields(raw,['operation','panel']);const panel=workbenchPanels.find(item=>item===raw.panel);
+   if(!panel)return invalid();return {operation:raw.operation,panel};
+  }
+  case 'view.focusMode':fields(raw,['operation','enabled']);if(typeof raw.enabled!=='boolean')return invalid();return {operation:raw.operation,enabled:raw.enabled};
+  case 'canvas.exportPng':case 'canvas.copyImage':case 'canvas.raise':fields(raw,['operation','workspaceId','widgetId']);return {operation:raw.operation,workspaceId:id(raw.workspaceId),widgetId:id(raw.widgetId)};
+  case 'canvas.overview':fields(raw,['operation','workspaceId','enabled']);if(typeof raw.enabled!=='boolean')return invalid();return {operation:raw.operation,workspaceId:id(raw.workspaceId),enabled:raw.enabled};
+  case 'canvas.filter':fields(raw,['operation','workspaceId','status']);if(raw.status!=='all'&&raw.status!=='unset'&&raw.status!=='todo'&&raw.status!=='in-progress'&&raw.status!=='done')return invalid();return {operation:raw.operation,workspaceId:id(raw.workspaceId),status:raw.status};
+  case 'canvas.snap':{
+   fields(raw,['operation','workspaceId','widgetId','layout','zone']);const layout=snapLayouts.find(item=>item.id===raw.layout);
+   if(!layout||typeof raw.zone!=='number'||!Number.isInteger(raw.zone)||raw.zone<1||raw.zone>layout.zones.length)return invalid();
+   return {operation:raw.operation,workspaceId:id(raw.workspaceId),widgetId:id(raw.widgetId),layout:layout.id,zone:raw.zone};
+  }
   case 'filesView.search':fields(raw,['operation','widgetId','query']);return {operation:raw.operation,widgetId:id(raw.widgetId),query:text(raw.query,1,300)};
   case 'filesView.open':fields(raw,['operation','widgetId','path']);return {operation:raw.operation,widgetId:id(raw.widgetId),path:relativePath(raw.path,true)};
   case 'filesView.closePreview':case 'filesView.exitSearch':fields(raw,['operation','widgetId']);return {operation:raw.operation,widgetId:id(raw.widgetId)};

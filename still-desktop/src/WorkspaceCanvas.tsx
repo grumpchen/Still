@@ -1,5 +1,6 @@
 import {useCallback,useEffect,useRef,useState,type PointerEvent,type KeyboardEvent,type DragEvent,type MouseEvent as ReactMouseEvent} from 'react';
 import {createPortal} from 'react-dom';
+import {registerCanvas} from './platform/canvasCommands.ts';
 import {focusFilesView} from './platform/currentFilesView.ts';
 import {Icon} from './Icon.tsx';
 import TimerWidget from './TimerWidget.tsx';
@@ -146,7 +147,7 @@ export default function WorkspaceCanvas({workspaceId,canvasFrameRate='display',m
   useEffect(()=>{setSnapAssignments({});setHoveredSnapZone(null)},[layoutMode]);
   function snapZoneAtClient(x:number,y:number){const node=viewport.current,layout=activeSnapLayout;if(!node||!layout)return null;const rect=node.getBoundingClientRect();if(!rect.width||!rect.height)return null;const index=snapZoneAtPoint(layout,{x:(x-rect.left)*node.clientWidth/rect.width,y:(y-rect.top)*node.clientHeight/rect.height},{width:node.clientWidth,height:node.clientHeight});return index===null||index<0?null:index}
   function liveSnapAssignments(assignments:Record<number,string>){const selectable=new Set(widgets.filter(widget=>!widget.minimized&&!(widget.type==='group'&&widget.groupCollapsed)).map(widget=>widget.id));return Object.fromEntries(Object.entries(assignments).filter(([,id])=>selectable.has(id)))}
-  function snapWidgetToZone(widgetId:string,zone:number,recordUndo=false){const widget=widgets.find(item=>item.id===widgetId),node=viewport.current,layout=activeSnapLayout;if(!widget||widget.minimized||widget.type==='group'&&widget.groupCollapsed||!node||!layout)return;if(recordUndo)begin();const result=cascadeSnapZone(layout,liveSnapAssignments(snapAssignments),widgets,widgetId,zone,{width:node.clientWidth,height:node.clientHeight},{x:node.scrollLeft,y:node.scrollTop},{width:extent,height});for(const item of widgets){const next=result.placements[item.id];if(!next||(next.x===item.placement.x&&next.y===item.placement.y&&next.width===item.placement.width&&next.height===item.placement.height))continue;if(item.minimized){const moved=moveMinimizedWidgetInstance(item,{x:next.x,y:next.y},extent,height);update(item.id,{placement:moved.placement,restorePlacement:moved.restorePlacement})}else update(item.id,{placement:bounded(item,next)})}bringToFront(widgetId);for(const id of result.overflowIds)bringToFront(id);setSnapAssignments(result.assignments);if(Object.keys(result.assignments).length>=layout.zones.length)setLayoutMode(null)}
+  function snapWidgetToZone(widgetId:string,zone:number,recordUndo=false,layout=activeSnapLayout){const widget=widgets.find(item=>item.id===widgetId),node=viewport.current;if(!widget||widget.minimized||widget.type==='group'&&widget.groupCollapsed||!node||!layout)return;if(recordUndo)begin();const result=cascadeSnapZone(layout,layout.id===activeSnapLayout?.id?liveSnapAssignments(snapAssignments):{},widgets,widgetId,zone,{width:node.clientWidth,height:node.clientHeight},{x:node.scrollLeft,y:node.scrollTop},{width:extent,height});for(const item of widgets){const next=result.placements[item.id];if(!next||(next.x===item.placement.x&&next.y===item.placement.y&&next.width===item.placement.width&&next.height===item.placement.height))continue;if(item.minimized){const moved=moveMinimizedWidgetInstance(item,{x:next.x,y:next.y},extent,height);update(item.id,{placement:moved.placement,restorePlacement:moved.restorePlacement})}else update(item.id,{placement:bounded(item,next)})}bringToFront(widgetId);for(const id of result.overflowIds)bringToFront(id);setSnapAssignments(result.assignments);if(Object.keys(result.assignments).length>=layout.zones.length)setLayoutMode(null)}
   function chooseSnapAssistWidget(widgetId:string){const widget=widgets.find(item=>item.id===widgetId);if(!activeSnapLayout||!widget||!canMoveWidget(widget))return;const zone=nextSnapZone(activeSnapLayout,liveSnapAssignments(snapAssignments));if(zone>=0)snapWidgetToZone(widgetId,zone,true)}
   // Keep vertical space equal to the viewport; horizontal workspace extension remains available.
   function updateOverviewViewport(){const node=viewport.current,marker=overviewViewportRef.current;if(!node||!marker)return;marker.setAttribute('x',String(node.scrollLeft));marker.setAttribute('y',String(node.scrollTop));marker.setAttribute('width',String(node.clientWidth));marker.setAttribute('height',String(node.clientHeight))}
@@ -245,16 +246,33 @@ export default function WorkspaceCanvas({workspaceId,canvasFrameRate='display',m
     }
     savePresets([presetFromWidget(reusable)],true);
   }
-  async function snapshot(id:string,download=false){if(busy)return;setBusy(id);
+  async function snapshot(id:string,download=false,reportFailure=false){if(busy){if(reportFailure)throw new Error('Another capture is running.');return}setBusy(id);
     try{
       // Raise the chosen card before the native crop so overlapping cards cannot
       // cover its contents. Wait for React and the browser to paint that order.
       bringToFront(id);await new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())));
-      const node=document.getElementById('widget-'+id);if(!node)return;
-      const blob=await captureWidget(node,!download);if(download && !await downloadCapture(blob,widgetRegistry[widgets.find(w=>w.id===id)!.type].name))return;
+      const node=document.getElementById('widget-'+id);if(!node)throw new Error('The widget is no longer visible.');
+      const blob=await captureWidget(node,!download);if(download && !await downloadCapture(blob,widgetRegistry[widgets.find(w=>w.id===id)!.type].name)){if(reportFailure)throw new Error('Export cancelled.');return}
       notify(download?t('pngExported'):t('screenshotCopied'));
-    }catch(e){notify(String((e as Error).message??e))}finally{setBusy(null)}
+    }catch(e){if(reportFailure)throw e;notify(String((e as Error).message??e))}finally{setBusy(null)}
   }
+  useEffect(()=>{
+   if(!workspaceActive||obscured)return;
+   return registerCanvas(workspaceId,async command=>{
+    if(command.operation==='canvas.overview'){setOverviewVisible(command.enabled);return command.enabled?'Workspace map shown.':'Workspace map hidden.'}
+    if(command.operation==='canvas.filter'){setTaskStatusFilter(command.status);return 'Workspace filter: '+command.status}
+    const widget=widgets.find(item=>item.id===command.widgetId);
+    if(!widget)throw new Error('The widget is no longer in the requested workspace.');
+    if(command.operation==='canvas.raise'){bringToFront(widget.id);return 'Brought the widget to the front.'}
+    if(command.operation==='canvas.snap'){
+     if(!canMoveWidget(widget)||widget.minimized||widget.type==='group'&&widget.groupCollapsed||!viewport.current)throw new Error('Restore and unlock this widget before snapping it.');
+     snapWidgetToZone(widget.id,command.zone-1,true,snapLayout(command.layout));return 'Snapped the widget to zone '+command.zone+'.';
+    }
+    if(widget.type==='apps')throw new Error('Use the Apps widget directly for this capture.');
+    await snapshot(widget.id,command.operation==='canvas.exportPng',true);
+    return command.operation==='canvas.exportPng'?t('pngExported'):t('screenshotCopied');
+   });
+  });
   const visibleOrigin=()=>({x:(viewport.current?.scrollLeft??0)+12,y:(viewport.current?.scrollTop??0)+12});
   function trayDragChange(drag:TrayDragPosition|null){setTrayDragging(!!drag);setTrayGhost(drag);setOverCanvas(!!drag&&contains(viewport.current!.getBoundingClientRect(),drag.clientX,drag.clientY))}
   function trayDragDrop({payload,clientX,clientY}:TrayDragPosition){

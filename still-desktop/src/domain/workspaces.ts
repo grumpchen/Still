@@ -189,9 +189,8 @@ export function createWorkspace(name: string, types: WidgetType[],role:Workspace
   return { id: crypto.randomUUID(), name: workspaceName(name), widgets, groups, layout:'canvas',role };
 }
 export function duplicateWorkspace(original: Workspace, name: string): Workspace {
-  const ids=new Map(original.groups.map(g=>[g.id,crypto.randomUUID()])),collectedIds=new Map(original.groups.flatMap(g=>g.widgets.filter(entry=>entry.kind==='collected').map(entry=>[entry.id,crypto.randomUUID()] as const)));
-  const groups=original.groups.map(g=>({...structuredClone(g),id:ids.get(g.id)!,widgets:g.widgets.map(entry=>{if(entry.kind!=='collected'||!entry.instance)return structuredClone(entry);const id=collectedIds.get(entry.id)!;return{...structuredClone(entry),id,instance:{...structuredClone(entry.instance),id}}})}));
-  return { ...original, role:'custom',id: crypto.randomUUID(), name: workspaceName(name),groups, widgets: original.widgets.map(widget => ({...structuredClone(widget),id:crypto.randomUUID(),groupId:widget.groupId?ids.get(widget.groupId)??null:null,end:null})) };
+  const target=createWorkspace(name,[]);
+  return cloneGlobalWorkspaceLayout(original,target,'replace');
 }
 export function transferWidgetInstance(source:Workspace,destination:Workspace,widgetId:string,canvasWidth:number,canvasHeight:number):{source:Workspace;destination:Workspace}|null{
  if(source.id===destination.id)return null;
@@ -202,17 +201,19 @@ export function transferWidgetInstance(source:Workspace,destination:Workspace,wi
  return{source:{...source,widgets:source.widgets.filter(item=>item.id!==widgetId)},destination:{...destination,widgets:[...destination.widgets,moved],groups}};
 }
 export function nextInstanceNumber(type:WidgetType,widgets:WidgetInstance[]):number {return Math.max(0,...widgets.filter(w=>w.type===type).map(w=>w.instanceNumber))+1}
-export function cloneGlobalWorkspaceLayout(layout:GlobalWorkspaceLayout,target:Workspace,mode:'append'|'replace',canvasWidth=20000,canvasHeight=20000):Workspace{
- const widgetIds=new Map(layout.widgets.map(widget=>[widget.id,crypto.randomUUID()])),groupIds=new Map(layout.groups.map(group=>[group.id,crypto.randomUUID()])),noteIds=new Map(layout.widgets.flatMap(widget=>widget.noteDocuments.map(note=>[note.id,crypto.randomUUID()] as const)));
+export function cloneGlobalWorkspaceLayout(layout:Pick<GlobalWorkspaceLayout,'widgets'|'groups'>,target:Workspace,mode:'append'|'replace',canvasWidth=20000,canvasHeight=20000):Workspace{
+ const widgetIds=new Map(layout.widgets.map(widget=>[widget.id,crypto.randomUUID()])),groupIds=new Map(layout.groups.map(group=>[group.id,crypto.randomUUID()])),noteIds=new Map<string,string>();
+ const sources=[...layout.widgets,...layout.groups.flatMap(group=>group.widgets.flatMap(entry=>entry.instance?[entry.instance]:[]))];
+ for(const widget of sources)for(const note of widget.noteDocuments)noteIds.set(note.id,crypto.randomUUID());
  for(const group of layout.groups)for(const entry of group.widgets)if(entry.kind==='collected')widgetIds.set(entry.id,crypto.randomUUID());
  const existing=mode==='append'?[...target.widgets]:[],offset=mode==='append'?24+target.widgets.length*18:0;
  const copyWidget=(source:WidgetInstance):WidgetInstance=>{
   const id=widgetIds.get(source.id)??crypto.randomUUID();widgetIds.set(source.id,id);
-  const noteDocuments=source.noteDocuments.map(note=>({...structuredClone(note),id:noteIds.get(note.id)??crypto.randomUUID(),sources:note.sources?.map(citation=>({...citation,widgetId:widgetIds.get(citation.widgetId)??citation.widgetId}))}));
+  const noteDocuments=detachNoteLibraryDocuments(source.noteDocuments).map(note=>({...structuredClone(note),id:noteIds.get(note.id)??crypto.randomUUID(),sources:note.sources?.map(citation=>({...citation,widgetId:widgetIds.get(citation.widgetId)??citation.widgetId}))}));
   const folderKey=source.type==='files'&&!source.folderKey&&source.folderName&&source.folderName!=='Still Downloads'?source.id:source.folderKey;
   const remaining=source.end===null?source.remaining:Math.max(0,Math.ceil((source.end-Date.now())/1000));
   const geometry=mode==='append'?{...source.placement,x:source.placement.x+offset,y:source.placement.y+offset}:source.placement;
-  const copy:WidgetInstance={...structuredClone(source),id,type:source.type,instanceNumber:nextInstanceNumber(source.type,existing),placement:constrainPlacement(source.type,geometry,canvasWidth,{},canvasHeight),groupId:source.groupId?groupIds.get(source.groupId)??null:null,folderKey,noteDocuments,activeNoteDocumentId:noteIds.get(source.activeNoteDocumentId)??noteDocuments[0]?.id??'',remaining,end:null,appPanelOpen:false,appWasCollected:false};existing.push(copy);
+  const copy:WidgetInstance={...structuredClone(source),id,type:source.type,instanceNumber:nextInstanceNumber(source.type,existing),placement:source.minimized?compactPlacement(geometry,canvasWidth,canvasHeight):source.type==='group'&&source.groupCollapsed?constrainGroupCollapsedPlacement(geometry,canvasWidth,canvasHeight):constrainPlacement(source.type,geometry,canvasWidth,{},canvasHeight),groupId:source.groupId?groupIds.get(source.groupId)??null:null,folderKey,notesLibraryKey:null,notesLibraryName:undefined,noteDocuments,activeNoteDocumentId:noteIds.get(source.activeNoteDocumentId)??noteDocuments[0]?.id??'',remaining,end:null,appPanelOpen:false,appWasCollected:false};existing.push(copy);
   return copy;
  };
  const widgets=layout.widgets.map(copyWidget),groups=layout.groups.map(group=>({...structuredClone(group),id:groupIds.get(group.id)!,widgets:group.widgets.map(entry=>{

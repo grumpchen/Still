@@ -115,6 +115,14 @@ pub enum WorkbenchAction {
     #[serde(rename="filesView.exitSearch")] FilesViewExitSearch { widget_id:String },
     #[serde(rename="filesView.filter")] FilesViewFilter { widget_id:String,status:String },
     #[serde(rename="filesView.readingStatus")] FilesViewReadingStatus { widget_id:String,path:String,status:String },
+    #[serde(rename="canvas.overview")] CanvasOverview { workspace_id:String,enabled:bool },
+    #[serde(rename="canvas.filter")] CanvasFilter { workspace_id:String,status:String },
+    #[serde(rename="canvas.snap")] CanvasSnap { workspace_id:String,widget_id:String,layout:String,zone:u8 },
+    #[serde(rename="canvas.exportPng")] CanvasExportPng { workspace_id:String,widget_id:String },
+    #[serde(rename="canvas.copyImage")] CanvasCopyImage { workspace_id:String,widget_id:String },
+    #[serde(rename="canvas.raise")] CanvasRaise { workspace_id:String,widget_id:String },
+    #[serde(rename="view.open")] ViewOpen { panel:String },
+    #[serde(rename="view.focusMode")] ViewFocusMode { enabled:bool },
     #[serde(rename="appearance.reset")] AppearanceReset,
     #[serde(rename="relaunch.applyAll")] RelaunchApplyAll { value:String },
     #[serde(rename="layout.list")] LayoutList,
@@ -382,6 +390,11 @@ fn workbench_action_variant(operation:&str,required_fields:&[&str],optional_fiel
     properties.insert("operation".into(),json!({"type":"STRING","enum":[operation]}));
     for field in required_fields.iter().chain(optional_fields.iter()){
         let schema=match *field{
+            "zone" if operation=="canvas.snap"=>json!({"type":"INTEGER","minimum":1,"maximum":4}),
+            "layout" if operation=="canvas.snap"=>json!({"type":"STRING","enum":["halves","focus-left","thirds","quadrants"]}),
+            "panel"=>json!({"type":"STRING","enum":["notes-home","settings","shortcuts","gallery","trayEdit","sidebarPlugins","commands","rules"]}),
+            "enabled"=>json!({"type":"BOOLEAN"}),
+            "status" if operation=="canvas.filter"=>json!({"type":"STRING","enum":["all","unset","todo","in-progress","done"]}),
             "status" if operation=="filesView.filter"=>json!({"type":"STRING","enum":["all","unread","in-progress","done"]}),
             "status" if operation=="filesView.readingStatus"=>json!({"type":"STRING","enum":["unread","in-progress","done"]}),
             "mode"=>json!({"type":"STRING","enum":["append","replace"]}),
@@ -416,8 +429,12 @@ pub(crate) fn workbench_operation_signatures() -> &'static str {
             let name = properties["operation"]["enum"][0].as_str().expect("operation name");
             let required = variant["required"].as_array().expect("required fields");
             let fields: Vec<String> = properties.keys().filter(|key| *key != "operation").map(|key| {
-                if required.iter().any(|field| field.as_str() == Some(key.as_str())) { key.clone() }
-                else { format!("{key}?") }
+                let optional = if required.iter().any(|field| field.as_str() == Some(key.as_str())) { "" } else { "?" };
+                let field = &properties[key];
+                if let Some(choices) = field["enum"].as_array() {
+                    let labels: Vec<&str> = choices.iter().filter_map(Value::as_str).collect();
+                    format!("{key}{optional}={}", labels.join("|"))
+                } else { format!("{key}{optional}") }
             }).collect();
             rows.push(format!("{name}({})", fields.join(",")));
         }
@@ -431,6 +448,10 @@ fn workbench_actions_schema()->Value{
         variant("filesView.search",&["widgetId","query"],&[]),variant("filesView.open",&["widgetId","path"],&[]),
         variant("filesView.closePreview",&["widgetId"],&[]),variant("filesView.exitSearch",&["widgetId"],&[]),
         variant("filesView.filter",&["widgetId","status"],&[]),variant("filesView.readingStatus",&["widgetId","path","status"],&[]),
+        variant("canvas.overview",&["workspaceId","enabled"],&[]),variant("canvas.filter",&["workspaceId","status"],&[]),
+        variant("canvas.snap",&["workspaceId","widgetId","layout","zone"],&[]),variant("canvas.raise",&["workspaceId","widgetId"],&[]),
+        variant("canvas.exportPng",&["workspaceId","widgetId"],&[]),variant("canvas.copyImage",&["workspaceId","widgetId"],&[]),
+        variant("view.open",&["panel"],&[]),variant("view.focusMode",&["enabled"],&[]),
         variant("workspace.duplicate",&["workspaceId"],&["name"]),variant("workspace.stack",&["workspaceId"],&[]),
         variant("preset.rename",&["presetId","name"],&[]),variant("preset.delete",&["presetId"],&[]),
         variant("appearance.reset",&[],&[]),variant("relaunch.applyAll",&["value"],&[]),
@@ -635,6 +656,12 @@ fn valid_workbench_origin(origin:&WorkbenchLinkOrigin)->bool{match origin{
     WorkbenchLinkOrigin::Browser{workspace_id,widget_id}=>valid_workbench_id(workspace_id)&&valid_workbench_id(widget_id),
 }}
 fn valid_workbench_action(action:&WorkbenchAction)->bool{use WorkbenchAction::*;match action{
+    CanvasOverview{workspace_id,..}=>valid_workbench_id(workspace_id),
+    CanvasFilter{workspace_id,status}=>valid_workbench_id(workspace_id)&&matches!(status.as_str(),"all"|"unset"|"todo"|"in-progress"|"done"),
+    CanvasSnap{workspace_id,widget_id,layout,zone}=>valid_workbench_id(workspace_id)&&valid_workbench_id(widget_id)&&*zone>=1&&*zone<=match layout.as_str(){"halves"=>2,"focus-left"|"thirds"=>3,"quadrants"=>4,_=>0},
+    CanvasExportPng{workspace_id,widget_id}|CanvasCopyImage{workspace_id,widget_id}|CanvasRaise{workspace_id,widget_id}=>valid_workbench_id(workspace_id)&&valid_workbench_id(widget_id),
+    ViewOpen{panel}=>matches!(panel.as_str(),"notes-home"|"settings"|"shortcuts"|"gallery"|"trayEdit"|"sidebarPlugins"|"commands"|"rules"),
+    ViewFocusMode{..}=>true,
     FilesViewSearch{widget_id,query}=>valid_workbench_id(widget_id)&&valid_workbench_name(query,300),
     FilesViewOpen{widget_id,path}=>valid_workbench_id(widget_id)&&valid_workbench_path(path,true),
     FilesViewClosePreview{widget_id}|FilesViewExitSearch{widget_id}=>valid_workbench_id(widget_id),
