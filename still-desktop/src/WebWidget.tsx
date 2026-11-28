@@ -8,11 +8,11 @@ import {useT} from './localization.tsx';
 
 type Props=WidgetProps&{layoutMode?:string|null};
 export default function WebWidget({widget,update,notify,obscured,workspaceActive=true,layoutMode=null}:Props){
- const t=useT(),viewport=useRef<HTMLDivElement>(null),notifyRef=useRef(notify),[editing,setEditing]=useState(false),[draft,setDraft]=useState<WebShortcut|null>(null),[error,setError]=useState(''),[dragged,setDragged]=useState<string|null>(null),[address,setAddress]=useState(widget.browserUrl||'https://www.google.com/'),[showLinks,setShowLinks]=useState(false),[previewReload,setPreviewReload]=useState(0);notifyRef.current=notify;
+ const t=useT(),viewport=useRef<HTMLDivElement>(null),notifyRef=useRef(notify),skipNextNavigate=useRef<string|null>(null),[editing,setEditing]=useState(false),[draft,setDraft]=useState<WebShortcut|null>(null),[error,setError]=useState(''),[dragged,setDragged]=useState<string|null>(null),[address,setAddress]=useState(widget.browserUrl||'https://www.google.com/'),[showLinks,setShowLinks]=useState(false),[previewReload,setPreviewReload]=useState(0);notifyRef.current=notify;
  const hidden=obscured||!workspaceActive||!!layoutMode||showLinks;
- const persistUrl=useCallback((value:string)=>{try{const url=normalizeUrl(value);update({browserUrl:url});setAddress(url)}catch{/* Redirects outside HTTPS are rejected by the native child view. */}},[update]);
- const load=useCallback((value:string)=>{try{const url=browserDestination(value);setError('');setAddress(url);update({browserUrl:url});if(browserPanel.native)void browserPanel.navigate(widget.id,url).catch(e=>notify(String(e)))}catch(e){setError(String((e as Error).message))}},[notify,update,widget.id]);
- useEffect(()=>{setAddress(widget.browserUrl||'https://www.google.com/')},[widget.browserUrl]);
+ const persistUrl=useCallback((value:string)=>{try{const url=normalizeUrl(value);skipNextNavigate.current=url;update({browserUrl:url});setAddress(url)}catch{/* Redirects outside HTTPS are rejected by the native child view. */}},[update]);
+ const load=useCallback((value:string)=>{try{const url=browserDestination(value);setError('');setAddress(url);update({browserUrl:url})}catch(e){setError(String((e as Error).message))}},[update]);
+ useEffect(()=>{const url=widget.browserUrl||'https://www.google.com/';setAddress(url);if(skipNextNavigate.current===url){skipNextNavigate.current=null;return}if(browserPanel.native)void browserPanel.navigate(widget.id,url).catch(e=>notify(String(e)))},[notify,widget.browserUrl,widget.id]);
  // A real Tauri child view stays alive between routes and is removed with its widget.
  useEffect(()=>()=>{void browserPanel.close(widget.id).catch(e=>notifyRef.current(String(e)))},[widget.id]);
  useEffect(()=>{let active=true,unsubscribe:(()=>void)|undefined;void browserPanel.onLocation(location=>{if(active&&location.widgetId===widget.id)persistUrl(location.url)}).then(stop=>{if(active)unsubscribe=stop;else stop()}).catch(e=>notify(String(e)));return()=>{active=false;unsubscribe?.()}},[notify,persistUrl,widget.id]);

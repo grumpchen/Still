@@ -70,3 +70,11 @@ test('file.createText accepts only bounded relative .md and .txt paths',()=>{
  for(const path of ['Course/new.csv','../outside.txt','C:/outside.txt','Course/.txt','Course/folder/'])assert.throws(()=>reply([{...action,path}]));
  assert.throws(()=>reply([{...action,text:'x'.repeat(1_000_001)}]));assert.throws(()=>reply([{...action,text:'é'.repeat(500_001)}]));
 });
+
+test('built-in widget operations are strict, tagged actions',()=>{
+ const browser={operation:'widget.browser.navigate',widgetId:'browser-1',url:'https://example.edu/path'};
+ const calendar={operation:'calendar.add',widgetId:'calendar-1',events:[{date:'2026-12-01',title:'Final exam',time:'10:30',category:'exam'}]};
+ const status={operation:'widget.taskStatus.set',widgetId:'notes-1',status:'done'};
+ assert.deepEqual(reply([browser]).workbenchActions,[browser]);assert.deepEqual(reply([calendar]).workbenchActions,[calendar]);assert.deepEqual(reply([status]).workbenchActions,[status]);
+ for(const action of [{...browser,url:'http://example.edu'},{...calendar,events:[{date:'2026-02-30',title:'Bad date',time:'',category:'study'}]},{...status,unknown:true},{operation:'widget.aiCommand.edit',widgetId:'command-1'}])assert.throws(()=>reply([action]));
+});

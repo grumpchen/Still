@@ -1,3 +1,6 @@
+import type {StudyCalendarEventDraft} from './studyCalendar.ts';
+import {checkedStudyCalendarDrafts} from './studyCalendar.ts';
+
 /**
  * Structured actions for Still features that live outside the active widget
  * canvas. Collection operations mirror the shared collection operation
@@ -43,6 +46,12 @@ export type WorkbenchAction = InterfaceAction| WorkspaceCommand|FilesViewCommand
  | {operation:'file.delete';widgetId:string;path:string}
  | {operation:'file.editText';widgetId:string;path:string;text:string;expectedText:string}
  | {operation:'file.createText';widgetId:string;path:string;text:string}
+ | {operation:'widget.browser.navigate';widgetId:string;url:string}
+ | {operation:'widget.aiCommand.edit';widgetId:string;title?:string;text?:string}
+ | {operation:'widget.taskStatus.set';widgetId:string;status:'todo'|'in-progress'|'done'|'none'}
+ | {operation:'widget.pin.set';widgetId:string;enabled:boolean;pinned?:boolean}
+ | {operation:'calendar.add';widgetId:string;events:StudyCalendarEventDraft[]}
+ | {operation:'calendar.delete';widgetId:string;eventId:string}
  | {operation:'note.quickCapture';workspaceId:string;notesWidgetId?:string;title:string;text:string}
  | {operation:'rule.save';text:string}
  | {operation:'rule.list'}
@@ -159,6 +168,16 @@ function parseOne(raw:unknown):WorkbenchAction{
   case 'file.delete':fields(raw,['operation','widgetId','path']);return{operation:raw.operation,widgetId:id(raw.widgetId),path:relativePath(raw.path)};
   case 'file.editText':fields(raw,['operation','widgetId','path','text','expectedText']);return{operation:raw.operation,widgetId:id(raw.widgetId),path:relativePath(raw.path),text:content(raw.text,1_000_000,true),expectedText:content(raw.expectedText,1_000_000,true)};
   case 'file.createText':fields(raw,['operation','widgetId','path','text']);return{operation:raw.operation,widgetId:id(raw.widgetId),path:createTextPath(raw.path),text:createTextContent(raw.text)};
+  case 'widget.browser.navigate':fields(raw,['operation','widgetId','url']);return{operation:raw.operation,widgetId:id(raw.widgetId),url:httpsUrl(raw.url)};
+  case 'widget.aiCommand.edit':{
+   fields(raw,['operation','widgetId'],['title','text']);if(raw.title===undefined&&raw.text===undefined)return invalid();
+   const title=raw.title===undefined?undefined:text(raw.title,1,60),prompt=raw.text===undefined?undefined:content(raw.text,8000,true);
+   return{operation:raw.operation,widgetId:id(raw.widgetId),...(title!==undefined?{title}:{}),...(prompt!==undefined?{text:prompt}:{})};
+  }
+  case 'widget.taskStatus.set':fields(raw,['operation','widgetId','status']);if(!['todo','in-progress','done','none'].includes(String(raw.status)))return invalid();return{operation:raw.operation,widgetId:id(raw.widgetId),status:raw.status as 'todo'|'in-progress'|'done'|'none'};
+  case 'widget.pin.set':fields(raw,['operation','widgetId','enabled'],['pinned']);if(typeof raw.enabled!=='boolean'||raw.pinned!==undefined&&typeof raw.pinned!=='boolean'||raw.enabled===false&&raw.pinned===true)return invalid();return{operation:raw.operation,widgetId:id(raw.widgetId),enabled:raw.enabled,...(raw.pinned!==undefined?{pinned:raw.pinned}:{})};
+  case 'calendar.add':{fields(raw,['operation','widgetId','events']);const events=checkedStudyCalendarDrafts(raw.events).map(event=>({...event,time:event.time??''}));if(!events.length)return invalid();return{operation:raw.operation,widgetId:id(raw.widgetId),events}}
+  case 'calendar.delete':fields(raw,['operation','widgetId','eventId']);return{operation:raw.operation,widgetId:id(raw.widgetId),eventId:id(raw.eventId)};
   case 'note.quickCapture':fields(raw,['operation','workspaceId','title','text'],['notesWidgetId']);return{operation:raw.operation,workspaceId:id(raw.workspaceId),...(raw.notesWidgetId!==undefined?{notesWidgetId:id(raw.notesWidgetId)}:{}),title:text(raw.title,1,60),text:content(raw.text,12_000)};
   case 'rule.save':fields(raw,['operation','text']);return{operation:raw.operation,text:content(raw.text,2000)};
   case 'rule.list':fields(raw,['operation']);return{operation:raw.operation};
