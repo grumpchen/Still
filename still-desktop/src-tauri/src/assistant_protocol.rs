@@ -637,8 +637,17 @@ pub fn parse_response(value: Value) -> Result<Reply, String> {
     parse_gemini_reply_text(&text)
 }
 pub(crate) fn parse_gemini_reply_text(text: &str) -> Result<Reply, String> {
-    let reply: Reply = serde_json::from_str(text).map_err(|_| "Gemini returned an invalid reply or unsupported action format. Nothing was changed. Try again.")?;
-    validate_reply(reply,"Gemini")
+    // Gemini's response schema requires layout even when it is empty.
+    // The compatible providers may omit it in JSON mode.
+    #[derive(Deserialize)]
+    struct GeminiRequiredFields {
+        #[serde(rename = "layout")]
+        _layout: serde::de::IgnoredAny,
+    }
+    const INVALID_REPLY: &str = "Gemini returned an invalid reply or unsupported action format. Nothing was changed. Try again.";
+    serde_json::from_str::<GeminiRequiredFields>(text).map_err(|_| INVALID_REPLY)?;
+    let reply: Reply = serde_json::from_str(text).map_err(|_| INVALID_REPLY)?;
+    validate_reply(reply, "Gemini")
 }
 pub fn parse_openai_response(value:Value)->Result<Reply,String>{ parse_compatible_response(value,"OpenAI") }
 pub fn parse_opencode_response(value:Value)->Result<Reply,String>{ parse_compatible_response(value,"OpenCode Go") }
@@ -1081,6 +1090,8 @@ mod tests {
         assert!(payload["messages"][1]["content"].as_str().unwrap().contains("widget bounds"));
         let response=json!({"choices":[{"message":{"content":"{\"reply\":\"Ready\",\"layout\":[],\"actions\":[]}"}}]});
         assert_eq!(parse_deepseek_response(response).unwrap().reply,"Ready");
+        let chat = json!({"choices":[{"message":{"content":"{\"intent\":\"chat\",\"reply\":\"Ready\",\"actions\":null}"}}]});
+        assert!(parse_deepseek_response(chat).unwrap().layout.is_empty());
     }
     #[test] fn rejects_endpoint_injection_and_bad_history() {
         let mut r=request();r.model="gemini-test?key=secret".into();assert!(body(&r).is_err());
