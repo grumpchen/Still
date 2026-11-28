@@ -83,21 +83,9 @@ export function editSavedNote(state:WorkspaceState,identity:NoteHistoryIdentity,
   return widgets.every((widget,index)=>widget===workspace.widgets[index])&&groups.every((group,index)=>group===workspace.groups[index])
    ?workspace:{...workspace,widgets,groups};
  });
- const globalLayouts=state.globalLayouts.map(layout=>{
-  const widgets=editWidgetList(layout.widgets,identity,edit);
-  const groups=layout.groups.map(group=>({...group,widgets:group.widgets.map(entry=>{
-   if(!entry.instance)return entry;
-   const instance=editWidget(entry.instance,identity,edit);return instance===entry.instance?entry:{...entry,instance};
-  })}));
-  return widgets.every((widget,index)=>widget===layout.widgets[index])&&groups.every((group,index)=>group===layout.groups[index])?layout:{...layout,widgets,groups};
- });
- const presets=state.presets.map(preset=>{
-  if(preset.type!=='notes'||preset.sourceWidgetId!==identity.widgetId||!preset.noteDocuments?.some(document=>document.id===identity.documentId))return preset;
-  const noteDocuments=preset.noteDocuments.flatMap(document=>{if(document.id!==identity.documentId)return document;const updated=edit(document);return updated?[{...updated,historyCreated:true}]:[]});
-  const active=noteDocuments.find(document=>document.id===preset.activeNoteDocumentId)??noteDocuments[0];
-  return{...preset,noteDocuments,activeNoteDocumentId:active?.id??'',text:active?.text??''};
- });
- return {...state,noteHistory,workspaces,globalLayouts,presets};
+ // Layouts and presets are independent saved copies. Even matching widget IDs do
+ // not prove that a delete should erase their copied note content.
+ return {...state,noteHistory,workspaces};
 }
 
 export function parseNoteHistory(value:unknown):NoteHistoryEntry[]|undefined{

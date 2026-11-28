@@ -1,7 +1,7 @@
 import {currentFileRequest,currentFilesView,isFilesLocationQuestion} from './platform/currentFilesView.ts';
 import {useEffect,useRef,useState} from 'react';
 import type {WorkspaceState} from './domain/workspaces.ts';
-import type {InterfaceAction,WorkbenchAction} from './domain/workbenchActions.ts';
+import type {InterfaceAction,NoteIdentity,WorkbenchAction} from './domain/workbenchActions.ts';
 import {loadAutomationState,type RuleCatalog} from './domain/automationRules.ts';
 import {createWorkbenchService,type WorkbenchLayoutHandlers,type WorkbenchReceipt,type WidgetWorkbenchAction} from './platform/workbenchOperations.ts';
 import {configureCollectionOperationHost} from './platform/collectionOperations.ts';
@@ -11,7 +11,7 @@ import {useAutomationRunner,type AutomationRunnerApi} from './useAutomationRunne
 import {boundedWorkbenchContext} from './domain/workbenchContext.ts';
 
 const storage={getItem:(key:string)=>localStorage.getItem(key),setItem:(key:string,value:string)=>localStorage.setItem(key,value)};
-export interface StillWorkbenchHost {interfaceAction?:(action:InterfaceAction)=>string;viewport?:()=>{width:number;height:number};getState:()=>WorkspaceState;commitState:(state:WorkspaceState)=>void;layoutHandlers:WorkbenchLayoutHandlers;widgetAction?:(action:WidgetWorkbenchAction,prompt:string)=>Promise<string>;onRuleModeRequired?:(text:string)=>void}
+export interface StillWorkbenchHost {interfaceAction?:(action:InterfaceAction)=>string;viewport?:()=>{width:number;height:number};deleteNote?:(identity:NoteIdentity,expectedRevision:string)=>void|Promise<void>;getState:()=>WorkspaceState;commitState:(state:WorkspaceState)=>void;layoutHandlers:WorkbenchLayoutHandlers;widgetAction?:(action:WidgetWorkbenchAction,prompt:string)=>Promise<string>;onRuleModeRequired?:(text:string)=>void}
 export function ruleRequestText(text:string):string{return text.trim().replace(/^(?:please\s+)?(?:save|create|add)\s+(?:an?\s+)?(?:automation\s+)?rule\s*[:：,，]?\s*/i,'').replace(/^(?:请)?(?:保存|创建|添加)(?:一条|一个)?(?:自动)?规则\s*[:：,，]?\s*/,'')}
 export function isDirectRuleRequest(text:string):boolean{
  if(/^(?:how\s+(?:do|can|to)|what\s+|为什么|如何|怎么|怎样)/i.test(text.trim()))return false;
@@ -36,7 +36,7 @@ export function useStillWorkbench(host:StillWorkbenchHost){
  const [service]=useState(()=>createWorkbenchService({
   interfaceAction:action=>{if(!latest.current.interfaceAction)throw new Error('The workspace window is unavailable.');return latest.current.interfaceAction(action)},
   viewport:()=>{if(!latest.current.viewport)throw new Error('The canvas is unavailable.');return latest.current.viewport()},
-  getState:()=>latest.current.getState(),commitState:next=>latest.current.commitState(next),getCourses:()=>getCatalog().courses,
+  getState:()=>latest.current.getState(),commitState:next=>latest.current.commitState(next),...(latest.current.deleteNote?{deleteNote:(identity:NoteIdentity,revision:string)=>latest.current.deleteNote?.(identity,revision)}:{}),getCourses:()=>getCatalog().courses,
   layoutHandlers:{save:(...args)=>latest.current.layoutHandlers.save(...args),apply:(...args)=>latest.current.layoutHandlers.apply(...args),rename:(...args)=>latest.current.layoutHandlers.rename(...args),duplicate:(...args)=>latest.current.layoutHandlers.duplicate(...args),delete:(...args)=>latest.current.layoutHandlers.delete(...args),prepare:(...args)=>(latest.current.layoutHandlers.prepare??latest.current.layoutHandlers.apply)(...args)},
   saveRule:async (text:string)=>{const runner=runnerRef.current;if(!runner)return{kind:'error' as const,message:'Rules are still starting. Try again.'};return runner.createFromText(ruleRequestText(text))},
   ruleAdmin:{

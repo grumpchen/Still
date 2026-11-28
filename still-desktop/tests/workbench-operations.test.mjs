@@ -82,6 +82,24 @@ test('Workbench routes all file reference variants into the typed collection ope
  const [removed]=await service.executeWorkbenchActions([{operation:'file.deleteReference',widgetId:pdf.id}]);assert.equal(removed.status,'succeeded');assert.equal(current.workspaces.find(item=>item.id===target.id).widgets.some(item=>item.id===pdf.id),false);
 });
 
+test('Notes Home workbench finds closed notes and mutates only the exact owner with revision checks',async()=>{
+ const {state,source,target}=stateWithCourses(),notes=createWorkspace('Temp',['notes']).widgets[0];notes.id='notes-owner';notes.noteDocuments=[{id:'shared-note-id',title:'Exam plan',text:'Review acids and bases',historyCreated:true}];notes.activeNoteDocumentId='shared-note-id';source.widgets.push(notes);
+ const other=createWorkspace('Temp',['notes']).widgets[0];other.id='other-owner';other.noteDocuments=[{id:'shared-note-id',title:'Different copy',text:'Keep this independent',historyCreated:true}];other.activeNoteDocumentId='shared-note-id';target.widgets.push(other);
+ state.globalLayouts=[{id:'layout-copy',name:'Saved snapshot',createdAt:1,widgets:structuredClone(source.widgets),groups:[]}];
+ let current=state;const service=createWorkbenchService({getState:()=>current,commitState:next=>{current=next},layoutHandlers:emptyLayoutHandlers,saveRule:async()=>({kind:'error',message:'unsupported'}),getCaptureEvent:async()=>null});
+ const [found]=await service.executeWorkbenchActions([{operation:'note.find',query:'acids'}]);assert.equal(found.status,'succeeded');const result=found.data.results[0];assert.deepEqual(result.identity,{documentId:'shared-note-id',workspaceId:source.id,widgetId:notes.id});assert.equal(result.closed,false);
+ const closeState={...current,workspaces:current.workspaces.map(workspace=>workspace.id===source.id?{...workspace,widgets:workspace.widgets.filter(widget=>widget.id!==notes.id),noteHistory:[...(workspace.noteHistory??[])]}:workspace)};
+ // A closed note remains discoverable through the durable history mirror.
+ closeState.noteHistory=[{document:structuredClone(notes.noteDocuments[0]),workspaceId:source.id,widgetId:notes.id,workspaceName:source.name}];current=closeState;
+ const [closed]=await service.executeWorkbenchActions([{operation:'note.find',query:'Exam plan'}]);assert.equal(closed.data.results[0].closed,true);const exact=closed.data.results[0];
+ const [edited]=await service.executeWorkbenchActions([{operation:'note.edit',identity:exact.identity,expectedRevision:exact.revision,mode:'append',text:'\n\nPractice problems'}]);assert.equal(edited.status,'succeeded');assert.match(current.noteHistory[0].document.text,/Practice problems/);
+ const [stale]=await service.executeWorkbenchActions([{operation:'note.rename',identity:exact.identity,expectedRevision:exact.revision,title:'Outdated'}]);assert.equal(stale.status,'needs_clarification');
+ const [fresh]=await service.executeWorkbenchActions([{operation:'note.find',query:'Practice problems'}]);const editedNote=fresh.data.results[0];const [renamed]=await service.executeWorkbenchActions([{operation:'note.rename',identity:editedNote.identity,expectedRevision:editedNote.revision,title:'Final review'}]);assert.equal(renamed.status,'succeeded');
+ const [renamedResult]=await service.executeWorkbenchActions([{operation:'note.find',query:'Final review'}]);const latest=renamedResult.data.results[0];const [deleted]=await service.executeWorkbenchActions([{operation:'note.delete',identity:latest.identity,expectedRevision:latest.revision}]);assert.equal(deleted.status,'succeeded');assert.equal(current.noteHistory.some(entry=>entry.document.id==='shared-note-id'),false);
+ assert.equal(current.workspaces.find(workspace=>workspace.id===target.id).widgets.find(widget=>widget.id===other.id).noteDocuments[0].text,'Keep this independent');
+ assert.equal(current.globalLayouts[0].widgets.find(widget=>widget.id===notes.id).noteDocuments[0].text,'Review acids and bases','independent layout copies remain intact');
+});
+
 test('file.createText dispatches one native create-new request and reports its exact receipt',async()=>{
  installStorage();const {state,source}=stateWithCourses(),files=createWorkspace('Temp',['files']).widgets[0];files.id='files-create-1';source.widgets.push(files);let current=state;configureCollectionOperationHost({getState:()=>current,commitState:next=>{current=next}});
  const original=localFiles.manageResource;let request;
